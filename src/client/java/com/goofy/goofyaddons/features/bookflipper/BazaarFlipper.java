@@ -1,8 +1,10 @@
 package com.goofy.goofyaddons.features.bookflipper;
 
 import com.goofy.goofyaddons.config.GoofyConfig;
+import com.goofy.goofyaddons.features.bookflipper.helper.TradeBudget;
 import com.goofy.goofyaddons.event.ChatHook;
 import com.goofy.goofyaddons.features.Feature;
+import com.goofy.goofyaddons.features.CapitalManager;
 import com.goofy.goofyaddons.features.bookflipper.helper.BazaarMonitor;
 import com.goofy.goofyaddons.features.bookflipper.helper.Book;
 import com.goofy.goofyaddons.features.bookflipper.helper.BookList;
@@ -55,8 +57,11 @@ public class BazaarFlipper implements Feature {
     private InventoryScanner inventoryScanner = new InventoryScanner();
     private BazaarMonitor bazaarMonitor = new BazaarMonitor();
     private boolean running = false;
+    private boolean paused = false;
+    private long yieldAfterMs;
+    private long nextFetchMs;
+    private static final long FETCH_RETRY_MS = 20000;
     private List<FlipItem> flipItemList = new ArrayList<>();
-    private boolean notEnoughCash = false;
     private boolean needToStoreExcessBook = false;
     private boolean usingSecondPage = false;
     private boolean isStartUpCheckCompleted = false;
@@ -120,6 +125,19 @@ public class BazaarFlipper implements Feature {
         tick = 0;
         listOfTaskToChange.clear();
         running = false;
+        paused = false;
+        activeTask = null;
+        lastState = null;
+        attemptedToClaim = false;
+        needToStoreExcessBook = false;
+        inventoryIsFull = false;
+        overFlowProt = false;
+        usingSecondPage = false;
+        nextFetchMs = 0;
+        yieldAfterMs = 0;
+        clock.stop();
+        flipItemList.clear();
+        flipCalculator.reset();
         bazaarMonitor.stop();
         bazaarMonitor.reset();
         ChatUtils.clientMessage("BazaarFlipper: Stopped");
@@ -127,26 +145,80 @@ public class BazaarFlipper implements Feature {
 
     @Override
     public void start() {
+        if (paused) {
+            resume();
+            return;
+        }
         running = true;
     }
 
     @Override
-    public void pause() {
+    public boolean isRunning() {
+        return running;
+    }
 
+    @Override
+    public void pause() {
+        if (!running || paused) return;
+        paused = true;
+        clock.stop();
+        flipCalculator.reset();
+        bazaarMonitor.stop();
     }
 
     @Override
     public void resume() {
+        if (!running || !paused || minecraft.player == null || minecraft.level == null) return;
+        // Travel can invalidate every recorded inventory location and open menu.
+        // Reconcile inventory and existing orders through normal startup.
+        stop();
+        start();
+    }
 
+    @Override
+    public void poll() {
+        if (!running || paused) return;
+        handleTaskStateChange();
+        bazaarMonitor.onTick();
+        if (state == State.FETCHING && !flipCalculator.isRunning()
+                && flipCalculator.getFlipItemsList().isEmpty() && System.currentTimeMillis() >= nextFetchMs) refreshFlips();
+        if (isStartUpCheckCompleted) {
+            CapitalManager.INSTANCE.releaseMissing("books", taskList.stream().map(task -> task.getBook().id())
+                    .collect(java.util.stream.Collectors.toSet()));
+        }
+    }
+
+    @Override
+    public boolean canYield() {
+        return (state == State.START || state == State.FETCHING || state == State.IDLE)
+                && System.currentTimeMillis() >= yieldAfterMs
+                && (minecraft.player == null || minecraft.player.containerMenu.getCarried().isEmpty());
+    }
+
+    @Override
+    public boolean needsMenu() {
+        if (!running || paused) return false;
+        if (state == State.FETCHING) return !flipCalculator.isRunning() && !flipCalculator.getFlipItemsList().isEmpty();
+        if (state == State.IDLE) return needToStoreExcessBook || System.currentTimeMillis() >= nextFetchMs
+                || taskList.stream().anyMatch(task -> STATE_PRIORITY.containsKey(task.getBookState()));
+        return true;
+    }
+
+    @Override
+    public void yieldMenu() {
+        if (canYield() && minecraft.player != null && minecraft.screen != null) minecraft.player.closeContainer();
     }
 
     @Override
     public void onTick() {
-        if (!running) return;
+        if (!running || paused) return;
+        if (minecraft.player == null || minecraft.level == null) {
+            stop();
+            return;
+        }
+        if (System.currentTimeMillis() < yieldAfterMs) return;
         selfRecoveryTrigger();
-        handleTaskStateChange();
         lastStateCheck();
-        bazaarMonitor.onTick();
 
         switch (state) {
             case START -> {
@@ -157,8 +229,13 @@ public class BazaarFlipper implements Feature {
             }
 
             case FETCHING -> {
+                if (flipCalculator.isRunning()) return;
+                flipItemList.clear();
                 flipItemList.addAll(flipCalculator.getFlipItemsList());
-                if (flipItemList.isEmpty()) return;
+                if (flipItemList.isEmpty()) {
+                    if (System.currentTimeMillis() >= nextFetchMs) refreshFlips();
+                    return;
+                }
                 debug("[BazaarFlipper] FETCHING: list wasn't empty, printing the list and going into processData");
                 flipItemList.forEach(flipItem -> {
                     debug("[BazaarFlipper] FETCHING: " + flipItem.book() + " | Cost: " + flipItem.totalCost() + " | Buy: " + flipItem.instaBuy() + " | Sell: " + flipItem.instaSell());
@@ -343,7 +420,10 @@ public class BazaarFlipper implements Feature {
                     }
                 }
 
-                if (taskToHandle == null) return;
+                if (taskToHandle == null) {
+                    if (System.currentTimeMillis() >= nextFetchMs) state = State.FETCHING;
+                    return;
+                }
                 debug("[BazaarFlipper] IDLE: picked task " + taskToHandle.getBook() + " in state " + taskToHandle.getBookState());
                 switch (taskToHandle.getBookState()) {
 
@@ -421,13 +501,27 @@ public class BazaarFlipper implements Feature {
 
                 if (containerNameCheck("How much do you want to pay")) clock.start(randomizer());
                 if (containerNameCheck("How much do you want to pay") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
-                    bazaarMonitor.add(activeTask.getBook(), inventoryScanner.getUnitPrice(12), false);
+                    double unitPrice = inventoryScanner.getUnitPrice(12);
+                    double requiredCoins = unitPrice * activeTask.getAmountToOrder();
+                    if (!Double.isFinite(requiredCoins) || unitPrice <= 0
+                            || requiredCoins > scoreboardUtils.getPurse()
+                            || !CapitalManager.INSTANCE.resize("books", activeTask.getBook().id(),
+                                    Math.max(requiredCoins, CapitalManager.INSTANCE.cost("books", activeTask.getBook().id())),
+                                    scoreboardUtils.getPurse())) {
+                        ChatUtils.clientMessage("Purchase stopped: quoted order exceeds available purse.");
+                        stop();
+                        minecraft.player.closeContainer();
+                        return;
+                    }
+                    bazaarMonitor.add(activeTask.getBook(), unitPrice, false);
                     InventoryUtils.clickSlot(12, false);
                 }
 
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     InventoryUtils.clickSlot(13, false);
+                    CapitalManager.INSTANCE.purchased("books", activeTask.getBook().id());
+                    yieldAfterMs = System.currentTimeMillis() + 1000;
                     // first we check if the order was an insta buy
                     if (activeTask.instaBuy) {
                         debug("[BazaarFlipper] BAZAAR_NAVIGATION: insta bought " + activeTask.getBook() + ", going to " + (activeTask.bookList.getLast().location != 0 ? "ANVIL" : "COMBINE"));
@@ -959,21 +1053,10 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     InventoryUtils.clickSlot(13, false);
+                    yieldAfterMs = System.currentTimeMillis() + 1000;
                     debug("[BazaarFlipper] SELL: placed sell order for " + task.getBook());
                     task.setBookState(Task.BookState.SELL_ORDER);
 
-                    // Removing duplicates
-                    Set<String> seen = new HashSet<>();
-
-                    taskList.removeIf(task1 -> {
-                        if (task1.getBookState() != Task.BookState.REPLACE_SELL
-                                && task1.getBookState() != Task.BookState.SELL_ORDER
-                                && task1.getBookState() != Task.BookState.SELL) {
-                            return false;
-                        }
-
-                        return !seen.add(task1.getBook().name());
-                    });
                     debug("[BazaarFlipper] SELL: TaskSize:" + taskList.size());
                 }
             }
@@ -1036,6 +1119,7 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     InventoryUtils.clickSlot(13, false);
+                    yieldAfterMs = System.currentTimeMillis() + 1000;
                     debug("[BazaarFlipper] REPLACE_SELL: replaced sell order for " + task.getBook());
                     task.setBookState(Task.BookState.SELL_ORDER);
                     debug("[BazaarFlipper] REPLACE_SELL: TaskSize:" + taskList.size());
@@ -1065,7 +1149,7 @@ public class BazaarFlipper implements Feature {
 
         if (state == State.FETCHING) {
             flipItemList.clear();
-            flipCalculator.Refresh();
+            refreshFlips();
         }
     }
 
@@ -1073,29 +1157,17 @@ public class BazaarFlipper implements Feature {
         double purse = scoreboardUtils.getPurse();
         // Money Check
         debug("[BazaarFlipper] PROCESSDATA: purse=" + purse + ", flipItemList size=" + flipItemList.size());
-        double cost = flipItemList.stream().mapToDouble(FlipItem::totalCost).min().orElse(-1);
-
-        if (cost != -1) {
-            debug("[BazaarFlipper] PROCESSDATA: cheapest flip costs " + cost);
-            if (cost > purse) {
-                debug("[BazaarFlipper] PROCESSDATA: cheapest flip (" + cost + ") exceeds purse (" + purse + "), going to IDLE");
-                if (!notEnoughCash)
-                    ChatUtils.clientMessage("BazaarFlipper: Not enough cash for the cheapest flip (" + cost + " needed)");
-                notEnoughCash = true;
-                state = State.IDLE;
-                return;
-            }
+        if (!Double.isFinite(purse) || purse < 0) {
+            state = State.IDLE;
+            return;
         }
-
-        for (FlipItem flipItem : flipItemList) {
-            if (flipItem.totalCost() > purse) continue;
-            if (taskList.stream().anyMatch(task ->
-                    task.getBook().equals(flipItem.book())
-                            && task.getBookState() != Task.BookState.SELL_ORDER
-                            && task.getBookState() != Task.BookState.REPLACE_SELL
-            )) continue;
+        if (CapitalManager.INSTANCE.purchaseSettling()) { state = State.IDLE; return; }
+        for (FlipItem flipItem : TradeBudget.select(flipItemList, taskList, purse)) {
+            if (!CapitalManager.INSTANCE.owns("books", flipItem.book().id())
+                    && !CapitalManager.INSTANCE.reserve("books", flipItem.book().id(), flipItem.totalCost(), purse)) continue;
             debug("[BazaarFlipper] PROCESSDATA: creating task for " + flipItem.book().getRomanLevel(flipItem.book().level()) + " (cost=" + flipItem.totalCost() + ", instaBuy=" + flipItem.instaBuy() + ", instaSell=" + flipItem.instaSell() + ")");
             Task task = new Task(flipItem.book(), flipItem.instaBuy(), flipItem.instaSell());
+            task.setReservedUnitCost(flipItem.totalCost() / flipItem.book().getQtyAmount(flipItem.book().level()));
             taskList.add(task);
 
             Iterator<BookList> iterator = bookLists.iterator();
@@ -1131,12 +1203,17 @@ public class BazaarFlipper implements Feature {
             state = State.IDLE;
             return;
         }
-        state = isStartUpCheckCompleted ? State.IDLE : State.STARTUP_CHECK;
+        state = taskList.isEmpty() || isStartUpCheckCompleted ? State.IDLE : State.STARTUP_CHECK;
+    }
+
+    private void refreshFlips() {
+        nextFetchMs = System.currentTimeMillis() + FETCH_RETRY_MS;
+        flipCalculator.Refresh();
     }
 
     private int randomizer() {
         int result = splittableRandom.nextInt(GoofyConfig.INSTANCE.minActionDelay, GoofyConfig.INSTANCE.maxActionDelay);
-        return result > 50 ? result : 500;
+        return result;
     }
 
     private Task taskInState(Task.BookState bookState) {
@@ -1153,6 +1230,7 @@ public class BazaarFlipper implements Feature {
     }
 
     private void handleClaimedMessage(String string) {
+        if (!running) return;
         if (!didReceiveItems) {
             debug("[BazaarFlipper] onClaimNotice: received item pickup confirmation");
             didReceiveItems = true;
@@ -1190,6 +1268,8 @@ public class BazaarFlipper implements Feature {
     }
 
     private void handleFilledMessage(String string) {
+        if (!running || !string.startsWith("[Bazaar] Your ")
+                || !(string.contains("Buy Order") || string.contains("Sell Offer"))) return;
         String stripped;
         boolean isSellOffer = false;
 
@@ -1242,13 +1322,14 @@ public class BazaarFlipper implements Feature {
     }
 
     private void handleOutbid(BazaarMonitor.BazaarMonitorItem book) {
+        if (!running || paused) return;
         for (Task task : taskList) {
             if (!book.book.equals(task.getBook())) continue;
 
             if (book.isSellOrder && (task.getBookState() == Task.BookState.REPLACE_SELL || task.getBookState() == Task.BookState.SELL_ORDER)) {
                 debug("[BazaarFlipper] handleOutbid: sell order for " + task.getBook() + " was outbid/undercut, queuing state change");
                 listOfTaskToChange.add(task);
-            } else {
+            } else if (!book.isSellOrder && task.getBookState() == Task.BookState.IN_BUY_ORDER) {
                 debug("[BazaarFlipper] handleOutbid: buy order for " + task.getBook() + " was outbid, queuing state change");
                 listOfTaskToChange.add(task);
             }

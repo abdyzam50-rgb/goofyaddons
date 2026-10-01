@@ -29,7 +29,7 @@ public class ScheduledReboot implements Failsafe {
 
     @Override
     public void onTick() {
-        if (!enabled) return;
+        if (!enabled || Minecraft.getInstance().player == null || Minecraft.getInstance().level == null) return;
 
         switch (state) {
             case ISLAND -> {
@@ -57,7 +57,16 @@ public class ScheduledReboot implements Failsafe {
 
     }
 
+    @Override
+    public void reset() {
+        enabled = false;
+        state = null;
+        clock.stop();
+    }
+
     private void handleMessage(String message) {
+        if (!FeatureManager.INSTANCE.isMacroRunning() || enabled) return;
+        clock.stop();
         FeatureManager.INSTANCE.pause();
         enabled = true;
         state = State.ISLAND;

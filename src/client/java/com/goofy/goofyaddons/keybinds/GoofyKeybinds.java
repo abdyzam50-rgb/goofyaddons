@@ -1,10 +1,10 @@
 package com.goofy.goofyaddons.keybinds;
 
+import com.goofy.goofyaddons.config.GoofyConfig;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
 
 public class GoofyKeybinds {
 
@@ -14,19 +14,23 @@ public class GoofyKeybinds {
 
     public static KeyMapping startKey;
     public static KeyMapping stopKey;
+    public static KeyMapping modeKey;
 
     public static void register() {
+        modeKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.goofyaddons.mode", InputConstants.Type.KEYSYM,
+                GoofyConfig.INSTANCE.modeKey, CATEGORY));
         startKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.goofyaddons.start",
                 InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_J,
+                GoofyConfig.INSTANCE.startKey,
                 CATEGORY
         ));
 
         stopKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.goofyaddons.stop",
                 InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_K,
+                GoofyConfig.INSTANCE.stopKey,
                 CATEGORY
         ));
     }

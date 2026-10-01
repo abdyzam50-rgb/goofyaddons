@@ -1,0 +1,128 @@
+{
+  "books": [
+    {
+      "id": "ENCHANTMENT_ULTIMATE_LEGION",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Legion",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_WISDOM",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Wisdom",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_LAST_STAND",
+      "level": 2,
+      "sellLevel": 5,
+      "name": "Last Stand",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_REJUVENATE",
+      "level": 2,
+      "sellLevel": 5,
+      "name": "Rejuvenate",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_PESTERMINATOR",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Pesterminator",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_OVERLOAD",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Overload",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_SWARM",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Swarm",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_SOUL_EATER",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Soul Eater",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_WISE",
+      "level": 2,
+      "sellLevel": 5,
+      "name": "Ultimate Wise",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    }
+  ],
+  "startKey": 74,
+  "stopKey": 75,
+  "speedMode": false,
+  "speedModeDelay": 100,
+  "minActionDelay": 100,
+  "maxActionDelay": 200,
+  "firstPage": "ec",
+  "secondPage": "ec 2",
+  "tradingMode": "BOTH",
+  "modeKey": 77,
+  "maxTradingCapital": 300000000,
+  "purseReserve": 50000000,
+  "bazaarTaxPercentage": 1.25,
+  "minNetProfit": 100000,
+  "general": {
+    "items": [
+      {
+        "id": "ENCHANTED_SUGAR",
+        "name": "Enchanted Sugar"
+      },
+      {
+        "id": "ENCHANTED_REDSTONE",
+        "name": "Enchanted Redstone"
+      },
+      {
+        "id": "ENCHANTED_GOLD",
+        "name": "Enchanted Gold"
+      },
+      {
+        "id": "ENCHANTED_LAPIS_LAZULI",
+        "name": "Enchanted Lapis Lazuli"
+      },
+      {
+        "id": "ENCHANTED_COAL",
+        "name": "Enchanted Coal"
+      },
+      {
+        "id": "ENCHANTED_IRON",
+        "name": "Enchanted Iron"
+      }
+    ],
+    "maxCoinsPerItem": 25000000,
+    "maxItemsPerOrder": 256,
+    "maxActiveItems": 3,
+    "minProfitPerBatch": 25000,
+    "minMarginPercentage": 2,
+    "minWeeklyVolume": 10000,
+    "refreshSeconds": 20,
+    "orderTimeoutSeconds": 180,
+    "repriceCooldownSeconds": 60,
+    "maxReprices": 3
+  }
+}
