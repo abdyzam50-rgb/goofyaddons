@@ -7,6 +7,8 @@ import com.goofy.goofyaddons.features.Feature;
 import com.goofy.goofyaddons.features.CapitalManager;
 import com.goofy.goofyaddons.features.FeatureManager;
 import com.goofy.goofyaddons.features.TradingSafety;
+import com.goofy.goofyaddons.features.profit.ProfitTracker;
+import com.goofy.goofyaddons.features.profit.TradeReceipts;
 import com.goofy.goofyaddons.features.TransactionWatchdog;
 import com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi;
 import com.goofy.goofyaddons.features.bookflipper.helper.BookJournal;
@@ -75,6 +77,9 @@ public class BazaarFlipper implements Feature {
     private Task pendingBuyClaim;
     private int buyClaimBefore;
     private int buyClaimExpected;
+    private Double buyClaimUnitPrice;
+    private String buyClaimEvent;
+    private Double saleClaimProceeds;
     private int ordersContainer = -1;
     private long ordersSeenAt;
     private long yieldAfterMs;
@@ -124,6 +129,10 @@ public class BazaarFlipper implements Feature {
     @Override
     public String name() {
         return "BazaarFlipper";
+    }
+    public String activity() {
+        if (pendingBuyClaim != null) return "Verifying book claim";
+        return "Books: " + state.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
     }
 
     @Override
@@ -271,6 +280,8 @@ public class BazaarFlipper implements Feature {
         }
         if (pendingBuyClaim != null) {
             if (inputBooksInInventory(pendingBuyClaim) < buyClaimBefore + buyClaimExpected) return;
+            ProfitTracker.INSTANCE.acquire(pendingBuyClaim.getProfitTradeId(), "books", pendingBuyClaim.getBook().name(),
+                    buyClaimEvent, buyClaimExpected, buyClaimUnitPrice == null ? null : buyClaimUnitPrice * buyClaimExpected);
             pendingBuyClaim = null;
             didReceiveItems = true;
         }
@@ -458,7 +469,7 @@ public class BazaarFlipper implements Feature {
                         state = State.IDLE;
                         return;
                     }
-                    beginBuyClaim(task, amount);
+                    beginBuyClaim(task, amount, slot.getFirst());
                     InventoryUtils.clickSlot(slot.getFirst(), false);
 
                     if (amount > 0) {
@@ -686,7 +697,7 @@ public class BazaarFlipper implements Feature {
                         inventoryIsFull = true;
                         return;
                     }
-                    beginBuyClaim(task, amount);
+                    beginBuyClaim(task, amount, slot.getFirst());
                     InventoryUtils.clickSlot(slot.getFirst(), false);
                     if (amount > 0) {
                         debug("[BazaarFlipper] OUTBID: claiming " + amount + " of " + task.getBook());
@@ -1176,6 +1187,7 @@ public class BazaarFlipper implements Feature {
                         if (fill != null && fill.filled() == fill.total() && fill.total() == 1) {
                             pendingSaleClaim = task;
                             saleClaimReceipt = false;
+                            saleClaimProceeds = null;
                         }
                         InventoryUtils.clickSlot(slot.getFirst(), false);
                         return;
@@ -1189,6 +1201,8 @@ public class BazaarFlipper implements Feature {
                     }
 
                     if (pendingSaleClaim == task && saleClaimReceipt) {
+                        ProfitTracker.INSTANCE.sell(task.getProfitTradeId(), "books", task.getBook().name(),
+                                task.getProfitTradeId() + ":sale", task.getBook().getQtyAmount(task.getBook().level()), saleClaimProceeds);
                         taskList.remove(task);
                         pendingSaleClaim = null;
                         saleClaimReceipt = false;
@@ -1338,6 +1352,8 @@ public class BazaarFlipper implements Feature {
         if (pendingSaleClaim != null && TradingSafety.claimReceipt(string,
                 pendingSaleClaim.getBook().getRomanLevel(pendingSaleClaim.getBook().sellLevel()), 1)) {
             saleClaimReceipt = true;
+            saleClaimProceeds = TradeReceipts.saleProceeds(string,
+                    pendingSaleClaim.getBook().getRomanLevel(pendingSaleClaim.getBook().sellLevel()), 1);
             return;
         }
         // Buy claims are acknowledged by an observed inventory increase, never generic chat.
@@ -1348,11 +1364,14 @@ public class BazaarFlipper implements Feature {
                 .filter(slot -> inventoryScanner.getLevel(slot) == task.getBook().level()).count();
     }
 
-    private void beginBuyClaim(Task task, int amount) {
+    private void beginBuyClaim(Task task, int amount, int slot) {
         if (amount <= 0) return;
         pendingBuyClaim = task;
         buyClaimBefore = inputBooksInInventory(task);
         buyClaimExpected = amount;
+        var lore = minecraft.player.containerMenu.slots.get(slot).getItem().get(net.minecraft.core.component.DataComponents.LORE);
+        buyClaimUnitPrice = lore == null ? null : TradeReceipts.unitPrice(String.join("\n", lore.lines().stream().map(line -> line.getString()).toList()));
+        buyClaimEvent = java.util.UUID.randomUUID().toString();
         attemptedToClaim = true;
         didReceiveItems = false;
     }

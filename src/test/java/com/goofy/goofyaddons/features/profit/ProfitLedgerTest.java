@@ -1,0 +1,108 @@
+package com.goofy.goofyaddons.features.profit;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import static org.junit.jupiter.api.Assertions.*;
+
+class ProfitLedgerTest {
+    @TempDir Path dir;
+    @Test void profitUsesConfirmedClaimMinusAcquiredCostWithoutDoubleTax() {
+        ProfitLedger l=new ProfitLedger();
+        l.acquire("t","general","Potato","buy",10,1000.0);
+        l.sell("t","general","Potato","sale",10,1200.0);
+        assertEquals(200,l.summary().profit());
+        assertEquals(200,l.summary().general());
+        assertEquals(0,l.summary().books());
+    }
+    @Test void partialSalesConsumeOnlyTheirShareOfCost() {
+        ProfitLedger l=new ProfitLedger();
+        l.acquire("t","general","Potato","buy",10,1000.0);
+        l.sell("t","general","Potato","part",4,480.0);
+        assertEquals(80,l.summary().profit());
+        l.sell("t","general","Potato","rest",6,720.0);
+        assertEquals(200,l.summary().profit());
+    }
+    @Test void bookProfitIncludesAllSixteenInputsAtTheirConfirmedPrices() {
+        ProfitLedger l=new ProfitLedger();
+        l.acquire("t","books","Wisdom","buy1",8,800.0);
+        l.acquire("t","books","Wisdom","buy2",8,1200.0);
+        l.sell("t","books","Wisdom","sale",16,2500.0);
+        assertEquals(500,l.summary().books());
+    }
+    @Test void lossesRemainNegativeRatherThanBeingDiscarded() {
+        ProfitLedger l=new ProfitLedger();l.acquire("t","general","Potato","buy",1,100.0);
+        l.sell("t","general","Potato","sale",1,80.0);
+        assertEquals(-20,l.summary().profit());
+    }
+    @Test void refundsAndOpenInventoryDoNotCountAsProfit() {
+        ProfitLedger l=new ProfitLedger();l.acquire("t","general","Potato","buy",10,1000.0);
+        assertEquals(0,l.summary().profit());assertEquals(0,l.summary().settlements());
+    }
+    @Test void duplicateClaimsAndAcquisitionsAreIdempotent() {
+        ProfitLedger l=new ProfitLedger();
+        assertTrue(l.acquire("t","general","Potato","buy",10,1000.0));
+        assertFalse(l.acquire("t","general","Potato","buy",10,1000.0));
+        assertTrue(l.sell("t","general","Potato","sale",10,1200.0));
+        assertFalse(l.sell("t","general","Potato","sale",10,1200.0));
+        assertEquals(200,l.summary().profit());assertEquals(1,l.summary().settlements());
+    }
+    @Test void unknownPurchaseCostsAreExcludedAndFlagged() {
+        ProfitLedger l=new ProfitLedger();l.acquire("t","books","Wisdom","buy",16,null);
+        l.sell("t","books","Wisdom","sale",16,1200.0);
+        assertEquals(0,l.summary().profit());assertEquals(1,l.summary().incomplete());
+        assertNull(l.history().getFirst().profit());
+    }
+    @Test void preExistingBooksAndMissingClaimAmountsDoNotInventProfits() {
+        ProfitLedger l=new ProfitLedger();
+        l.sell("old","books","Wisdom","old-sale",16,1200.0);
+        l.acquire("t","general","Potato","buy",10,1000.0);
+        l.sell("t","general","Potato","missing-coins",4,null);
+        assertEquals(2,l.summary().incomplete());assertEquals(0,l.summary().profit());
+    }
+    @Test void mixedKnownAndUnknownInputsMakeTheWholeBookSaleIncomplete() {
+        ProfitLedger l=new ProfitLedger();l.acquire("t","books","Wisdom","known",8,800.0);
+        l.acquire("t","books","Wisdom","unknown",8,null);
+        l.sell("t","books","Wisdom","sale",16,2500.0);
+        assertEquals(1,l.summary().incomplete());assertEquals(0,l.summary().profit());
+    }
+    @Test void resetKeepsCostOfOpenPositionsAndDoesNotDeleteHistory() {
+        ProfitLedger l=new ProfitLedger();l.acquire("t","general","Potato","buy",10,1000.0);
+        l.sell("t","general","Potato","part",4,480.0);l.activeTime(60000);l.resetSession();
+        assertEquals(0,l.summary().profit());assertEquals(0,l.summary().activeMillis());
+        l.sell("t","general","Potato","rest",6,720.0);
+        assertEquals(120,l.summary().profit());assertEquals(2,l.history().size());
+    }
+    @Test void rateRequiresAFullActiveMinuteAndKnownSettlement() {
+        ProfitLedger l=new ProfitLedger();l.acquire("t","general","Potato","buy",10,1000.0);
+        l.sell("t","general","Potato","sale",10,1200.0);l.activeTime(59999);
+        assertNull(l.summary().perHour());l.activeTime(1);assertEquals(12000,l.summary().perHour());
+        ProfitLedger unknown=new ProfitLedger();unknown.sell("old","books","Wisdom","sale",16,1200.0);
+        unknown.activeTime(60000);assertNull(unknown.summary().perHour());
+        l.sell("unknown","books","Wisdom","unknown-sale",16,1200.0);
+        assertNull(l.summary().perHour());
+    }
+    @Test void persistenceKeepsOpenCostSessionAndDuplicateProtection() throws Exception {
+        ProfitLedger l=new ProfitLedger();l.acquire("t","general","Potato","buy",10,1000.0);
+        l.sell("t","general","Potato","part",4,480.0);l.activeTime(60000);
+        Path p=dir.resolve("profit.json");l.write(p);ProfitLedger restored=ProfitLedger.read(p);
+        assertFalse(restored.sell("t","general","Potato","part",4,480.0));
+        restored.sell("t","general","Potato","rest",6,720.0);
+        assertEquals(200,restored.summary().profit());assertEquals(60000,restored.summary().activeMillis());
+    }
+    @Test void invalidMoneyAndChangedIdentityCannotPoisonTotals() {
+        ProfitLedger l=new ProfitLedger();
+        assertThrows(IllegalArgumentException.class,()->l.acquire("t","general","Potato","bad",1,Double.NaN));
+        assertThrows(IllegalArgumentException.class,()->l.sell("t","general","Potato","bad",1,-1.0));
+        l.acquire("t","general","Potato","buy",1,100.0);
+        assertThrows(IllegalArgumentException.class,()->l.sell("t","books","Wisdom","wrong",1,100.0));
+        assertEquals(0,l.summary().settlements());
+    }
+    @Test void corruptLedgerIsPreservedAndRejected() throws Exception {
+        Path p=dir.resolve("profit.json");Files.writeString(p,"broken");
+        assertThrows(Exception.class,()->ProfitLedger.read(p));assertEquals("broken",Files.readString(p));
+        Files.writeString(p,"{}");assertThrows(Exception.class,()->ProfitLedger.read(p));
+        assertEquals("{}",Files.readString(p));
+    }
+}

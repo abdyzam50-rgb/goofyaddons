@@ -6,6 +6,8 @@ import com.goofy.goofyaddons.features.CapitalManager;
 import com.goofy.goofyaddons.features.Feature;
 import com.goofy.goofyaddons.features.FeatureManager;
 import com.goofy.goofyaddons.features.TradingSafety;
+import com.goofy.goofyaddons.features.profit.ProfitTracker;
+import com.goofy.goofyaddons.features.profit.TradeReceipts;
 import com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi;
 import com.goofy.goofyaddons.utils.ChatUtils;
 import com.goofy.goofyaddons.utils.InventoryUtils;
@@ -55,6 +57,9 @@ public class GeneralFlipper implements Feature {
         long placedAt;
         long heldSince;
         long checkedAt;
+        String tradeId;
+        String saleEvent;
+        boolean purchasePriceKnown;
         double cost() { return quantity * unitCost; }
     }
 
@@ -80,6 +85,8 @@ public class GeneralFlipper implements Feature {
     private boolean receipt;
     private boolean claimPending;
     private int claimUnits;
+    private int cancelSoldUnits;
+    private Double claimedProceeds;
     private int ordersContainer = -1;
     private long ordersSeenAt;
     private long stepSince;
@@ -98,6 +105,13 @@ public class GeneralFlipper implements Feature {
     }
 
     public boolean hasStateError() { return blocked; }
+    public String activity() {
+        if (active != null) return "General: " + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        if (!freshQuotes()) return "Waiting for price data";
+        if (!positions.isEmpty()) return "Waiting for general orders";
+        if (capital.available(new ScoreboardUtils().getPurse()) <= 0) return "Capital limit / purse reserve reached";
+        return candidates().isEmpty() ? "No flips meet the configured filters" : "Selecting eligible flips";
+    }
 
     public void restoreBudget() {
         if (!loaded) load();
@@ -228,6 +242,7 @@ public class GeneralFlipper implements Feature {
                     int confirm = 13;
                     if (!loadedSlot(confirm)) return;
                     active.submitted = true;
+                    if (selling) active.saleEvent = java.util.UUID.randomUUID().toString();
                     active.placedAt = now;
                     if (!save()) return; // Persist intent before the irreversible click.
                     click(confirm);
@@ -247,13 +262,17 @@ public class GeneralFlipper implements Feature {
                     } else if (!selling && itemCount(active.item.id()) >= active.quantity) {
                         capital.purchased(OWNER, active.item.id());
                         active.stage = Stage.INVENTORY;
+                        recordAcquisition();
                         finishWork();
                     }
                 }
                 case VERIFY_SALE -> {
                     command("managebazaarorders");
                     if (!ordersReady() || ambiguousOrders()) return;
-                    if (TradingSafety.saleComplete(claimPending, receipt, findOrder(true) < 0, itemCount(active.item.id()))) completePosition();
+                    if (TradingSafety.saleComplete(claimPending, receipt, findOrder(true) < 0, itemCount(active.item.id()))) {
+                        recordSale(claimUnits, claimedProceeds);
+                        completePosition();
+                    }
                 }
             }
         } catch (Exception failure) {
@@ -270,6 +289,8 @@ public class GeneralFlipper implements Feature {
                 selling = position.stage == Stage.INVENTORY || position.stage == Stage.SELL_ORDER;
                 receipt = false;
                 claimPending = false;
+                cancelSoldUnits = 0;
+                claimedProceeds = null;
                 transition(Step.OPEN_ORDERS);
                 return;
             }
@@ -282,6 +303,7 @@ public class GeneralFlipper implements Feature {
             if (!capital.reserve(OWNER, candidate.item().id(), candidate.cost(), purse)) continue;
             Position position = new Position();
             position.item = candidate.item();
+            position.tradeId = java.util.UUID.randomUUID().toString();
             position.quantity = candidate.quantity();
             position.unitCost = candidate.bid();
             position.sellPrice = candidate.ask();
@@ -351,6 +373,7 @@ public class GeneralFlipper implements Feature {
                 receipt = false;
                 claimPending = true;
                 claimUnits = active.quantity;
+                claimedProceeds = null;
                 purseBefore = new ScoreboardUtils().getPurse();
                 if (!save()) return;
                 click(sell); // Claim completed sale, never sell arbitrary inventory.
@@ -363,6 +386,8 @@ public class GeneralFlipper implements Feature {
                 selling = true;
                 inventoryBefore = inventory;
                 expectedClaim = Math.max(0, active.quantity - soldUnits);
+                cancelSoldUnits = soldUnits;
+                claimedProceeds = null;
                 if (expectedClaim > capacityFor(active.item.id())) {
                     fail("Insufficient inventory space to cancel the sell offer."); return;
                 }
@@ -379,6 +404,7 @@ public class GeneralFlipper implements Feature {
             if (inventory > active.quantity) { fail("Inventory exceeds tracked quantity; manual reconciliation required."); return; }
             active.quantity = inventory;
             active.stage = Stage.INVENTORY;
+            recordAcquisition();
             capital.restore(OWNER, active.item.id(), active.cost(), false);
             if (!freshQuotes() || !profitableSale(currentAsk())) { finishWork(); return; }
             selling = true;
@@ -420,6 +446,10 @@ public class GeneralFlipper implements Feature {
         // Reopen orders to verify cancellation before creating a replacement.
         command("managebazaarorders");
         if (!ordersReady() || ambiguousOrders() || findOrder(selling) >= 0) return;
+        if (selling && cancelSoldUnits > 0) {
+            recordSale(cancelSoldUnits, claimedProceeds);
+            cancelSoldUnits = 0;
+        }
         if (count == 0) {
             if (!selling && active.reprices < settings().maxReprices && freshQuotes()) {
                 JsonObject product = products.getAsJsonObject(active.item.id());
@@ -445,6 +475,7 @@ public class GeneralFlipper implements Feature {
         active.quantity = count;
         active.cancelRequested = false;
         active.stage = Stage.INVENTORY;
+        if (!selling) recordAcquisition();
         if (selling) active.reprices++;
         capital.restore(OWNER, active.item.id(), active.cost(), false);
         finishWork();
@@ -487,6 +518,7 @@ public class GeneralFlipper implements Feature {
                 return;
             }
             active.unitCost = price;
+            active.purchasePriceKnown = true;
         }
         click(12); // Current top order price, matching the calculator.
         transition(Step.CONFIRM);
@@ -615,10 +647,26 @@ public class GeneralFlipper implements Feature {
 
     private void onNotice(String message) {
         if (!running || paused || active == null || !message.contains(active.item.name())) return;
-        if (step == Step.VERIFY_SALE && claimPending
-                && TradingSafety.claimReceipt(message, active.item.name(), claimUnits)) receipt = true;
+        if (step == Step.VERIFY_SALE && claimPending) {
+            Double coins = TradeReceipts.saleProceeds(message, active.item.name(), claimUnits);
+            if (coins != null) { receipt = true; claimedProceeds = coins; }
+        }
+        if (selling && cancelSoldUnits > 0 && (step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL)) {
+            Double coins = TradeReceipts.saleProceeds(message, active.item.name(), cancelSoldUnits);
+            if (coins != null) claimedProceeds = coins;
+        }
         if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && active.cancelRequested
                 && TradingSafety.cancellationReceipt(message, active.item.name())) receipt = true;
+    }
+    private void recordAcquisition() {
+        if (active.tradeId == null) active.tradeId = java.util.UUID.randomUUID().toString();
+        ProfitTracker.INSTANCE.acquire(active.tradeId, OWNER, active.item.name(), active.tradeId + ":buy",
+                active.quantity, active.purchasePriceKnown ? active.cost() : null);
+    }
+    private void recordSale(int units, Double proceeds) {
+        if (active.tradeId == null) active.tradeId = java.util.UUID.randomUUID().toString();
+        if (active.saleEvent == null) active.saleEvent = active.tradeId + ":legacy-sale:" + active.placedAt;
+        ProfitTracker.INSTANCE.sell(active.tradeId, OWNER, active.item.name(), active.saleEvent, units, proceeds);
     }
     private void finishWork() {
         if (active != null && positions.contains(active)) active.checkedAt = System.currentTimeMillis();

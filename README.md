@@ -1,6 +1,7 @@
 # GoofyAddons
 
 Runtime safeguards and recovery instructions: [RUNTIME_SAFETY.md](RUNTIME_SAFETY.md).
+Profit HUD, commands, and accounting details: [PROFIT_TRACKER.md](PROFIT_TRACKER.md).
 
 ## Trading modes (1.2.0-BETA)
 

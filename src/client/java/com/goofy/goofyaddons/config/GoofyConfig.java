@@ -52,6 +52,8 @@ public class GoofyConfig {
     public double bazaarTaxPercentage = 1.25;
     public double minNetProfit = 0;
     public int maxBookHoldingSeconds = 21600;
+    public boolean profitHudEnabled = true;
+    public String profitHudSide = "RIGHT";
     public double maxBookDrawdownPercentage = 15;
     public String firstPage = "ec";
     public String secondPage = "ec 2";
@@ -87,6 +89,7 @@ public class GoofyConfig {
             throw new IllegalArgumentException("Invalid mode or shared capital settings");
         }
         general.validate();
+        if (!"LEFT".equals(profitHudSide) && !"RIGHT".equals(profitHudSide)) throw new IllegalArgumentException("HUD side must be LEFT or RIGHT");
         if (minActionDelay < 51 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
             throw new IllegalArgumentException("Require 51 <= minActionDelay < maxActionDelay <= 60000");
         }

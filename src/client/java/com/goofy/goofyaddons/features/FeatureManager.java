@@ -17,6 +17,7 @@ public class FeatureManager {
     private boolean started;
     private boolean paused;
     private Feature previousOwner;
+    private String statusReason = "";
 
     private FeatureManager() {}
 
@@ -45,9 +46,10 @@ public class FeatureManager {
 
     public void startConfigured() {
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
-        if (!books.restoreBudget()) return;
+        if (!books.restoreBudget()) { statusReason = "Book recovery required"; return; }
         general.restoreBudget(); // Count persisted ordinary-item positions even in Books mode.
         if (general.hasStateError()) {
+            statusReason = "General order state unreadable";
             ChatUtils.clientMessage("Cannot start: general-order state is unreadable. File preserved; check logs.");
             return;
         }
@@ -55,6 +57,7 @@ public class FeatureManager {
         if (started) return;
         started = true;
         paused = false;
+        statusReason = "";
         applyMode(GoofyConfig.INSTANCE.tradingMode);
     }
 
@@ -98,6 +101,7 @@ public class FeatureManager {
         scheduler.reset();
         previousOwner = null;
         FailsafeManager.INSTANCE.reset();
+        statusReason = "";
     }
 
     public void pause() {
@@ -110,6 +114,7 @@ public class FeatureManager {
     }
 
     public void safetyPause(String reason) {
+        statusReason = reason;
         ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting.");
         pause();
     }
@@ -117,11 +122,26 @@ public class FeatureManager {
     public void resume() {
         if (!started || !paused) return;
         paused = false;
+        statusReason = "";
         for (Feature engine : engines()) engine.resume();
         scheduler.reset();
     }
 
     public boolean isMacroRunning() {
         return started && engines().stream().anyMatch(Feature::isRunning);
+    }
+    public boolean isTradingActive() { return started && !paused; }
+    public String status() {
+        if (!started) return statusReason.isBlank() ? "STOPPED" : "BLOCKED";
+        return paused ? "PAUSED" : "RUNNING";
+    }
+    public String modeLabel() { return (started ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
+    public String activity() {
+        if (!statusReason.isBlank()) return statusReason;
+        if (paused) return "Paused for travel or review";
+        if (!started) return "Press J to start";
+        if (previousOwner == books) return books.activity();
+        if (previousOwner == general) return general.activity();
+        return "Waiting for orders or eligible flips";
     }
 }
