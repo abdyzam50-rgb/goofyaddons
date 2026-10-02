@@ -671,11 +671,15 @@ public class BazaarFlipper implements Feature {
                     if (!bookPriceAllowed(activeTask, unitPrice, false)) {
                         safetyHalt("Book buy price no longer meets the minimum net profit."); return;
                     }
+                    double purse = scoreboardUtils.getPurse();
+                    // Hypixel briefly drops the sidebar while redrawing it. Re-read next tick instead of
+                    // treating an unreadable purse as missing capital; the watchdog still bounds the wait.
+                    if (!ScoreboardUtils.readable(purse)) return;
                     if (!Double.isFinite(requiredCoins) || unitPrice <= 0
-                            || requiredCoins > scoreboardUtils.getPurse()
+                            || requiredCoins > purse
                             || !CapitalManager.INSTANCE.resize("books", activeTask.getBook().id(),
                                     Math.max(fullCost, CapitalManager.INSTANCE.cost("books", activeTask.getBook().id())),
-                                    scoreboardUtils.getPurse())) {
+                                    purse)) {
                         safetyHalt("Book purchase exceeds the available capital/purse.");
                         return;
                     }
@@ -1766,6 +1770,7 @@ public class BazaarFlipper implements Feature {
             }
         } else {
             double purse=scoreboardUtils.getPurse();
+            if(!ScoreboardUtils.readable(purse)) return false; // Sidebar mid-redraw; re-check next tick.
             double cost=confirmationPrice*quantity;
             if(quantity>inventoryScanner.getEmptyInventorySlots() || cost>purse || !CapitalManager.INSTANCE.resize("books",task.getBook().id(),
                     Math.max(CapitalManager.INSTANCE.cost("books",task.getBook().id()),task.getReservedUnitCost()*task.getBook().getQtyAmount(task.getBook().level())),purse)) {

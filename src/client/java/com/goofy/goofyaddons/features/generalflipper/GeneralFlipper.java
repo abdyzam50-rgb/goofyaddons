@@ -304,6 +304,8 @@ public class GeneralFlipper implements Feature {
                         if(itemCount(active.item.id())!=active.quantity || !profitableSale(expectedPrice)) {
                             fail("Inventory or net margin changed before sale confirmation; no order submitted.");return;
                         }
+                    } else if(!ScoreboardUtils.readable(new ScoreboardUtils().getPurse())) {
+                        return; // Sidebar mid-redraw; re-check next tick (step timeout still applies).
                     } else if(!com.goofy.goofyaddons.features.ConfirmationCheck.buyAllowed(expectedPrice,active.quantity,currentAsk(),
                             GoofyConfig.INSTANCE.bazaarTaxPercentage,settings().minMarginPercentage,settings().minProfitPerBatch,settings().maxCoinsPerItem)
                             || !capital.resize(OWNER,active.item.id(),active.cost(),new ScoreboardUtils().getPurse())) {
@@ -621,6 +623,7 @@ public class GeneralFlipper implements Feature {
             if (!profitableSale(price)) { active.stage = Stage.INVENTORY; finishWork(); return; }
             active.sellPrice = price;
         } else {
+            if (!ScoreboardUtils.readable(new ScoreboardUtils().getPurse())) return; // Re-read next tick.
             double net = currentAsk() * (1 - GoofyConfig.INSTANCE.bazaarTaxPercentage / 100) - price;
             if (net <= 0 || net / price * 100 < settings().minMarginPercentage
                     || net * active.quantity < settings().minProfitPerBatch

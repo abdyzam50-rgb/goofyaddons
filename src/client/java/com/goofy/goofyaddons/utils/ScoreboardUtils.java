@@ -10,6 +10,11 @@ import net.minecraft.world.scores.Scoreboard;
 public class ScoreboardUtils {
     private static final Minecraft minecraft = Minecraft.getInstance();
 
+    /** getPurse() returns -1 while the sidebar is missing or mid-redraw; that is "unknown", not "broke". */
+    public static boolean readable(double purse) {
+        return Double.isFinite(purse) && purse >= 0;
+    }
+
     public double getPurse() {
         Double purse = (double) -1;
         if (minecraft.player == null) return -1;
