@@ -7,7 +7,10 @@ public final class TradingSafety {
     private TradingSafety() {}
 
     public static boolean ordersTitle(String title) {
-        return java.util.Set.of("Your Bazaar Orders", "Bazaar Orders", "Manage Orders").contains(title);
+        if (title==null) return false;
+        String normalized=title.replaceAll("§.", "").replace(' ',' ').strip().replaceAll("\\s+", " ");
+        return java.util.Set.of("Your Bazaar Orders", "Bazaar Orders", "Manage Orders",
+                "Bazaar ➜ Orders", "Bazaar → Orders", "Bazaar ➜ Manage Orders", "Bazaar → Manage Orders").contains(normalized);
     }
 
     public static boolean ambiguousOrders(java.util.List<String> names, String item) {

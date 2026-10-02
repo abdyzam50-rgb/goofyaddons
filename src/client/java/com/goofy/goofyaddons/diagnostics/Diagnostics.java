@@ -52,6 +52,9 @@ public final class Diagnostics {
         data.put("status",manager.status());data.put("mode",manager.modeLabel());data.put("action",manager.activity());data.put("item",manager.taskItem());
         data.put("connected",mc.player!=null && mc.level!=null);
         data.put("screen",mc.screen==null?"none":mc.screen.getClass().getSimpleName());
+        if(mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) {
+            data.put("menuTitle",mc.screen.getTitle().getString());
+        }
         data.put("purse",mc.player==null?-1:new ScoreboardUtils().getPurse());data.put("committed",CapitalManager.INSTANCE.committed());
         data.put("positions",CapitalManager.INSTANCE.positionCount());data.put("freshQuotes",BazaarApi.latestFresh()!=null);
         if(mc.player!=null) {
@@ -64,6 +67,13 @@ public final class Diagnostics {
                 if(!stack.isEmpty()) items.add(Map.of("slot",i,"type",net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),"count",stack.getCount()));
             }
             data.put("inventory",items);
+            var menuItems=new ArrayList<Map<String,Object>>();
+            int end=Math.max(0,mc.player.containerMenu.slots.size()-36);
+            for(int i=0;i<end;i++) {
+                var stack=mc.player.containerMenu.slots.get(i).getItem();
+                if(!stack.isEmpty()) menuItems.add(Map.of("slot",i,"name",stack.getHoverName().getString(),"count",stack.getCount()));
+            }
+            data.put("menuItems",menuItems);
             }
         }
         if(GoofyConfig.INSTANCE!=null) {
@@ -80,7 +90,7 @@ public final class Diagnostics {
         lastSample=sample;
         try {
         var context=snapshot();
-        for(String key:List.of("status","mode","action","item","screen","container","freshQuotes","connected")) {
+        for(String key:List.of("status","mode","action","item","screen","menuTitle","container","freshQuotes","connected")) {
             String value=String.valueOf(context.get(key));
             if(!Objects.equals(LAST.put(key,value),value)) event("INFO","context.changed",Map.of("field",key,"value",value,"context",context));
         }

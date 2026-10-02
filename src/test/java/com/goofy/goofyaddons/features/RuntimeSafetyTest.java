@@ -50,6 +50,14 @@ class RuntimeSafetyTest {
         assertFalse(TradingSafety.ordersTitle("Fuming Potato Book"));
         assertTrue(TradingSafety.ordersTitle("Your Bazaar Orders"));
     }
+    @Test void formattedOrdersTitlesAreRecognizedWithoutAcceptingOtherBazaarMenus() {
+        assertTrue(TradingSafety.ordersTitle("§aYour Bazaar Orders"));
+        assertTrue(TradingSafety.ordersTitle("  §6Bazaar ➜ Orders  "));
+        assertTrue(TradingSafety.ordersTitle("Bazaar → Orders"));
+        assertFalse(TradingSafety.ordersTitle("Bazaar ➜ Enchanted Ink Sac"));
+        assertFalse(TradingSafety.ordersTitle("Confirm Buy Order"));
+        assertFalse(TradingSafety.ordersTitle(null));
+    }
     @Test void duplicateAndPagedOrdersCannotBeAdopted() {
         assertTrue(TradingSafety.ambiguousOrders(List.of("BUY Potato", "BUY Potato"), "Potato"));
         assertTrue(TradingSafety.ambiguousOrders(List.of("SELL Potato", "Next Page"), "Potato"));

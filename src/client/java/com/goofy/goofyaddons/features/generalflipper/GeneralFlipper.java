@@ -225,7 +225,7 @@ public class GeneralFlipper implements Feature {
             switch (step) {
                 case OPEN_ORDERS -> {
                     command("managebazaarorders");
-                    if (menu("Bazaar")) transition(Step.ORDERS);
+                    if (minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) transition(Step.ORDERS);
                 }
                 case ORDERS -> inspectOrders();
                 case CANCEL_DETAIL -> cancelDetail();
@@ -705,6 +705,7 @@ public class GeneralFlipper implements Feature {
         finishWork();
     }
     private void fail(String message) {
+        Diagnostics.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",Diagnostics.detailedSnapshot()));
         ChatUtils.clientMessage(message);
         LOGGER.error(message);
         paused = true;
