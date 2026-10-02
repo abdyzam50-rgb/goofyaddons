@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features.generalflipper;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.config.GoofyConfig;
 import com.goofy.goofyaddons.event.ChatHook;
 import com.goofy.goofyaddons.features.CapitalManager;
@@ -105,6 +106,22 @@ public class GeneralFlipper implements Feature {
     }
 
     public boolean hasStateError() { return blocked; }
+    public java.util.Map<String,Object> diagnosticState() {
+        var state=new java.util.LinkedHashMap<String,Object>();
+        state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:System.currentTimeMillis()-stepSince);
+        state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
+        state.put("claimUnits",claimUnits);state.put("inventoryBefore",inventoryBefore);state.put("expectedClaim",expectedClaim);
+        state.put("ordersContainer",ordersContainer);state.put("selling",selling);
+        var retained=new java.util.ArrayList<java.util.Map<String,Object>>();
+        for(Position position:positions) {
+            var details=new java.util.LinkedHashMap<String,Object>();
+            details.put("trade",position.tradeId);details.put("item",position.item.id());details.put("units",position.quantity);
+            details.put("stage",position.stage);details.put("cost",position.cost());details.put("sellPrice",position.sellPrice);
+            details.put("submitted",position.submitted);details.put("cancelRequested",position.cancelRequested);details.put("reprices",position.reprices);
+            retained.add(details);
+        }
+        state.put("positions",retained);return state;
+    }
     public String taskItem() {
         return active == null ? "No item selected" : active.item.name();
     }
@@ -279,6 +296,7 @@ public class GeneralFlipper implements Feature {
                 }
             }
         } catch (Exception failure) {
+            Diagnostics.failure("general.transaction_failed",failure);
             LOGGER.error("General transaction failed", failure);
             fail("General transaction failed; position retained. Check logs before restarting.");
         }
@@ -564,13 +582,14 @@ public class GeneralFlipper implements Feature {
             && minecraft.player.containerMenu.slots.get(slot).hasItem(); }
     private void click(int slot) { if (loadedSlot(slot)) InventoryUtils.clickSlot(slot, false); }
     private void transition(Step next) {
+        Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
         step = next; stepSince = System.currentTimeMillis(); lastCommand = 0;
         ordersContainer = -1; ordersSeenAt = 0;
     }
     private void command(String text) {
         long now = System.currentTimeMillis();
         if (minecraft.screen == null && now - lastCommand > 1500) {
-            minecraft.player.connection.sendCommand(text);
+            Diagnostics.command(text);
             lastCommand = now;
         }
     }
@@ -717,6 +736,7 @@ public class GeneralFlipper implements Feature {
             positions.addAll(List.of(saved));
         } catch (Exception failure) {
             blocked = true;
+            Diagnostics.failure("general.state_load_failed",failure);
             LOGGER.error("Cannot read general order state; file preserved", failure);
         }
     }
@@ -731,6 +751,7 @@ public class GeneralFlipper implements Feature {
             return true;
         } catch (Exception failure) {
             blocked = true;
+            Diagnostics.failure("general.state_save_failed",failure);
             LOGGER.error("Unable to persist general order state; trading blocked", failure);
             FeatureManager.INSTANCE.safetyPause("Cannot persist general order state.");
             return false;

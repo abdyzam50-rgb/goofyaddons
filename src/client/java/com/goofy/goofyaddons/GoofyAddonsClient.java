@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.config.GoofyConfig;
 import com.goofy.goofyaddons.event.ChatHook;
 import com.goofy.goofyaddons.failsafes.FailsafeManager;
@@ -20,6 +21,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        Diagnostics.register();
         GoofyConfig.load();
         com.goofy.goofyaddons.features.CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
         ChatHook.register();
@@ -27,9 +29,11 @@ public class GoofyAddonsClient implements ClientModInitializer {
         ProfitHud.register();
         final Minecraft minecraft = Minecraft.getInstance();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            try {
             if (client.player == null || client.level == null) {
                 FeatureManager.INSTANCE.stop();
                 ProfitTracker.INSTANCE.tick(false);
+                Diagnostics.tick();
                 return;
             }
             FailsafeManager.INSTANCE.onTick();
@@ -52,6 +56,11 @@ public class GoofyAddonsClient implements ClientModInitializer {
             }
             while (GoofyKeybinds.stopKey.consumeClick()) {
                 FeatureManager.INSTANCE.stop();
+            }
+            Diagnostics.tick();
+            } catch (RuntimeException failure) {
+                Diagnostics.failure("client.tick_failed",failure);
+                FeatureManager.INSTANCE.safetyPause("Client tick failed; check diagnostic logs.");
             }
         });
 

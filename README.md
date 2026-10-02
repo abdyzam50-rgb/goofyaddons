@@ -20,3 +20,27 @@ For setup instructions, please see the [Fabric Documentation page](https://docs.
 ## License
 
 This template is available under the CC0 license. Feel free to learn from it and incorporate it in your own projects.
+
+### Diagnostics
+
+Version 1.2.5 records structured JSONL events in `.minecraft/logs/goofyaddons/`.
+Each event carries a timestamp, session ID and sequence number. Events cover
+state/menu transitions, slot clicks and recognised commands, Bazaar receipts,
+verified acquisitions/sales, API failures, config/journal/profit persistence
+failures and safety pauses. Failure snapshots and exports include both engines'
+retained positions, pending claims, recovery flags, inventory counts and capital.
+Waiting states are recorded when they change, plus a 30-second heartbeat.
+
+Use `/goofydebug` to check logging health and `/goofydebug export` to save a ZIP
+under `logs/goofyaddons/bundles/`. Send that ZIP with the problem description and
+approximate time of the failure. No automatic uploads occur. Private chat,
+authentication credentials, player identity and server addresses are not collected;
+known credential patterns and the home directory are redacted. Game item names,
+prices, trading receipts and exception stacks remain in reports, so inspect an
+export before sharing. Reports do not include raw Minecraft logs or raw save files.
+
+Disk writes run on a bounded background queue. Files rotate at 2 MiB with five
+archives; at most five exported bundles are retained. Queue drops and write errors
+are surfaced by `/goofydebug`. Book progress no longer floods in-game chat.
+Diagnostics help reconstruct observed failures; they cannot guarantee capture of
+an abrupt process termination, JVM crash, or events lost to disk/queue failure.

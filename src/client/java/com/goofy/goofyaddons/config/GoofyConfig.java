@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.config;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.features.bookflipper.helper.Book;
 import com.goofy.goofyaddons.features.TradingMode;
 import com.goofy.goofyaddons.features.generalflipper.GeneralSettings;
@@ -76,7 +77,9 @@ public class GoofyConfig {
             if (parsed == null) throw new IllegalArgumentException("Config must be a JSON object");
             parsed.validate();
             INSTANCE = parsed;
+            Diagnostics.event("INFO","config.loaded",java.util.Map.of("mode",parsed.tradingMode.name(),"capital",parsed.maxTradingCapital,"reserve",parsed.purseReserve));
         } catch (Exception e) {
+            Diagnostics.failure("config.load_failed",e);
             // Preserve both the file and the last working in-memory config.
             System.err.println("GoofyAddons config rejected: " + e.getMessage());
             if (INSTANCE == null) INSTANCE = new GoofyConfig();
@@ -140,6 +143,7 @@ public class GoofyConfig {
             Files.writeString(temporary, GSON.toJson(INSTANCE));
             Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
         } catch (Exception e) {
+            Diagnostics.failure("config.save_failed",e);
             System.err.println("GoofyAddons config save failed: " + e.getMessage());
         } finally {
             if (temporary != null) {

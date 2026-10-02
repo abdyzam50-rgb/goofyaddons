@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features.bookflipper.helper;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.goofy.goofyaddons.features.TradingSafety;
@@ -35,6 +36,9 @@ public final class BazaarApi {
                     TradingSafety.sourceTime(root, System.currentTimeMillis());
                     latest = root;
                     return root;
+                }).whenComplete((root,failure)->{
+                    if(failure!=null) Diagnostics.failure("api.fetch_failed",failure);
+                    else Diagnostics.event("INFO","api.fetch_succeeded",java.util.Map.of("products",root.getAsJsonObject("products").size(),"sourceTime",root.get("lastUpdated").getAsLong()));
                 });
     }
 

@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features.bookflipper;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.config.GoofyConfig;
 import com.goofy.goofyaddons.features.bookflipper.helper.TradeBudget;
 import com.goofy.goofyaddons.event.ChatHook;
@@ -129,6 +130,17 @@ public class BazaarFlipper implements Feature {
     @Override
     public String name() {
         return "BazaarFlipper";
+    }
+    public java.util.Map<String,Object> diagnosticState() {
+        var state=new java.util.LinkedHashMap<String,Object>();
+        state.put("state",this.state.name());state.put("recoveryRequired",recoveryRequired);state.put("inventoryFull",inventoryIsFull);
+        state.put("buyClaimPending",pendingBuyClaim!=null);state.put("buyClaimBefore",buyClaimBefore);state.put("buyClaimExpected",buyClaimExpected);
+        state.put("saleClaimPending",pendingSaleClaim!=null);state.put("saleReceipt",saleClaimReceipt);
+        state.put("ordersContainer",ordersContainer);state.put("storagePage",usingSecondPage?2:1);
+        state.put("combineCounter",combine_Counter);state.put("anvilCounter",anvil_Counter);state.put("storeCounter",store_Counter);
+        state.put("extraBookStacks",bookLists.size());
+        state.put("tasks",taskList.stream().map(task->java.util.Map.of("trade",task.getProfitTradeId(),"item",task.getBook().id(),"state",task.getBookState().name(),"remaining",task.getAmountToOrder())).toList());
+        return state;
     }
     public String taskItem() {
         Task task=pendingBuyClaim;
@@ -349,7 +361,7 @@ public class BazaarFlipper implements Feature {
             case STARTUP_CHECK -> {
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand(checkedFirstPage ? GoofyConfig.INSTANCE.secondPage : GoofyConfig.INSTANCE.firstPage);
+                    Diagnostics.command(checkedFirstPage ? GoofyConfig.INSTANCE.secondPage : GoofyConfig.INSTANCE.firstPage);
                 }
 
                 if (containerNameCheck("Ender Chest") || containerNameCheck("Jumbo Backpack") || containerNameCheck("Greater Backpack"))
@@ -437,7 +449,7 @@ public class BazaarFlipper implements Feature {
 
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand("managebazaarorders");
+                    Diagnostics.command("managebazaarorders");
                 }
 
                 if (containerNameCheck("Bazaar")) clock.start(randomizer());
@@ -578,7 +590,7 @@ public class BazaarFlipper implements Feature {
             case BAZAAR_NAVIGATION -> {
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand("bz " + activeTask.getBook().name().replace("Ultimate", ""));
+                    Diagnostics.command("bz " + activeTask.getBook().name().replace("Ultimate", ""));
                 }
 
                 if (containerNameCheck("Bazaar")) clock.start(randomizer());
@@ -664,7 +676,7 @@ public class BazaarFlipper implements Feature {
 
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand("managebazaarorders");
+                    Diagnostics.command("managebazaarorders");
                 }
 
                 if (containerNameCheck("Bazaar")) clock.start(randomizer());
@@ -743,7 +755,7 @@ public class BazaarFlipper implements Feature {
 
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand(usingSecondPage ? GoofyConfig.INSTANCE.secondPage : GoofyConfig.INSTANCE.firstPage);
+                    Diagnostics.command(usingSecondPage ? GoofyConfig.INSTANCE.secondPage : GoofyConfig.INSTANCE.firstPage);
                 }
 
                 if (containerNameCheck("Ender Chest") || containerNameCheck("Jumbo Backpack") || containerNameCheck("Greater Backpack"))
@@ -837,7 +849,7 @@ public class BazaarFlipper implements Feature {
 
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand(usingSecondPage ? GoofyConfig.INSTANCE.secondPage : GoofyConfig.INSTANCE.firstPage);
+                    Diagnostics.command(usingSecondPage ? GoofyConfig.INSTANCE.secondPage : GoofyConfig.INSTANCE.firstPage);
                 }
 
                 if (containerNameCheck("Ender Chest") || containerNameCheck("Jumbo Backpack") || containerNameCheck("Greater Backpack"))
@@ -1039,7 +1051,7 @@ public class BazaarFlipper implements Feature {
 
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand("anvil");
+                    Diagnostics.command("anvil");
                 }
 
                 if (containerNameCheck("Anvil")) clock.start(randomizer());
@@ -1113,7 +1125,7 @@ public class BazaarFlipper implements Feature {
 
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand("managebazaarorders");
+                    Diagnostics.command("managebazaarorders");
                 }
 
                 if (containerNameCheck("Bazaar")) clock.start(randomizer());
@@ -1186,7 +1198,7 @@ public class BazaarFlipper implements Feature {
 
                 if (minecraft.screen == null) clock.start(randomizer());
                 if (minecraft.screen == null && clock.shouldFire()) {
-                    minecraft.player.connection.sendCommand("managebazaarorders");
+                    Diagnostics.command("managebazaarorders");
                 }
 
                 if (containerNameCheck("Bazaar")) clock.start(randomizer());
@@ -1502,7 +1514,7 @@ public class BazaarFlipper implements Feature {
     }
 
     private void debug(String string) {
-        ChatUtils.debugMessage(string);
+        Diagnostics.event("INFO","books.progress",java.util.Map.of("detail",string));
     }
 
     private void initSelfRecovery() {
@@ -1519,6 +1531,7 @@ public class BazaarFlipper implements Feature {
                 }
                 recoveryRequired = !saved.isEmpty();
             } catch (Exception invalid) {
+                Diagnostics.failure("books.journal_load_failed",invalid);
                 recoveryRequired = true;
                 ChatUtils.clientMessage("Book journal unreadable; file preserved. Reconcile before starting.");
             }
@@ -1544,6 +1557,7 @@ public class BazaarFlipper implements Feature {
             journal.write(positions.values().stream().sorted(Comparator.comparing(position -> position.book().id())).toList());
             return true;
         } catch (Exception failed) {
+            Diagnostics.failure("books.journal_save_failed",failed);
             recoveryRequired = true;
             paused = true;
             flipCalculator.reset();

@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features.profit;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
@@ -19,7 +20,7 @@ public final class ProfitTracker {
         if (loaded) return;
         loaded=true;
         try { ledger=ProfitLedger.read(path); }
-        catch (Exception bad) { error="Profit file unreadable; preserved"; LoggerFactory.getLogger(ProfitTracker.class).error(error,bad); }
+        catch (Exception bad) { Diagnostics.failure("profit.load_failed",bad); error="Profit file unreadable; preserved"; LoggerFactory.getLogger(ProfitTracker.class).error(error,bad); }
     }
     public void tick(boolean active) {
         load();
@@ -32,12 +33,12 @@ public final class ProfitTracker {
     }
     public void acquire(String id,String engine,String item,String event,int units,Double cost) {
         load(); if (error!=null) return;
-        try { if (ledger.acquire(id,engine,item,event,units,cost)) save(); }
+        try { if (ledger.acquire(id,engine,item,event,units,cost)) { Diagnostics.event("INFO","trade.acquired",java.util.Map.of("trade",id,"engine",engine,"item",item,"units",units,"cost",cost==null?"unknown":cost)); save(); } }
         catch (RuntimeException bad) { reportError(bad); }
     }
     public void sell(String id,String engine,String item,String event,int units,Double proceeds) {
         load(); if (error!=null) return;
-        try { if (ledger.sell(id,engine,item,event,units,proceeds)) save(); }
+        try { if (ledger.sell(id,engine,item,event,units,proceeds)) { Diagnostics.event("INFO","trade.sold",java.util.Map.of("trade",id,"engine",engine,"item",item,"units",units,"proceeds",proceeds==null?"unknown":proceeds)); save(); } }
         catch (RuntimeException bad) { reportError(bad); }
     }
     public ProfitLedger.Summary summary() { load(); return ledger.summary(); }
@@ -52,6 +53,7 @@ public final class ProfitTracker {
         catch (Exception bad) { reportError(bad); }
     }
     private void reportError(Exception bad) {
+        Diagnostics.failure("profit.persistence_failed",bad);
         error="Profit tracking error; stats incomplete";
         LoggerFactory.getLogger(ProfitTracker.class).error(error,bad);
     }

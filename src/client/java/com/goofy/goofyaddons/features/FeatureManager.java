@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.config.GoofyConfig;
 import com.goofy.goofyaddons.failsafes.FailsafeManager;
 import com.goofy.goofyaddons.features.bookflipper.BazaarFlipper;
@@ -40,11 +41,13 @@ public class FeatureManager {
         if (owner != null) owner.onTick();
         } catch (RuntimeException failure) {
             org.slf4j.LoggerFactory.getLogger(FeatureManager.class).error("Trading tick failed; pausing", failure);
+            Diagnostics.failure("trading.tick_failed",failure);
             safetyPause("Unexpected trading error; ownership records retained.");
         }
     }
 
     public void startConfigured() {
+        Diagnostics.event("INFO","trading.start_requested",Diagnostics.snapshot());
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
         if (!books.restoreBudget()) { statusReason = "Book recovery required"; return; }
         general.restoreBudget(); // Count persisted ordinary-item positions even in Books mode.
@@ -114,6 +117,7 @@ public class FeatureManager {
     }
 
     public void safetyPause(String reason) {
+        Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot()));
         statusReason = reason;
         ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting.");
         pause();
@@ -136,6 +140,9 @@ public class FeatureManager {
         return paused ? "PAUSED" : "RUNNING";
     }
     public String modeLabel() { return (started ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
+    public java.util.Map<String,Object> diagnosticState() {
+        return java.util.Map.of("books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name());
+    }
     public String taskItem() {
         if (!started || paused) return "No active transaction";
         if (previousOwner == books) return books.taskItem();
