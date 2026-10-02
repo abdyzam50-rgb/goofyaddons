@@ -13,6 +13,10 @@ J starts, K stops, and M switches modes at a safe transaction boundary. See
 This is a draft beta: build and helper tests pass, but live server menus and order
 confirmation timing still need validation with small orders.
 
+**Trying it out:** a built jar and what testers need to know are in
+[TESTING.md](TESTING.md). It has not been run against a live server by its authors — start
+with an amount you would not mind losing.
+
 ## Setup
 
 For setup instructions, please see the [Fabric Documentation page](https://docs.fabricmc.net/develop/getting-started/creating-a-project#setting-up) related to the IDE that you are using.
