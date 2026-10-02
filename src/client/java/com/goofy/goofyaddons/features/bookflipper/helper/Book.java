@@ -2,6 +2,16 @@ package com.goofy.goofyaddons.features.bookflipper.helper;
 
 public record Book(String id, int level, int sellLevel, String name, double instaSellPercentage, double instaBuyPercentage) {
 
+    /**
+     * Establishes the combining invariant once, at construction. Every later
+     * {@code getQtyAmount(level())} on a Book that exists is then in range, so
+     * bookkeeping and confirmation paths cannot have it throw underneath them.
+     */
+    public Book {
+        if (level < 1 || sellLevel <= level || sellLevel > 10) {
+            throw new IllegalArgumentException("Invalid combining levels: " + level + " -> " + sellLevel);
+        }
+    }
 
     public String getLevel(int i) {
         return this.id + "_" + i;

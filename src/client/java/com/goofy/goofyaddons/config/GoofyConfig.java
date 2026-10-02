@@ -48,8 +48,6 @@ public class GoofyConfig {
     public GeneralSettings general = new GeneralSettings();
     public int startKey = GLFW.GLFW_KEY_J;
     public int stopKey = GLFW.GLFW_KEY_K;
-    public boolean speedMode = false;
-    public int speedModeDelay = 100;
     public int minActionDelay = 100;
     public int maxActionDelay = 500;
     public double bazaarTaxPercentage = 1.25;

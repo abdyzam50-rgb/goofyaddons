@@ -232,7 +232,7 @@ public class GeneralFlipper implements Feature {
         long now = System.currentTimeMillis();
         if (now - stepSince > 30000) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
         if (now < nextAction) return;
-        nextAction = now + GoofyConfig.INSTANCE.minActionDelay;
+        nextAction = now + com.goofy.goofyaddons.utils.ActionDelay.next();
         try {
             if(reopeningOrders) {
                 command("managebazaarorders");

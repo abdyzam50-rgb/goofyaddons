@@ -38,7 +38,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.SplittableRandom;
 
 public class BazaarFlipper implements Feature {
     private enum State {
@@ -63,7 +62,6 @@ public class BazaarFlipper implements Feature {
     private Clock clock = new Clock();
     private FlipCalculator flipCalculator = new FlipCalculator();
     private ScoreboardUtils scoreboardUtils = new ScoreboardUtils();
-    private SplittableRandom splittableRandom = new SplittableRandom();
     private InventoryScanner inventoryScanner = new InventoryScanner();
     private BazaarMonitor bazaarMonitor = new BazaarMonitor();
     private boolean running = false;
@@ -200,6 +198,7 @@ public class BazaarFlipper implements Feature {
         anvil_Counter = -1;
         anvil_Counter_2 = -1;
         combine_Counter = -1;
+        clearTransactionState();
         checkedFirstPage = false;
         isStartUpCheckCompleted = false;
         didReceiveItems = false;
@@ -244,19 +243,24 @@ public class BazaarFlipper implements Feature {
 
     @Override
     public void pause() {
-        modePaused = false;
+        pause(false);
+    }
+
+    /** Leaving this engine's mode is reversible; an existing pause keeps its own reason. */
+    public void pauseForMode() {
+        pause(true);
+    }
+
+    private void pause(boolean forMode) {
+        // Returning early must not rewrite why the engine is already paused.
         if (!running || paused) return;
         paused = true;
+        modePaused = forMode;
         clock.stop();
         flipCalculator.reset();
         bazaarMonitor.stop();
         watchdog.reset();
         checkpoint();
-    }
-
-    public void pauseForMode() {
-        pause();
-        modePaused = true;
     }
 
     @Override
@@ -1424,8 +1428,7 @@ public class BazaarFlipper implements Feature {
     }
 
     private int randomizer() {
-        int result = splittableRandom.nextInt(GoofyConfig.INSTANCE.minActionDelay, GoofyConfig.INSTANCE.maxActionDelay);
-        return result;
+        return com.goofy.goofyaddons.utils.ActionDelay.next();
     }
 
     private Task taskInState(Task.BookState bookState) {
@@ -1675,6 +1678,42 @@ public class BazaarFlipper implements Feature {
     private void rememberObservedBooks() {
         for (Task task : taskList) if (!task.bookList.isEmpty()) exposedBooks.add(task.getBook().id());
         for (BookList book : bookLists) exposedBooks.add(book.book.id());
+        // A claim click or a submitted order may already have reached the server.
+        // A selected price alone has not, so confirmationTask is deliberately absent.
+        if (pendingBuyClaim != null) exposedBooks.add(pendingBuyClaim.getBook().id());
+        if (pendingSaleClaim != null) exposedBooks.add(pendingSaleClaim.getBook().id());
+        if (submittedBookTask != null) exposedBooks.add(submittedBookTask.getBook().id());
+    }
+
+    /**
+     * Per-transaction evidence is only meaningful for the tasks that produced it.
+     * {@link #stop()} discards every task, so leaving any of this set would let a
+     * later run wait on, or account for, a task that no longer exists.
+     */
+    private void clearTransactionState() {
+        pendingBuyClaim = null;
+        buyClaimBefore = 0;
+        buyClaimExpected = 0;
+        buyClaimUnitPrice = null;
+        buyClaimEvent = null;
+        pendingSaleClaim = null;
+        saleClaimReceipt = false;
+        saleClaimProceeds = null;
+        submittedBookTask = null;
+        submittedNextState = null;
+        submittedBookSelling = false;
+        submittedBookUnits = 0;
+        submittedBookPrice = 0;
+        submittedBookAt = 0;
+        confirmationTask = null;
+        confirmationPrice = 0;
+        confirmationSelling = false;
+        confirmationSelectedAt = 0;
+        confirmationStability.reset();
+        menuRecheck.reset();
+        ordersContainer = -1;
+        ordersSeenAt = 0;
+        heldSince.clear();
     }
 
     private boolean recordBookSubmission(Task task,boolean sale) {
