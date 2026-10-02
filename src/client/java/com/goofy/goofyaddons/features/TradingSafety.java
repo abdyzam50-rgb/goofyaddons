@@ -67,6 +67,11 @@ public final class TradingSafety {
         return expected > 0 && observed != null && expected == observed;
     }
 
+    public static boolean orderMatchesIntent(int expectedUnits,double expectedPrice,Integer units,Double price) {
+        return orderQuantityMatches(expectedUnits,units) && Double.isFinite(expectedPrice) && expectedPrice>0
+                && price!=null && Double.isFinite(price) && price>0 && Math.abs(price-expectedPrice)<=0.000001;
+    }
+
     public static boolean holdingLimit(long heldSince, long now, int maxSeconds,
                                        double cost, double netExit, double maxLossPercent) {
         return heldSince > 0 && now - heldSince >= maxSeconds * 1000L
