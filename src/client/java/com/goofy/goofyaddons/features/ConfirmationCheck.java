@@ -48,12 +48,16 @@ public final class ConfirmationCheck {
         var totals=Pattern.compile("(?im)^\\s*(?:Total cost|Total price|Total value):\\s*((?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?)\\s*coins\\s*$").matcher(text);
         while(totals.find()) {
             double total=Double.parseDouble(totals.group(1).replace(",",""));
-            if(!Double.isFinite(total) || Math.abs(total-price*quantity)>0.011) return false;
+            if(!totalMatches(total,price*quantity)) return false;
             priced=true;priceFields++;
         }
         var markers=Pattern.compile("(?im)^\\s*(?:Unit price|Price per unit|Total cost|Total price|Total value):").matcher(text);
         int markerCount=0;while(markers.find()) markerCount++;
         return priced && markerCount==priceFields;
+    }
+    /** Hypixel rounds the displayed total to whole coins (11,984,225.6 shows as 11,984,226). */
+    static boolean totalMatches(double shown,double exact) {
+        return Double.isFinite(shown) && Double.isFinite(exact) && Math.abs(shown-exact)<=0.5+1e-6;
     }
     private static boolean samePrice(double a,double b) { return Double.isFinite(a) && a>0 && Math.abs(a-b)<=0.000001; }
     public static boolean buyAllowed(double price,int units,double exit,double tax,double margin,double minProfit,double itemLimit) {

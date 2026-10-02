@@ -61,4 +61,20 @@ class ConfirmationCheckTest {
             assertFalse(ConfirmationCheck.matches("Confirm Buy Order",false,"Buy Order",invalid,"Overload I",16,685510),invalid);
         }
     }
+    @Test void observedRoundedTotalsAreAcceptedForFractionalUnitPrices() {
+        // Captured 2026-10-02: 16 x 749,014.1 = 11,984,225.6 and 16 x 782,277.9 = 12,516,446.4, totals rounded.
+        String[][] observed={{"749,014.1","11,984,226"},{"782,277.9","12,516,446"}};
+        double[] prices={749014.1,782277.9};
+        for(int i=0;i<observed.length;i++) {
+            String lore="Bazaar\n\nPrice per unit: "+observed[i][0]+" coins\n\nOrder: 16x Overload I\nTotal price: "+observed[i][1]
+                    +" coins\n\nOrders are shared by co-op!\n\nClick to submit order!";
+            assertTrue(ConfirmationCheck.matches("Confirm Buy Order",false,"Buy Order",lore,"Overload I",16,prices[i]),lore);
+            String offByOne=lore.replace(observed[i][1]+" coins",observed[i][1].substring(0,observed[i][1].length()-1)
+                    +(char)(observed[i][1].charAt(observed[i][1].length()-1)+1)+" coins");
+            assertFalse(ConfirmationCheck.matches("Confirm Buy Order",false,"Buy Order",offByOne,"Overload I",16,prices[i]),offByOne);
+            assertFalse(ConfirmationCheck.matches("Confirm Buy Order",false,"Buy Order",lore,"Overload I",16,prices[i]+0.1));
+        }
+        String gear="Bazaar\n\nPrice per unit: 403,562.6 coins\n\nOrder: 19x Precursor Gear\nTotal price: 7,667,689 coins\n\nClick to submit order!";
+        assertTrue(ConfirmationCheck.matches("Confirm Buy Order",false,"Buy Order",gear,"Precursor Gear",19,403562.6));
+    }
 }
