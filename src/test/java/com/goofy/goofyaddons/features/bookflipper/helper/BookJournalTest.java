@@ -35,4 +35,21 @@ class BookJournalTest {
         assertTrue(new BookJournal(path).read().isEmpty());
         try(var files=Files.list(dir)){assertEquals(1,files.count());}
     }
+    @Test void stoppingBeforeSubmissionLeavesNoRestartBarrier() throws Exception {
+        Path path = dir.resolve("books.json");
+        BookJournal journal = new BookJournal(path);
+        journal.writeTracked(List.of(new BookJournal.Position(book, 1000000)), java.util.Set.of());
+        assertTrue(new BookJournal(path).read().isEmpty());
+    }
+    @Test void uncertainSubmissionSurvivesRestartWithoutRetainingOtherPlans() throws Exception {
+        Path path = dir.resolve("books.json");
+        Book other = new Book("ENCHANTMENT_OVERLOAD", 1, 5, "Overload", 0, 0);
+        BookJournal journal = new BookJournal(path);
+        journal.writeTracked(List.of(new BookJournal.Position(book, 1000000),
+                new BookJournal.Position(other, 2000000)), java.util.Set.of(book.id()));
+        assertEquals(List.of(new BookJournal.Position(book, 1000000)), new BookJournal(path).read());
+        // A later snapshot of unused plans must not repopulate a completed barrier.
+        journal.writeTracked(List.of(new BookJournal.Position(other, 2000000)), java.util.Set.of());
+        assertTrue(new BookJournal(path).read().isEmpty());
+    }
 }
