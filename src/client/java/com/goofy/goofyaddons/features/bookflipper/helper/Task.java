@@ -17,7 +17,9 @@ public class Task {
         COMBINE,
         SELL,
         SELL_ORDER,
-        REPLACE_SELL
+        REPLACE_SELL,
+        /** Waiting too long on a placed order; needs a read-only look at the orders list. */
+        VERIFY_ORDER
     }
 
     public enum ActionSchedule {
@@ -36,6 +38,8 @@ public class Task {
     private double reservedUnitCost;
     private final String profitTradeId = java.util.UUID.randomUUID().toString();
     private BookState bookState;
+    private long orderWaitSince;
+    private boolean awaitingSale;
     // book location will be represented in integars, 0 = Inventory, 1 = EnderChest, 2 = EnderChestPage2
     public List<BookList> bookList = new ArrayList<>();
 
@@ -58,7 +62,23 @@ public class Task {
 
     public void setBookState(BookState bookState) {
         this.bookState = bookState;
+        // Entering a wait restarts its clock, and records which side is being waited on,
+        // so a later re-check knows whether to look for a BUY or a SELL entry. Promotion
+        // to VERIFY_ORDER deliberately leaves both alone.
+        if (bookState == BookState.IN_BUY_ORDER || bookState == BookState.SELL_ORDER) {
+            orderWaitSince = System.currentTimeMillis();
+            awaitingSale = bookState == BookState.SELL_ORDER;
+        }
     }
+
+    /** When the current order wait began, or 0 when this task is not waiting. */
+    public long orderWaitSince() { return orderWaitSince; }
+
+    /** Whether the wait is on a sell offer rather than a buy order. */
+    public boolean awaitingSale() { return awaitingSale; }
+
+    /** Records that the order was seen, restarting the wait without changing state. */
+    public void markOrderObserved(long now) { orderWaitSince = now; }
 
     // -1 will indicate failure, 0 will indicate success
     public int assignBook(Book book, int level, int location, int amountOfBook) {

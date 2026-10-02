@@ -21,9 +21,10 @@ public final class BookSchedule {
     private BookSchedule() {}
 
     private static final Map<Task.BookState, Integer> PRIORITY = Map.of(
-            Task.BookState.REPLACE_SELL, 8,        // collect a settled sale: realises coins
-            Task.BookState.BAZAAR_ORDER_CHECK, 7,  // startup reconciliation before new work
-            Task.BookState.SELL, 6,                // list a finished book
+            Task.BookState.REPLACE_SELL, 9,        // collect a settled sale: realises coins
+            Task.BookState.BAZAAR_ORDER_CHECK, 8,  // startup reconciliation before new work
+            Task.BookState.SELL, 7,                // list a finished book
+            Task.BookState.VERIFY_ORDER, 6,        // read-only: unblocks a stalled wait
             Task.BookState.OUTBID, 5,              // claim a filled buy, or reprice one
             Task.BookState.COMBINE, 4,             // merge toward something sellable
             Task.BookState.ANVIL, 3,               // retrieve inputs for merging
@@ -34,6 +35,24 @@ public final class BookSchedule {
     /** Whether this state is something the engine can act on from IDLE. */
     public static boolean actionable(Task.BookState state) {
         return PRIORITY.containsKey(state);
+    }
+
+    /**
+     * A placed order nothing has looked at for too long, or null.
+     *
+     * <p>A task waiting on a buy order or a sell offer is otherwise only woken by a chat
+     * notice or by the outbid monitor. A missed notice parked it forever, with its capital
+     * still reserved and no work reported, which is how the loop stalled without any
+     * failure being visible.
+     */
+    public static Task staleOrder(List<Task> tasks, long now, long maxWaitMs) {
+        for (Task task : tasks) {
+            Task.BookState state = task.getBookState();
+            if (state != Task.BookState.IN_BUY_ORDER && state != Task.BookState.SELL_ORDER) continue;
+            if (task.orderWaitSince() <= 0) continue;
+            if (now - task.orderWaitSince() >= maxWaitMs) return task;
+        }
+        return null;
     }
 
     /**

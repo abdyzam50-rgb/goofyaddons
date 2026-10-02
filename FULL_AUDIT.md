@@ -593,14 +593,26 @@ seam. All three findings here are the ones that describe a loop that cannot clos
   slots they need. That sent the task to STORE and straight back, cycling. It now counts
   only the books still in storage.
 
-**A loop gap found here and deliberately not fixed.** A task parked in IN_BUY_ORDER or
-SELL_ORDER is only woken by a chat notice or by the outbid monitor. If the fill notice is
-missed, nothing re-checks it: `BookSchedule` reports no work, the capital stays reserved,
-and the engine polls flips forever without progressing that position. The general engine
-has a periodic per-position re-check; the book engine has no equivalent. The OUTBID path
-cannot be reused as one, because after clicking into an order it clicks Cancel Order — so
-re-checking a healthy unfilled order through it would cancel it and lose queue position.
-Closing this needs a read-only verification state, which is more than this batch.
+**The stalled-wait gap is now closed.** A task parked in IN_BUY_ORDER or SELL_ORDER used
+to be woken only by a chat notice or by the outbid monitor. A missed fill notice parked it
+forever: the scheduler reported no work, its capital stayed reserved, and the engine polled
+flips indefinitely without progressing that position — a stall with no visible failure. The
+general engine had a periodic per-position re-check; the book engine had none.
+
+The OUTBID path could not serve as one, because after clicking into an order it clicks
+Cancel Order, so re-reading a healthy unfilled order through it would cancel it and lose
+queue position. A new `VERIFY_ORDER` state does the job instead, and is read-only by
+construction: it issues `managebazaarorders`, reads the tracked entry's fill line, and
+closes the menu. It contains no slot click of any kind, which is asserted structurally
+rather than assumed. From the fill it routes to collection (REPLACE_SELL for a sale,
+OUTBID for a buy) or back to the wait with its clock restarted. An absent entry or an
+unreadable fill goes through the existing recheck policy and then retains the position.
+
+`Task` now records when a wait began and which side it is on, `BookSchedule.staleOrder`
+decides when one is due (pure, takes the clock as an argument), and
+`bookOrderRecheckSeconds` configures the window at a default of 180s with a 30s floor. The
+floor is deliberately not tied to `maxBookHoldingSeconds`, so an existing config with a
+short holding limit is not rejected.
 
 ### Findings with no status record anywhere in this document
 

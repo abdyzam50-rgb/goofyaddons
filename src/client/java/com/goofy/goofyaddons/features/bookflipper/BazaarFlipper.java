@@ -53,6 +53,7 @@ public class BazaarFlipper implements Feature {
         COMBINE,
         SELL,
         REPLACE_SELL,
+        VERIFY_ORDER,
 
     }
 
@@ -158,6 +159,7 @@ public class BazaarFlipper implements Feature {
             case COMBINE -> taskInState(Task.BookState.COMBINE);
             case SELL -> taskInState(Task.BookState.SELL);
             case REPLACE_SELL -> taskInState(Task.BookState.REPLACE_SELL);
+            case VERIFY_ORDER -> taskInState(Task.BookState.VERIFY_ORDER);
             default -> null;
         };
         return task==null ? "No book selected" : task.getBook().getRomanLevel(task.getBook().level())
@@ -276,6 +278,7 @@ public class BazaarFlipper implements Feature {
     public void poll() {
         if (!running || paused) return;
         handleTaskStateChange();
+        promoteStalledOrders();
         bazaarMonitor.onTick();
         if (!checkHoldingLimits() || paused) return;
         if (state == State.FETCHING && !flipCalculator.isRunning()
@@ -606,6 +609,7 @@ public class BazaarFlipper implements Feature {
                     case BAZAAR_ORDER_CHECK -> state = State.STARTUP_BAZAAR_CHECK;
 
                     case REPLACE_SELL -> state = State.REPLACE_SELL;
+                    case VERIFY_ORDER -> state = State.VERIFY_ORDER;
                     case COMBINE -> {
                         state = State.COMBINE;
                         taskToHandle.bookList.sort(Comparator.comparingInt(bookList -> bookList.level));
@@ -1245,6 +1249,56 @@ public class BazaarFlipper implements Feature {
                 }
             }
 
+            case VERIFY_ORDER -> {
+                Task task = taskInState(Task.BookState.VERIFY_ORDER);
+                if (task == null) {
+                    minecraft.player.closeContainer();
+                    state = State.IDLE;
+                    return;
+                }
+
+                if (minecraft.screen == null) clock.start(randomizer());
+                if (minecraft.screen == null && clock.shouldFire()) {
+                    Diagnostics.command("managebazaarorders");
+                }
+
+                if (minecraft.screen != null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) clock.start(randomizer());
+                if (minecraft.screen != null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())
+                        && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                    // Read-only by construction: this state never clicks a slot. Its whole
+                    // job is to decide whether a parked wait should continue or has work.
+                    boolean sale = task.awaitingSale();
+                    String item = task.getBook().getRomanLevel(sale ? task.getBook().sellLevel() : task.getBook().level());
+                    List<Integer> slot = inventoryScanner.findContainer((sale ? "SELL " : "BUY ") + item);
+                    if (slot.isEmpty()) {
+                        if (recheckBookOrders(task, "recheck-order-absent")) return;
+                        safetyHalt("Tracked book order is no longer listed; reconcile before continuing.");
+                        return;
+                    }
+                    var lore = minecraft.player.containerMenu.slots.get(slot.getFirst()).getItem()
+                            .get(net.minecraft.core.component.DataComponents.LORE);
+                    String text = lore == null ? "" : String.join("\n", lore.lines().stream().map(line -> line.getString()).toList());
+                    var fill = com.goofy.goofyaddons.features.generalflipper.OrderLore.fill(text);
+                    if (fill == null) {
+                        if (recheckBookOrders(task, "recheck-fill-unreadable")) return;
+                        safetyHalt("Tracked book order progress is unreadable; reconcile before continuing.");
+                        return;
+                    }
+                    Diagnostics.event("INFO", "books.order_rechecked", java.util.Map.of("trade", task.getProfitTradeId(),
+                            "item", item, "selling", sale, "filled", fill.filled(), "total", fill.total()));
+                    task.markOrderObserved(System.currentTimeMillis());
+                    if (fill.filled() > 0) {
+                        debug("[BazaarFlipper] VERIFY_ORDER: " + item + " shows " + fill.filled() + "/" + fill.total() + ", routing to collect");
+                        task.setBookState(sale ? Task.BookState.REPLACE_SELL : Task.BookState.OUTBID);
+                    } else {
+                        debug("[BazaarFlipper] VERIFY_ORDER: " + item + " still unfilled, continuing to wait");
+                        task.setBookState(sale ? Task.BookState.SELL_ORDER : Task.BookState.IN_BUY_ORDER);
+                    }
+                    minecraft.player.closeContainer();
+                    state = State.IDLE;
+                }
+            }
+
             case REPLACE_SELL -> {
                 Task task = taskInState(Task.BookState.REPLACE_SELL);
                 if (task == null) {
@@ -1425,6 +1479,20 @@ public class BazaarFlipper implements Feature {
 
     private int randomizer() {
         return com.goofy.goofyaddons.utils.ActionDelay.next();
+    }
+
+    /**
+     * Gives a long-untouched order a read-only look. Without this, a task whose fill
+     * notice was missed waited forever: the scheduler reported no work, its capital
+     * stayed reserved, and nothing surfaced a problem.
+     */
+    private void promoteStalledOrders() {
+        Task stalled = com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule.staleOrder(
+                taskList, System.currentTimeMillis(), GoofyConfig.INSTANCE.bookOrderRecheckSeconds * 1000L);
+        if (stalled == null) return;
+        Diagnostics.event("INFO", "books.order_recheck_due", java.util.Map.of("trade", stalled.getProfitTradeId(),
+                "waitedMs", System.currentTimeMillis() - stalled.orderWaitSince(), "selling", stalled.awaitingSale()));
+        stalled.setBookState(Task.BookState.VERIFY_ORDER);
     }
 
     private Task taskInState(Task.BookState bookState) {

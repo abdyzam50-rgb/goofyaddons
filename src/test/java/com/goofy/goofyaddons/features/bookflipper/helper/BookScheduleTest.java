@@ -64,8 +64,8 @@ class BookScheduleTest {
     @Test void theFullOrderingRunsFromCollectingDownToCommitting() {
         List<Task.BookState> highestFirst = List.of(
                 Task.BookState.REPLACE_SELL, Task.BookState.BAZAAR_ORDER_CHECK, Task.BookState.SELL,
-                Task.BookState.OUTBID, Task.BookState.COMBINE, Task.BookState.ANVIL,
-                Task.BookState.STORE, Task.BookState.SELECTED);
+                Task.BookState.VERIFY_ORDER, Task.BookState.OUTBID, Task.BookState.COMBINE,
+                Task.BookState.ANVIL, Task.BookState.STORE, Task.BookState.SELECTED);
         for (int higher = 0; higher < highestFirst.size(); higher++) {
             for (int lower = higher + 1; lower < highestFirst.size(); lower++) {
                 Task winner = task(WISE, highestFirst.get(higher));
@@ -110,6 +110,54 @@ class BookScheduleTest {
         assertSame(first, next(List.of(first, second)), "repeated calls must not rotate");
     }
 
+    @Test void anOrderNobodyHasLookedAtForTooLongBecomesDueForAReRead() {
+        Task waiting = task(WISE, Task.BookState.IN_BUY_ORDER);
+        long placed = waiting.orderWaitSince();
+        assertTrue(placed > 0, "entering a wait must start its clock");
+
+        assertNull(BookSchedule.staleOrder(List.of(waiting), placed + 179_000, 180_000),
+                "a wait inside the window is not stale");
+        assertSame(waiting, BookSchedule.staleOrder(List.of(waiting), placed + 180_000, 180_000));
+    }
+
+    @Test void bothSidesOfAWaitAreTrackedAndDistinguished() {
+        Task buying = task(WISE, Task.BookState.IN_BUY_ORDER);
+        Task selling = task(JERRY, Task.BookState.SELL_ORDER);
+        assertFalse(buying.awaitingSale(), "a buy order must be re-read as a BUY entry");
+        assertTrue(selling.awaitingSale(), "a sell offer must be re-read as a SELL entry");
+        long now = Math.max(buying.orderWaitSince(), selling.orderWaitSince()) + 200_000;
+        assertNotNull(BookSchedule.staleOrder(List.of(buying), now, 180_000));
+        assertNotNull(BookSchedule.staleOrder(List.of(selling), now, 180_000));
+    }
+
+    @Test void onlyWaitingTasksAreEverConsideredStale() {
+        for (Task.BookState state : Task.BookState.values()) {
+            if (state == Task.BookState.IN_BUY_ORDER || state == Task.BookState.SELL_ORDER) continue;
+            Task task = task(WISE, state);
+            assertNull(BookSchedule.staleOrder(List.of(task), System.currentTimeMillis() + 10_000_000, 1),
+                    state + " is not a parked order and must not be re-read");
+        }
+    }
+
+    @Test void observingAnOrderRestartsItsWaitSoItIsNotReReadEveryTick() {
+        Task waiting = task(WISE, Task.BookState.IN_BUY_ORDER);
+        long now = waiting.orderWaitSince() + 200_000;
+        assertSame(waiting, BookSchedule.staleOrder(List.of(waiting), now, 180_000));
+        waiting.markOrderObserved(now);
+        assertNull(BookSchedule.staleOrder(List.of(waiting), now, 180_000),
+                "a freshly observed order must not be due again immediately");
+    }
+
+    @Test void aReReadIsRankedAboveClaimingButBelowCollecting() {
+        Task verify = task(WISE, Task.BookState.VERIFY_ORDER);
+        Task outbid = task(JERRY, Task.BookState.OUTBID);
+        assertSame(verify, next(List.of(outbid, verify)), "unblocking a stalled wait comes first");
+
+        Task collect = task(JERRY, Task.BookState.REPLACE_SELL);
+        assertSame(collect, next(List.of(verify, collect)), "collecting proceeds still wins");
+        assertTrue(BookSchedule.actionable(Task.BookState.VERIFY_ORDER));
+    }
+
     @Test void noTasksMeansNoWork() {
         assertNull(next(List.of()));
     }
@@ -119,5 +167,6 @@ class BookScheduleTest {
             boolean waiting = state == Task.BookState.IN_BUY_ORDER || state == Task.BookState.SELL_ORDER;
             assertEquals(!waiting, BookSchedule.actionable(state), state + " rank presence");
         }
+        assertTrue(BookSchedule.actionable(Task.BookState.VERIFY_ORDER));
     }
 }

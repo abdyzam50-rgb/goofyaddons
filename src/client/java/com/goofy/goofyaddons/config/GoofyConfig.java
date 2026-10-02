@@ -53,6 +53,8 @@ public class GoofyConfig {
     public double bazaarTaxPercentage = 1.25;
     public double minNetProfit = 0;
     public int maxBookHoldingSeconds = 21600;
+    /** How long a placed book order may sit untouched before it is re-read. */
+    public int bookOrderRecheckSeconds = 180;
     public boolean profitHudEnabled = true;
     public String profitHudSide = "RIGHT";
     public double profitHudScale = 1.25;
@@ -111,6 +113,7 @@ public class GoofyConfig {
         }
         if (!Double.isFinite(bazaarTaxPercentage) || bazaarTaxPercentage < 0 || bazaarTaxPercentage >= 100
                 || !Double.isFinite(minNetProfit) || minNetProfit < 0 || maxBookHoldingSeconds < 60
+                || bookOrderRecheckSeconds < 30
                 || !Double.isFinite(maxBookDrawdownPercentage) || maxBookDrawdownPercentage <= 0 || maxBookDrawdownPercentage > 100) {
             throw new IllegalArgumentException("Invalid sale tax or minimum net profit");
         }
