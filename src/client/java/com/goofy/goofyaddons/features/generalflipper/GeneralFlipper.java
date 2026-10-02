@@ -27,7 +27,6 @@ import net.minecraft.world.item.component.ItemLore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -99,8 +98,7 @@ public class GeneralFlipper implements Feature {
     private int cancelSoldUnits;
     private boolean reopenedCancelOptions;
     private Double claimedProceeds;
-    private int ordersContainer = -1;
-    private long ordersSeenAt;
+    private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
     private long stepSince;
     private long nextAction;
     private long lastCommand;
@@ -122,7 +120,7 @@ public class GeneralFlipper implements Feature {
         state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:System.currentTimeMillis()-stepSince);
         state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
         state.put("claimUnits",claimUnits);state.put("inventoryBefore",inventoryBefore);state.put("expectedClaim",expectedClaim);
-        state.put("ordersContainer",ordersContainer);state.put("selling",selling);
+        state.put("ordersContainer",ordersSettle.container());state.put("selling",selling);
         var retained=new java.util.ArrayList<java.util.Map<String,Object>>();
         for(Position position:positions) {
             var details=new java.util.LinkedHashMap<String,Object>();
@@ -290,9 +288,9 @@ public class GeneralFlipper implements Feature {
                 }
                 case SIGN -> {
                     if (minecraft.screen instanceof AbstractSignEditScreen sign) {
-                        Field messages = AbstractSignEditScreen.class.getDeclaredField("messages");
-                        messages.setAccessible(true);
-                        ((String[]) messages.get(sign))[0] = Integer.toString(active.quantity);
+                        if (!com.goofy.goofyaddons.utils.SignEntry.writeFirstLine(sign, Integer.toString(active.quantity))) {
+                            fail("Could not write the order amount onto the sign; no order submitted."); return;
+                        }
                         minecraft.setScreen(null);
                         transition(Step.PRICE);
                     } else if (priceMenu()) transition(Step.PRICE);
@@ -711,7 +709,10 @@ public class GeneralFlipper implements Feature {
     }
     private GeneralSettings settings() { return GoofyConfig.INSTANCE.general; }
     private boolean priceMenu() { return menu(selling ? "At what price" : "How much do you want to pay"); }
-    private boolean menu(String title) { return minecraft.screen != null && minecraft.screen.getTitle().getString().contains(title); }
+    // Now strips formatting codes, matching BazaarFlipper. A code inside the label used
+    // to make a known menu unrecognisable, which surfaced as a step timeout.
+    private boolean menu(String title) { return minecraft.screen != null
+            && com.goofy.goofyaddons.utils.MenuText.titleContains(minecraft.screen.getTitle().getString(), title); }
     private boolean loadedSlot(int slot) { return slot >= 0 && slot < minecraft.player.containerMenu.slots.size()
             && minecraft.player.containerMenu.slots.get(slot).hasItem(); }
     private void click(int slot) { if (loadedSlot(slot)) InventoryUtils.clickSlot(slot, false); }
@@ -719,7 +720,7 @@ public class GeneralFlipper implements Feature {
         Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
         confirmationStability.reset();menuRecheck.reset();reopeningOrders=false;
         step = next; stepSince = System.currentTimeMillis(); lastCommand = 0;
-        ordersContainer = -1; ordersSeenAt = 0;
+        ordersSettle.reset();
     }
     private void command(String text) {
         long now = System.currentTimeMillis();
@@ -735,7 +736,7 @@ public class GeneralFlipper implements Feature {
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
             Diagnostics.event("WARN","order.observation_recheck",java.util.Map.of("reason",reason,"trade",active.tradeId==null?"legacy":active.tradeId,
                     "attempt",menuRecheck.attempts(),"step",step.name(),"context",Diagnostics.detailedSnapshot()));
-            minecraft.player.closeContainer();ordersContainer=-1;ordersSeenAt=0;lastCommand=0;
+            minecraft.player.closeContainer();ordersSettle.reset();lastCommand=0;
             reopeningOrders=true;
         }
         return decision!=com.goofy.goofyaddons.features.MenuRecheck.Decision.EXHAUSTED;
@@ -746,17 +747,15 @@ public class GeneralFlipper implements Feature {
         if (minecraft.screen == null) return false;
         String title = minecraft.screen.getTitle().getString();
         if (!TradingSafety.ordersTitle(title)) return false;
-        int id = minecraft.player.containerMenu.containerId;
-        long now = System.currentTimeMillis();
-        if (ordersContainer != id) { ordersContainer = id; ordersSeenAt = now; return false; }
-        if (now - ordersSeenAt < 750 || find("Go Back", false) < 0 && find("Close", true) < 0) return false;
+        if (!ordersSettle.settled(minecraft.player.containerMenu.containerId, System.currentTimeMillis())) return false;
+        if (find("Go Back", false) < 0 && find("Close", true) < 0) return false;
         if (find("Next Page", false) >= 0 || find("Previous Page", false) >= 0) {
             fail("Orders span multiple pages; automatic ownership checks are blocked."); return false;
         }
         return true;
     }
     private boolean ambiguousOrders() {
-        int end = Math.max(0, minecraft.player.containerMenu.slots.size() - 36);
+        int end = com.goofy.goofyaddons.utils.MenuText.containerEnd(minecraft.player.containerMenu.slots.size());
         List<String> names = minecraft.player.containerMenu.slots.subList(0, end).stream()
                 .map(slot -> com.goofy.goofyaddons.utils.Chat.strip(slot.getItem().getHoverName().getString())).toList();
         if (TradingSafety.ambiguousOrders(names, active.item.name())) {
@@ -768,11 +767,12 @@ public class GeneralFlipper implements Feature {
         String tooltip=lore(slot);
         Integer total=OrderLore.total(tooltip);
         if(total==null && recheckOrders("order-fields-unreadable")) return false;
-        if (minecraft.screen!=null && com.goofy.goofyaddons.utils.Chat.strip(minecraft.screen.getTitle().getString()).contains("Co-op Bazaar Orders")
-                && !OrderLore.ownOrder(tooltip,minecraft.getUser().getName())) {
-            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(com.goofy.goofyaddons.utils.Chat.strip(tooltip)).find()
-                    && recheckOrders("order-creator-unreadable")) return false;
-            fail("Co-op order belongs to another player or its creator is unreadable; position retained.");return false;
+        if (minecraft.screen!=null && com.goofy.goofyaddons.utils.MenuText.titleContains(minecraft.screen.getTitle().getString(),"Co-op Bazaar Orders")) {
+            OrderLore.Creator creator=OrderLore.creator(tooltip,minecraft.getUser().getName());
+            if(creator==OrderLore.Creator.UNREADABLE && recheckOrders("order-creator-unreadable")) return false;
+            if(creator!=OrderLore.Creator.OWN) {
+                fail("Co-op order belongs to another player or its creator is unreadable; position retained.");return false;
+            }
         }
         if (!TradingSafety.orderQuantityMatches(active.quantity,total)) {
             var evidence=new java.util.LinkedHashMap<String,Object>();
@@ -798,7 +798,7 @@ public class GeneralFlipper implements Feature {
         return TradingSafety.conservativeCapacity(empty, 4) * stackLimit + partial;
     }
     private int find(String text, boolean exact) {
-        int end = Math.max(0, minecraft.player.containerMenu.slots.size() - 36);
+        int end = com.goofy.goofyaddons.utils.MenuText.containerEnd(minecraft.player.containerMenu.slots.size());
         for (int i = 0; i < end; i++) {
             ItemStack item = minecraft.player.containerMenu.slots.get(i).getItem();
             if (item.isEmpty()) continue;

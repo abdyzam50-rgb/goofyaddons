@@ -29,7 +29,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.client.gui.screens.inventory.SignEditScreen;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -81,8 +80,7 @@ public class BazaarFlipper implements Feature {
     private Double buyClaimUnitPrice;
     private String buyClaimEvent;
     private Double saleClaimProceeds;
-    private int ordersContainer = -1;
-    private long ordersSeenAt;
+    private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
     private long yieldAfterMs;
     private long nextFetchMs;
     private static final long FETCH_RETRY_MS = 20000;
@@ -148,7 +146,7 @@ public class BazaarFlipper implements Feature {
         state.put("state",this.state.name());state.put("recoveryRequired",recoveryRequired);state.put("inventoryFull",inventoryIsFull);
         state.put("buyClaimPending",pendingBuyClaim!=null);state.put("buyClaimBefore",buyClaimBefore);state.put("buyClaimExpected",buyClaimExpected);
         state.put("saleClaimPending",pendingSaleClaim!=null);state.put("saleReceipt",saleClaimReceipt);
-        state.put("ordersContainer",ordersContainer);state.put("storagePage",usingSecondPage?2:1);
+        state.put("ordersContainer",ordersSettle.container());state.put("storagePage",usingSecondPage?2:1);
         state.put("combineCounter",combine_Counter);state.put("anvilCounter",anvil_Counter);state.put("storeCounter",store_Counter);
         state.put("extraBookStacks",bookLists.size());
         state.put("submittedTrade",submittedBookTask==null?"none":submittedBookTask.getProfitTradeId());
@@ -349,22 +347,21 @@ public class BazaarFlipper implements Feature {
             safetyHalt("Book confirmation blocked because Bazaar quotes expired."); return;
         }
         if (minecraft.screen != null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) {
-            int container = minecraft.player.containerMenu.containerId;
-            if (ordersContainer != container) { ordersContainer = container; ordersSeenAt = System.currentTimeMillis(); return; }
-            if (System.currentTimeMillis() - ordersSeenAt < 750) return;
+            if (!ordersSettle.settled(minecraft.player.containerMenu.containerId, System.currentTimeMillis())) return;
             List<String> names = minecraft.player.containerMenu.slots.stream()
                     .filter(slot -> slot.container != minecraft.player.getInventory())
                     .map(slot -> com.goofy.goofyaddons.utils.Chat.strip(slot.getItem().getHoverName().getString())).toList();
             for (Task task : taskList) {
-                if(com.goofy.goofyaddons.utils.Chat.strip(minecraft.screen.getTitle().getString()).contains("Co-op Bazaar Orders")) {
+                if(com.goofy.goofyaddons.utils.MenuText.titleContains(minecraft.screen.getTitle().getString(),"Co-op Bazaar Orders")) {
                     for(var slot:minecraft.player.containerMenu.slots) {
                         String name=com.goofy.goofyaddons.utils.Chat.strip(slot.getItem().getHoverName().getString());
                         if(!java.util.Set.of("BUY "+task.getBook().getRomanLevel(task.getBook().level()),"SELL "+task.getBook().getRomanLevel(task.getBook().sellLevel())).contains(name)) continue;
                         var lore=slot.getItem().get(net.minecraft.core.component.DataComponents.LORE);
                         String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
-                        if(!com.goofy.goofyaddons.features.generalflipper.OrderLore.ownOrder(text,minecraft.getUser().getName())) {
-                            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(com.goofy.goofyaddons.utils.Chat.strip(text)).find()
-                                    && recheckBookOrders(task,"order-creator-unreadable")) return;
+                        var creator=com.goofy.goofyaddons.features.generalflipper.OrderLore.creator(text,minecraft.getUser().getName());
+                        if(creator==com.goofy.goofyaddons.features.generalflipper.OrderLore.Creator.UNREADABLE
+                                && recheckBookOrders(task,"order-creator-unreadable")) return;
+                        if(creator!=com.goofy.goofyaddons.features.generalflipper.OrderLore.Creator.OWN) {
                             safetyHalt("Co-op book order creator differs or is unreadable; manual reconciliation required.");return;
                         }
                     }
@@ -374,7 +371,7 @@ public class BazaarFlipper implements Feature {
                     safetyHalt("Book orders are duplicate or paginated; manual reconciliation required."); return;
                 }
             }
-        } else { ordersContainer = -1; }
+        } else { ordersSettle.reset(); }
         try {
         selfRecoveryTrigger();
         if (paused) return;
@@ -854,27 +851,31 @@ public class BazaarFlipper implements Feature {
                         return;
                     }
 
-                    List<Integer> slot = inventoryScanner.findLoreInv(bookList.book.getRomanLevel(bookList.level));
+                    // One scan of each region per tick. Nothing below moves an item, so a
+                    // repeat of the same query inside this block cannot return anything else.
+                    String storeLevelName = bookList.book.getRomanLevel(bookList.level);
+                    List<Integer> slot = inventoryScanner.findLoreInv(storeLevelName);
+                    int storeInContainer = inventoryScanner.findLoreContainer(storeLevelName).size();
 
                     // item move check
                     if (slot.isEmpty()) {
                         debug("[BazaarFlipper] STORE: level " + bookList.level + " " + bookList.book + " no longer in inventory, marking moved to page " + (usingSecondPage ? 2 : 1));
                         bookList.location = usingSecondPage ? 2 : 1;
-                        store_Counter = inventoryScanner.findLoreInv(bookList.book.getRomanLevel(bookList.level)).size();
-                        store_Counter_2 = inventoryScanner.findLoreContainer(bookList.book.getRomanLevel(bookList.level)).size();
+                        store_Counter = 0; // the same inventory query that just came back empty
+                        store_Counter_2 = storeInContainer;
                         return;
                     }
 
                     // compares how many items it had before and how many items it has now to label them as moved or just labeling them once empty
-                    if (store_Counter != -1 && store_Counter_2 != -1 && store_Counter > slot.size() && store_Counter_2 < inventoryScanner.findLoreContainer(bookList.book.getRomanLevel(bookList.level)).size()) {
-                        debug("[BazaarFlipper] STORE: detected move for level " + bookList.level + " (inventory " + store_Counter + "->" + slot.size() + ", container " + store_Counter_2 + "->" + inventoryScanner.findLoreContainer(bookList.book.getRomanLevel(bookList.level)).size() + ")");
+                    if (store_Counter != -1 && store_Counter_2 != -1 && store_Counter > slot.size() && store_Counter_2 < storeInContainer) {
+                        debug("[BazaarFlipper] STORE: detected move for level " + bookList.level + " (inventory " + store_Counter + "->" + slot.size() + ", container " + store_Counter_2 + "->" + storeInContainer + ")");
                         bookList.location = usingSecondPage ? 2 : 1;
-                        store_Counter = inventoryScanner.findLoreInv(bookList.book.getRomanLevel(bookList.level)).size();
-                        store_Counter_2 = inventoryScanner.findLoreContainer(bookList.book.getRomanLevel(bookList.level)).size();
+                        store_Counter = slot.size();
+                        store_Counter_2 = storeInContainer;
                         return;
                     }
 
-                    store_Counter_2 = inventoryScanner.findLoreContainer(bookList.book.getRomanLevel(bookList.level)).size();
+                    store_Counter_2 = storeInContainer;
                     store_Counter = slot.size();
 
                     if (inventoryScanner.getEmptyContainerSlots() == 0) {
@@ -960,17 +961,17 @@ public class BazaarFlipper implements Feature {
                         if (slot.isEmpty()) {
                             debug("[BazaarFlipper] ANVIL: level " + bookToHandle.level + " no longer in container, marking moved to inventory (location=0)");
                             bookToHandle.location = 0;
-                            anvil_Counter = inventoryScanner.findLoreContainer(task.getBook().getRomanLevel(bookToHandle.level)).size();
-                            anvil_Counter_2 = inventoryScanner.findLoreInv(task.getBook().getRomanLevel(bookToHandle.level)).size();
+                            anvil_Counter = 0; // the same container query that just came back empty
+                            anvil_Counter_2 = slot_1.size();
                             return;
                         }
 
                         // compares how many items it had before and how many items it has now to label them as moved or just labeling them once empty
                         if (anvil_Counter != -1 && anvil_Counter > slot.size() && anvil_Counter_2 < slot_1.size()) {
-                            debug("[BazaarFlipper] ANVIL: detected move for level " + bookToHandle.level + " (container " + anvil_Counter + "->" + slot.size() + ", inventory " + anvil_Counter_2 + "->" + inventoryScanner.findLoreInv(task.getBook().getRomanLevel(bookToHandle.level)).size() + ")");
+                            debug("[BazaarFlipper] ANVIL: detected move for level " + bookToHandle.level + " (container " + anvil_Counter + "->" + slot.size() + ", inventory " + anvil_Counter_2 + "->" + slot_1.size() + ")");
                             bookToHandle.location = 0;
-                            anvil_Counter = inventoryScanner.findLoreContainer(task.getBook().getRomanLevel(bookToHandle.level)).size();
-                            anvil_Counter_2 = inventoryScanner.findLoreInv(task.getBook().getRomanLevel(bookToHandle.level)).size();
+                            anvil_Counter = slot.size();
+                            anvil_Counter_2 = slot_1.size();
                             return;
                         }
 
@@ -1070,17 +1071,17 @@ public class BazaarFlipper implements Feature {
                     if (slot.isEmpty()) {
                         debug("[BazaarFlipper] ANVIL: level " + bookList.level + " no longer in container, marking moved to inventory (location=0)");
                         bookList.location = 0;
-                        anvil_Counter = inventoryScanner.findLoreContainer(task.getBook().getRomanLevel(bookList.level)).size();
-                        anvil_Counter_2 = inventoryScanner.findLoreInv(task.getBook().getRomanLevel(bookList.level)).size();
+                        anvil_Counter = 0; // the same container query that just came back empty
+                        anvil_Counter_2 = slot_2.size();
                         return;
                     }
 
                     // compares how many items it had before and how many items it has now to label them as moved or just labeling them once empty
                     if (anvil_Counter != -1 && anvil_Counter > slot.size() && anvil_Counter_2 < slot_2.size()) {
-                        debug("[BazaarFlipper] ANVIL: detected move for level " + bookList.level + " (container " + anvil_Counter + "->" + slot.size() + ", inventory " + anvil_Counter_2 + "->" + inventoryScanner.findLoreInv(task.getBook().getRomanLevel(bookList.level)).size() + ")");
+                        debug("[BazaarFlipper] ANVIL: detected move for level " + bookList.level + " (container " + anvil_Counter + "->" + slot.size() + ", inventory " + anvil_Counter_2 + "->" + slot_2.size() + ")");
                         bookList.location = 0;
-                        anvil_Counter = inventoryScanner.findLoreContainer(task.getBook().getRomanLevel(bookList.level)).size();
-                        anvil_Counter_2 = inventoryScanner.findLoreInv(task.getBook().getRomanLevel(bookList.level)).size();
+                        anvil_Counter = slot.size();
+                        anvil_Counter_2 = slot_2.size();
                         return;
                     }
 
@@ -1145,24 +1146,28 @@ public class BazaarFlipper implements Feature {
                         return;
                     }
 
-                    if (inventoryScanner.getEmptyContainerSlots() == 0 || combine_Counter_2 != 0 || inventoryScanner.findLoreContainer(firstBook.book.getRomanLevel(firstBook.level + 1)).size() == 1) {
+                    // Adding to task.bookList below changes only our model, never the menu,
+                    // so one read of the merged level answers every check in this block.
+                    String mergedLevelName = firstBook.book.getRomanLevel(firstBook.level + 1);
+                    int mergedInInventory = inventoryScanner.findLoreInv(mergedLevelName).size();
+                    if (inventoryScanner.getEmptyContainerSlots() == 0 || combine_Counter_2 != 0 || inventoryScanner.findLoreContainer(mergedLevelName).size() == 1) {
                         debug("[BazaarFlipper] COMBINE: toggling anvil output slot for level " + (firstBook.level + 1) + " " + firstBook.book);
                         InventoryUtils.clickSlot(22, false);
                         combine_Counter_2 = combine_Counter_2 == 0 ? 1 : 0;
                         return;
                     }
 
-                    if (TradingSafety.combinedBookArrived(combine_Counter, inventoryScanner.findLoreInv(firstBook.book.getRomanLevel(firstBook.level + 1)).size(),minecraft.player.containerMenu.getCarried().isEmpty())) {
+                    if (TradingSafety.combinedBookArrived(combine_Counter, mergedInInventory, minecraft.player.containerMenu.getCarried().isEmpty())) {
                         debug("[BazaarFlipper] COMBINE: combined into level " + (firstBook.level + 1) + " " + firstBook.book);
                         task.bookList.add(new BookList(task.getBook(), firstBook.level + 1, 0));
                         task.bookList.removeAll(List.of(firstBook, secondBook));
-                        combine_Counter = inventoryScanner.findLoreInv(firstBook.book.getRomanLevel(firstBook.level + 1)).size();
+                        combine_Counter = mergedInInventory;
                         task.bookList.sort(Comparator.comparingInt(bookList -> bookList.level));
                         return;
                     }
 
 
-                    combine_Counter = inventoryScanner.findLoreInv(firstBook.book.getRomanLevel(firstBook.level + 1)).size();
+                    combine_Counter = mergedInInventory;
 
                     if(slot.isEmpty()) return; // Missing inputs alone never prove that the combine succeeded.
                     InventoryUtils.clickSlot(slot.getFirst(), true);
@@ -1346,7 +1351,7 @@ public class BazaarFlipper implements Feature {
 
     private boolean containerNameCheck(String name) {
         if (minecraft.screen == null) return false;
-        return com.goofy.goofyaddons.utils.Chat.strip(minecraft.screen.getTitle().getString()).contains(name);
+        return com.goofy.goofyaddons.utils.MenuText.titleContains(minecraft.screen.getTitle().getString(), name);
     }
 
 
@@ -1488,18 +1493,17 @@ public class BazaarFlipper implements Feature {
 
     private void handleSign() {
         String amountToOrder = String.valueOf(activeTask.getAmountToOrder());
-        if (minecraft.screen instanceof AbstractSignEditScreen signScreen) {
-            try {
-                Field messagesField = AbstractSignEditScreen.class.getDeclaredField("messages");
-                messagesField.setAccessible(true);
-                String[] messages = (String[]) messagesField.get(signScreen);
-                messages[0] = amountToOrder;
-                debug("[BazaarFlipper] handleSign: wrote \"" + amountToOrder + "\" onto sign for " + activeTask.getBook());
-                minecraft.setScreen(null);
-            } catch (Exception e) {
-                debug("[BazaarFlipper] handleSign: reflection write failed for " + activeTask.getBook() + " - " + e);
-                e.printStackTrace();
+        if (!(minecraft.screen instanceof AbstractSignEditScreen signScreen)) return;
+        try {
+            if (!com.goofy.goofyaddons.utils.SignEntry.writeFirstLine(signScreen, amountToOrder)) {
+                safetyHalt("Could not write the book order amount onto the sign; order retained."); return;
             }
+            debug("[BazaarFlipper] handleSign: wrote \"" + amountToOrder + "\" onto sign for " + activeTask.getBook());
+            minecraft.setScreen(null);
+        } catch (Exception failure) {
+            // Leaving the sign open with an unknown amount must never reach a confirmation.
+            Diagnostics.failure("books.sign_write_failed",failure);
+            safetyHalt("Writing the book order amount onto the sign failed; order retained.");
         }
     }
 
@@ -1711,8 +1715,7 @@ public class BazaarFlipper implements Feature {
         confirmationSelectedAt = 0;
         confirmationStability.reset();
         menuRecheck.reset();
-        ordersContainer = -1;
-        ordersSeenAt = 0;
+        ordersSettle.reset();
         heldSince.clear();
     }
 
@@ -1768,7 +1771,7 @@ public class BazaarFlipper implements Feature {
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
             Diagnostics.event("WARN","order.observation_recheck",java.util.Map.of("engine","books","reason",reason,
                     "trade",task.getProfitTradeId(),"attempt",menuRecheck.attempts(),"context",Diagnostics.detailedSnapshot()));
-            minecraft.player.closeContainer();ordersContainer=-1;ordersSeenAt=0;clock.stop();
+            minecraft.player.closeContainer();ordersSettle.reset();clock.stop();
         }
         return decision!=com.goofy.goofyaddons.features.MenuRecheck.Decision.EXHAUSTED;
     }

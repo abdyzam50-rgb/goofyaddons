@@ -40,10 +40,26 @@ public final class OrderLore {
         Fill fill=fill(lore);
         return fill==null ? 0 : Math.max(0,fill.filled()-Math.max(0,alreadyInInventory));
     }
+    private static final Pattern OWNER = Pattern.compile("(?m)^\\s*By:\\s*(?:\\[[^\\]\\r\\n]+]\\s*)?([A-Za-z0-9_]{1,16})\\s*$");
+    private static final Pattern CREATOR_FIELD = Pattern.compile("(?m)^\\s*By:");
+
     public static boolean ownOrder(String lore,String username) {
         if(username==null || username.isBlank()) return false;
-        Matcher owner=Pattern.compile("(?m)^\\s*By:\\s*(?:\\[[^\\]\\r\\n]+]\\s*)?([A-Za-z0-9_]{1,16})\\s*$").matcher(clean(lore));
+        Matcher owner=OWNER.matcher(clean(lore));
         return owner.find() && username.equalsIgnoreCase(owner.group(1));
+    }
+
+    /** Who a co-op order belongs to. UNREADABLE is retryable; OTHER never is. */
+    public enum Creator { OWN, OTHER, UNREADABLE }
+
+    /**
+     * Both engines open-coded this three-way decision: own the order, someone
+     * else's, or no readable creator field at all. Only the last may be rechecked,
+     * because a missing field can mean the menu had not finished loading.
+     */
+    public static Creator creator(String lore,String username) {
+        if(ownOrder(lore,username)) return Creator.OWN;
+        return CREATOR_FIELD.matcher(clean(lore)).find() ? Creator.OTHER : Creator.UNREADABLE;
     }
     public static boolean canOpenSellOptionsAfterClaim(String lore,int soldUnits,boolean matchingSaleReceipt) {
         return soldUnits>=0 && (soldUnits==0 || matchingSaleReceipt)

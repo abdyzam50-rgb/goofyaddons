@@ -295,7 +295,7 @@ themselves; stage 4 is the one that needs careful fixtures.
 | 0 | Baseline | Get `./gradlew test` green and recorded | none | Suite runs; result captured | **blocked** — Maven Central 429s through this proxy; no cached `fabric-loom` offline |
 | 1 | Cheap bugs | C1, C2, C4, B6 | low | Regression test per bug: stop→start leaves no pending claim; safety-pause then resume in BOTH does not halt | **done** (`cc7767c`), engine changes by inspection only |
 | 2 | Hot paths | A1, A4, A2 (coalescing only) + C3 | low | No market recompute or quote mutation off the tick path; HUD frame cost flat w.r.t. allowlist size | **done**, see note below |
-| 3 | Shared menu layer | B1 (pure pieces first, then settle/recheck), A3 | medium | Both engines drive the same observation code; existing menu/confirmation tests pass unchanged |
+| 3 | Shared menu layer | B1 (pure pieces first, then settle/recheck), A3 | medium | Both engines drive the same observation code; existing menu/confirmation tests pass unchanged | **partly done**, see note below |
 | 4 | Movement model | B2, and A5 on top of it | **high** | Replay buy → partial claim → cancel → store across both pages → retrieve → combine → sell → claim, with wrong page, full storage, lookalike books, cursor-held output; no move recorded from disappearance alone |
 | 5 | State shape | B3, B4, B5 | medium | `stop()` provably resets everything; no state has two actions in one tick; one failure contract |
 
@@ -326,6 +326,60 @@ runs for every logged string — and `BazaarFlipper.debug()` logs many times per
 tick. Patterns are now static. The eager string concatenation in those `debug()`
 arguments is still paid whether or not the event is kept; making those lazy is a
 stage 5 item, since it touches every call site.
+
+### Stage 3 as shipped, and what is still duplicated
+
+Extracted and now shared by both engines:
+
+- **`OrderLore.creator`** - the three-way co-op ownership decision (OWN / OTHER /
+  UNREADABLE). Both engines had open-coded the same `Pattern.compile("(?m)^\\s*By:")`
+  plus `ownOrder` combination inline. Only UNREADABLE is retryable, because a
+  missing creator field can mean the menu had not finished loading, while a
+  readable name that is not ours is a final answer. This was the most valuable
+  row in the B1 table: duplicated *safety* logic, and now pure and tested.
+- **`MenuSettle`** - the "same container open for 750ms" debounce, previously
+  inline in `BazaarFlipper.onTick` and inside `GeneralFlipper.ordersReady()`.
+- **`MenuText`** - `containerEnd(slotCount)`, single-sourcing the "the last 36
+  slots are the player inventory" assumption that was open-coded in five places,
+  and `titleContains`, which strips formatting codes.
+- **`SignEntry`** - the identical reflection into `AbstractSignEditScreen.messages`.
+
+Two behaviour changes came with it, both deliberate:
+
+1. `GeneralFlipper.menu(String)` now strips formatting codes, matching
+   `BazaarFlipper.containerNameCheck`. A code *inside* the searched label
+   (`"Confirm §aBuy Order"` against `"Confirm Buy"`) used to make a known menu
+   unrecognisable, which surfaced as a 30-second step timeout. The exact-match
+   gates in `TradingSafety.confirmationTitle` are unchanged, so this widens
+   recognition without widening what may be clicked.
+2. A failed sign write now halts immediately with a specific reason. Previously
+   it was logged and retried, and the engine only stopped when the watchdog
+   noticed 60 seconds later - or, worse, proceeded with whatever amount the sign
+   already held.
+
+A3 landed as local memoisation rather than an observation snapshot: the STORE,
+ANVIL and COMBINE branches re-ran the *same* container/inventory query up to five
+times per tick, including twice just to build a log line. Since nothing between
+those calls moves an item, each block now scans once. 34 `findLore*` call sites
+became 16.
+
+**Still duplicated, deliberately:**
+
+- **Capacity has genuinely diverged** and was left alone. `GeneralFlipper.capacityFor`
+  is stack-aware and reserves four slots; books uses bare
+  `getEmptyInventorySlots()`. Unifying them changes how many books the engine
+  believes it can claim, which is a live trading decision - it needs stage 4's
+  fixtures, not a mechanical merge. This is the clearest evidence for B1's
+  argument: the duplication has already drifted.
+- **Slot search stays separate.** `InventoryScanner.findContainer` matches on
+  `getCustomName()` and `GeneralFlipper.find` on `getHoverName()`. These are not
+  the same predicate, so sharing them would silently change what each engine
+  finds. Only the region bound is shared.
+- **The recheck wrappers stay separate.** `recheckBookOrders` closes the
+  container; `recheckOrders` sets `reopeningOrders` and re-issues the command.
+  The difference is real behaviour, not duplication to collapse.
+- **No observation snapshot yet.** Building one and rewiring both engines onto it
+  is the part that needs a runnable suite.
 
 Ordering rationale: 1 and 2 are independent and shippable immediately. 3 must
 precede 4 and 5, because both need the observation snapshot to express their
