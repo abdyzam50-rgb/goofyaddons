@@ -438,9 +438,33 @@ by inspection, and no live server order was placed.
 - **A30: unchanged.** `ProfitHud` now reads `ProfitTracker.error()` once per frame
   instead of six times, but `ProfitLedger.summary()` still scans session history
   per frame and the ledger is still serialised whole on the client thread.
-- **A32: unchanged, and still the blocker.** No test can construct either engine,
-  so the two engine defects below have no regression test, and B2/B3/B5 cannot be
-  attempted responsibly until this is resolved.
+- **A32: first increment landed; still the blocker overall.** The observation half of
+  the seam now exists and is tested. `SlotView` and `MenuSnapshot` model an open menu
+  as plain data with no Minecraft dependency, carrying every observation query the
+  engines rely on; `LiveMenu` is the single adapter that builds one from the live game.
+  `MenuSnapshotTest` covers 19 cases, chosen because they are awkward or expensive to
+  reach on a server: a lookalike two-enchantment book, a zero or unreadable
+  enchantment level, an item that is not a Hypixel book but is named like an order, an
+  order entry sitting in the player inventory, a present-but-empty lore against an
+  absent one, an unloaded anvil, an anvil holding the wrong level, and a snapshot with
+  no slots at all.
+
+  The translation is deliberately faithful rather than tidied, and the tests pin down
+  three upstream asymmetries so a later migration cannot change them by accident:
+  name matching reads the *custom* name while the engines' order sweeps read the
+  *hover* name; lore scans bound themselves to the player's 36 main slots while book
+  matching does not, so armour and offhand are included there; and
+  `emptyContainerSlots` counts every non-inventory slot rather than the container
+  region.
+
+  **Nothing uses it yet, on purpose.** Having `InventoryScanner` delegate per call
+  would rebuild a ~90-slot snapshot on each of the 16-plus scans per tick, which is a
+  performance regression. The migration is to take one snapshot per tick and pass it
+  down, which is also the A3 observation snapshot deferred earlier. Until that lands,
+  no test can construct an engine, so the engine defects in this batch still have no
+  regression test and B2/B3/B5 remain blocked. What this increment buys is that the
+  observation rules are now executable and pinned, so the migration has a net under
+  it.
 
 ### Defects found here that were not in the A/R backlog
 

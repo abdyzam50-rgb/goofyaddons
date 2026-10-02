@@ -298,7 +298,8 @@ themselves; stage 4 is the one that needs careful fixtures.
 | 3 | Shared menu layer | B1 (pure pieces first, then settle/recheck), A3 | medium | Both engines drive the same observation code; existing menu/confirmation tests pass unchanged | **partly done**, see note below |
 | 4 | Movement model | B2 | **high** | Replay buy → partial claim → cancel → store across both pages → retrieve → combine → sell → claim, with wrong page, full storage, lookalike books, cursor-held output; no move recorded from disappearance alone | **not started** — blocked on a runnable suite (A32) |
 | 4a | Persistence | A5 | low | No store writes the file when it already holds that state; barrier writes still land before the click | **done** — split out of stage 4, since it needed none of the movement work |
-| 5 | State shape | B3, B4, B5 | medium | `stop()` provably resets everything; no state has two actions in one tick; one failure contract | **not started** — blocked on a runnable suite (A32) |
+| 5 | State shape | B3, B4, B5 | medium | `stop()` provably resets everything; no state has two actions in one tick; one failure contract | **not started** — blocked on A32 |
+| 7 | Test seam | A32: observation model, per-tick migration, action interface | medium | A test can drive an engine through a scripted menu sequence | **observation half done**, see below |
 | 6 | Poller cadence | the rest of A2 | medium | One polling owner; staleness at every money gate unchanged or tighter | **not started** |
 
 ### Stage 2 as shipped, and what was deliberately left out
@@ -414,6 +415,23 @@ branch push builds or tests anything, and this repository currently has **zero**
 recorded workflow runs, so Actions appears disabled entirely. Branch pushes therefore
 produce no releases and no Discord posts today — but if Actions is ever enabled, the
 `notify-discord` job does run on `'**'`, which is the live half of A33.
+
+### Stage 7 — the test seam (A32)
+
+The enabler every remaining stage waits behind. Two halves:
+
+| Half | What | Status |
+|---|---|---|
+| Observation | `SlotView`/`MenuSnapshot` (pure menu model + queries), `LiveMenu` (the one adapter) | **done**, 19 tests |
+| Migration | one snapshot per tick, passed to both engines in place of ad-hoc `InventoryScanner` calls | not started |
+| Actions | clicks, commands, chat and sign writes behind an interface, with a fake for tests | not started |
+
+The observation half is deliberately not wired in: delegating per call would rebuild a
+~90-slot snapshot on each of the 16-plus scans per tick. The migration step is the same
+work as A3's observation snapshot, so the two are now one task.
+
+Once the actions half exists, a test can drive an engine through a scripted menu
+sequence, and B2/B3/B4/B5 become ordinary work instead of untested rewrites.
 
 ### Still open, beyond the stages above
 
