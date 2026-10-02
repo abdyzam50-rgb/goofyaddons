@@ -296,8 +296,10 @@ themselves; stage 4 is the one that needs careful fixtures.
 | 1 | Cheap bugs | C1, C2, C4, B6 | low | Regression test per bug: stop→start leaves no pending claim; safety-pause then resume in BOTH does not halt | **done** (`cc7767c`), engine changes by inspection only |
 | 2 | Hot paths | A1, A4, A2 (coalescing only) + C3 | low | No market recompute or quote mutation off the tick path; HUD frame cost flat w.r.t. allowlist size | **done**, see note below |
 | 3 | Shared menu layer | B1 (pure pieces first, then settle/recheck), A3 | medium | Both engines drive the same observation code; existing menu/confirmation tests pass unchanged | **partly done**, see note below |
-| 4 | Movement model | B2, and A5 on top of it | **high** | Replay buy → partial claim → cancel → store across both pages → retrieve → combine → sell → claim, with wrong page, full storage, lookalike books, cursor-held output; no move recorded from disappearance alone |
-| 5 | State shape | B3, B4, B5 | medium | `stop()` provably resets everything; no state has two actions in one tick; one failure contract |
+| 4 | Movement model | B2 | **high** | Replay buy → partial claim → cancel → store across both pages → retrieve → combine → sell → claim, with wrong page, full storage, lookalike books, cursor-held output; no move recorded from disappearance alone | **not started** — blocked on a runnable suite (A32) |
+| 4a | Persistence | A5 | low | No store writes the file when it already holds that state; barrier writes still land before the click | **done** — split out of stage 4, since it needed none of the movement work |
+| 5 | State shape | B3, B4, B5 | medium | `stop()` provably resets everything; no state has two actions in one tick; one failure contract | **not started** — blocked on a runnable suite (A32) |
+| 6 | Poller cadence | the rest of A2 | medium | One polling owner; staleness at every money gate unchanged or tighter | **not started** |
 
 ### Stage 2 as shipped, and what was deliberately left out
 
@@ -385,6 +387,26 @@ Ordering rationale: 1 and 2 are independent and shippable immediately. 3 must
 precede 4 and 5, because both need the observation snapshot to express their
 rules. 4 before 5 because B2's records are the biggest consumers of B3's
 grouping.
+
+### Still open, beyond the stages above
+
+Found while working, not yet anywhere in a stage:
+
+- `ProfitHud.render` still does a full scoreboard sweep per frame
+  (`new ScoreboardUtils().getPurse()`). Same class as A1; small fix.
+- 83 `debug("…")` calls in `BazaarFlipper` build their string eagerly, before
+  `Diagnostics` decides whether to keep the event, and several fire per tick.
+  Fixing it means lazy suppliers at all 83 sites, so it belongs with B4/B5.
+- `ProfitLedger.summary()` is O(session sales) and runs once per frame — the
+  project's own A30.
+- `Clock.reset()` has no callers.
+
+And the project's own backlog remains the larger one: `FULL_AUDIT.md` carries 5 P0,
+23 P1 and 20 P2 findings. The 2026-10-02 status batch added there records what these
+stages touched; twenty-two of those findings are stated as neither open nor closed
+by any status section. **A06 is a P0 that is still open** on the order-adoption
+path, and **A32** (no test can execute a transaction sequence) is what blocks
+stages 4, 5 and 6.
 
 ## Explicitly out of scope
 

@@ -41,6 +41,40 @@ class BookJournalTest {
         journal.writeTracked(List.of(new BookJournal.Position(book, 1000000)), java.util.Set.of());
         assertTrue(new BookJournal(path).read().isEmpty());
     }
+    @Test void anUnchangedJournalIsNotRewritten() throws Exception {
+        Path path = dir.resolve("books.json");
+        BookJournal journal = new BookJournal(path);
+        journal.writeTracked(List.of(new BookJournal.Position(book, 1000000)), java.util.Set.of(book.id()));
+        long firstWrite = Files.getLastModifiedTime(path).toMillis();
+        Files.writeString(path, "SENTINEL");
+        // Identical input must not touch the file again.
+        journal.writeTracked(List.of(new BookJournal.Position(book, 1000000)), java.util.Set.of(book.id()));
+        assertEquals("SENTINEL", Files.readString(path), "redundant write should have been skipped");
+        assertTrue(firstWrite > 0);
+    }
+
+    @Test void aChangedJournalIsAlwaysWritten() throws Exception {
+        Path path = dir.resolve("books.json");
+        BookJournal journal = new BookJournal(path);
+        journal.writeTracked(List.of(new BookJournal.Position(book, 1000000)), java.util.Set.of(book.id()));
+        // A different cost, a different exposure set, and an emptied journal must each land.
+        journal.writeTracked(List.of(new BookJournal.Position(book, 2000000)), java.util.Set.of(book.id()));
+        assertEquals(List.of(new BookJournal.Position(book, 2000000)), new BookJournal(path).read());
+        journal.writeTracked(List.of(new BookJournal.Position(book, 2000000)), java.util.Set.of());
+        assertTrue(new BookJournal(path).read().isEmpty());
+    }
+
+    @Test void aDirectWriteIsNeverMaskedByTheTrackedCache() throws Exception {
+        Path path = dir.resolve("books.json");
+        BookJournal journal = new BookJournal(path);
+        journal.writeTracked(List.of(new BookJournal.Position(book, 1000000)), java.util.Set.of(book.id()));
+        journal.write(List.of());
+        assertTrue(new BookJournal(path).read().isEmpty());
+        // The same tracked input as before must be written again, not skipped.
+        journal.writeTracked(List.of(new BookJournal.Position(book, 1000000)), java.util.Set.of(book.id()));
+        assertEquals(List.of(new BookJournal.Position(book, 1000000)), new BookJournal(path).read());
+    }
+
     @Test void uncertainSubmissionSurvivesRestartWithoutRetainingOtherPlans() throws Exception {
         Path path = dir.resolve("books.json");
         Book other = new Book("ENCHANTMENT_OVERLOAD", 1, 5, "Overload", 0, 0);

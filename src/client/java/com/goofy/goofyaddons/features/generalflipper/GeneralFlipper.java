@@ -69,6 +69,8 @@ public class GeneralFlipper implements Feature {
     private final List<Position> positions = new ArrayList<>();
     private final java.util.Map<String, Long> cooldownUntil = new java.util.HashMap<>();
     private boolean loaded;
+    /** JSON last written to disk; set only after a successful atomic replace. */
+    private String persisted;
     private boolean running;
     private boolean paused;
     private boolean blocked;
@@ -903,12 +905,17 @@ public class GeneralFlipper implements Feature {
     }
     private boolean save() {
         if (!loaded || blocked) return !blocked;
+        String json = GSON.toJson(positions);
+        // Every call site used to write the file. A skip here only happens when the
+        // file already holds exactly this state, so persist-before-click still holds.
+        if (json.equals(persisted)) return true;
         Path temp = null;
         try {
             Files.createDirectories(statePath().getParent());
             temp = Files.createTempFile(statePath().getParent(), "general-orders-", ".tmp");
-            Files.writeString(temp, GSON.toJson(positions));
+            Files.writeString(temp, json);
             Files.move(temp, statePath(), StandardCopyOption.REPLACE_EXISTING);
+            persisted = json;
             return true;
         } catch (Exception failure) {
             blocked = true;

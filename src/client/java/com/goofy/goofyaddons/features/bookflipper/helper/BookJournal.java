@@ -12,6 +12,7 @@ public final class BookJournal {
     private static final Gson GSON = new Gson();
     private final Path path;
     private String previous;
+    private List<Position> previousTracked;
     public BookJournal(Path path) { this.path = path; }
     public List<Position> read() throws Exception {
         if (!Files.exists(path)) return List.of();
@@ -30,9 +31,18 @@ public final class BookJournal {
     }
     /** Persist only plans with observed ownership or a submission that may reach the server. */
     public void writeTracked(List<Position> plans, java.util.Set<String> exposed) throws Exception {
-        write(plans.stream().filter(position -> exposed.contains(position.book().id())).toList());
+        List<Position> tracked = plans.stream().filter(position -> exposed.contains(position.book().id())).toList();
+        // checkpoint() runs at least twice per tick. Value equality on records, rather
+        // than a hash, so an unchanged journal never costs a serialisation and a changed
+        // one can never be mistaken for an unchanged one.
+        if (tracked.equals(previousTracked)) return;
+        write(tracked);
+        previousTracked = tracked;
     }
     public void write(List<Position> positions) throws Exception {
+        // A direct write invalidates the writeTracked cache, so a later tracked write
+        // can never skip on the strength of a snapshot this call replaced.
+        previousTracked = null;
         String json = GSON.toJson(positions);
         if (json.equals(previous)) return;
         Files.createDirectories(path.getParent());

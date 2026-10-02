@@ -379,6 +379,130 @@ The uploaded Ectoplasm setup run confirmed server acceptance after the engine op
 
 The subsequent BOOKS-mode bundle preserved the actual Overload I confirmation: Order: 16x Overload I with matching unit/total prices and profitAllowed=true. The parser did not support Order as an identity/quantity field. Added the exact observed field and a sanitized regression fixture; the valid-preview test failed before the fix and passed afterward, while conflicting/malformed variants remain rejected. This resolves that specific live format under A04, not all possible tooltip variants. See BOOK_CONFIRMATION_FORMAT_FIX.md. 105 tests passed, production build succeeded and git diff --check passed.
 
+## Structure and cost batch — 2026-10-02, branch `claude/refactor-plan`
+
+Scope: structure and per-tick/per-frame cost, planned in REFACTOR_PLAN.md. This was
+not a re-audit, so a finding absent below is untouched rather than checked. **No
+entry here is marked verified.** The gradle suite could not run in the review
+environment (Maven Central returned HTTP 429 through the proxy; the offline cache
+has no fabric-loom), so every engine-level claim is source inspection plus
+standalone execution of the pure helpers.
+
+### Findings touched
+
+- **R15: partially addressed.** `BazaarApi.fetch()` now shares one outstanding
+  request between callers, handing each a dependent future so one engine's
+  `cancel(true)` cannot kill a request another is waiting on (verified by
+  execution). Backoff and a single polling cadence are **not** implemented: the
+  calculator, monitor and general engine still each decide when to ask.
+  Consolidating them moves how stale a snapshot can be when a money decision
+  reads it, which needs fixtures. R15 stays open.
+- **A06: confirmed still open, and narrowed.** 1.3.5 added verification for
+  orders this engine *submits* (`verifyBookPlacement` plus
+  `TradingSafety.orderMatchesIntent`). The *adoption* path is unchanged:
+  STARTUP_BAZAAR_CHECK and OUTBID locate an existing `BUY <name>` by display name
+  and claim it without checking amount or reserved price against the task.
+  `GeneralFlipper.orderMatchesPosition` still has no book equivalent.
+- **A08: unchanged.** Repeated-scan memoisation in STORE/ANVIL/COMBINE reduced
+  query count but did not touch the rule, which is still "the source no longer
+  shows it". The replacement transfer model is specified as B2 in
+  REFACTOR_PLAN.md and is the highest-value remaining work.
+- **A21: unchanged.** Write frequency for both stores is now much lower (below),
+  which narrows the crash-during-replace window, but no atomic replacement or
+  backup/recovery policy is defined and the stores remain independent.
+- **A30: unchanged.** `ProfitHud` now reads `ProfitTracker.error()` once per frame
+  instead of six times, but `ProfitLedger.summary()` still scans session history
+  per frame and the ledger is still serialised whole on the client thread.
+- **A32: unchanged, and still the blocker.** No test can construct either engine,
+  so the two engine defects below have no regression test, and B2/B3/B5 cannot be
+  attempted responsibly until this is resolved.
+
+### Defects found here that were not in the A/R backlog
+
+IDs deliberately not assigned; these need the owner's numbering.
+
+1. **P0 — `BazaarFlipper.stop()` leaked per-transaction state into a silent stall.**
+   It discarded every task while leaving `pendingBuyClaim`, `pendingSaleClaim`,
+   `submittedBookTask`, `confirmationTask`, the orders-menu observation and
+   `heldSince` set. The `pendingBuyClaim` block runs at the top of `onTick` in
+   every state, so after stop→start the engine returned early forever against a
+   task that no longer existed — reporting RUNNING while doing nothing, and
+   invisible to the watchdog because `canYield()` is true in START, which makes
+   `stalled()` reset each tick. A later inventory arrival would also have recorded
+   a `ProfitTracker.acquire` against a discarded trade id. Fixed in `cc7767c` by
+   one `clearTransactionState()`, placed after the exposure checkpoint;
+   `rememberObservedBooks` now also marks exposure for an issued claim or a
+   submitted order.
+2. **P1 — `BazaarFlipper.pause()` erased why the engine was paused.** It assigned
+   `modePaused = false` before its own early-return guard, so a safety pause or
+   travel pause on an already-paused engine cleared the marker. A later `resume()`
+   could then take the mode fast path and skip the travel reconciliation that
+   invalidates recorded inventory and menu positions. Fixed in `cc7767c`; mode
+   state is now set only on a real pause transition.
+3. **P2 — `GeneralFlipper.needsMenu()`/`activity()` were expensive and mutating.**
+   Both recomputed the full candidate list, and the old `freshQuotes()` adopted new
+   quotes, mutating `products`/`quotesAt`. `activity()` is called from
+   `ProfitHud.render`, i.e. per frame on the render thread. Fixed in `b44574a`:
+   adoption moved to the tick path, `freshQuotes()` is a pure predicate, and one
+   snapshot per tick serves the scheduler and the HUD.
+4. **P2 (latent) — `Book.getQtyAmount` could throw from bookkeeping and
+   confirmation paths** (`checkpoint`, `checkHoldingLimits`, `bookPriceAllowed`,
+   `verifyBookConfirmation`). Config and journal validation blocked the range, so
+   this was unreachable rather than live. Fixed in `cc7767c` by establishing the
+   combining invariant in `Book`'s constructor.
+
+### Cost reductions (no finding ID)
+
+- Market recompute moved off the render thread: per frame (60–240Hz) to once per tick.
+- `DiagnosticLog.redact` compiled seven patterns per logged string, on a path that
+  runs for every logged string while `debug()` logs many times per tick; now static.
+- 25 per-call `replaceAll("§.", "")` sites on per-slot and per-lore-line paths
+  replaced by one precompiled `Chat.strip`.
+- `BazaarFlipper` `findLore*` call sites: 34 to 16, by reusing the result of
+  identical queries within a block that moves nothing.
+- `GeneralFlipper.save()` wrote the file at all 13 call sites; it now skips when
+  the file already holds exactly this state, so persist-before-click still holds.
+- `BookJournal.writeTracked` no longer serialises an unchanged journal, which
+  `checkpoint()` provoked at least twice per tick. Value equality on records, never
+  a hash, and a direct `write()` invalidates the cache.
+
+### Deduplication
+
+`OrderLore.creator` (the three-way co-op ownership decision both engines had
+open-coded), `MenuSettle` (the 750ms container debounce), `MenuText.containerEnd`
+(the "last 36 slots are the player inventory" assumption, previously open-coded in
+five places) and `SignEntry` (identical reflection) are now shared.
+
+Capacity handling remains divergent **on purpose**: `GeneralFlipper.capacityFor`
+is stack-aware and reserves four slots while books uses bare
+`getEmptyInventorySlots()`. Unifying them changes how many books the engine
+believes it can claim, which is a live trading decision needing fixtures. That the
+duplication has already drifted is the strongest argument for finishing the
+extraction.
+
+Two deliberate behaviour changes: `GeneralFlipper.menu(String)` now strips
+formatting codes (a code inside the searched label made a known menu
+unrecognisable, surfacing as a 30-second step timeout; the exact-match gates in
+`TradingSafety.confirmationTitle` are untouched), and a failed sign write now halts
+immediately with a specific reason instead of being retried until the watchdog
+noticed.
+
+### Findings with no status record anywhere in this document
+
+A09, A13, A15, A16, A17, A23, A24, A25, A29, A31, A33, R02, R03, R04, R05, R06,
+R07, R08, R09, R10, R11, R14 — twenty-two entries that are stated as neither open
+nor closed by any status section. They should be treated as open until checked.
+
+**Validation:** no live orders were placed. The gradle suite did not run. Pure
+helper logic verified by standalone execution: the `Book` invariant (98
+assertions), `Chat.strip` against the expression it replaced (20,025 inputs
+including the `§\n` case where `.` must not match the line terminator),
+`OrderLore.creator`/`MenuSettle`/`MenuText` (37 assertions), and the shared
+future's cancellation and failure propagation. New JUnit tests: `BookTest`,
+`ChatTest`, `MenuTextTest`, `MenuSettleTest`, `OrderCreatorTest`, and three
+`BookJournal` dedupe tests. A local `./gradlew test` is still required before any
+of this is trusted.
+
 ## Logic cleanup batch — 2026-10-02
 
 - A10: TradeBudget no longer plans instant buy/sell routes, so the book engine never reserves capital for a trade it will safety-halt on.
