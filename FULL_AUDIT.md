@@ -614,6 +614,17 @@ decides when one is due (pure, takes the clock as an argument), and
 floor is deliberately not tied to `maxBookHoldingSeconds`, so an existing config with a
 short holding limit is not rejected.
 
+- **R05: fixed.** An extra book outlives the task that produced it, and `releaseMissing`
+  keeps its allocation alive because the book id is still in `bookLists`. Nothing resized
+  it, so a completed flip left the *whole* position's cost committed against a single
+  leftover book. Extras accumulate from overfilled claims, so available capital drained
+  and the engine eventually could not open any position — the loop starving rather than
+  failing, with no error to see. On completion the allocation is now reduced to what the
+  remaining extras are worth at the unit cost the position was bought at, or released when
+  none remain. Only ever a reduction, so it cannot fail against the capital limit.
+  `Book.baseUnits` carries the valuation, returns 0 for a level outside the route rather
+  than throwing, and is tested.
+
 ### Findings with no status record anywhere in this document
 
 A09, A13, A15, A16, A17, A23, A24, A25, A29, A31, A33, R02, R03, R04, R05, R06,

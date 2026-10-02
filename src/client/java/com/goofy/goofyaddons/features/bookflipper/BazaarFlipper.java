@@ -1346,6 +1346,7 @@ public class BazaarFlipper implements Feature {
                         ProfitTracker.INSTANCE.sell(task.getProfitTradeId(), "books", task.getBook().name(),
                                 task.getProfitTradeId() + ":sale", task.getBook().getQtyAmount(task.getBook().level()), saleClaimProceeds);
                         taskList.remove(task);
+                        resizeRetainedExtras(task.getBook(), task.getReservedUnitCost());
                         pendingSaleClaim = null;
                         saleClaimReceipt = false;
                     } else {
@@ -1748,6 +1749,34 @@ public class BazaarFlipper implements Feature {
         }
         heldSince.keySet().retainAll(taskList.stream().map(task -> task.getBook().id()).collect(java.util.stream.Collectors.toSet()));
         return true;
+    }
+
+    /**
+     * R05: an extra book outlives its task, and `releaseMissing` keeps its allocation alive
+     * because the book id is still in `bookLists`. Nothing resized it, so a completed flip
+     * left the whole position's cost committed against a single leftover book. Extras
+     * accumulate from overfilled claims, so available capital drained and the engine
+     * stopped being able to open positions at all — the loop starving rather than failing.
+     *
+     * <p>The allocation is now reduced to what the remaining extras are actually worth, at
+     * the unit cost the position was bought at, or released when none remain. Only ever a
+     * reduction, so it cannot fail against the capital limit.
+     */
+    private void resizeRetainedExtras(Book book, double unitCost) {
+        double value = 0;
+        for (BookList extra : bookLists) {
+            if (!extra.book.equals(book)) continue;
+            value += unitCost * book.baseUnits(extra.level);
+        }
+        if (!Double.isFinite(value) || value <= 0) {
+            CapitalManager.INSTANCE.release("books", book.id());
+            debug("[BazaarFlipper] resizeRetainedExtras: no extras left for " + book + ", released its allocation");
+            return;
+        }
+        CapitalManager.INSTANCE.restore("books", book.id(), value, false);
+        Diagnostics.event("INFO", "books.extra_exposure_resized", java.util.Map.of(
+                "item", book.id(), "retainedValue", value));
+        debug("[BazaarFlipper] resizeRetainedExtras: " + book + " allocation reduced to " + value + " for retained extras");
     }
 
     private void rememberObservedBooks() {

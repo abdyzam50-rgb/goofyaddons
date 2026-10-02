@@ -37,6 +37,18 @@ public record Book(String id, int level, int sellLevel, String name, double inst
         };
     }
 
+    /**
+     * How many level-{@link #level()} books one book of this level is worth.
+     *
+     * <p>Used to value a retained extra against the unit cost its position was bought at.
+     * Returns 0 for a level outside this route rather than throwing, so valuing a stale or
+     * malformed entry under-counts instead of breaking a capital adjustment.
+     */
+    public int baseUnits(int atLevel) {
+        if (atLevel < level || atLevel > sellLevel) return 0;
+        return 1 << (atLevel - level);
+    }
+
     public int getQtyAmount(int level) {
         if (level < 1 || level > sellLevel || sellLevel > 10) {
             throw new IllegalArgumentException("Invalid combining levels");
