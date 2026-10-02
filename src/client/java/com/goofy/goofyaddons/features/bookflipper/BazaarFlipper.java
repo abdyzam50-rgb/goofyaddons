@@ -130,6 +130,22 @@ public class BazaarFlipper implements Feature {
     public String name() {
         return "BazaarFlipper";
     }
+    public String taskItem() {
+        Task task=pendingBuyClaim;
+        if (task==null) task=switch (state) {
+            case BAZAAR_NAVIGATION -> activeTask;
+            case STARTUP_BAZAAR_CHECK -> taskInState(Task.BookState.BAZAAR_ORDER_CHECK);
+            case OUTBID -> taskInState(Task.BookState.OUTBID);
+            case STORE -> taskInState(Task.BookState.STORE);
+            case ANVIL -> taskInState(Task.BookState.ANVIL);
+            case COMBINE -> taskInState(Task.BookState.COMBINE);
+            case SELL -> taskInState(Task.BookState.SELL);
+            case REPLACE_SELL -> taskInState(Task.BookState.REPLACE_SELL);
+            default -> null;
+        };
+        return task==null ? "No book selected" : task.getBook().getRomanLevel(task.getBook().level())
+                +" -> "+task.getBook().getRomanLevel(task.getBook().sellLevel());
+    }
     public String activity() {
         if (pendingBuyClaim != null) return "Verifying book claim";
         return "Books: " + state.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');

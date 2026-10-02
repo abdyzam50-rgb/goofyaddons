@@ -23,5 +23,14 @@ class TradeReceiptsTest {
         assertEquals("02:01:01",ProfitDisplay.duration(7261000));
         var right=ProfitDisplay.bounds(480,270,false);assertEquals(222,right.x());assertEquals(250,right.width());
         assertEquals(8,ProfitDisplay.bounds(480,270,true).x());
+        for (int height : new int[]{270,360,720}) {
+            var profit=ProfitDisplay.bounds(480,height,false);
+            var task=ProfitDisplay.taskBounds(480,height,false);
+            assertEquals(profit.x(),task.x());
+            assertEquals(profit.width(),task.width());
+            assertEquals(profit.y()+profit.height()+6,task.y());
+            assertTrue(task.y()+task.height()<=height-8);
+            assertEquals(64,task.height());
+        }
     }
 }

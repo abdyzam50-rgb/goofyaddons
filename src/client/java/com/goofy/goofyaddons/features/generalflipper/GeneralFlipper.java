@@ -105,6 +105,9 @@ public class GeneralFlipper implements Feature {
     }
 
     public boolean hasStateError() { return blocked; }
+    public String taskItem() {
+        return active == null ? "No item selected" : active.item.name();
+    }
     public String activity() {
         if (active != null) return "General: " + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
         if (!freshQuotes()) return "Waiting for price data";

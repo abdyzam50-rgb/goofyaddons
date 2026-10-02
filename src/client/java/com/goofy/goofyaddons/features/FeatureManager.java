@@ -136,6 +136,12 @@ public class FeatureManager {
         return paused ? "PAUSED" : "RUNNING";
     }
     public String modeLabel() { return (started ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
+    public String taskItem() {
+        if (!started || paused) return "No active transaction";
+        if (previousOwner == books) return books.taskItem();
+        if (previousOwner == general) return general.taskItem();
+        return "Monitoring both configured engines";
+    }
     public String activity() {
         if (!statusReason.isBlank()) return statusReason;
         if (paused) return "Paused for travel or review";

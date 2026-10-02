@@ -19,7 +19,12 @@ public final class ProfitDisplay {
     public record Bounds(int x,int y,int width,int height) {}
     public static Bounds bounds(int screenWidth,int screenHeight,boolean left) {
         int width=Math.max(0,Math.min(250,screenWidth-16));
-        int height=Math.max(0,Math.min(254,screenHeight-16));
+        int height=Math.max(0,Math.min(254,screenHeight-86));
         return new Bounds(left ? 8 : Math.max(8,screenWidth-width-8),8,width,height);
+    }
+    public static Bounds taskBounds(int screenWidth,int screenHeight,boolean left) {
+        Bounds profit=bounds(screenWidth,screenHeight,left);
+        int y=profit.y()+profit.height()+6;
+        return new Bounds(profit.x(),y,profit.width(),Math.max(0,Math.min(64,screenHeight-y-8)));
     }
 }
