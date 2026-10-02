@@ -19,25 +19,35 @@ public final class GeneralCalculator {
                 || !Double.isFinite(taxPercentage) || taxPercentage < 0 || taxPercentage >= 100) return List.of();
         List<Candidate> result = new ArrayList<>();
         for (GeneralItem item : settings.items) {
-            JsonObject product = products.getAsJsonObject(item.id());
-            if (product == null) continue;
-            double bid = topPrice(product, "sell_summary");
-            double ask = topPrice(product, "buy_summary");
-            JsonObject quick = product.getAsJsonObject("quick_status");
-            if (quick == null || bid <= 0 || ask <= bid) continue;
-            double flow = Math.min(number(quick, "sellMovingWeek"), number(quick, "buyMovingWeek"));
-            if (flow < settings.minWeeklyVolume || flow <= 0) continue;
-            double net = ask * (1 - taxPercentage / 100) - bid;
-            if (net <= 0 || net / bid * 100 < settings.minMarginPercentage) continue;
-            // Avoid placing more than about one hour of historical market flow.
-            int quantity = (int) Math.min(Math.min(settings.maxItemsPerOrder, inventoryCapacity),
-                    Math.min(Math.floor(Math.min(settings.maxCoinsPerItem, available) / bid), Math.floor(flow / 168)));
-            if (quantity <= 0 || net * quantity < settings.minProfitPerBatch) continue;
-            result.add(new Candidate(item, quantity, bid, ask, net * quantity,
-                    net * quantity * Math.log10(flow + 1) / Math.sqrt(bid * quantity)));
+            try {
+                Candidate candidate = evaluate(products, item, settings, taxPercentage, available, inventoryCapacity);
+                if (candidate != null) result.add(candidate);
+            } catch (RuntimeException malformed) {
+                // One malformed product must not hide every other allowlisted item.
+            }
         }
         result.sort(Comparator.comparingDouble(Candidate::score).reversed());
         return List.copyOf(result);
+    }
+
+    private static Candidate evaluate(JsonObject products, GeneralItem item, GeneralSettings settings,
+                                      double taxPercentage, double available, int inventoryCapacity) {
+        JsonObject product = products.getAsJsonObject(item.id());
+        if (product == null) return null;
+        double bid = topPrice(product, "sell_summary");
+        double ask = topPrice(product, "buy_summary");
+        JsonObject quick = product.getAsJsonObject("quick_status");
+        if (quick == null || bid <= 0 || ask <= bid) return null;
+        double flow = Math.min(number(quick, "sellMovingWeek"), number(quick, "buyMovingWeek"));
+        if (flow < settings.minWeeklyVolume || flow <= 0) return null;
+        double net = ask * (1 - taxPercentage / 100) - bid;
+        if (net <= 0 || net / bid * 100 < settings.minMarginPercentage) return null;
+        // Avoid placing more than about one hour of historical market flow.
+        int quantity = (int) Math.min(Math.min(settings.maxItemsPerOrder, inventoryCapacity),
+                Math.min(Math.floor(Math.min(settings.maxCoinsPerItem, available) / bid), Math.floor(flow / 168)));
+        if (quantity <= 0 || net * quantity < settings.minProfitPerBatch) return null;
+        return new Candidate(item, quantity, bid, ask, net * quantity,
+                net * quantity * Math.log10(flow + 1) / Math.sqrt(bid * quantity));
     }
 
     public static double topPrice(JsonObject product, String side) {

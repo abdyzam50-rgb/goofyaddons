@@ -63,4 +63,29 @@ class ConfigRegressionTest {
         GoofyConfig.load(file);
         assertEquals(5000, GoofyConfig.INSTANCE.minNetProfit);
     }
+
+    @Test
+    void rejectedFirstLoadBlocksTradingUntilAValidConfigLoads() throws Exception {
+        Path file = directory.resolve("goofyaddons.json");
+        Files.writeString(file, "{\"maxTradingCapital\":-1}");
+        GoofyConfig.INSTANCE = null;
+        GoofyConfig.load(file);
+        assertNotNull(GoofyConfig.INSTANCE);
+        assertNotNull(GoofyConfig.loadError());
+        Files.writeString(file, "{\"maxTradingCapital\":1000000}");
+        GoofyConfig.load(file);
+        assertNull(GoofyConfig.loadError());
+        assertEquals(1000000, GoofyConfig.INSTANCE.maxTradingCapital);
+    }
+
+    @Test
+    void rejectedReloadKeepsTheLastGoodConfigUsable() throws Exception {
+        Path file = directory.resolve("goofyaddons.json");
+        Files.writeString(file, "{}");
+        GoofyConfig.INSTANCE = null;
+        GoofyConfig.load(file);
+        Files.writeString(file, "{broken");
+        GoofyConfig.load(file);
+        assertNull(GoofyConfig.loadError());
+    }
 }

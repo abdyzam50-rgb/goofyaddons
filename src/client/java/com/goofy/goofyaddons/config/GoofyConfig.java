@@ -37,6 +37,8 @@ public class GoofyConfig {
     }
 
     public static GoofyConfig INSTANCE;
+    /** Set while trading would run on built-in defaults because the user's file was rejected. */
+    private static String loadError;
 
 
     public TradingMode tradingMode = TradingMode.BOOKS;
@@ -69,6 +71,7 @@ public class GoofyConfig {
         try {
             if (!Files.exists(path)) {
                 INSTANCE = new GoofyConfig();
+                loadError = null;
                 save(path);
                 return;
             }
@@ -77,13 +80,23 @@ public class GoofyConfig {
             if (parsed == null) throw new IllegalArgumentException("Config must be a JSON object");
             parsed.validate();
             INSTANCE = parsed;
+            loadError = null;
             Diagnostics.event("INFO","config.loaded",java.util.Map.of("mode",parsed.tradingMode.name(),"capital",parsed.maxTradingCapital,"reserve",parsed.purseReserve));
         } catch (Exception e) {
             Diagnostics.failure("config.load_failed",e);
             // Preserve both the file and the last working in-memory config.
             System.err.println("GoofyAddons config rejected: " + e.getMessage());
-            if (INSTANCE == null) INSTANCE = new GoofyConfig();
+            if (INSTANCE == null) {
+                // Never trade with default capital limits the user did not choose.
+                INSTANCE = new GoofyConfig();
+                loadError = "Config file rejected (" + e.getMessage() + "); fix goofyaddons.json and reload.";
+            }
         }
+    }
+
+    /** Non-null when the config file was rejected and no valid config has been loaded yet. */
+    public static String loadError() {
+        return loadError;
     }
 
     public void validate() {

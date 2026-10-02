@@ -1211,7 +1211,7 @@ public class BazaarFlipper implements Feature {
                 }
 
                 if (containerNameCheck(task.getBook().name())) clock.start(randomizer());
-                if (containerNameCheck(task.getBook().name()) && clock.shouldFire()) {
+                if (containerNameCheck(task.getBook().name()) && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     if (task.instaSell) {
                         safetyHalt("Instant book sales need manual confirmation; tracked book retained.");
                         return;
@@ -1530,6 +1530,8 @@ public class BazaarFlipper implements Feature {
     }
 
     private void handleTaskStateChange() {
+        // Notices for finished or removed tasks would otherwise accumulate forever.
+        listOfTaskToChange.retainAll(taskList);
         if (listOfTaskToChange.isEmpty()) return;
 
         if (state == State.OUTBID || state == State.REPLACE_SELL) return;
@@ -1782,21 +1784,6 @@ public class BazaarFlipper implements Feature {
                 : com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(product, "buy_summary");
         double net = exit * (1 - GoofyConfig.INSTANCE.bazaarTaxPercentage / 100) - cost;
         return Double.isFinite(net) && exit > 0 && net > 0 && net >= GoofyConfig.INSTANCE.minNetProfit;
-    }
-
-    private boolean scheduler(String containerName, int menuLoadedPoint, boolean containerOpenCheck, boolean isBackPack) {
-        if (containerOpenCheck) return minecraft.screen == null;
-        if (minecraft.screen == null || !inventoryScanner.isMenuLoaded(menuLoadedPoint)) return false;
-
-        if (isBackPack) {
-            if (!(containerNameCheck("Ender Chest") || containerNameCheck("Jumbo Backpack") || containerNameCheck("Greater Backpack")))
-                return false;
-            clock.start(randomizer());
-            return clock.shouldFire();
-        }
-        if (!containerNameCheck(containerName)) return false;
-        clock.start(randomizer());
-        return clock.shouldFire();
     }
 
 }

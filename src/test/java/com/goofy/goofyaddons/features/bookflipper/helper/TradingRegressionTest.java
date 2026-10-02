@@ -206,4 +206,52 @@ class TradingRegressionTest {
         assertEquals(-1, task.assignBook(book, 1, 0, Integer.MAX_VALUE));
         assertEquals(1, task.getAmountToOrder());
     }
+
+    @Test
+    void instantRoutesAreNeverPlannedBecauseTheEngineRefusesThem() {
+        Book other = new Book("ENCHANTMENT_OTHER", 1, 2, "Other", 0, 0);
+        Book third = new Book("ENCHANTMENT_THIRD", 1, 2, "Third", 0, 0);
+        List<FlipItem> items = List.of(new FlipItem(book, 10, 3, true, false),
+                new FlipItem(other, 10, 2, false, true), new FlipItem(third, 10, 1, false, false));
+        List<FlipItem> selected = TradeBudget.select(items, List.of(), 100);
+        assertEquals(List.of(third), selected.stream().map(FlipItem::book).toList());
+    }
+
+    @Test
+    void oneMalformedProductDoesNotHideOtherRoutes() {
+        Book other = new Book("ENCHANTMENT_OTHER", 1, 2, "Other", 0, 0);
+        JsonObject products = products(100, 250);
+        products.add("ENCHANTMENT_OTHER_1", JsonParser.parseString(
+                "{\"sell_summary\":[{\"pricePerUnit\":\"oops\"}],\"buy_summary\":[]}"));
+        products.add("ENCHANTMENT_OTHER_2", JsonParser.parseString("[]"));
+        List<FlipItem> result = FlipCalculator.calculate(products, List.of(other, book), 1.25, 0);
+        assertEquals(List.of(book), result.stream().map(FlipItem::book).toList());
+    }
+
+    @Test
+    void nonFiniteVolumeIsTreatedAsNoFlow() {
+        JsonObject products = products(100, 250);
+        products.getAsJsonObject("ENCHANTMENT_TEST_1").getAsJsonObject("quick_status").addProperty("sellMovingWeek", Double.NaN);
+        assertTrue(FlipCalculator.calculate(products, List.of(book), 1.25, 0).isEmpty());
+    }
+
+    @Test
+    void malformedMonitoredProductDoesNotStopOtherOutbidChecks() {
+        Book other = new Book("ENCHANTMENT_OTHER", 1, 2, "Other", 0, 0);
+        AtomicLong now = new AtomicLong();
+        BazaarMonitor monitor = new BazaarMonitor(() -> {
+            JsonObject root = response(101, 250, 1);
+            root.getAsJsonObject("products").add("ENCHANTMENT_OTHER_1",
+                    JsonParser.parseString("{\"sell_summary\":[\"broken\"]}"));
+            return CompletableFuture.completedFuture(root);
+        }, Runnable::run, now::get);
+        List<Book> notices = new java.util.ArrayList<>();
+        monitor.hook(item -> notices.add(item.book));
+        monitor.add(other, 100, false);
+        monitor.add(book, 100, false);
+        monitor.start();
+        now.set(21000);
+        monitor.refresh();
+        assertEquals(List.of(book), notices);
+    }
 }

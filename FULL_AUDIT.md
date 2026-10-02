@@ -378,3 +378,15 @@ The uploaded Ectoplasm setup run confirmed server acceptance after the engine op
 ## Observed confirmation compatibility — 1.3.6-BETA
 
 The subsequent BOOKS-mode bundle preserved the actual Overload I confirmation: Order: 16x Overload I with matching unit/total prices and profitAllowed=true. The parser did not support Order as an identity/quantity field. Added the exact observed field and a sanitized regression fixture; the valid-preview test failed before the fix and passed afterward, while conflicting/malformed variants remain rejected. This resolves that specific live format under A04, not all possible tooltip variants. See BOOK_CONFIRMATION_FORMAT_FIX.md. 105 tests passed, production build succeeded and git diff --check passed.
+
+## Logic cleanup batch — 2026-10-02
+
+- A10: TradeBudget no longer plans instant buy/sell routes, so the book engine never reserves capital for a trade it will safety-halt on.
+- A12: Starting loads both engines' persisted exposure before the book-recovery gate, so general positions stay reserved while book recovery is pending.
+- A20: Book and general calculators and the outbid monitor isolate each product; one malformed or non-finite product is skipped instead of aborting the pass.
+- A22: A config file rejected on first load latches GoofyConfig.loadError(); start is refused until a valid config loads. A rejected reload still keeps the last good config.
+- CapitalManager.purchased only starts the one-second settle window when cash was actually pending, so routine order re-checks no longer delay other purchases.
+- Book SELL waits for the product page to load before clicking Create Sell Offer, matching REPLACE_SELL. Fill notices for removed tasks are pruned.
+- Removed unused helpers (BazaarFlipper.scheduler, InventoryScanner.findInv/getSellOrder/getName, Clock.returnState, FeatureManager.start(String)); claimReceipt now reuses TradeReceipts.saleProceeds.
+
+Validation: 115 helper tests passed (8 new; the 5 calculator/budget/monitor tests fail on the previous code). The Minecraft-dependent classes could not be compiled in the review environment, so the production build still needs a local `./gradlew build`. No live orders were placed.

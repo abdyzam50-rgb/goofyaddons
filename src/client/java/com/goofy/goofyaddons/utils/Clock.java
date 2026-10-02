@@ -28,8 +28,4 @@ public class Clock {
     public void stop() {
         running = false;
     }
-
-    public boolean returnState() {
-        return running;
-    }
 }
