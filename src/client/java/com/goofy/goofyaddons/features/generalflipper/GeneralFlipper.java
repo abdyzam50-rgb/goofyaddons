@@ -200,6 +200,7 @@ public class GeneralFlipper implements Feature {
                 try {
                     if (error != null) throw new IllegalStateException("Bazaar request failed", error);
                     long updated = TradingSafety.sourceTime(root, System.currentTimeMillis());
+                    if(updated<quotesAt) return;
                     products = root.getAsJsonObject("products");
                     quotesAt = updated;
                 } catch (Exception failure) { LOGGER.warn("General quotes unavailable; retrying", failure); }
@@ -271,9 +272,20 @@ public class GeneralFlipper implements Feature {
                     }
                     int confirm = 13;
                     if (!loadedSlot(confirm)) return;
-                    Integer previewQuantity=OrderLore.total(lore(confirm));
-                    if(previewQuantity!=null && previewQuantity!=active.quantity) {fail("Confirmation quantity differs from tracked position; no order submitted.");return;}
-                    if(selling && itemCount(active.item.id())!=active.quantity) {fail("Inventory changed before sale confirmation; no order submitted.");return;}
+                    double expectedPrice=selling?active.sellPrice:active.unitCost;
+                    if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),selling,
+                            minecraft.player.containerMenu.slots.get(confirm).getItem().getHoverName().getString(),lore(confirm),active.item.name(),active.quantity,expectedPrice)) {
+                        fail("Confirmation item, quantity or price is unreadable or differs; no order submitted.");return;
+                    }
+                    if(selling) {
+                        if(itemCount(active.item.id())!=active.quantity || !profitableSale(expectedPrice)) {
+                            fail("Inventory or net margin changed before sale confirmation; no order submitted.");return;
+                        }
+                    } else if(!com.goofy.goofyaddons.features.ConfirmationCheck.buyAllowed(expectedPrice,active.quantity,currentAsk(),
+                            GoofyConfig.INSTANCE.bazaarTaxPercentage,settings().minMarginPercentage,settings().minProfitPerBatch,settings().maxCoinsPerItem)
+                            || !capital.resize(OWNER,active.item.id(),active.cost(),new ScoreboardUtils().getPurse())) {
+                        fail("Price or available capital changed before buy confirmation; no order submitted.");return;
+                    }
                     active.submitted = true;
                     if (selling) active.saleEvent = java.util.UUID.randomUUID().toString();
                     active.placedAt = now;
@@ -616,7 +628,14 @@ public class GeneralFlipper implements Feature {
         JsonObject product = products == null ? null : products.getAsJsonObject(active.item.id());
         return product == null ? -1 : GeneralCalculator.topPrice(product, "buy_summary");
     }
-    private boolean freshQuotes() { return products != null && TradingSafety.fresh(quotesAt, System.currentTimeMillis()); }
+    private boolean freshQuotes() {
+        JsonObject latest=BazaarApi.latestFresh();
+        if(latest!=null) {
+            long updated=latest.get("lastUpdated").getAsLong();
+            if(updated>quotesAt) {products=latest.getAsJsonObject("products");quotesAt=updated;}
+        }
+        return products != null && TradingSafety.fresh(quotesAt, System.currentTimeMillis());
+    }
     private GeneralSettings settings() { return GoofyConfig.INSTANCE.general; }
     private boolean priceMenu() { return menu(selling ? "At what price" : "How much do you want to pay"); }
     private boolean menu(String title) { return minecraft.screen != null && minecraft.screen.getTitle().getString().contains(title); }

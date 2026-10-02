@@ -357,3 +357,12 @@ Existing automated tests are rerun as the audit baseline; see AUDIT_COVERAGE.md.
 - R12/R13: larger resource-bound and redaction investigations remain open. Existing redaction regression tests pass; arbitrary unknown server fields are not certified.
 
 Validation: 88 tests passed, zero failures/errors/skips; production build and git diff --check passed. No live server transaction was performed. Stage 2 and all other unlisted findings remain open.
+
+## Repair status — 1.3.3-BETA, focused stage-2 batch
+
+- A04: implemented strict supported confirmation side/item/quantity/price checks in both engines. Missing or conflicting evidence pauses. ConfirmationCheckTest exercises mismatch and incomplete/malformed fields. Live confirmation tooltip compatibility remains unverified; fixtures are synthetic.
+- A05: implemented final profitability, inventory/capacity and shared-capital checks before confirmation. General checks the newest shared quote snapshot. Book ties confirmation to a recent matching price-selection task. R01 (delayed purse acknowledgement) remains open.
+- A18: fixed the digit-concatenation parser. PurseParserTest verifies supported complete amounts and rejects extra numbers, abbreviations and invalid grouping. Multiple purse rows are unavailable.
+- A19: fixed publication ordering with synchronized timestamp comparison; equal/older source snapshots cannot replace a newer one. BazaarQuoteCacheTest checks out-of-order publication, equal timestamps, input mutation and expiry.
+
+Validation: 96 tests passed, zero failures/errors/skips; production build and git diff --check passed. See STAGE_2_REPAIR.md. Other stage-2 findings and whole-engine/live validation remain open.

@@ -53,3 +53,7 @@ Gate: confirmed profit survives restart and write failures without double-counti
 5. Validate the built jar in controlled use with a small exposed amount before raising trading limits. Profit targets are measurements, not guaranteed outcomes.
 
 The audit document stage made no runtime fixes. Stage 1 now has a separate implementation batch documented in STAGE_1_REPAIR.md; whole-engine replay remains an explicit follow-up. Investigation entries become fixes only after their actual failure and intended behavior are established.
+
+## Progress checkpoint
+
+The focused stage-2 confirmation/purse/quote batch is implemented in 1.3.3-BETA; see STAGE_2_REPAIR.md. This is not closure of every stage-2 item. Complete menu/order observation, cancellation identity, product-schema isolation and delayed-purse acknowledgement remain open.

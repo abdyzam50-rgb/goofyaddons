@@ -105,6 +105,10 @@ public class BazaarFlipper implements Feature {
     private int tick;
 
     private Task activeTask = null;
+    private Task confirmationTask;
+    private double confirmationPrice;
+    private boolean confirmationSelling;
+    private long confirmationSelectedAt;
     private Set<Task> listOfTaskToChange = new HashSet<>();
     private List<BookList> bookLists = new ArrayList<>();
     private List<Task> taskList = new ArrayList<>();
@@ -653,12 +657,15 @@ public class BazaarFlipper implements Feature {
                     activeTask.setReservedUnitCost(Math.max(unitPrice, activeTask.getReservedUnitCost()));
                     if (!checkpoint()) return;
                     bazaarMonitor.add(activeTask.getBook(), unitPrice, false);
+                    confirmationTask=activeTask;confirmationPrice=unitPrice;confirmationSelling=false;confirmationSelectedAt=System.currentTimeMillis();
                     InventoryUtils.clickSlot(12, false);
                 }
 
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                    if(!verifyBookConfirmation()) return;
                     InventoryUtils.clickSlot(13, false);
+                    confirmationTask=null;
                     CapitalManager.INSTANCE.purchased("books", activeTask.getBook().id());
                     yieldAfterMs = System.currentTimeMillis() + 1000;
                     // first we check if the order was an insta buy
@@ -1189,12 +1196,15 @@ public class BazaarFlipper implements Feature {
                     }
                     bazaarMonitor.finish(task.getBook(), false);
                     bazaarMonitor.add(task.getBook(), inventoryScanner.getUnitPrice(12), true);
+                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();
                     InventoryUtils.clickSlot(12, false);
                 }
 
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                    if(!verifyBookConfirmation()) return;
                     InventoryUtils.clickSlot(13, false);
+                    confirmationTask=null;
                     yieldAfterMs = System.currentTimeMillis() + 1000;
                     debug("[BazaarFlipper] SELL: placed sell order for " + task.getBook());
                     task.setBookState(Task.BookState.SELL_ORDER);
@@ -1274,12 +1284,15 @@ public class BazaarFlipper implements Feature {
                         safetyHalt("Repriced book sale would violate the minimum net profit."); return;
                     }
                     bazaarMonitor.add(task.getBook(), inventoryScanner.getUnitPrice(12), true);
+                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();
                     InventoryUtils.clickSlot(12, false);
                 }
 
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                    if(!verifyBookConfirmation()) return;
                     InventoryUtils.clickSlot(13, false);
+                    confirmationTask=null;
                     yieldAfterMs = System.currentTimeMillis() + 1000;
                     debug("[BazaarFlipper] REPLACE_SELL: replaced sell order for " + task.getBook());
                     task.setBookState(Task.BookState.SELL_ORDER);
@@ -1612,6 +1625,37 @@ public class BazaarFlipper implements Feature {
             }
         }
         heldSince.keySet().retainAll(taskList.stream().map(task -> task.getBook().id()).collect(java.util.stream.Collectors.toSet()));
+        return true;
+    }
+
+    private boolean verifyBookConfirmation() {
+        Task task=confirmationTask;
+        boolean sale=state==State.SELL || state==State.REPLACE_SELL;
+        if(task==null || confirmationSelling!=sale || !taskList.contains(task)
+                || System.currentTimeMillis()-confirmationSelectedAt>30000 || !sale && task!=activeTask) {
+            safetyHalt("Book confirmation has no matching price-selection intent.");return false;
+        }
+        var stack=minecraft.player.containerMenu.slots.get(13).getItem();
+        var lore=stack.get(net.minecraft.core.component.DataComponents.LORE);
+        String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
+        int quantity=sale?1:task.getAmountToOrder();
+        String item=task.getBook().getRomanLevel(sale?task.getBook().sellLevel():task.getBook().level());
+        if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),sale,
+                stack.getHoverName().getString(),text,item,quantity,confirmationPrice) || !bookPriceAllowed(task,confirmationPrice,sale)) {
+            safetyHalt("Book confirmation item, quantity, price or net profit could not be verified.");return false;
+        }
+        if(sale) {
+            if(inventoryScanner.findLoreInv(item).size()!=1) {
+                safetyHalt("Book sale inventory changed before confirmation.");return false;
+            }
+        } else {
+            double purse=scoreboardUtils.getPurse();
+            double cost=confirmationPrice*quantity;
+            if(quantity>inventoryScanner.getEmptyInventorySlots() || cost>purse || !CapitalManager.INSTANCE.resize("books",task.getBook().id(),
+                    Math.max(CapitalManager.INSTANCE.cost("books",task.getBook().id()),task.getReservedUnitCost()*task.getBook().getQtyAmount(task.getBook().level())),purse)) {
+                safetyHalt("Book buy capacity or capital changed before confirmation.");return false;
+            }
+        }
         return true;
     }
 
