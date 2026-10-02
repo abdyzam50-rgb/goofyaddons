@@ -457,7 +457,17 @@ by inspection, and no live server order was placed.
   `emptyContainerSlots` counts every non-inventory slot rather than the container
   region.
 
-  **Nothing uses it yet, on purpose.** Having `InventoryScanner` delegate per call
+  **The effects half also landed.** `GameActions` covers clicks, menu closes, commands,
+  player messages and sign writes; `LiveActions` is the only implementation that
+  performs them; `RecordingActions` records them for tests, and its `serverEffects()`
+  deliberately excludes closes and messages so a test can assert that an engine changed
+  nothing on the server. `GeneralFlipper` now routes every effect through it and takes
+  it by constructor. `EngineSeamProbeTest` constructs that engine in a plain JVM with
+  injected effects and confirms construction performs none — which establishes that the
+  rest of the migration needs no Minecraft bootstrap, only the replacement of direct
+  `minecraft.` reads. `BazaarFlipper`'s 26 direct click sites are not migrated.
+
+  **The observation model is not wired in yet, on purpose.** Having `InventoryScanner` delegate per call
   would rebuild a ~90-slot snapshot on each of the 16-plus scans per tick, which is a
   performance regression. The migration is to take one snapshot per tick and pass it
   down, which is also the A3 observation snapshot deferred earlier. Until that lands,

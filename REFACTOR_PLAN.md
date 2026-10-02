@@ -422,16 +422,28 @@ The enabler every remaining stage waits behind. Two halves:
 
 | Half | What | Status |
 |---|---|---|
-| Observation | `SlotView`/`MenuSnapshot` (pure menu model + queries), `LiveMenu` (the one adapter) | **done**, 19 tests |
-| Migration | one snapshot per tick, passed to both engines in place of ad-hoc `InventoryScanner` calls | not started |
-| Actions | clicks, commands, chat and sign writes behind an interface, with a fake for tests | not started |
+| Observation model | `SlotView`/`MenuSnapshot` (pure menu + queries), `LiveMenu` (the one adapter) | **done**, 19 tests |
+| Actions | `GameActions` + `LiveActions` + `RecordingActions` fake | **done**, 4 tests |
+| `GeneralFlipper` effects | every click, command, message, close and sign write through the seam | **done** |
+| `BazaarFlipper` effects | same, across 26 direct `clickSlot` sites and 17 closes | not started |
+| Observation migration | one snapshot per tick, replacing ad-hoc `InventoryScanner` calls in both engines | not started |
 
-The observation half is deliberately not wired in: delegating per call would rebuild a
-~90-slot snapshot on each of the 16-plus scans per tick. The migration step is the same
-work as A3's observation snapshot, so the two are now one task.
+**What the probe established.** `EngineSeamProbeTest` constructs a `GeneralFlipper` with
+injected effects inside a plain JVM. It works: `Minecraft.getInstance()` returns null in a
+test rather than throwing, and construction performs no effects. So the remaining
+migration does not need constructor surgery or a Minecraft bootstrap — it only needs the
+55 `minecraft.` dereferences in that engine (79 in the book engine) replaced by snapshot
+reads. That is the whole remaining distance to a test that drives a transaction.
 
-Once the actions half exists, a test can drive an engine through a scripted menu
-sequence, and B2/B3/B4/B5 become ordinary work instead of untested rewrites.
+The observation model is deliberately not wired in yet: delegating per call would rebuild
+a ~90-slot snapshot on each of the 16-plus scans per tick. The migration takes one
+snapshot per tick, which is also A3's deferred observation snapshot, so the two are one
+task.
+
+`RecordingActions.serverEffects()` is what engine tests will assert on: it filters out
+closes and player messages, so a test can state "this engine changed nothing on the
+server" — which is the shape of most of the safety rules and the assertion nothing can
+currently make.
 
 ### Still open, beyond the stages above
 

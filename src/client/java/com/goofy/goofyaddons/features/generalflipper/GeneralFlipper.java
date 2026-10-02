@@ -10,8 +10,6 @@ import com.goofy.goofyaddons.features.TradingSafety;
 import com.goofy.goofyaddons.features.profit.ProfitTracker;
 import com.goofy.goofyaddons.features.profit.TradeReceipts;
 import com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi;
-import com.goofy.goofyaddons.utils.ChatUtils;
-import com.goofy.goofyaddons.utils.InventoryUtils;
 import com.goofy.goofyaddons.utils.ScoreboardUtils;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -65,6 +63,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private final Minecraft minecraft = Minecraft.getInstance();
+    private final com.goofy.goofyaddons.menu.GameActions actions;
     private final CapitalManager capital = CapitalManager.INSTANCE;
     private final List<Position> positions = new ArrayList<>();
     private final java.util.Map<String, Long> cooldownUntil = new java.util.HashMap<>();
@@ -106,6 +105,12 @@ public class GeneralFlipper implements Feature {
     private long lastCommand;
 
     public GeneralFlipper() {
+        this(new com.goofy.goofyaddons.menu.LiveActions());
+    }
+
+    /** Effects are injectable so a test can assert the exact clicks an engine produced. */
+    GeneralFlipper(com.goofy.goofyaddons.menu.GameActions actions) {
+        this.actions = actions;
         ChatHook.onMessage("[Bazaar]", this::onNotice);
     }
 
@@ -113,7 +118,7 @@ public class GeneralFlipper implements Feature {
     @Override public boolean isRunning() { return running; }
     @Override public boolean canYield() { return active == null; }
     @Override public void yieldMenu() {
-        if (active == null && minecraft.player != null && minecraft.screen != null) minecraft.player.closeContainer();
+        if (active == null) actions.closeMenu();
     }
 
     public boolean hasStateError() { return blocked; }
@@ -158,7 +163,7 @@ public class GeneralFlipper implements Feature {
 
     @Override public void start() {
         restoreBudget();
-        if (blocked) { ChatUtils.clientMessage("General flipper is blocked; resolve the logged order-state error first."); return; }
+        if (blocked) { actions.message("General flipper is blocked; resolve the logged order-state error first."); return; }
         running = true;
         paused = false;
         nextPoll = 0;
@@ -289,11 +294,10 @@ public class GeneralFlipper implements Feature {
                     } else if (priceMenu()) transition(Step.PRICE);
                 }
                 case SIGN -> {
-                    if (minecraft.screen instanceof AbstractSignEditScreen sign) {
-                        if (!com.goofy.goofyaddons.utils.SignEntry.writeFirstLine(sign, Integer.toString(active.quantity))) {
+                    if (minecraft.screen instanceof AbstractSignEditScreen) {
+                        if (!actions.writeSign(Integer.toString(active.quantity))) {
                             fail("Could not write the order amount onto the sign; no order submitted."); return;
                         }
-                        minecraft.setScreen(null);
                         transition(Step.PRICE);
                     } else if (priceMenu()) transition(Step.PRICE);
                 }
@@ -333,7 +337,7 @@ public class GeneralFlipper implements Feature {
                     click(confirm);
                     Diagnostics.event("INFO","order.submitted",java.util.Map.of("trade",active.tradeId,"item",active.item.id(),"units",active.quantity,"side",selling?"SELL":"BUY","unitPrice",selling?active.sellPrice:active.unitCost,"cost",active.cost()));
                     transition(Step.VERIFY_ORDER);
-                    minecraft.player.closeContainer();
+                    actions.closeMenu();
                 }
                 case VERIFY_ORDER -> {
                     if(now-stepSince<2000) return; // Allow escrow/setup to reach the server before opening orders.
@@ -439,7 +443,7 @@ public class GeneralFlipper implements Feature {
                 return;
             }
             selling = false;
-            minecraft.player.closeContainer();
+            actions.closeMenu();
             transition(Step.OPEN_PRODUCT);
             return;
         }
@@ -481,7 +485,7 @@ public class GeneralFlipper implements Feature {
                 if (!save()) return;
                 click(sell); // Claim completed sale, never sell arbitrary inventory.
                 transition(Step.VERIFY_SALE);
-                minecraft.player.closeContainer();
+                actions.closeMenu();
                 return;
             }
             if (soldUnits >= 0 && shouldReprice(true) && active.reprices < settings().maxReprices && freshQuotes()
@@ -515,7 +519,7 @@ public class GeneralFlipper implements Feature {
             capital.restore(OWNER, active.item.id(), active.cost(), false);
             if (!freshQuotes() || !profitableSale(currentAsk())) { finishWork(); return; }
             selling = true;
-            minecraft.player.closeContainer();
+            actions.closeMenu();
             transition(Step.OPEN_PRODUCT);
         } else if (active.stage == Stage.SELL_ORDER || active.cancelRequested) {
             fail("Tracked sell/cancel position is absent; ownership is uncertain. Position retained for manual reconciliation.");
@@ -531,7 +535,7 @@ public class GeneralFlipper implements Feature {
                 active.cancelRequested = true;
                 if (!save()) return;
                 click(cancel);
-                minecraft.player.closeContainer();
+                actions.closeMenu();
                 transition(Step.VERIFY_CANCEL);
                 return;
             }
@@ -553,7 +557,7 @@ public class GeneralFlipper implements Feature {
         }
         // A fully filled order can be claimed directly without an order detail screen.
         if (ordersReady() && itemCount(active.item.id()) > inventoryBefore && findOrder(selling) < 0) {
-            minecraft.player.closeContainer();
+            actions.closeMenu();
             transition(Step.VERIFY_CANCEL);
         }
     }
@@ -717,7 +721,7 @@ public class GeneralFlipper implements Feature {
             && com.goofy.goofyaddons.utils.MenuText.titleContains(minecraft.screen.getTitle().getString(), title); }
     private boolean loadedSlot(int slot) { return slot >= 0 && slot < minecraft.player.containerMenu.slots.size()
             && minecraft.player.containerMenu.slots.get(slot).hasItem(); }
-    private void click(int slot) { if (loadedSlot(slot)) InventoryUtils.clickSlot(slot, false); }
+    private void click(int slot) { if (loadedSlot(slot)) actions.click(slot, false); }
     private void transition(Step next) {
         Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
         confirmationStability.reset();menuRecheck.reset();reopeningOrders=false;
@@ -727,7 +731,7 @@ public class GeneralFlipper implements Feature {
     private void command(String text) {
         long now = System.currentTimeMillis();
         if (minecraft.screen == null && now - lastCommand > 1500) {
-            Diagnostics.command(text);
+            actions.command(text);
             lastCommand = now;
         }
     }
@@ -738,7 +742,7 @@ public class GeneralFlipper implements Feature {
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
             Diagnostics.event("WARN","order.observation_recheck",java.util.Map.of("reason",reason,"trade",active.tradeId==null?"legacy":active.tradeId,
                     "attempt",menuRecheck.attempts(),"step",step.name(),"context",Diagnostics.detailedSnapshot()));
-            minecraft.player.closeContainer();ordersSettle.reset();lastCommand=0;
+            actions.closeMenu();ordersSettle.reset();lastCommand=0;
             reopeningOrders=true;
         }
         return decision!=com.goofy.goofyaddons.features.MenuRecheck.Decision.EXHAUSTED;
@@ -856,7 +860,7 @@ public class GeneralFlipper implements Feature {
         if (active != null && positions.contains(active)) active.checkedAt = System.currentTimeMillis();
         save();
         active = null;
-        if (minecraft.player != null && minecraft.screen != null) minecraft.player.closeContainer();
+        actions.closeMenu();
     }
     private void completePosition() {
         if (active.stage == Stage.BUY_ORDER || active.stage == Stage.PLANNED) {
@@ -868,13 +872,13 @@ public class GeneralFlipper implements Feature {
     }
     private void fail(String message) {
         Diagnostics.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",Diagnostics.detailedSnapshot()));
-        ChatUtils.clientMessage(message);
+        actions.message(message);
         LOGGER.error(message);
         paused = true;
         invalidateRequest();
         save();
         active = null;
-        if (minecraft.player != null && minecraft.screen != null) minecraft.player.closeContainer();
+        actions.closeMenu();
         FeatureManager.INSTANCE.safetyPause(message);
     }
 
