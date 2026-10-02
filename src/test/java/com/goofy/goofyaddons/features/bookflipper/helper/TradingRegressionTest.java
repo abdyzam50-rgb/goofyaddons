@@ -79,7 +79,7 @@ class TradingRegressionTest {
     void resetIgnoresQueuedResultsFromThePreviousRun() {
         ArrayDeque<Runnable> clientQueue = new ArrayDeque<>();
         FlipCalculator calculator = new FlipCalculator(
-                () -> CompletableFuture.completedFuture(response(100, 250, 1)), clientQueue::add);
+                () -> CompletableFuture.completedFuture(response(100, 250, System.currentTimeMillis())), clientQueue::add);
         calculator.Refresh();
         calculator.reset();
         calculator.Refresh();

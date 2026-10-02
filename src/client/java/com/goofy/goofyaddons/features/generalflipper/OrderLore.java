@@ -3,12 +3,12 @@ package com.goofy.goofyaddons.features.generalflipper;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class OrderLore {
-    record Fill(int filled, int total) {}
+public final class OrderLore {
+    public record Fill(int filled, int total) {}
     private static final Pattern FILLED = Pattern.compile("Filled:\\s*([\\d,]+)\\s*/\\s*([\\d,]+)");
     private static final Pattern CLAIMABLE = Pattern.compile("You have\\s+([\\d,]+)\\s+(?:items?|units?)", Pattern.CASE_INSENSITIVE);
 
-    static Fill fill(String lore) {
+    public static Fill fill(String lore) {
         Matcher match = FILLED.matcher(lore);
         if (!match.find()) return null;
         try {

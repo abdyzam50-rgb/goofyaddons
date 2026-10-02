@@ -20,6 +20,8 @@ public class GeneralSettings {
     public int orderTimeoutSeconds = 180;
     public int repriceCooldownSeconds = 60;
     public int maxReprices = 3;
+    public int maxHoldingSeconds = 21600;
+    public double maxDrawdownPercentage = 15;
 
     public void validate() {
         if (items == null || items.stream().anyMatch(item -> item == null || item.id() == null
@@ -34,7 +36,8 @@ public class GeneralSettings {
                 || !Double.isFinite(minMarginPercentage) || minMarginPercentage < 0 || minMarginPercentage > 100
                 || !Double.isFinite(minWeeklyVolume) || minWeeklyVolume < 0
                 || refreshSeconds < 10 || orderTimeoutSeconds < 30 || repriceCooldownSeconds < 30
-                || maxReprices < 0 || maxReprices > 10) {
+                || maxReprices < 0 || maxReprices > 10 || maxHoldingSeconds < 60
+                || !Double.isFinite(maxDrawdownPercentage) || maxDrawdownPercentage <= 0 || maxDrawdownPercentage > 100) {
             throw new IllegalArgumentException("Invalid general-flipper limits");
         }
     }

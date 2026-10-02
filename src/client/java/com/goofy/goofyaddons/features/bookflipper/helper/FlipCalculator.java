@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.goofy.goofyaddons.features.TradingSafety;
 import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
@@ -47,6 +48,7 @@ public class FlipCalculator {
                 if (run != generation) return;
                 try {
                     if (error != null) throw new IllegalStateException("Bazaar request failed", error);
+                    TradingSafety.sourceTime(root, System.currentTimeMillis());
                     flipItemsList = calculate(root.getAsJsonObject("products"), books, tax, minimumProfit);
                 } catch (Exception failure) {
                     LOGGER.warn("Bazaar fetch failed; retrying later", failure);

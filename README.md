@@ -1,5 +1,7 @@
 # GoofyAddons
 
+Runtime safeguards and recovery instructions: [RUNTIME_SAFETY.md](RUNTIME_SAFETY.md).
+
 ## Trading modes (1.2.0-BETA)
 
 Books, General, and Both modes share a trading budget and serialize menu actions.

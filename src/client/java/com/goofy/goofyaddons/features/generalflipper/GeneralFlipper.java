@@ -4,6 +4,8 @@ import com.goofy.goofyaddons.config.GoofyConfig;
 import com.goofy.goofyaddons.event.ChatHook;
 import com.goofy.goofyaddons.features.CapitalManager;
 import com.goofy.goofyaddons.features.Feature;
+import com.goofy.goofyaddons.features.FeatureManager;
+import com.goofy.goofyaddons.features.TradingSafety;
 import com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi;
 import com.goofy.goofyaddons.utils.ChatUtils;
 import com.goofy.goofyaddons.utils.InventoryUtils;
@@ -51,6 +53,7 @@ public class GeneralFlipper implements Feature {
         boolean cancelRequested;
         int reprices;
         long placedAt;
+        long heldSince;
         long checkedAt;
         double cost() { return quantity * unitCost; }
     }
@@ -75,6 +78,10 @@ public class GeneralFlipper implements Feature {
     private int expectedClaim;
     private double purseBefore;
     private boolean receipt;
+    private boolean claimPending;
+    private int claimUnits;
+    private int ordersContainer = -1;
+    private long ordersSeenAt;
     private long stepSince;
     private long nextAction;
     private long lastCommand;
@@ -151,12 +158,9 @@ public class GeneralFlipper implements Feature {
                 if (generation != run || !running || paused) return;
                 try {
                     if (error != null) throw new IllegalStateException("Bazaar request failed", error);
-                    long updated = root.get("lastUpdated").getAsLong();
-                    if (Math.abs(System.currentTimeMillis() - updated) > 120000) {
-                        throw new IllegalStateException("Bazaar quotes are stale");
-                    }
+                    long updated = TradingSafety.sourceTime(root, System.currentTimeMillis());
                     products = root.getAsJsonObject("products");
-                    quotesAt = System.currentTimeMillis();
+                    quotesAt = updated;
                 } catch (Exception failure) { LOGGER.warn("General quotes unavailable; retrying", failure); }
                 finally { request = null; }
             }));
@@ -217,6 +221,10 @@ public class GeneralFlipper implements Feature {
                 case PRICE -> choosePrice();
                 case CONFIRM -> {
                     if (!menu("Confirm")) return;
+                    if (!freshQuotes()) { fail("Quotes expired before order confirmation."); return; }
+                    if (!selling && active.quantity > capacityFor(active.item.id())) {
+                        fail("Not enough inventory capacity for this buy order."); return;
+                    }
                     int confirm = 13;
                     if (!loadedSlot(confirm)) return;
                     active.submitted = true;
@@ -228,9 +236,11 @@ public class GeneralFlipper implements Feature {
                 }
                 case VERIFY_ORDER -> {
                     command("managebazaarorders");
-                    if (!menu("Bazaar")) return;
+                    if (!ordersReady()) return;
+                    if (ambiguousOrders()) return;
                     int order = findOrder(selling);
                     if (order >= 0) {
+                        if (!orderMatchesPosition(order)) return;
                         active.stage = selling ? Stage.SELL_ORDER : Stage.BUY_ORDER;
                         if (!selling) capital.purchased(OWNER, active.item.id());
                         finishWork();
@@ -238,15 +248,12 @@ public class GeneralFlipper implements Feature {
                         capital.purchased(OWNER, active.item.id());
                         active.stage = Stage.INVENTORY;
                         finishWork();
-                    } else if (selling && receipt) {
-                        completePosition();
                     }
                 }
                 case VERIFY_SALE -> {
-                    if (receipt || new ScoreboardUtils().getPurse() > purseBefore) completePosition();
-                    else if (now - stepSince > 3000) {
-                        finishWork();
-                    }
+                    command("managebazaarorders");
+                    if (!ordersReady() || ambiguousOrders()) return;
+                    if (TradingSafety.saleComplete(claimPending, receipt, findOrder(true) < 0, itemCount(active.item.id()))) completePosition();
                 }
             }
         } catch (Exception failure) {
@@ -262,6 +269,7 @@ public class GeneralFlipper implements Feature {
                 active = position;
                 selling = position.stage == Stage.INVENTORY || position.stage == Stage.SELL_ORDER;
                 receipt = false;
+                claimPending = false;
                 transition(Step.OPEN_ORDERS);
                 return;
             }
@@ -288,10 +296,18 @@ public class GeneralFlipper implements Feature {
     }
 
     private void inspectOrders() {
-        if (!menu("Bazaar")) return;
+        if (!ordersReady() || ambiguousOrders()) return;
         int buy = findOrder(false);
         int sell = findOrder(true);
         int inventory = itemCount(active.item.id());
+        if (active.stage != Stage.PLANNED) {
+            long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
+            if (TradingSafety.holdingLimit(held, System.currentTimeMillis(), settings().maxHoldingSeconds,
+                    active.unitCost, freshQuotes() ? currentAsk() * (1 - GoofyConfig.INSTANCE.bazaarTaxPercentage / 100) : -1,
+                    settings().maxDrawdownPercentage)) {
+                fail("Holding age/drawdown limit reached for " + active.item.name() + ". Position retained for review."); return;
+            }
+        }
         if (active.stage == Stage.PLANNED && !active.submitted) {
             if (buy >= 0 || sell >= 0 || inventory > 0) {
                 capital.release(OWNER, active.item.id());
@@ -306,7 +322,9 @@ public class GeneralFlipper implements Feature {
         }
         if (buy >= 0 && sell >= 0) { fail("Both buy and sell orders exist for one tracked item; manual reconciliation required."); return; }
         if (buy >= 0) {
+            if (!orderMatchesPosition(buy)) return;
             active.stage = Stage.BUY_ORDER;
+            if (active.heldSince == 0) active.heldSince = active.placedAt;
             capital.purchased(OWNER, active.item.id());
             int claimable = OrderLore.claimable(lore(buy), inventory > 0);
             boolean cancel = claimable > 0 || inventory > 0 || shouldReprice(false)
@@ -315,6 +333,9 @@ public class GeneralFlipper implements Feature {
             selling = false;
             inventoryBefore = inventory;
             expectedClaim = claimable;
+            if (claimable > capacityFor(active.item.id())) {
+                fail("Insufficient inventory space to claim the tracked buy order."); return;
+            }
             purseBefore = new ScoreboardUtils().getPurse();
             receipt = false;
             click(buy);
@@ -322,14 +343,19 @@ public class GeneralFlipper implements Feature {
             return;
         }
         if (sell >= 0) {
+            if (!orderMatchesPosition(sell)) return;
             active.stage = Stage.SELL_ORDER;
             OrderLore.Fill filled = OrderLore.fill(lore(sell));
             int soldUnits = filled == null ? -1 : filled.filled();
             if (soldUnits >= active.quantity) {
                 receipt = false;
+                claimPending = true;
+                claimUnits = active.quantity;
                 purseBefore = new ScoreboardUtils().getPurse();
+                if (!save()) return;
                 click(sell); // Claim completed sale, never sell arbitrary inventory.
                 transition(Step.VERIFY_SALE);
+                minecraft.player.closeContainer();
                 return;
             }
             if (soldUnits >= 0 && shouldReprice(true) && active.reprices < settings().maxReprices && freshQuotes()
@@ -337,6 +363,9 @@ public class GeneralFlipper implements Feature {
                 selling = true;
                 inventoryBefore = inventory;
                 expectedClaim = Math.max(0, active.quantity - soldUnits);
+                if (expectedClaim > capacityFor(active.item.id())) {
+                    fail("Insufficient inventory space to cancel the sell offer."); return;
+                }
                 purseBefore = new ScoreboardUtils().getPurse();
                 receipt = false;
                 click(sell);
@@ -356,10 +385,7 @@ public class GeneralFlipper implements Feature {
             minecraft.player.closeContainer();
             transition(Step.OPEN_PRODUCT);
         } else if (active.stage == Stage.SELL_ORDER || active.cancelRequested) {
-            // After restart, a missing order plus no inventory means there is no
-            // server position left to manage. Preserve the record in the log.
-            LOGGER.info("Reconciled absent position for {}", active.item.id());
-            completePosition();
+            fail("Tracked sell/cancel position is absent; ownership is uncertain. Position retained for manual reconciliation.");
         } else if (System.currentTimeMillis() - active.placedAt > 5000) {
             fail("Tracked buy order and inventory are both missing; manual reconciliation required.");
         }
@@ -388,13 +414,12 @@ public class GeneralFlipper implements Feature {
         int count = itemCount(active.item.id());
         long elapsed = System.currentTimeMillis() - stepSince;
         boolean itemsArrived = count > inventoryBefore && count >= inventoryBefore + expectedClaim;
-        boolean refunded = !selling && new ScoreboardUtils().getPurse() > purseBefore;
         if (expectedClaim > 0 && count < inventoryBefore + expectedClaim) return;
-        if (!itemsArrived && !receipt && !refunded) return;
+        if (!itemsArrived && !receipt) return;
         if (elapsed < 500) return;
         // Reopen orders to verify cancellation before creating a replacement.
         command("managebazaarorders");
-        if (!menu("Bazaar") || findOrder(selling) >= 0) return;
+        if (!ordersReady() || ambiguousOrders() || findOrder(selling) >= 0) return;
         if (count == 0) {
             if (!selling && active.reprices < settings().maxReprices && freshQuotes()) {
                 JsonObject product = products.getAsJsonObject(active.item.id());
@@ -489,21 +514,24 @@ public class GeneralFlipper implements Feature {
             if (slot.container == minecraft.player.getInventory() && slot.getItem().isEmpty()) empty++;
         }
         return GeneralCalculator.calculate(products, settings(), GoofyConfig.INSTANCE.bazaarTaxPercentage,
-                capital.available(new ScoreboardUtils().getPurse()), Math.max(0, empty - 4) * 64);
+                capital.available(new ScoreboardUtils().getPurse()), TradingSafety.conservativeCapacity(empty, 4));
     }
 
     private double currentAsk() {
         JsonObject product = products == null ? null : products.getAsJsonObject(active.item.id());
         return product == null ? -1 : GeneralCalculator.topPrice(product, "buy_summary");
     }
-    private boolean freshQuotes() { return products != null && System.currentTimeMillis() - quotesAt < 60000; }
+    private boolean freshQuotes() { return products != null && TradingSafety.fresh(quotesAt, System.currentTimeMillis()); }
     private GeneralSettings settings() { return GoofyConfig.INSTANCE.general; }
     private boolean priceMenu() { return menu(selling ? "At what price" : "How much do you want to pay"); }
     private boolean menu(String title) { return minecraft.screen != null && minecraft.screen.getTitle().getString().contains(title); }
     private boolean loadedSlot(int slot) { return slot >= 0 && slot < minecraft.player.containerMenu.slots.size()
             && minecraft.player.containerMenu.slots.get(slot).hasItem(); }
     private void click(int slot) { if (loadedSlot(slot)) InventoryUtils.clickSlot(slot, false); }
-    private void transition(Step next) { step = next; stepSince = System.currentTimeMillis(); lastCommand = 0; }
+    private void transition(Step next) {
+        step = next; stepSince = System.currentTimeMillis(); lastCommand = 0;
+        ordersContainer = -1; ordersSeenAt = 0;
+    }
     private void command(String text) {
         long now = System.currentTimeMillis();
         if (minecraft.screen == null && now - lastCommand > 1500) {
@@ -513,6 +541,50 @@ public class GeneralFlipper implements Feature {
     }
 
     private int findOrder(boolean sell) { return find((sell ? "SELL " : "BUY ") + active.item.name(), true); }
+    private boolean ordersReady() {
+        if (minecraft.screen == null) return false;
+        String title = minecraft.screen.getTitle().getString();
+        if (!TradingSafety.ordersTitle(title)) return false;
+        int id = minecraft.player.containerMenu.containerId;
+        long now = System.currentTimeMillis();
+        if (ordersContainer != id) { ordersContainer = id; ordersSeenAt = now; return false; }
+        if (now - ordersSeenAt < 750 || find("Go Back", false) < 0 && find("Close", true) < 0) return false;
+        if (find("Next Page", false) >= 0 || find("Previous Page", false) >= 0) {
+            fail("Orders span multiple pages; automatic ownership checks are blocked."); return false;
+        }
+        return true;
+    }
+    private boolean ambiguousOrders() {
+        int end = Math.max(0, minecraft.player.containerMenu.slots.size() - 36);
+        List<String> names = minecraft.player.containerMenu.slots.subList(0, end).stream()
+                .map(slot -> slot.getItem().getHoverName().getString().replaceAll("§.", "")).toList();
+        if (TradingSafety.ambiguousOrders(names, active.item.name())) {
+            fail("Duplicate or paginated orders; manual reconciliation required."); return true;
+        }
+        return false;
+    }
+    private boolean orderMatchesPosition(int slot) {
+        OrderLore.Fill fill = OrderLore.fill(lore(slot));
+        if (!TradingSafety.orderQuantityMatches(active.quantity, fill == null ? null : fill.total())) {
+            fail("Order quantity is unreadable or differs from tracked ownership; position retained."); return false;
+        }
+        return true;
+    }
+    private int capacityFor(String id) {
+        int empty = 0;
+        int partial = 0;
+        int stackLimit = 1;
+        for (Slot slot : minecraft.player.containerMenu.slots) {
+            ItemStack stack = slot.getItem();
+            CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+            boolean matches = data != null && id.equals(data.copyTag().getStringOr("id", ""));
+            if (matches) stackLimit = Math.max(1, Math.min(64, stack.getMaxStackSize()));
+            if (slot.container != minecraft.player.getInventory() || slot.getContainerSlot() >= 36) continue;
+            if (stack.isEmpty()) empty++;
+            else if (matches) partial += Math.max(0, stack.getMaxStackSize() - stack.getCount());
+        }
+        return TradingSafety.conservativeCapacity(empty, 4) * stackLimit + partial;
+    }
     private int find(String text, boolean exact) {
         int end = Math.max(0, minecraft.player.containerMenu.slots.size() - 36);
         for (int i = 0; i < end; i++) {
@@ -543,8 +615,10 @@ public class GeneralFlipper implements Feature {
 
     private void onNotice(String message) {
         if (!running || paused || active == null || !message.contains(active.item.name())) return;
-        String lower = message.toLowerCase(java.util.Locale.ROOT);
-        if (lower.contains("cancel") || lower.contains("claimed") && lower.contains("coins")) receipt = true;
+        if (step == Step.VERIFY_SALE && claimPending
+                && TradingSafety.claimReceipt(message, active.item.name(), claimUnits)) receipt = true;
+        if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && active.cancelRequested
+                && TradingSafety.cancellationReceipt(message, active.item.name())) receipt = true;
     }
     private void finishWork() {
         if (active != null && positions.contains(active)) active.checkedAt = System.currentTimeMillis();
@@ -568,6 +642,7 @@ public class GeneralFlipper implements Feature {
         save();
         active = null;
         if (minecraft.player != null && minecraft.screen != null) minecraft.player.closeContainer();
+        FeatureManager.INSTANCE.safetyPause(message);
     }
 
     private Path statePath() { return FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-general-orders.json"); }
@@ -606,6 +681,7 @@ public class GeneralFlipper implements Feature {
         } catch (Exception failure) {
             blocked = true;
             LOGGER.error("Unable to persist general order state; trading blocked", failure);
+            FeatureManager.INSTANCE.safetyPause("Cannot persist general order state.");
             return false;
         } finally {
             if (temp != null) try { Files.deleteIfExists(temp); } catch (Exception ignored) {}

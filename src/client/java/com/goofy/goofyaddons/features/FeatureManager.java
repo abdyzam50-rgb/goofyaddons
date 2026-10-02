@@ -30,16 +30,22 @@ public class FeatureManager {
 
     public void onTick() {
         if (!started || paused) return;
+        try {
         if (requested != null && scheduler.canSwitch()) applyMode(requested);
         for (Feature engine : engines()) engine.poll();
         Feature owner = scheduler.select(engines());
         if (owner != previousOwner && previousOwner != null) previousOwner.yieldMenu();
         previousOwner = owner;
         if (owner != null) owner.onTick();
+        } catch (RuntimeException failure) {
+            org.slf4j.LoggerFactory.getLogger(FeatureManager.class).error("Trading tick failed; pausing", failure);
+            safetyPause("Unexpected trading error; ownership records retained.");
+        }
     }
 
     public void startConfigured() {
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
+        if (!books.restoreBudget()) return;
         general.restoreBudget(); // Count persisted ordinary-item positions even in Books mode.
         if (general.hasStateError()) {
             ChatUtils.clientMessage("Cannot start: general-order state is unreadable. File preserved; check logs.");
@@ -72,7 +78,10 @@ public class FeatureManager {
         mode = next;
         requested = null;
         List<Feature> enabled = engines();
-        for (Feature engine : old) if (!enabled.contains(engine)) engine.pause();
+        for (Feature engine : old) if (!enabled.contains(engine)) {
+            if (engine == books) books.pauseForMode();
+            else engine.pause();
+        }
         for (Feature engine : enabled) engine.start();
         scheduler.reset();
         previousOwner = null;
@@ -98,6 +107,11 @@ public class FeatureManager {
         general.pause();
         scheduler.reset();
         previousOwner = null;
+    }
+
+    public void safetyPause(String reason) {
+        ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting.");
+        pause();
     }
 
     public void resume() {

@@ -51,6 +51,8 @@ public class GoofyConfig {
     public int maxActionDelay = 500;
     public double bazaarTaxPercentage = 1.25;
     public double minNetProfit = 0;
+    public int maxBookHoldingSeconds = 21600;
+    public double maxBookDrawdownPercentage = 15;
     public String firstPage = "ec";
     public String secondPage = "ec 2";
 
@@ -89,7 +91,8 @@ public class GoofyConfig {
             throw new IllegalArgumentException("Require 51 <= minActionDelay < maxActionDelay <= 60000");
         }
         if (!Double.isFinite(bazaarTaxPercentage) || bazaarTaxPercentage < 0 || bazaarTaxPercentage >= 100
-                || !Double.isFinite(minNetProfit) || minNetProfit < 0) {
+                || !Double.isFinite(minNetProfit) || minNetProfit < 0 || maxBookHoldingSeconds < 60
+                || !Double.isFinite(maxBookDrawdownPercentage) || maxBookDrawdownPercentage <= 0 || maxBookDrawdownPercentage > 100) {
             throw new IllegalArgumentException("Invalid sale tax or minimum net profit");
         }
         if (startKey < 32 || startKey > GLFW.GLFW_KEY_LAST || stopKey < 32
