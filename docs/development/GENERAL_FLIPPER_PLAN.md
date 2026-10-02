@@ -22,4 +22,4 @@ Implemented Books / General / Both, exclusive menu scheduling, shared capital
 reservations, persisted ordinary-item positions, partial-fill handling, bounded
 repricing, and an example combined config. The Java 25 build and all 30 regression
 tests passed. Server GUI execution has not been validated in-game; this remains a
-draft beta for small-order testing. See GENERAL_FLIPPER.md.
+draft beta for small-order testing. See ../guides/GENERAL_FLIPPER.md.

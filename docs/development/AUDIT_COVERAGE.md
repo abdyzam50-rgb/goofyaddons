@@ -72,7 +72,7 @@ Current workspace source review, 2026-10-02. Related finding IDs identify the re
 | `gradle/wrapper/gradle-wrapper.properties` | Configuration/build definition reviewed | A21–A24, A33 as applicable |
 | `gradle/wrapper/gradle-wrapper.jar` | Binary inventoried | A21–A24, A33 as applicable |
 | `.github/workflows/build.yml` | Configuration/build definition reviewed | A21–A24, A33 as applicable |
-| `examples/goofyaddons-both.json` | Configuration/build definition reviewed | A21–A24, A33 as applicable |
+| `../../examples/goofyaddons-both.json` | Configuration/build definition reviewed | A21–A24, A33 as applicable |
 
 ## Automated baseline
 

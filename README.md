@@ -1,13 +1,13 @@
 # GoofyAddons
 
-Runtime safeguards and recovery instructions: [RUNTIME_SAFETY.md](RUNTIME_SAFETY.md).
-Profit HUD, commands, and accounting details: [PROFIT_TRACKER.md](PROFIT_TRACKER.md).
+Runtime safeguards and recovery instructions: [docs/guides/RUNTIME_SAFETY.md](docs/guides/RUNTIME_SAFETY.md).
+Profit HUD, commands, and accounting details: [docs/guides/PROFIT_TRACKER.md](docs/guides/PROFIT_TRACKER.md).
 
 ## Trading modes (1.2.0-BETA)
 
 Books, General, and Both modes share a trading budget and serialize menu actions.
 J starts, K stops, and M switches modes at a safe transaction boundary. See
-[the mode and configuration guide](GENERAL_FLIPPER.md) and the
+[the mode and configuration guide](docs/guides/GENERAL_FLIPPER.md) and the
 [combined example config](examples/goofyaddons-both.json).
 
 This is a draft beta: build and helper tests pass, but live server menus and order
@@ -16,6 +16,9 @@ confirmation timing still need validation with small orders.
 **Trying it out:** a built jar and what testers need to know are in
 [TESTING.md](TESTING.md). It has not been run against a live server by its authors — start
 with an amount you would not mind losing.
+
+**All documentation:** [docs/](docs/README.md) — guides for using it, and the audits, plans
+and per-release repair records under `docs/development/`.
 
 ## Setup
 

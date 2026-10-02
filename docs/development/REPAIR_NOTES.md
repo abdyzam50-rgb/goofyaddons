@@ -50,7 +50,7 @@ selection estimate, not a guarantee of realized returns.
 
 The settings screen and AntiStuck implementation remain placeholders. Full
 recipe validation, pending-order caps, realized profit accounting, have not been implemented. General item flips are added in the subsequent
-1.2.0 beta; see GENERAL_FLIPPER.md. Only configure known combinable routes.
+1.2.0 beta; see ../guides/GENERAL_FLIPPER.md. Only configure known combinable routes.
 Instant buy/sell inventory-confirmation paths still require an in-game audit;
 use order-based transactions for initial validation. Existing unrelated orders
 and exact GUI labels also require testing against the live server.
