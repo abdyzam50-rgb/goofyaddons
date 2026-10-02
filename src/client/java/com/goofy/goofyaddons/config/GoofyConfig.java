@@ -54,6 +54,7 @@ public class GoofyConfig {
     public int maxBookHoldingSeconds = 21600;
     public boolean profitHudEnabled = true;
     public String profitHudSide = "RIGHT";
+    public double profitHudScale = 1.25;
     public double maxBookDrawdownPercentage = 15;
     public String firstPage = "ec";
     public String secondPage = "ec 2";
@@ -89,6 +90,7 @@ public class GoofyConfig {
             throw new IllegalArgumentException("Invalid mode or shared capital settings");
         }
         general.validate();
+        if (!Double.isFinite(profitHudScale) || profitHudScale<0.75 || profitHudScale>3.0) throw new IllegalArgumentException("HUD scale must be between 0.75 and 3.0");
         if (!"LEFT".equals(profitHudSide) && !"RIGHT".equals(profitHudSide)) throw new IllegalArgumentException("HUD side must be LEFT or RIGHT");
         if (minActionDelay < 51 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
             throw new IllegalArgumentException("Require 51 <= minActionDelay < maxActionDelay <= 60000");
