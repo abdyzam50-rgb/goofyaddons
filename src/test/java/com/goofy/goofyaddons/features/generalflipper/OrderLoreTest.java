@@ -29,6 +29,25 @@ class OrderLoreTest {
         assertFalse(OrderLore.canOpenOptionsAfterClaim("Loading...",1,4,3));
         assertFalse(OrderLore.canOpenOptionsAfterClaim(remaining+"\nYou have 1 item to claim!",1,4,3));
     }
+    @Test void remainingPartialFillsAreNotHiddenByEarlierClaims() {
+        assertEquals(3,OrderLore.claimable("Filled: 4/32",1));
+        assertEquals(0,OrderLore.claimable("Filled: 4/32",4));
+        assertEquals(2,OrderLore.claimable("Filled: 6/32\nYou have 2 items to claim!",4));
+    }
+    @Test void coopCreatorMustMatchEvenWhenRankAndColorsArePresent() {
+        assertTrue(OrderLore.ownOrder("§7By: §b[MVP+] §acuredmc","curedmc"));
+        assertTrue(OrderLore.ownOrder("By: curedmc","CUREDMC"));
+        assertFalse(OrderLore.ownOrder("By: curedmc_extra","curedmc"));
+        assertFalse(OrderLore.ownOrder("By: coopmate","curedmc"));
+        assertFalse(OrderLore.ownOrder("Loading...","curedmc"));
+    }
+    @Test void partialSellClaimMustBeConfirmedBeforeReopeningCancellation() {
+        String options="Order amount: 32x\nFilled: 4/32\nClick to view options!";
+        assertFalse(OrderLore.canOpenSellOptionsAfterClaim(options,4,false));
+        assertTrue(OrderLore.canOpenSellOptionsAfterClaim(options,4,true));
+        assertTrue(OrderLore.canOpenSellOptionsAfterClaim(options,0,false));
+        assertFalse(OrderLore.canOpenSellOptionsAfterClaim("Loading...",4,true));
+    }
     @Test void invalidOrMissingFillCountsAreRejected() {
         assertNull(OrderLore.fill("Filled: 300/256"));
         assertNull(OrderLore.fill("Filled: 0/0"));

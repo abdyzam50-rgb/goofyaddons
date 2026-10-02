@@ -55,6 +55,14 @@ public final class TradingSafety {
         return claimPending && matchingReceipt && orderAbsent && inventory == 0;
     }
 
+    public static boolean confirmationTitle(String title,boolean selling) {
+        if(title==null) return false;
+        String clean=title.replaceAll("§.","").strip();
+        return selling ? java.util.Set.of("Confirm Sell Offer","Confirm Sell Order").contains(clean) : clean.equals("Confirm Buy Order");
+    }
+    public static boolean combinedBookArrived(int previousOutput,int currentOutput,boolean cursorEmpty) {
+        return previousOutput>=0 && currentOutput==previousOutput+1 && cursorEmpty;
+    }
     public static boolean orderQuantityMatches(int expected, Integer observed) {
         return expected > 0 && observed != null && expected == observed;
     }

@@ -34,7 +34,7 @@ public class FeatureManager {
         if (!started || paused) return;
         try {
         if (requested != null && scheduler.canSwitch()) applyMode(requested);
-        for (Feature engine : engines()) engine.poll();
+        for (Feature engine : engines()) { engine.poll(); if(paused || !started) return; }
         Feature owner = scheduler.select(engines());
         if (owner != previousOwner && previousOwner != null) previousOwner.yieldMenu();
         previousOwner = owner;
@@ -123,6 +123,10 @@ public class FeatureManager {
         pause();
     }
 
+    public void resumeAfterTravel() {
+        if(!statusReason.isBlank()) return; // An automatic travel recovery must not clear a safety block.
+        resume();
+    }
     public void resume() {
         if (!started || !paused) return;
         paused = false;

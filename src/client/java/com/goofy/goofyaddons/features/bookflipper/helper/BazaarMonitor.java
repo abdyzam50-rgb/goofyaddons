@@ -90,7 +90,7 @@ public class BazaarMonitor {
                 if (run != generation || !running) return;
                 try {
                     if (error != null) throw new IllegalStateException("Bazaar request failed", error);
-                    long updated = root.get("lastUpdated").getAsLong();
+                    long updated = com.goofy.goofyaddons.features.TradingSafety.sourceTime(root,now.getAsLong());
                     if (updated <= lastUpdated) return;
                     JsonObject products = root.getAsJsonObject("products");
                     // Hooks may remove monitors. Iterate a snapshot on the client thread.

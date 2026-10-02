@@ -112,6 +112,16 @@ class TradingRegressionTest {
     }
 
     @Test
+    void staleMonitorResponsesCannotTriggerOrderCancellationAndFreshResponsesRecover() {
+        AtomicLong now=new AtomicLong(100000);
+        AtomicLong source=new AtomicLong(1);
+        BazaarMonitor monitor=new BazaarMonitor(()->CompletableFuture.completedFuture(response(101,250,source.get())),Runnable::run,now::get);
+        AtomicInteger notices=new AtomicInteger();monitor.hook(item->notices.incrementAndGet());
+        monitor.add(book,100,false);monitor.start();now.set(121000);
+        monitor.refresh();assertEquals(0,notices.get());
+        source.set(now.get());monitor.refresh();assertEquals(1,notices.get());
+    }
+    @Test
     void monitorRetriesFailuresAndIgnoresEqualPriceCompetition() {
         AtomicInteger calls = new AtomicInteger();
         AtomicLong now = new AtomicLong();

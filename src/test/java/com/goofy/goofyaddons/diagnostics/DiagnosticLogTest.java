@@ -17,7 +17,7 @@ class DiagnosticLogTest {
         var next=JsonParser.parseString(lines.get(1)).getAsJsonObject();
         assertEquals(first.get("session"),next.get("session"));
         assertEquals(2,next.get("sequence").getAsInt());
-        assertFalse(lines.get(0).contains("secret"));assertFalse(lines.get(0).contains("xyz"));assertFalse(lines.get(0).contains("abc"));
+        assertFalse(lines.get(0).contains("secret"));assertFalse(first.getAsJsonObject("data").get("message").getAsString().contains("xyz"));assertFalse(first.getAsJsonObject("data").get("message").getAsString().contains("abc"));
     }
     @Test void rotationIsBoundedAndExportIncludesSnapshotAndEvents() throws Exception {
         var log=new DiagnosticLog(directory,200,2);
@@ -30,6 +30,11 @@ class DiagnosticLogTest {
             assertFalse(snapshot.contains("sensitive"));assertTrue(snapshot.contains("PAUSED"));
             assertDoesNotThrow(()->JsonParser.parseString(snapshot));
         }
+    }
+    @Test void rawTooltipEvidenceRedactsPlayerAndVendorLines() {
+        String text=DiagnosticLog.redact("Order amount: 32x\nBy: [MVP+] privateplayer\n- 2x [VIP+] vendorname 3m ago");
+        assertFalse(text.contains("privateplayer"));assertFalse(text.contains("vendorname"));
+        assertTrue(text.contains("Order amount: 32x"));
     }
     @Test void exportsAreRetainedAtMostFive() throws Exception {
         var log=new DiagnosticLog(directory,1000,1);

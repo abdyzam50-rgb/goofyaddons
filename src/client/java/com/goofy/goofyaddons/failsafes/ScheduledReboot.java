@@ -49,7 +49,7 @@ public class ScheduledReboot implements Failsafe {
             case COMPLETED -> {
                 clock.start(5000);
                 if (clock.shouldFire()) {
-                    FeatureManager.INSTANCE.resume();
+                    FeatureManager.INSTANCE.resumeAfterTravel();
                     enabled = false;
                 }
             }

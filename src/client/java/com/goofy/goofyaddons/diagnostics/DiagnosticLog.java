@@ -23,6 +23,9 @@ public final class DiagnosticLog {
         if (text==null) return "";
         String home=System.getProperty("user.home","");
         if (!home.isBlank()) text=text.replace(home,"<home>");
+        text=text.replaceAll("§.","")
+                .replaceAll("(?im)^(?:By|Created by|Order by|Seller|Buyer|Owner|Placed by|Co-op member):.*$","<player redacted>")
+                .replaceAll("(?m)^-\\s*[\\d,]+x\\s+.*$","<vendor redacted>");
         return text.replaceAll("(?i)(authorization|access[_-]?token|api[_-]?key|password|sessionid)([\\s=:]+)[^\\s,;]+","$1$2<redacted>")
                 .replaceAll("(?i)bearer\\s+[^\\s,;]+","Bearer <redacted>")
                 .replaceAll("[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}","<email>");

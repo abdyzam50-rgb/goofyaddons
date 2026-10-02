@@ -19,7 +19,7 @@ public final class OrderLore {
         } catch (NumberFormatException ignored) { return null; }
     }
 
-    static int claimable(String lore, boolean inventoryAlreadyClaimed) {
+    public static int claimable(String lore, boolean inventoryAlreadyClaimed) {
         Matcher match = CLAIMABLE.matcher(clean(lore));
         if (match.find()) {
             try { return number(match.group(1)); } catch (NumberFormatException ignored) { return 0; }
@@ -28,6 +28,21 @@ public final class OrderLore {
         return inventoryAlreadyClaimed || filled == null ? 0 : filled.filled();
     }
 
+    public static int claimable(String lore,int alreadyInInventory) {
+        Matcher explicit=CLAIMABLE.matcher(clean(lore));
+        if(explicit.find()) return claimable(lore,false);
+        Fill fill=fill(lore);
+        return fill==null ? 0 : Math.max(0,fill.filled()-Math.max(0,alreadyInInventory));
+    }
+    public static boolean ownOrder(String lore,String username) {
+        if(username==null || username.isBlank()) return false;
+        Matcher owner=Pattern.compile("(?m)^\\s*By:\\s*(?:\\[[^\\]\\r\\n]+]\\s*)?([A-Za-z0-9_]{1,16})\\s*$").matcher(clean(lore));
+        return owner.find() && username.equalsIgnoreCase(owner.group(1));
+    }
+    public static boolean canOpenSellOptionsAfterClaim(String lore,int soldUnits,boolean matchingSaleReceipt) {
+        return soldUnits>=0 && (soldUnits==0 || matchingSaleReceipt)
+                && clean(lore).contains("Click to view options!");
+    }
     public static Integer total(String lore) {
         Fill fill=fill(lore);
         if(FILLED.matcher(clean(lore)).find() && fill==null) return null;

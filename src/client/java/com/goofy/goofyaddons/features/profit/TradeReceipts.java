@@ -5,6 +5,7 @@ import java.util.regex.Pattern;
 public final class TradeReceipts {
     private TradeReceipts() {}
     public static Double saleProceeds(String message,String item,int expectedUnits) {
+        if(message==null || item==null || expectedUnits<=0) return null;
         var match=Pattern.compile("^\\[Bazaar] Claimed ([\\d,]+(?:\\.\\d+)?) coins from selling ([\\d,]+)x "
                 +Pattern.quote(item)+"[!.]?$",Pattern.CASE_INSENSITIVE).matcher(message.replaceAll("§.",""));
         if (!match.matches()) return null;
@@ -15,6 +16,7 @@ public final class TradeReceipts {
         } catch (NumberFormatException bad) { return null; }
     }
     public static Double unitPrice(String lore) {
+        if(lore==null) return null;
         var match=Pattern.compile("(?:Unit price|Price per unit):\\s*([\\d,]+(?:\\.\\d+)?)",Pattern.CASE_INSENSITIVE)
                 .matcher(lore.replaceAll("§.",""));
         if (!match.find()) return null;

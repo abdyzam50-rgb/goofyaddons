@@ -261,11 +261,11 @@ public class BazaarFlipper implements Feature {
         if (!running || paused) return;
         handleTaskStateChange();
         bazaarMonitor.onTick();
-        if (!checkHoldingLimits()) return;
+        if (!checkHoldingLimits() || paused) return;
         if (state == State.FETCHING && !flipCalculator.isRunning()
                 && flipCalculator.getFlipItemsList().isEmpty() && System.currentTimeMillis() >= nextFetchMs) refreshFlips();
         if (isStartUpCheckCompleted) {
-            CapitalManager.INSTANCE.releaseMissing("books", taskList.stream().map(task -> task.getBook().id())
+            CapitalManager.INSTANCE.releaseMissing("books", java.util.stream.Stream.concat(taskList.stream().map(task -> task.getBook().id()),bookLists.stream().map(book -> book.book.id()))
                     .collect(java.util.stream.Collectors.toSet()));
         }
     }
@@ -314,6 +314,9 @@ public class BazaarFlipper implements Feature {
             pendingBuyClaim = null;
             didReceiveItems = true;
         }
+        if (containerNameCheck("Confirm") && !TradingSafety.confirmationTitle(minecraft.screen.getTitle().getString(),state==State.SELL || state==State.REPLACE_SELL)) {
+            safetyHalt("Unexpected book confirmation type; position retained without another click.");return;
+        }
         if (containerNameCheck("Confirm") && BazaarApi.latestFresh() == null) {
             safetyHalt("Book confirmation blocked because Bazaar quotes expired."); return;
         }
@@ -325,6 +328,17 @@ public class BazaarFlipper implements Feature {
                     .filter(slot -> slot.container != minecraft.player.getInventory())
                     .map(slot -> slot.getItem().getHoverName().getString().replaceAll("§.", "")).toList();
             for (Task task : taskList) {
+                if(minecraft.screen.getTitle().getString().replaceAll("§.","").contains("Co-op Bazaar Orders")) {
+                    for(var slot:minecraft.player.containerMenu.slots) {
+                        String name=slot.getItem().getHoverName().getString().replaceAll("§.","");
+                        if(!java.util.Set.of("BUY "+task.getBook().getRomanLevel(task.getBook().level()),"SELL "+task.getBook().getRomanLevel(task.getBook().sellLevel())).contains(name)) continue;
+                        var lore=slot.getItem().get(net.minecraft.core.component.DataComponents.LORE);
+                        String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
+                        if(!com.goofy.goofyaddons.features.generalflipper.OrderLore.ownOrder(text,minecraft.getUser().getName())) {
+                            safetyHalt("Co-op book order creator differs or is unreadable; manual reconciliation required.");return;
+                        }
+                    }
+                }
                 if (TradingSafety.ambiguousOrders(names, task.getBook().getRomanLevel(task.getBook().level()))
                         || TradingSafety.ambiguousOrders(names, task.getBook().getRomanLevel(task.getBook().sellLevel()))) {
                     safetyHalt("Book orders are duplicate or paginated; manual reconciliation required."); return;
@@ -1099,7 +1113,7 @@ public class BazaarFlipper implements Feature {
                         return;
                     }
 
-                    if (combine_Counter != -1 && combine_Counter < inventoryScanner.findLoreInv(firstBook.book.getRomanLevel(firstBook.level + 1)).size() || slot.isEmpty()) {
+                    if (TradingSafety.combinedBookArrived(combine_Counter, inventoryScanner.findLoreInv(firstBook.book.getRomanLevel(firstBook.level + 1)).size(),minecraft.player.containerMenu.getCarried().isEmpty())) {
                         debug("[BazaarFlipper] COMBINE: combined into level " + (firstBook.level + 1) + " " + firstBook.book);
                         task.bookList.add(new BookList(task.getBook(), firstBook.level + 1, 0));
                         task.bookList.removeAll(List.of(firstBook, secondBook));
@@ -1111,6 +1125,7 @@ public class BazaarFlipper implements Feature {
 
                     combine_Counter = inventoryScanner.findLoreInv(firstBook.book.getRomanLevel(firstBook.level + 1)).size();
 
+                    if(slot.isEmpty()) return; // Missing inputs alone never prove that the combine succeeded.
                     InventoryUtils.clickSlot(slot.getFirst(), true);
                 }
             }
@@ -1278,7 +1293,7 @@ public class BazaarFlipper implements Feature {
 
     private boolean containerNameCheck(String name) {
         if (minecraft.screen == null) return false;
-        return minecraft.screen.getTitle().toString().contains(name);
+        return minecraft.screen.getTitle().getString().replaceAll("§.","").contains(name);
     }
 
 
@@ -1287,7 +1302,7 @@ public class BazaarFlipper implements Feature {
         if (minecraft.screen != null) minecraft.player.closeContainer();
         tick = 0;
         attemptedToClaim = false;
-        ChatUtils.clientMessage("State switched from: " + lastState + " to: " + state);
+        Diagnostics.event("INFO","books.transition",java.util.Map.of("from",lastState==null?"none":lastState.name(),"to",state.name()));
         clock.stop();
         if (lastState == State.IDLE) {
             inventoryIsFull = false;
