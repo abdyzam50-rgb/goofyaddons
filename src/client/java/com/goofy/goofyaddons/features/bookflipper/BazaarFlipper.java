@@ -69,6 +69,7 @@ public class BazaarFlipper implements Feature {
     private boolean running = false;
     private boolean paused = false;
     private boolean journalLoaded;
+    private final Set<String> exposedBooks = new HashSet<>();
     private boolean recoveryRequired;
     private boolean modePaused;
     private final BookJournal journal = new BookJournal(FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-book-orders.json"));
@@ -183,7 +184,13 @@ public class BazaarFlipper implements Feature {
 
     @Override
     public void stop() {
-        if (!taskList.isEmpty() || !bookLists.isEmpty()) recoveryRequired = true;
+        // Planned allocations are reversible; observed/submitted ownership is not.
+        rememberObservedBooks();
+        for (Task task : taskList) {
+            if (!exposedBooks.contains(task.getBook().id()))
+                CapitalManager.INSTANCE.release("books", task.getBook().id());
+        }
+        recoveryRequired |= !exposedBooks.isEmpty() || !bookLists.isEmpty();
         if (journalLoaded) checkpoint();
         watchdog.reset();
         debug("[BazaarFlipper] stop: resetting state, was " + state + " with " + taskList.size() + " active task(s)");
@@ -497,7 +504,7 @@ public class BazaarFlipper implements Feature {
 
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
                     if (slot.isEmpty()) {
-                        if(recheckBookOrders(task,"missing-buy-order")) return;
+                        if(exposedBooks.contains(task.getBook().id()) && recheckBookOrders(task,"missing-buy-order")) return;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] STARTUP_BAZAAR_CHECK: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -525,6 +532,8 @@ public class BazaarFlipper implements Feature {
                         return;
                     }
 
+                    exposedBooks.add(task.getBook().id());
+                    if (!checkpoint()) return;
                     int amount = inventoryScanner.checkOrder(slot.getFirst());
                     if (amount > inventoryScanner.getEmptyInventorySlots()) {
                         debug("[BazaarFlipper] STARTUP_BAZAAR_CHECK: not enough empty inventory slots to claim " + amount + " items, going to IDLE");
@@ -680,7 +689,7 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     if(!verifyBookConfirmation()) return;
-                    recordBookSubmission(activeTask,false);
+                    if (!recordBookSubmission(activeTask,false)) return;
                     InventoryUtils.clickSlot(13, false);
                     confirmationTask=null;
                     yieldAfterMs = System.currentTimeMillis() + 1000;
@@ -1224,7 +1233,7 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     if(!verifyBookConfirmation()) return;
-                    recordBookSubmission(task,true);
+                    if (!recordBookSubmission(task,true)) return;
                     InventoryUtils.clickSlot(13, false);
                     confirmationTask=null;
                     yieldAfterMs = System.currentTimeMillis() + 1000;
@@ -1316,7 +1325,7 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     if(!verifyBookConfirmation()) return;
-                    recordBookSubmission(task,true);
+                    if (!recordBookSubmission(task,true)) return;
                     InventoryUtils.clickSlot(13, false);
                     confirmationTask=null;
                     yieldAfterMs = System.currentTimeMillis() + 1000;
@@ -1604,6 +1613,8 @@ public class BazaarFlipper implements Feature {
         if (!journalLoaded || recoveryRequired && taskList.isEmpty() && bookLists.isEmpty()) return !recoveryRequired;
         try {
             Map<String, BookJournal.Position> positions = new HashMap<>();
+            exposedBooks.retainAll(taskList.stream().map(task -> task.getBook().id()).collect(java.util.stream.Collectors.toSet()));
+            rememberObservedBooks();
             for (Task task : taskList) positions.put(task.getBook().id(), new BookJournal.Position(task.getBook(),
                     Math.max(1, task.getReservedUnitCost() * task.getBook().getQtyAmount(task.getBook().level()))));
             for (BookList extra : bookLists) {
@@ -1611,7 +1622,7 @@ public class BazaarFlipper implements Feature {
                 positions.put(extra.book.id(), new BookJournal.Position(extra.book,
                         previous == null ? GoofyConfig.INSTANCE.maxTradingCapital : previous.cost()));
             }
-            journal.write(positions.values().stream().sorted(Comparator.comparing(position -> position.book().id())).toList());
+            journal.writeTracked(positions.values().stream().sorted(Comparator.comparing(position -> position.book().id())).toList(), exposedBooks);
             return true;
         } catch (Exception failed) {
             Diagnostics.failure("books.journal_save_failed",failed);
@@ -1627,7 +1638,8 @@ public class BazaarFlipper implements Feature {
     private void safetyHalt(String reason) {
         paused=true; // Latch this engine before fallible evidence capture/cleanup.
         Diagnostics.event("ERROR","books.transaction_blocked",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot()));
-        recoveryRequired |= !taskList.isEmpty() || !bookLists.isEmpty();
+        rememberObservedBooks();
+        recoveryRequired |= !exposedBooks.isEmpty() || !bookLists.isEmpty();
         checkpoint();
         paused = true;
         clock.stop();
@@ -1658,11 +1670,20 @@ public class BazaarFlipper implements Feature {
         return true;
     }
 
-    private void recordBookSubmission(Task task,boolean sale) {
+    private void rememberObservedBooks() {
+        for (Task task : taskList) if (!task.bookList.isEmpty()) exposedBooks.add(task.getBook().id());
+        for (BookList book : bookLists) exposedBooks.add(book.book.id());
+    }
+
+    private boolean recordBookSubmission(Task task,boolean sale) {
+        // Save the uncertainty barrier before the server can receive a confirmation click.
+        exposedBooks.add(task.getBook().id());
+        if (!checkpoint()) return false;
         submittedBookTask=task;submittedBookSelling=sale;submittedBookAt=System.currentTimeMillis();
         submittedBookUnits=sale?1:task.getAmountToOrder();submittedBookPrice=confirmationPrice;
         Diagnostics.event("INFO","order.submission_intent",java.util.Map.of("engine","books","trade",task.getProfitTradeId(),
                 "units",submittedBookUnits,"unitPrice",submittedBookPrice,"selling",sale));
+        return true;
     }
 
     private void verifyBookPlacement() {

@@ -28,6 +28,10 @@ public final class BookJournal {
         }
         return List.of(positions);
     }
+    /** Persist only plans with observed ownership or a submission that may reach the server. */
+    public void writeTracked(List<Position> plans, java.util.Set<String> exposed) throws Exception {
+        write(plans.stream().filter(position -> exposed.contains(position.book().id())).toList());
+    }
     public void write(List<Position> positions) throws Exception {
         String json = GSON.toJson(positions);
         if (json.equals(previous)) return;
