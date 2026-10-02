@@ -96,13 +96,7 @@ public class BazaarMonitor {
                     // Hooks may remove monitors. Iterate a snapshot on the client thread.
                     for (BazaarMonitorItem item : List.copyOf(monitorItemList)) {
                         if (!monitorItemList.contains(item) || now.getAsLong() - item.time < DURATION) continue;
-                        JsonObject product = products.getAsJsonObject(item.book.getLevel(
-                                item.isSellOrder ? item.book.sellLevel() : item.book.level()));
-                        if (product == null) continue;
-                        JsonArray orders = product.getAsJsonArray(item.isSellOrder ? "buy_summary" : "sell_summary");
-                        if (orders == null || orders.isEmpty()) continue;
-                        double bestPrice = orders.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
-                        if (!isOutbid(item.price, bestPrice, item.isSellOrder)) continue;
+                        if (!isOutbid(item.price, bestPrice(products, item), item.isSellOrder)) continue;
                         monitorItemList.remove(item);
                         for (Consumer<BazaarMonitorItem> hook : List.copyOf(hookList)) hook.accept(item);
                     }
@@ -116,6 +110,20 @@ public class BazaarMonitor {
         } catch (Exception failure) {
             request = null;
             LOGGER.warn("Order monitoring failed; retrying later", failure);
+        }
+    }
+
+    /** Best competing price, or NaN when this product's data is missing or malformed. */
+    private static double bestPrice(JsonObject products, BazaarMonitorItem item) {
+        try {
+            JsonObject product = products.getAsJsonObject(item.book.getLevel(
+                    item.isSellOrder ? item.book.sellLevel() : item.book.level()));
+            if (product == null) return Double.NaN;
+            JsonArray orders = product.getAsJsonArray(item.isSellOrder ? "buy_summary" : "sell_summary");
+            if (orders == null || orders.isEmpty()) return Double.NaN;
+            return orders.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
+        } catch (RuntimeException malformed) {
+            return Double.NaN;
         }
     }
 

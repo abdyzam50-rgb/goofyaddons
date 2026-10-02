@@ -48,9 +48,16 @@ public class FeatureManager {
 
     public void startConfigured() {
         Diagnostics.event("INFO","trading.start_requested",Diagnostics.snapshot());
+        if (GoofyConfig.loadError() != null) {
+            statusReason = "Config file rejected";
+            ChatUtils.clientMessage("Cannot start: " + GoofyConfig.loadError());
+            return;
+        }
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
-        if (!books.restoreBudget()) { statusReason = "Book recovery required"; return; }
+        // Load both engines' exposure before any gate so capital stays reserved for both.
+        boolean booksReady = books.restoreBudget();
         general.restoreBudget(); // Count persisted ordinary-item positions even in Books mode.
+        if (!booksReady) { statusReason = "Book recovery required"; return; }
         if (general.hasStateError()) {
             statusReason = "General order state unreadable";
             ChatUtils.clientMessage("Cannot start: general-order state is unreadable. File preserved; check logs.");
@@ -62,11 +69,6 @@ public class FeatureManager {
         paused = false;
         statusReason = "";
         applyMode(GoofyConfig.INSTANCE.tradingMode);
-    }
-
-    public void start(String name) {
-        GoofyConfig.INSTANCE.tradingMode = name.equals("GeneralFlipper") ? TradingMode.GENERAL : TradingMode.BOOKS;
-        startConfigured();
     }
 
     public void cycleMode() {

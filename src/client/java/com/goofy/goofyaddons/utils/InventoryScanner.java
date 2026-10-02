@@ -18,43 +18,6 @@ import java.util.List;
 public class InventoryScanner {
     private Minecraft minecraft = Minecraft.getInstance();
 
-    public List<Integer> findInv(String name) {
-        List<Integer> slots = new ArrayList<>();
-        Inventory playerInv = minecraft.player.getInventory();
-        AbstractContainerMenu menu = minecraft.player.containerMenu;
-
-        for (Slot slot : menu.slots) {
-            if (slot.container != playerInv || slot.getContainerSlot()<0 || slot.getContainerSlot()>=36) continue;
-            ItemStack item = slot.getItem();
-            if (item.isEmpty()) continue;
-            if (item.getCustomName() == null) continue;
-            if (!item.getCustomName().getString().replaceAll("§.","").equals(name)) continue;
-            slots.add(slot.index);
-        }
-        return slots;
-    }
-
-    public List<Integer> getSellOrder() {
-        List<Integer> slots = new ArrayList<>();
-        AbstractContainerMenu menu = minecraft.player.containerMenu;
-        int end = menu.slots.size() - 36;
-        for (int i = 0; i < end; i++) {
-            ItemStack item = menu.slots.get(i).getItem();
-            if (item.isEmpty()) continue;
-            if (item.getCustomName() == null) continue;
-            if (!item.getCustomName().getString().contains("SELL")) continue;
-            slots.add(i);
-        }
-        return slots;
-    }
-
-    public String getName(int slot) {
-        AbstractContainerMenu menu = minecraft.player.containerMenu;
-
-        ItemStack itemStack = menu.slots.get(slot).getItem();
-        return itemStack.getHoverName().getString().replaceAll("§.","");
-    }
-
     public List<Integer> findContainer(String name) {
         List<Integer> slots = new ArrayList<>();
         AbstractContainerMenu menu = minecraft.player.containerMenu;

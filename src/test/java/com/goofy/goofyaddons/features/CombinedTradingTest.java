@@ -83,4 +83,20 @@ class CombinedTradingTest {
         capital.release("books", "SUGAR");
         assertTrue(capital.owns("general", "SUGAR"));
     }
+
+    @Test void RecheckingAPlacedOrderDoesNotRestartThePurchaseSettleWindow() {
+        java.util.concurrent.atomic.AtomicLong now = new java.util.concurrent.atomic.AtomicLong(10_000);
+        CapitalManager capital = new CapitalManager(now::get);
+        capital.configure(100, 0);
+        assertFalse(capital.purchaseSettling());
+        assertTrue(capital.reserve("general", "SUGAR", 50, 100));
+        capital.purchased("general", "SUGAR");
+        assertTrue(capital.purchaseSettling());
+        now.addAndGet(1000);
+        assertFalse(capital.purchaseSettling());
+        // Periodic order inspections call purchased again for the same placed order.
+        capital.purchased("general", "SUGAR");
+        assertFalse(capital.purchaseSettling());
+        assertEquals(50, capital.cost("general", "SUGAR"));
+    }
 }

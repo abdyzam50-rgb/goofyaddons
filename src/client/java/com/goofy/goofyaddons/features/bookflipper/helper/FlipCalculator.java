@@ -80,39 +80,51 @@ public class FlipCalculator {
                                     double taxPercentage, double minimumProfit) {
         List<FlipItem> result = new ArrayList<>();
         for (Book book : books) {
-            JsonObject buy = products.getAsJsonObject(book.getLevel(book.level()));
-            JsonObject sell = products.getAsJsonObject(book.getLevel(book.sellLevel()));
-            if (buy == null || sell == null) continue;
-            double bid = topPrice(buy, "sell_summary");
-            double ask = topPrice(buy, "buy_summary");
-            double sellBid = topPrice(sell, "sell_summary");
-            double sellAsk = topPrice(sell, "buy_summary");
-            if (bid <= 0 || ask <= 0 || sellBid <= 0 || sellAsk <= 0) continue;
-            boolean instaBuy = (ask - bid) / ask * 100 <= book.instaBuyPercentage();
-            boolean instaSell = (sellAsk - sellBid) / sellAsk * 100 <= book.instaSellPercentage();
-            // The UI uses the existing top order price. No invented price improvement.
-            double cost = (instaBuy ? ask : bid) * book.getQtyAmount(book.level());
-            double revenue = (instaSell ? sellBid : sellAsk) * (1 - taxPercentage / 100);
-            double profit = revenue - cost;
-            if (!Double.isFinite(profit) || profit <= 0 || profit < minimumProfit) continue;
-            JsonObject buyQuick = buy.getAsJsonObject("quick_status");
-            JsonObject sellQuick = sell.getAsJsonObject("quick_status");
-            if (buyQuick == null || sellQuick == null) continue;
-            // Historical execution flow, rather than standing order depth.
-            double buyFlow = movingWeek(buyQuick, instaBuy ? "buyMovingWeek" : "sellMovingWeek")
-                    / book.getQtyAmount(book.level());
-            double sellFlow = movingWeek(sellQuick, instaSell ? "sellMovingWeek" : "buyMovingWeek");
-            double flow = Math.min(buyFlow, sellFlow);
-            if (flow <= 0) continue;
-            double score = profit * Math.log10(flow + 1) / Math.sqrt(cost);
-            result.add(new FlipItem(book, cost, score, instaBuy, instaSell));
+            try {
+                FlipItem item = evaluate(products, book, taxPercentage, minimumProfit);
+                if (item != null) result.add(item);
+            } catch (RuntimeException malformed) {
+                // One malformed product must not hide every other route.
+                LOGGER.warn("Skipping malformed Bazaar data for {}", book.getRomanLevel(book.level()), malformed);
+            }
         }
         result.sort(Comparator.comparingDouble(FlipItem::score).reversed());
         return List.copyOf(result);
     }
 
+    private static FlipItem evaluate(JsonObject products, Book book, double taxPercentage, double minimumProfit) {
+        JsonObject buy = products.getAsJsonObject(book.getLevel(book.level()));
+        JsonObject sell = products.getAsJsonObject(book.getLevel(book.sellLevel()));
+        if (buy == null || sell == null) return null;
+        double bid = topPrice(buy, "sell_summary");
+        double ask = topPrice(buy, "buy_summary");
+        double sellBid = topPrice(sell, "sell_summary");
+        double sellAsk = topPrice(sell, "buy_summary");
+        if (bid <= 0 || ask <= 0 || sellBid <= 0 || sellAsk <= 0) return null;
+        boolean instaBuy = (ask - bid) / ask * 100 <= book.instaBuyPercentage();
+        boolean instaSell = (sellAsk - sellBid) / sellAsk * 100 <= book.instaSellPercentage();
+        // The UI uses the existing top order price. No invented price improvement.
+        double cost = (instaBuy ? ask : bid) * book.getQtyAmount(book.level());
+        double revenue = (instaSell ? sellBid : sellAsk) * (1 - taxPercentage / 100);
+        double profit = revenue - cost;
+        if (!Double.isFinite(profit) || profit <= 0 || profit < minimumProfit) return null;
+        JsonObject buyQuick = buy.getAsJsonObject("quick_status");
+        JsonObject sellQuick = sell.getAsJsonObject("quick_status");
+        if (buyQuick == null || sellQuick == null) return null;
+        // Historical execution flow, rather than standing order depth.
+        double buyFlow = movingWeek(buyQuick, instaBuy ? "buyMovingWeek" : "sellMovingWeek")
+                / book.getQtyAmount(book.level());
+        double sellFlow = movingWeek(sellQuick, instaSell ? "sellMovingWeek" : "buyMovingWeek");
+        double flow = Math.min(buyFlow, sellFlow);
+        if (flow <= 0) return null;
+        double score = profit * Math.log10(flow + 1) / Math.sqrt(cost);
+        return new FlipItem(book, cost, score, instaBuy, instaSell);
+    }
+
     private static double movingWeek(JsonObject quick, String key) {
-        return quick.has(key) ? Math.max(0, quick.get(key).getAsDouble()) : 0;
+        if (!quick.has(key)) return 0;
+        double value = quick.get(key).getAsDouble();
+        return Double.isFinite(value) ? Math.max(0, value) : 0;
     }
 
     private static double topPrice(JsonObject product, String side) {

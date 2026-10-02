@@ -36,13 +36,7 @@ public final class TradingSafety {
     }
 
     public static boolean claimReceipt(String message, String item, int expectedUnits) {
-        String clean = message.replaceAll("§.", "");
-        java.util.regex.Matcher match = java.util.regex.Pattern.compile(
-                "^\\[Bazaar] Claimed ([\\d,]+(?:\\.\\d+)?) coins from selling ([\\d,]+)x "
-                        + java.util.regex.Pattern.quote(item) + "[!.]?$", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(clean);
-        if (!match.matches()) return false;
-        try { return Integer.parseInt(match.group(2).replace(",", "")) == expectedUnits; }
-        catch (NumberFormatException invalid) { return false; }
+        return com.goofy.goofyaddons.features.profit.TradeReceipts.saleProceeds(message, item, expectedUnits) != null;
     }
 
     public static boolean cancellationReceipt(String message, String item) {

@@ -56,4 +56,15 @@ class GeneralCalculatorTest {
         settings.items = List.of(new GeneralItem("ENCHANTED_SUGAR", "Sugar"), new GeneralItem("ENCHANTED_SUGAR", "Sugar"));
         assertThrows(IllegalArgumentException.class, settings::validate);
     }
+
+    @Test void OneMalformedProductDoesNotHideOtherItems() {
+        GeneralSettings settings = settings();
+        settings.items = List.of(new GeneralItem("ENCHANTED_COAL", "Enchanted Coal"),
+                new GeneralItem("ENCHANTED_SUGAR", "Enchanted Sugar"));
+        JsonObject products = products(100, 120, 100000);
+        products.add("ENCHANTED_COAL", JsonParser.parseString("{\"sell_summary\":[{\"pricePerUnit\":[]}]}"));
+        List<GeneralCalculator.Candidate> result = GeneralCalculator.calculate(products, settings, 1.25, 10000, 100);
+        assertEquals(1, result.size());
+        assertEquals("ENCHANTED_SUGAR", result.getFirst().item().id());
+    }
 }

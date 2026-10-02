@@ -22,6 +22,8 @@ public final class TradeBudget {
         }
         List<FlipItem> selected = new ArrayList<>();
         for (FlipItem item : candidates) {
+            // The engine safety-halts on instant buys/sells, so never plan them.
+            if (item.instaBuy() || item.instaSell()) continue;
             if (owned.contains(item.book().id()) || !Double.isFinite(item.totalCost())
                     || item.totalCost() <= 0 || item.totalCost() > available) continue;
             available -= item.totalCost();
