@@ -24,6 +24,8 @@ public class CapitalManager {
         double pending = allocations.values().stream().mapToDouble(Allocation::pending).sum();
         return Math.max(0, Math.min(limit - committed, purse - reserve - pending));
     }
+    public double committed() { return allocations.values().stream().mapToDouble(Allocation::cost).sum(); }
+    public int positionCount() { return allocations.size(); }
 
     public boolean reserve(String owner, String product, double cost, double purse) {
         if (!Double.isFinite(cost) || cost <= 0 || allocations.containsKey(product)

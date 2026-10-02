@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.failsafes;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.event.ChatHook;
 import com.goofy.goofyaddons.features.FeatureManager;
 import com.goofy.goofyaddons.utils.Clock;
@@ -33,14 +34,14 @@ public class ScheduledReboot implements Failsafe {
 
         switch (state) {
             case ISLAND -> {
-                Minecraft.getInstance().player.connection.sendCommand("Hub");
+                Diagnostics.command("Hub");
                 state = State.HUB;
             }
 
             case HUB -> {
                 clock.start(10000);
                 if (clock.shouldFire()) {
-                    Minecraft.getInstance().player.connection.sendCommand("Is");
+                    Diagnostics.command("Is");
                     state = State.COMPLETED;
                 }
             }
@@ -48,7 +49,7 @@ public class ScheduledReboot implements Failsafe {
             case COMPLETED -> {
                 clock.start(5000);
                 if (clock.shouldFire()) {
-                    FeatureManager.INSTANCE.resume();
+                    FeatureManager.INSTANCE.resumeAfterTravel();
                     enabled = false;
                 }
             }

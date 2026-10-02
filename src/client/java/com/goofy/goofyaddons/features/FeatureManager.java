@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features;
 
+import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.config.GoofyConfig;
 import com.goofy.goofyaddons.failsafes.FailsafeManager;
 import com.goofy.goofyaddons.features.bookflipper.BazaarFlipper;
@@ -17,6 +18,7 @@ public class FeatureManager {
     private boolean started;
     private boolean paused;
     private Feature previousOwner;
+    private String statusReason = "";
 
     private FeatureManager() {}
 
@@ -32,22 +34,25 @@ public class FeatureManager {
         if (!started || paused) return;
         try {
         if (requested != null && scheduler.canSwitch()) applyMode(requested);
-        for (Feature engine : engines()) engine.poll();
+        for (Feature engine : engines()) { engine.poll(); if(paused || !started) return; }
         Feature owner = scheduler.select(engines());
         if (owner != previousOwner && previousOwner != null) previousOwner.yieldMenu();
         previousOwner = owner;
         if (owner != null) owner.onTick();
         } catch (RuntimeException failure) {
             org.slf4j.LoggerFactory.getLogger(FeatureManager.class).error("Trading tick failed; pausing", failure);
+            Diagnostics.failure("trading.tick_failed",failure);
             safetyPause("Unexpected trading error; ownership records retained.");
         }
     }
 
     public void startConfigured() {
+        Diagnostics.event("INFO","trading.start_requested",Diagnostics.snapshot());
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
-        if (!books.restoreBudget()) return;
+        if (!books.restoreBudget()) { statusReason = "Book recovery required"; return; }
         general.restoreBudget(); // Count persisted ordinary-item positions even in Books mode.
         if (general.hasStateError()) {
+            statusReason = "General order state unreadable";
             ChatUtils.clientMessage("Cannot start: general-order state is unreadable. File preserved; check logs.");
             return;
         }
@@ -55,6 +60,7 @@ public class FeatureManager {
         if (started) return;
         started = true;
         paused = false;
+        statusReason = "";
         applyMode(GoofyConfig.INSTANCE.tradingMode);
     }
 
@@ -98,6 +104,7 @@ public class FeatureManager {
         scheduler.reset();
         previousOwner = null;
         FailsafeManager.INSTANCE.reset();
+        statusReason = "";
     }
 
     public void pause() {
@@ -110,18 +117,54 @@ public class FeatureManager {
     }
 
     public void safetyPause(String reason) {
-        ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting.");
-        pause();
+        SafetyActions.latch(() -> {
+            statusReason = reason;
+            paused = true;
+            scheduler.reset();
+            previousOwner = null;
+        }, failure -> org.slf4j.LoggerFactory.getLogger(FeatureManager.class)
+                .error("Safety cleanup failed; trading remains paused", failure),
+                books::pause, general::pause,
+                () -> Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot())),
+                () -> ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting."));
     }
 
+    public void resumeAfterTravel() {
+        if(!statusReason.isBlank()) return; // An automatic travel recovery must not clear a safety block.
+        resume();
+    }
     public void resume() {
         if (!started || !paused) return;
         paused = false;
+        statusReason = "";
         for (Feature engine : engines()) engine.resume();
         scheduler.reset();
     }
 
     public boolean isMacroRunning() {
         return started && engines().stream().anyMatch(Feature::isRunning);
+    }
+    public boolean isTradingActive() { return started && !paused; }
+    public String status() {
+        if (!started) return statusReason.isBlank() ? "STOPPED" : "BLOCKED";
+        return paused ? "PAUSED" : "RUNNING";
+    }
+    public String modeLabel() { return (started ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
+    public java.util.Map<String,Object> diagnosticState() {
+        return java.util.Map.of("books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name());
+    }
+    public String taskItem() {
+        if (!started || paused) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";
+        if (previousOwner == books) return books.taskItem();
+        if (previousOwner == general) return general.taskItem();
+        return "Monitoring both configured engines";
+    }
+    public String activity() {
+        if (!statusReason.isBlank()) return statusReason;
+        if (paused) return "Paused for travel or review";
+        if (!started) return "Press J to start";
+        if (previousOwner == books) return books.activity();
+        if (previousOwner == general) return general.activity();
+        return "Waiting for orders or eligible flips";
     }
 }

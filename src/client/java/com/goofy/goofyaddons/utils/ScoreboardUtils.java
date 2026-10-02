@@ -30,16 +30,9 @@ public class ScoreboardUtils {
                             + fakePlayer
                             + team.getPlayerSuffix().getString();
             if (!line.contains("Purse")) continue;
-                try {
-                    purse = Double.parseDouble(
-                        line.replace("Purse:", "")
-                                .replaceAll("§.", "")
-                                .replaceAll("[^0-9.]", "")
-                                .trim()
-                    );
-                } catch (NumberFormatException ignored) {
-                    return -1;
-                }
+            double parsed=PurseParser.parse(line);
+            if(parsed<0 || purse>=0) return -1; // Multiple purse lines are ambiguous.
+            purse=parsed;
         }
         return purse;
     }

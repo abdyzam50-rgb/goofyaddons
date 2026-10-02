@@ -6,6 +6,22 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RuntimeSafetyTest {
+    @Test void confirmationsMustMatchTheTransactionSide() {
+        assertTrue(TradingSafety.confirmationTitle("Confirm Buy Order",false));
+        assertTrue(TradingSafety.confirmationTitle("§aConfirm Sell Offer",true));
+        assertFalse(TradingSafety.confirmationTitle("Confirm Buy Order",true));
+        assertFalse(TradingSafety.confirmationTitle("Confirm Sell Offer",false));
+        assertFalse(TradingSafety.confirmationTitle("Confirm Purchase",false));
+        assertFalse(TradingSafety.confirmationTitle(null,false));
+    }
+    @Test void anvilInputDisappearanceIsNotProofOfACombinedBook() {
+        assertFalse(TradingSafety.combinedBookArrived(0,0,true));
+        assertFalse(TradingSafety.combinedBookArrived(-1,1,true));
+        assertFalse(TradingSafety.combinedBookArrived(0,1,false));
+        assertFalse(TradingSafety.combinedBookArrived(0,2,true));
+        assertTrue(TradingSafety.combinedBookArrived(0,1,true));
+        assertTrue(TradingSafety.combinedBookArrived(3,4,true));
+    }
     @Test void unreadableOrDifferentOrderQuantitiesCannotBeAdopted() {
         assertFalse(TradingSafety.orderQuantityMatches(16,null));
         assertFalse(TradingSafety.orderQuantityMatches(16,32));
@@ -49,6 +65,20 @@ class RuntimeSafetyTest {
         assertFalse(TradingSafety.ordersTitle("Bazaar"));
         assertFalse(TradingSafety.ordersTitle("Fuming Potato Book"));
         assertTrue(TradingSafety.ordersTitle("Your Bazaar Orders"));
+    }
+    @Test void formattedOrdersTitlesAreRecognizedWithoutAcceptingOtherBazaarMenus() {
+        assertTrue(TradingSafety.ordersTitle("§aYour Bazaar Orders"));
+        assertTrue(TradingSafety.ordersTitle("  §6Bazaar ➜ Orders  "));
+        assertTrue(TradingSafety.ordersTitle("Bazaar → Orders"));
+        assertFalse(TradingSafety.ordersTitle("Bazaar ➜ Enchanted Ink Sac"));
+        assertFalse(TradingSafety.ordersTitle("Confirm Buy Order"));
+        assertFalse(TradingSafety.ordersTitle(null));
+    }
+    @Test void coopOrdersMenuFromDiagnosticBundleIsRecognized() {
+        assertTrue(TradingSafety.ordersTitle("Co-op Bazaar Orders"));
+        assertTrue(TradingSafety.ordersTitle("§6Co-op Bazaar Orders"));
+        assertFalse(TradingSafety.ordersTitle("Co-op Bazaar"));
+        assertFalse(TradingSafety.ordersTitle("Co-op Bazaar Orders Confirmation"));
     }
     @Test void duplicateAndPagedOrdersCannotBeAdopted() {
         assertTrue(TradingSafety.ambiguousOrders(List.of("BUY Potato", "BUY Potato"), "Potato"));

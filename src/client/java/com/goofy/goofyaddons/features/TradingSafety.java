@@ -7,7 +7,10 @@ public final class TradingSafety {
     private TradingSafety() {}
 
     public static boolean ordersTitle(String title) {
-        return java.util.Set.of("Your Bazaar Orders", "Bazaar Orders", "Manage Orders").contains(title);
+        if (title==null) return false;
+        String normalized=title.replaceAll("§.", "").replace(' ',' ').strip().replaceAll("\\s+", " ");
+        return java.util.Set.of("Your Bazaar Orders", "Bazaar Orders", "Co-op Bazaar Orders", "Manage Orders",
+                "Bazaar ➜ Orders", "Bazaar → Orders", "Bazaar ➜ Manage Orders", "Bazaar → Manage Orders").contains(normalized);
     }
 
     public static boolean ambiguousOrders(java.util.List<String> names, String item) {
@@ -52,6 +55,14 @@ public final class TradingSafety {
         return claimPending && matchingReceipt && orderAbsent && inventory == 0;
     }
 
+    public static boolean confirmationTitle(String title,boolean selling) {
+        if(title==null) return false;
+        String clean=title.replaceAll("§.","").strip();
+        return selling ? java.util.Set.of("Confirm Sell Offer","Confirm Sell Order").contains(clean) : clean.equals("Confirm Buy Order");
+    }
+    public static boolean combinedBookArrived(int previousOutput,int currentOutput,boolean cursorEmpty) {
+        return previousOutput>=0 && currentOutput==previousOutput+1 && cursorEmpty;
+    }
     public static boolean orderQuantityMatches(int expected, Integer observed) {
         return expected > 0 && observed != null && expected == observed;
     }

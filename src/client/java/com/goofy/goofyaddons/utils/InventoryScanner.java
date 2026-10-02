@@ -24,11 +24,11 @@ public class InventoryScanner {
         AbstractContainerMenu menu = minecraft.player.containerMenu;
 
         for (Slot slot : menu.slots) {
-            if (slot.container != playerInv) continue;
+            if (slot.container != playerInv || slot.getContainerSlot()<0 || slot.getContainerSlot()>=36) continue;
             ItemStack item = slot.getItem();
             if (item.isEmpty()) continue;
             if (item.getCustomName() == null) continue;
-            if (!item.getCustomName().getString().equals(name)) continue;
+            if (!item.getCustomName().getString().replaceAll("§.","").equals(name)) continue;
             slots.add(slot.index);
         }
         return slots;
@@ -52,7 +52,7 @@ public class InventoryScanner {
         AbstractContainerMenu menu = minecraft.player.containerMenu;
 
         ItemStack itemStack = menu.slots.get(slot).getItem();
-        return itemStack.getCustomName().toString();
+        return itemStack.getHoverName().getString().replaceAll("§.","");
     }
 
     public List<Integer> findContainer(String name) {
@@ -63,7 +63,7 @@ public class InventoryScanner {
             ItemStack item = menu.slots.get(i).getItem();
             if (item.isEmpty()) continue;
             if (item.getCustomName() == null) continue;
-            if (!item.getCustomName().getString().equals(name)) continue;
+            if (!item.getCustomName().getString().replaceAll("§.","").equals(name)) continue;
             slots.add(i);
         }
         return slots;
@@ -75,11 +75,11 @@ public class InventoryScanner {
         AbstractContainerMenu menu = minecraft.player.containerMenu;
 
         for (Slot slot : menu.slots) {
-            if (slot.container != playerInv) continue;
+            if (slot.container != playerInv || slot.getContainerSlot()<0 || slot.getContainerSlot()>=36) continue;
             ItemStack item = slot.getItem();
             if (item.isEmpty()) continue;
             ItemLore lore = item.get(DataComponents.LORE);
-            if (lore == null || !lore.lines().stream().anyMatch(l -> l.getString().equals(string))) continue;
+            if (!isEnchantedBook(item) || lore == null || !lore.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string))) continue;
             slots.add(slot.index);
         }
         return slots;
@@ -93,40 +93,29 @@ public class InventoryScanner {
             ItemStack item = menu.slots.get(i).getItem();
             if (item.isEmpty()) continue;
             ItemLore lore = item.get(DataComponents.LORE);
-            if (lore == null || !lore.lines().stream().anyMatch(l -> l.getString().equals(string))) continue;
+            if (!isEnchantedBook(item) || lore == null || !lore.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string))) continue;
             slots.add(i);
         }
         return slots;
     }
 
     public int checkOrder(int slot) {
-        int items = 0;
         AbstractContainerMenu menu = minecraft.player.containerMenu;
         ItemStack itemStack = menu.slots.get(slot).getItem();
         ItemLore lore = itemStack.get(DataComponents.LORE);
         if (lore == null) return 0;
-        for (Component line : lore.lines()) {
-            String text = line.getString();
-            if (!text.contains("You have")) continue;
-            String digits = text.replaceAll("[^0-9]", "");
-            items = Integer.parseInt(digits);
-        }
-        return items;
+        return com.goofy.goofyaddons.features.generalflipper.OrderLore.claimable(
+                String.join("\n",lore.lines().stream().map(Component::getString).toList()),true);
     }
 
     public double getUnitPrice(int slot) {
-        double unitPrice = 0;
         AbstractContainerMenu menu = minecraft.player.containerMenu;
         ItemStack itemStack = menu.slots.get(slot).getItem();
         ItemLore itemLore = itemStack.get(DataComponents.LORE);
         if (itemLore == null) return 0;
-        for (Component line : itemLore.lines()) {
-            String text = line.getString();
-            if (!text.contains("Unit price:")) continue;
-            String digits = text.replaceAll("[^0-9.]", "");
-            unitPrice = Double.parseDouble(digits);
-        }
-        return unitPrice;
+        Double price=com.goofy.goofyaddons.features.profit.TradeReceipts.unitPrice(
+                String.join("\n",itemLore.lines().stream().map(Component::getString).toList()));
+        return price==null ? 0 : price;
     }
 
     public int getEmptyInventorySlots() {
@@ -135,7 +124,7 @@ public class InventoryScanner {
         Inventory playerInv = minecraft.player.getInventory();
 
         for (Slot slot : menu.slots) {
-            if (slot.container != playerInv) continue;
+            if (slot.container != playerInv || slot.getContainerSlot()<0 || slot.getContainerSlot()>=36) continue;
 
             if (slot.hasItem()) continue;
             amount++;
@@ -168,7 +157,7 @@ public class InventoryScanner {
         ItemLore lore = item.get(DataComponents.LORE);
         ItemLore lore2 = item2.get(DataComponents.LORE);
         if (lore == null || lore2 == null) return false;
-        if (lore.lines().stream().anyMatch(l -> l.getString().equals(string)) && lore2.lines().stream().anyMatch(l -> l.getString().equals(string)))
+        if (lore.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string)) && lore2.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string)))
             return false;
         return true;
     }
@@ -181,7 +170,7 @@ public class InventoryScanner {
             ItemStack item = menu.slots.get(i).getItem();
             if (item.isEmpty()) continue;
             ItemLore lore = item.get(DataComponents.LORE);
-            if (lore == null || !lore.lines().stream().anyMatch(l -> l.getString().contains(book.name()))) continue;
+            if (!matchesBook(item,book)) continue;
             slots.add(i);
         }
         return slots;
@@ -196,12 +185,23 @@ public class InventoryScanner {
             ItemStack item = slot.getItem();
             if (item.isEmpty()) continue;
             ItemLore lore = item.get(DataComponents.LORE);
-            if (lore == null || !lore.lines().stream().anyMatch(l -> l.getString().contains(book.name()))) continue;
+            if (!matchesBook(item,book)) continue;
             slots.add(slot.index);
         }
         return slots;
     }
 
+    private static boolean isEnchantedBook(ItemStack item) {
+        CustomData data=item.get(DataComponents.CUSTOM_DATA);
+        return data!=null && "ENCHANTED_BOOK".equals(data.copyTag().getStringOr("id",""));
+    }
+    private static boolean matchesBook(ItemStack item,Book book) {
+        CustomData data=item.get(DataComponents.CUSTOM_DATA);
+        if(data==null || !"ENCHANTED_BOOK".equals(data.copyTag().getStringOr("id",""))) return false;
+        CompoundTag enchants=data.copyTag().getCompound("enchantments").orElse(null);
+        if(enchants==null || enchants.keySet().size()!=1) return false;
+        return enchants.getIntOr(book.id().substring("ENCHANTMENT_".length()).toLowerCase(java.util.Locale.ROOT),-1)>0;
+    }
     public int getLevel(int slot) {
         AbstractContainerMenu menu = minecraft.player.containerMenu;
         ItemStack itemStack = menu.slots.get(slot).getItem();

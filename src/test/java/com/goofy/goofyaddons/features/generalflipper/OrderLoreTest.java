@@ -12,6 +12,57 @@ class OrderLoreTest {
         assertEquals(0, OrderLore.claimable("Filled: 4/256 1.6%", true));
         assertEquals(2, OrderLore.claimable("Filled: 6/256\nYou have 2 items to claim!", true));
     }
+    @Test void quantityCanBeReadIndependentlyOfFillFormatting() {
+        assertEquals(32,OrderLore.total("Order amount: 32x\nFilled: 0%"));
+        assertEquals(32,OrderLore.total("§7Order amount: §a32x\n§7Filled: §a0§7/§a32"));
+        assertEquals(2048,OrderLore.total("Amount: 2,048 items"));
+        assertNull(OrderLore.total("Order amount: 32x\nFilled: 40/32"));
+        assertNull(OrderLore.total("Order amount: 64x\nFilled: 0/32"));
+        assertNull(OrderLore.total("Order amount: 0x"));
+        assertNull(OrderLore.total("Filled: 50%"));
+        assertNull(OrderLore.total(null));
+    }
+    @Test void partialClaimMustArriveBeforeReopeningTheRemainingOrder() {
+        String remaining="Order amount: 32x\nFilled: 4/32 (12.5%)\nPrice per unit: 133,350.4 coins\nClick to view options!";
+        assertTrue(OrderLore.canOpenOptionsAfterClaim(remaining,1,4,3));
+        assertFalse(OrderLore.canOpenOptionsAfterClaim(remaining,1,3,3));
+        assertFalse(OrderLore.canOpenOptionsAfterClaim("Loading...",1,4,3));
+        assertFalse(OrderLore.canOpenOptionsAfterClaim(remaining+"\nYou have 1 item to claim!",1,4,3));
+    }
+    @Test void remainingPartialFillsAreNotHiddenByEarlierClaims() {
+        assertEquals(3,OrderLore.claimable("Filled: 4/32",1));
+        assertEquals(0,OrderLore.claimable("Filled: 4/32",4));
+        assertEquals(2,OrderLore.claimable("Filled: 6/32\nYou have 2 items to claim!",4));
+    }
+    @Test void coopCreatorMustMatchEvenWhenRankAndColorsArePresent() {
+        assertTrue(OrderLore.ownOrder("§7By: §b[MVP+] §acuredmc","curedmc"));
+        assertTrue(OrderLore.ownOrder("By: curedmc","CUREDMC"));
+        assertFalse(OrderLore.ownOrder("By: curedmc_extra","curedmc"));
+        assertFalse(OrderLore.ownOrder("By: coopmate","curedmc"));
+        assertFalse(OrderLore.ownOrder("Loading...","curedmc"));
+    }
+    @Test void partialSellClaimMustBeConfirmedBeforeReopeningCancellation() {
+        String options="Order amount: 32x\nFilled: 4/32\nClick to view options!";
+        assertFalse(OrderLore.canOpenSellOptionsAfterClaim(options,4,false));
+        assertTrue(OrderLore.canOpenSellOptionsAfterClaim(options,4,true));
+        assertTrue(OrderLore.canOpenSellOptionsAfterClaim(options,0,false));
+        assertFalse(OrderLore.canOpenSellOptionsAfterClaim("Loading...",4,true));
+    }
+    @Test void observedSellOfferWithoutFilledLineIsVerifiedAsUnfilled() {
+        String observed="Worth 7.6M coins\n\nOffer amount: 32x\n\nPrice per unit: 239,998.6 coins\n\nBy: [MVP+] curedmc\n\nClick to view options!";
+        assertEquals(32,OrderLore.total(observed));
+        assertEquals(new OrderLore.Fill(0,32),OrderLore.fill(observed));
+        assertTrue(OrderLore.canOpenSellOptionsAfterClaim(observed,0,false));
+        assertEquals(new OrderLore.Fill(12,32),OrderLore.fill(observed+"\nFilled: 12/32 (37.5%)"));
+        assertEquals(new OrderLore.Fill(32,32),OrderLore.fill(observed+"\nFilled: 32/32 (100%)"));
+    }
+    @Test void missingMalformedOrConflictingFillEvidenceIsNotAssumedZero() {
+        assertNull(OrderLore.fill("Offer amount: 32x"));
+        assertNull(OrderLore.fill("Offer amount: 32x\nFilled: Loading...\nClick to view options!"));
+        assertNull(OrderLore.fill("Offer amount: 32x\nYou have coins to claim!\nClick to view options!"));
+        assertNull(OrderLore.total("Offer amount: 32x\nFilled: 0/64"));
+        assertNull(OrderLore.total("Offer amount: 32x\nOrder amount: 64x"));
+    }
     @Test void invalidOrMissingFillCountsAreRejected() {
         assertNull(OrderLore.fill("Filled: 300/256"));
         assertNull(OrderLore.fill("Filled: 0/0"));

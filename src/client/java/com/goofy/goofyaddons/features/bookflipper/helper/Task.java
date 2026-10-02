@@ -34,6 +34,7 @@ public class Task {
     private Book book;
     private int amountToOrder;
     private double reservedUnitCost;
+    private final String profitTradeId = java.util.UUID.randomUUID().toString();
     private BookState bookState;
     // book location will be represented in integars, 0 = Inventory, 1 = EnderChest, 2 = EnderChestPage2
     public List<BookList> bookList = new ArrayList<>();
@@ -49,6 +50,7 @@ public class Task {
     public Book getBook() {
         return book;
     }
+    public String getProfitTradeId() { return profitTradeId; }
 
     public BookState getBookState() {
         return bookState;
