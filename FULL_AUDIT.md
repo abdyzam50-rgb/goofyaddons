@@ -625,6 +625,31 @@ short holding limit is not rejected.
   `Book.baseUnits` carries the valuation, returns 0 for a level outside the route rather
   than throwing, and is tested.
 
+### HUD batch
+
+- **A31: fixed.** Both halves. The panel accepted any height above 80 and drew a fixed set
+  of rows, letting the scissor cut off whatever did not fit, so on a short window or a high
+  HUD scale rows vanished with nothing to indicate it. `ProfitDisplay.layout` now decides
+  which sections fit, in priority order — footer first because it carries warnings, then the
+  one headline number, the current task, the rate, and finally as many detail rows as remain
+  — and `bounds` sizes the card to exactly what it will draw, so there is neither dead space
+  nor overflow. Pose and scissor cleanup moved into `finally`, so an exception from reading
+  the ledger or the engines can no longer leave every later screen element inheriting this
+  panel's clip and transform.
+
+  Two bugs were caught while doing it, neither by reading. A property test for "more room
+  never removes content" failed: greedy allocation was not monotone, because once the task
+  block became affordable it took the room the rate line was using, so a one-pixel taller
+  window dropped content. Thresholds replaced it. Then hand-tracing the renderer against the
+  reserved heights found the detail separator costing 7px that nothing reserved, which would
+  have put the last row through the footer rule — a test could not catch that one, since the
+  test and the renderer would have shared the same wrong formula.
+
+  Presentation also changed, following the stat-tile and status-colour conventions: one hero
+  figure rather than nine equally weighted coloured rows, labels in muted ink with values in
+  primary ink, colour reserved for status, and the profit value signed so direction never
+  depends on colour alone.
+
 ### Findings with no status record anywhere in this document
 
 A09, A13, A15, A16, A17, A23, A24, A25, A29, A31, A33, R02, R03, R04, R05, R06,

@@ -5,7 +5,7 @@ the GitHub file view (**Raw** / the download button), not by copying the page.
 
 ```
 dist/goofyaddons-1.3.7-BETA.jar
-sha256 8eb04362c42e9ca319e14816fad8f566aa19367e19c8ec04692185965b1b99e1
+sha256 c1b196941d42be70e414a17eb0b54f71af196e0b275370acf335bc9a76951386
 ```
 
 ## What you need
@@ -59,6 +59,10 @@ Fixes to the parts that stopped it completing a cycle:
   until a watchdog noticed. Both now stop with a reason.
 - Stopping used to leave claim state behind, which could silently wedge the engine on the
   next start.
+
+The status panel was also rebuilt: one card instead of two, confirmed profit as the single
+large number, signed so a loss reads as a loss without relying on colour, and rows that are
+dropped rather than silently clipped when the window is short or the HUD scale is high.
 
 ## Reporting a problem
 
