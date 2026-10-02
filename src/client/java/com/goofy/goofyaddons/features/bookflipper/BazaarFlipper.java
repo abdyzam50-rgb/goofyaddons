@@ -142,6 +142,7 @@ public class BazaarFlipper implements Feature {
         state.put("tasks",taskList.stream().map(task->java.util.Map.of("trade",task.getProfitTradeId(),"item",task.getBook().id(),"state",task.getBookState().name(),"remaining",task.getAmountToOrder())).toList());
         return state;
     }
+    public boolean hasRetainedTasks() { return !taskList.isEmpty() || !bookLists.isEmpty(); }
     public String taskItem() {
         Task task=pendingBuyClaim;
         if (task==null) task=switch (state) {

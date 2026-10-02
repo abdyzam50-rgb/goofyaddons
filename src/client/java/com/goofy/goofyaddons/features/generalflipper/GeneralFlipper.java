@@ -122,6 +122,10 @@ public class GeneralFlipper implements Feature {
         }
         state.put("positions",retained);return state;
     }
+    public String retainedItem() {
+        return positions.isEmpty() ? "No retained general orders" : "Retained: "+positions.getFirst().quantity+"x "+positions.getFirst().item.name();
+    }
+    public boolean hasRetainedPositions() { return !positions.isEmpty(); }
     public String taskItem() {
         return active == null ? "No item selected" : active.item.name();
     }
@@ -266,6 +270,7 @@ public class GeneralFlipper implements Feature {
                     active.placedAt = now;
                     if (!save()) return; // Persist intent before the irreversible click.
                     click(confirm);
+                    Diagnostics.event("INFO","order.submitted",java.util.Map.of("trade",active.tradeId,"item",active.item.id(),"units",active.quantity,"side",selling?"SELL":"BUY","unitPrice",selling?active.sellPrice:active.unitCost,"cost",active.cost()));
                     transition(Step.VERIFY_ORDER);
                     minecraft.player.closeContainer();
                 }
@@ -276,6 +281,7 @@ public class GeneralFlipper implements Feature {
                     int order = findOrder(selling);
                     if (order >= 0) {
                         if (!orderMatchesPosition(order)) return;
+                        Diagnostics.event("INFO","order.verified",java.util.Map.of("trade",active.tradeId,"item",active.item.id(),"units",active.quantity,"side",selling?"SELL":"BUY"));
                         active.stage = selling ? Stage.SELL_ORDER : Stage.BUY_ORDER;
                         if (!selling) capital.purchased(OWNER, active.item.id());
                         finishWork();
@@ -618,8 +624,12 @@ public class GeneralFlipper implements Feature {
         return false;
     }
     private boolean orderMatchesPosition(int slot) {
-        OrderLore.Fill fill = OrderLore.fill(lore(slot));
-        if (!TradingSafety.orderQuantityMatches(active.quantity, fill == null ? null : fill.total())) {
+        String tooltip=lore(slot);
+        Integer total=OrderLore.total(tooltip);
+        if (!TradingSafety.orderQuantityMatches(active.quantity,total)) {
+            var evidence=new java.util.LinkedHashMap<String,Object>();
+            evidence.put("trade",active.tradeId);evidence.put("slot",slot);evidence.put("expected",active.quantity);evidence.put("parsedTotal",total);evidence.put("lore",tooltip);
+            Diagnostics.event("ERROR","order.quantity_rejected",evidence);
             fail("Order quantity is unreadable or differs from tracked ownership; position retained."); return false;
         }
         return true;

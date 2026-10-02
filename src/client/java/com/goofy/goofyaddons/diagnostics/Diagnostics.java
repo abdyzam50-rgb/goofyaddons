@@ -68,10 +68,10 @@ public final class Diagnostics {
             }
             data.put("inventory",items);
             var menuItems=new ArrayList<Map<String,Object>>();
-            int end=Math.max(0,mc.player.containerMenu.slots.size()-36);
+            int end=mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>?Math.max(0,mc.player.containerMenu.slots.size()-36):0;
             for(int i=0;i<end;i++) {
                 var stack=mc.player.containerMenu.slots.get(i).getItem();
-                if(!stack.isEmpty()) menuItems.add(Map.of("slot",i,"name",stack.getHoverName().getString(),"count",stack.getCount()));
+                if(!stack.isEmpty()) menuItems.add(Map.of("slot",i,"name",stack.getHoverName().getString(),"count",stack.getCount(),"lore",menuLore(stack)));
             }
             data.put("menuItems",menuItems);
             }
@@ -83,6 +83,11 @@ public final class Diagnostics {
         if(detailed) data.put("engines",manager.diagnosticState());
         data.put("droppedEvents",DROPPED.get());data.put("logError",error==null?"none":error);
         return data;
+    }
+    private static java.util.List<String> menuLore(net.minecraft.world.item.ItemStack stack) {
+        var lore=stack.get(net.minecraft.core.component.DataComponents.LORE);
+        if(lore==null) return java.util.List.of();
+        return lore.lines().stream().map(line->line.getString().replaceAll("§.", "").replaceAll("(?i)^(?:Created by|Order by|Seller|Buyer|Owner|Placed by|Co-op member):.*$","<player redacted>")).toList();
     }
     public static void tick() {
         long sample=System.currentTimeMillis();

@@ -144,7 +144,7 @@ public class FeatureManager {
         return java.util.Map.of("books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name());
     }
     public String taskItem() {
-        if (!started || paused) return "No active transaction";
+        if (!started || paused) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";
         if (previousOwner == books) return books.taskItem();
         if (previousOwner == general) return general.taskItem();
         return "Monitoring both configured engines";
