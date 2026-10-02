@@ -23,17 +23,18 @@ public final class ConfirmationCheck {
             if(!fields.group(1).equals(item)) return false;
             identity=true;
         }
-        var action=Pattern.compile("(?im)^\\s*(Buying|Selling):\\s*((?:\\d{1,3}(?:,\\d{3})+|\\d+))x\\s+(.+?)\\s*$").matcher(text);
+        var action=Pattern.compile("(?im)^\\s*(Buying|Selling|Order):\\s*((?:\\d{1,3}(?:,\\d{3})+|\\d+))x\\s+(.+?)\\s*$").matcher(text);
         int actionFields=0;
         while(action.find()) {
             actionFields++;
-            if(selling!=action.group(1).equalsIgnoreCase("Selling") || !action.group(3).equals(item)) return false;
+            boolean sideConflict=!action.group(1).equalsIgnoreCase("Order") && selling!=action.group(1).equalsIgnoreCase("Selling");
+            if(sideConflict || !action.group(3).equals(item)) return false;
             int amount;
             try { amount=Integer.parseInt(action.group(2).replace(",","")); } catch(NumberFormatException bad) { return false; }
             if(amount<=0 || observed!=null && observed!=amount) return false;
             observed=amount;identity=true;
         }
-        var actionMarkers=Pattern.compile("(?im)^\\s*(?:Buying|Selling):").matcher(text);
+        var actionMarkers=Pattern.compile("(?im)^\\s*(?:Buying|Selling|Order):").matcher(text);
         int actionMarkerCount=0;while(actionMarkers.find()) actionMarkerCount++;
         if(actionFields!=actionMarkerCount || !identity || observed==null || observed!=quantity) return false;
         boolean priced=false;
