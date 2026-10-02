@@ -366,3 +366,7 @@ Validation: 88 tests passed, zero failures/errors/skips; production build and gi
 - A19: fixed publication ordering with synchronized timestamp comparison; equal/older source snapshots cannot replace a newer one. BazaarQuoteCacheTest checks out-of-order publication, equal timestamps, input mutation and expiry.
 
 Validation: 96 tests passed, zero failures/errors/skips; production build and git diff --check passed. See STAGE_2_REPAIR.md. Other stage-2 findings and whole-engine/live validation remain open.
+
+## Live diagnostic follow-up — 1.3.4-BETA
+
+The 1.3.3-BETA live Overload I confirmation pause revealed that book safetyHalt closed the menu before capturing detailed evidence. Fixed by recording books.transaction_blocked and books.confirmation_check before closure. Both engines now defer confirmation evaluation until the same loaded preview is unchanged for 750ms. Missing live tooltip compatibility remains unresolved because the uploaded bundle lost the tooltip; the patch preserves it for a subsequent failure. See CONFIRMATION_DIAGNOSTIC_FIX.md. 98 tests passed and production build succeeded.

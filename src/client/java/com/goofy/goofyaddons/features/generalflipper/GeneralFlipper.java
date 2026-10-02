@@ -76,6 +76,7 @@ public class GeneralFlipper implements Feature {
     private CompletableFuture<JsonObject> request;
     private int generation;
     private JsonObject products;
+    private final com.goofy.goofyaddons.features.MenuObservationStability confirmationStability=new com.goofy.goofyaddons.features.MenuObservationStability();
     private long quotesAt;
     private long nextPoll;
     private Position active;
@@ -272,6 +273,9 @@ public class GeneralFlipper implements Feature {
                     }
                     int confirm = 13;
                     if (!loadedSlot(confirm)) return;
+                    if(!confirmationStability.ready(minecraft.player.containerMenu.containerId,
+                            minecraft.screen.getTitle().getString()+"\n"+minecraft.player.containerMenu.slots.get(confirm).getItem().getHoverName().getString()+"\n"+lore(confirm),
+                            !lore(confirm).isBlank(),now)) return;
                     double expectedPrice=selling?active.sellPrice:active.unitCost;
                     if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),selling,
                             minecraft.player.containerMenu.slots.get(confirm).getItem().getHoverName().getString(),lore(confirm),active.item.name(),active.quantity,expectedPrice)) {
@@ -644,6 +648,7 @@ public class GeneralFlipper implements Feature {
     private void click(int slot) { if (loadedSlot(slot)) InventoryUtils.clickSlot(slot, false); }
     private void transition(Step next) {
         Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
+        confirmationStability.reset();
         step = next; stepSince = System.currentTimeMillis(); lastCommand = 0;
         ordersContainer = -1; ordersSeenAt = 0;
     }

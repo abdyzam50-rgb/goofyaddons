@@ -105,6 +105,7 @@ public class BazaarFlipper implements Feature {
     private int tick;
 
     private Task activeTask = null;
+    private final com.goofy.goofyaddons.features.MenuObservationStability confirmationStability=new com.goofy.goofyaddons.features.MenuObservationStability();
     private Task confirmationTask;
     private double confirmationPrice;
     private boolean confirmationSelling;
@@ -657,7 +658,7 @@ public class BazaarFlipper implements Feature {
                     activeTask.setReservedUnitCost(Math.max(unitPrice, activeTask.getReservedUnitCost()));
                     if (!checkpoint()) return;
                     bazaarMonitor.add(activeTask.getBook(), unitPrice, false);
-                    confirmationTask=activeTask;confirmationPrice=unitPrice;confirmationSelling=false;confirmationSelectedAt=System.currentTimeMillis();
+                    confirmationTask=activeTask;confirmationPrice=unitPrice;confirmationSelling=false;confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
                     InventoryUtils.clickSlot(12, false);
                 }
 
@@ -1196,7 +1197,7 @@ public class BazaarFlipper implements Feature {
                     }
                     bazaarMonitor.finish(task.getBook(), false);
                     bazaarMonitor.add(task.getBook(), inventoryScanner.getUnitPrice(12), true);
-                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();
+                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
                     InventoryUtils.clickSlot(12, false);
                 }
 
@@ -1284,7 +1285,7 @@ public class BazaarFlipper implements Feature {
                         safetyHalt("Repriced book sale would violate the minimum net profit."); return;
                     }
                     bazaarMonitor.add(task.getBook(), inventoryScanner.getUnitPrice(12), true);
-                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();
+                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
                     InventoryUtils.clickSlot(12, false);
                 }
 
@@ -1597,6 +1598,8 @@ public class BazaarFlipper implements Feature {
     }
 
     private void safetyHalt(String reason) {
+        paused=true; // Latch this engine before fallible evidence capture/cleanup.
+        Diagnostics.event("ERROR","books.transaction_blocked",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot()));
         recoveryRequired |= !taskList.isEmpty() || !bookLists.isEmpty();
         checkpoint();
         paused = true;
@@ -1638,11 +1641,18 @@ public class BazaarFlipper implements Feature {
         var stack=minecraft.player.containerMenu.slots.get(13).getItem();
         var lore=stack.get(net.minecraft.core.component.DataComponents.LORE);
         String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
+        if(!confirmationStability.ready(minecraft.player.containerMenu.containerId,
+                minecraft.screen.getTitle().getString()+"\n"+stack.getHoverName().getString()+"\n"+text,!stack.isEmpty() && lore!=null,System.currentTimeMillis())) return false;
         int quantity=sale?1:task.getAmountToOrder();
         String item=task.getBook().getRomanLevel(sale?task.getBook().sellLevel():task.getBook().level());
-        if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),sale,
-                stack.getHoverName().getString(),text,item,quantity,confirmationPrice) || !bookPriceAllowed(task,confirmationPrice,sale)) {
-            safetyHalt("Book confirmation item, quantity, price or net profit could not be verified.");return false;
+        boolean previewMatches=com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),sale,
+                stack.getHoverName().getString(),text,item,quantity,confirmationPrice);
+        boolean profitAllowed=bookPriceAllowed(task,confirmationPrice,sale);
+        Diagnostics.event(previewMatches && profitAllowed?"INFO":"ERROR","books.confirmation_check",java.util.Map.of(
+                "trade",task.getProfitTradeId(),"expectedItem",item,"expectedUnits",quantity,"expectedUnitPrice",confirmationPrice,
+                "previewMatches",previewMatches,"profitAllowed",profitAllowed,"context",Diagnostics.detailedSnapshot()));
+        if(!previewMatches || !profitAllowed) {
+            safetyHalt(!previewMatches ? "Book confirmation item, quantity or price could not be verified." : "Book confirmation no longer meets minimum net profit.");return false;
         }
         if(sale) {
             if(inventoryScanner.findLoreInv(item).size()!=1) {
