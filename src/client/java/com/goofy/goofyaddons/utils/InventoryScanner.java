@@ -161,6 +161,7 @@ public class InventoryScanner {
 
     public boolean findMisMatch(String string) {
         AbstractContainerMenu menu = minecraft.player.containerMenu;
+        if (menu.slots.size() <= 33) return false;
         if (!menu.slots.get(29).hasItem() || !menu.slots.get(33).hasItem()) return false;
         ItemStack item = menu.slots.get(29).getItem();
         ItemStack item2 = menu.slots.get(33).getItem();
@@ -209,6 +210,7 @@ public class InventoryScanner {
         if (customData == null) return -1;
         CompoundTag tag = customData.copyTag().getCompound("enchantments").orElse(null);
         if (tag == null) return -1;
+        if (tag.keySet().isEmpty()) return -1;
         String id = tag.keySet().iterator().next();
 
         return tag.getIntOr(id, -1);
@@ -216,6 +218,6 @@ public class InventoryScanner {
 
     public boolean isMenuLoaded(int slot) {
         AbstractContainerMenu menu = minecraft.player.containerMenu;
-        return menu.slots.get(slot).hasItem();
+        return slot >= 0 && slot < menu.slots.size() && menu.slots.get(slot).hasItem();
     }
 }

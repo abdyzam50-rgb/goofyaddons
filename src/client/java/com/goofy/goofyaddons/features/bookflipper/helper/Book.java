@@ -28,6 +28,9 @@ public record Book(String id, int level, int sellLevel, String name, double inst
     }
 
     public int getQtyAmount(int level) {
+        if (level < 1 || level > sellLevel || sellLevel > 10) {
+            throw new IllegalArgumentException("Invalid combining levels");
+        }
         return (1 << (sellLevel - level));
     }
 

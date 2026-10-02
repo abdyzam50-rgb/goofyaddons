@@ -33,6 +33,7 @@ public class Task {
     public ActionSchedule actionSchedule = ActionSchedule.NONE;
     private Book book;
     private int amountToOrder;
+    private double reservedUnitCost;
     private BookState bookState;
     // book location will be represented in integars, 0 = Inventory, 1 = EnderChest, 2 = EnderChestPage2
     public List<BookList> bookList = new ArrayList<>();
@@ -60,10 +61,10 @@ public class Task {
     // -1 will indicate failure, 0 will indicate success
     public int assignBook(Book book, int level, int location, int amountOfBook) {
         if (amountOfBook == 0) return 0;
-        if (book != this.book) return -1;
-        if (book.level() > level) return -1;
+        if (amountOfBook < 0 || !this.book.equals(book)) return -1;
+        if (level < book.level() || level > book.sellLevel() || location < 0 || location > 2) return -1;
         int amount = parseBookLevel(level);
-        int totalAmount = amount * amountOfBook;
+        long totalAmount = (long) amount * amountOfBook;
 
         if (totalAmount > amountToOrder) return -1;
 
@@ -76,6 +77,14 @@ public class Task {
         bookList.sort(Comparator.comparingInt(bookList -> bookList.location));
 
         return 0;
+    }
+
+    public void setReservedUnitCost(double cost) {
+        reservedUnitCost = cost;
+    }
+
+    public double getReservedUnitCost() {
+        return reservedUnitCost;
     }
 
     public int getAmountToOrder() {

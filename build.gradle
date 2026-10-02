@@ -33,6 +33,16 @@ dependencies {
 
 	// DevAuth - only active at runtime, not included in release jar
 	runtimeOnly "me.djtheredstoner:DevAuth-fabric:1.2.2"
+	testImplementation platform('org.junit:junit-bom:5.12.2')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+sourceSets.test.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath
+
+tasks.named('test') {
+	useJUnitPlatform()
 }
 
 processResources {

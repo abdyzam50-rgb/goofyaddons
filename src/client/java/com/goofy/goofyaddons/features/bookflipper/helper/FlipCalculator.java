@@ -1,105 +1,128 @@
 package com.goofy.goofyaddons.features.bookflipper.helper;
 
 import com.goofy.goofyaddons.config.GoofyConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.goofy.goofyaddons.features.TradingSafety;
+import net.minecraft.client.Minecraft;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.function.Supplier;
 
 public class FlipCalculator {
-    private boolean running = false;
-    private HttpClient client = HttpClient.newHttpClient();
-    private Map<String, BazaarData> bazaar = new HashMap<>();
-    private List<FlipItem> flipItemsList = new ArrayList<>();
+    private static final Logger LOGGER = LoggerFactory.getLogger(FlipCalculator.class);
+    // All mutable state is owned by the client thread, including completions.
+    private final Supplier<CompletableFuture<JsonObject>> fetch;
+    private final Executor clientThread;
+    private boolean running;
+    private int generation;
+    private CompletableFuture<JsonObject> request;
+    private List<FlipItem> flipItemsList = List.of();
 
+    public FlipCalculator() {
+        this(BazaarApi::fetch, command -> Minecraft.getInstance().execute(command));
+    }
 
+    FlipCalculator(Supplier<CompletableFuture<JsonObject>> fetch, Executor clientThread) {
+        this.fetch = fetch;
+        this.clientThread = clientThread;
+    }
 
     public void Refresh() {
         if (running) return;
         running = true;
-        bazaar.clear();
-        flipItemsList.clear();
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.hypixel.net/v2/skyblock/bazaar"))
-                .GET()
-                .build();
-
-        client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(HttpResponse::body)
-                .thenApply(body ->
-                        JsonParser.parseString(body).getAsJsonObject()
-                )
-                .thenAccept(root -> {
-
-                    JsonObject products =
-                            root.getAsJsonObject("products");
-
-                    for (Book book : GoofyConfig.INSTANCE.books) {
-
-                        loadProduct(products, book.getLevel(book.level()));
-                        loadProduct(products, book.getLevel(book.sellLevel()));
-
-                    }
-                    processData();
+        flipItemsList = List.of();
+        int run = generation;
+        List<Book> books = List.copyOf(GoofyConfig.INSTANCE.books);
+        double tax = GoofyConfig.INSTANCE.bazaarTaxPercentage;
+        double minimumProfit = GoofyConfig.INSTANCE.minNetProfit;
+        try {
+            request = fetch.get();
+            request.whenComplete((root, error) -> clientThread.execute(() -> {
+                if (run != generation) return;
+                try {
+                    if (error != null) throw new IllegalStateException("Bazaar request failed", error);
+                    TradingSafety.sourceTime(root, System.currentTimeMillis());
+                    flipItemsList = calculate(root.getAsJsonObject("products"), books, tax, minimumProfit);
+                } catch (Exception failure) {
+                    LOGGER.warn("Bazaar fetch failed; retrying later", failure);
+                } finally {
                     running = false;
-                });
-
-    }
-
-    private void loadProduct(JsonObject products, String productId) {
-        JsonObject product = products.getAsJsonObject(productId);
-        if (product == null) return;
-
-        JsonObject quick = product.getAsJsonObject("quick_status");
-
-        bazaar.put(productId, new BazaarData(
-                productId,
-                quick.get("sellPrice").getAsDouble(),
-                quick.get("sellVolume").getAsInt(),
-                quick.get("buyPrice").getAsDouble()
-        ));
-    }
-
-    private void processData() {
-
-        flipItemsList.clear();
-
-        for (Book book : GoofyConfig.INSTANCE.books) {
-
-            BazaarData buyData = bazaar.get(book.getLevel(book.level()));
-            BazaarData sellData = bazaar.get(book.getLevel(book.sellLevel()));
-
-            if (buyData == null || sellData == null) continue;
-
-            boolean instaBuy = false;
-            boolean instaSell = false;
-
-            if (((buyData.buyPrice() - buyData.sellPrice()) / buyData.buyPrice()) * 100.0 <= book.instaBuyPercentage()) instaBuy = true;
-            if (((sellData.buyPrice() - sellData.sellPrice()) / sellData.buyPrice()) * 100.0 <= book.instaSellPercentage()) instaSell = true;
-
-            int qty = book.getQtyAmount(book.level());
-
-            double cost = instaBuy ? buyData.buyPrice() * qty : buyData.sellPrice() * qty;
-            double revenue = instaSell ? sellData.sellPrice() : sellData.buyPrice();
-
-            double profit = revenue - cost;
-            if (profit <= 0 || cost <= 0) continue;
-
-            double score = profit * Math.log10(sellData.sellVolume() + 1) / Math.sqrt(cost);
-
-            flipItemsList.add(new FlipItem(book, cost, score, instaBuy, instaSell));
+                    request = null;
+                }
+            }));
+        } catch (Exception failure) {
+            running = false;
+            request = null;
+            LOGGER.warn("Bazaar fetch failed; retrying later", failure);
         }
+    }
 
-        flipItemsList.sort(Comparator.comparingDouble(FlipItem::score).reversed());
+    public void reset() {
+        generation++;
+        if (request != null) request.cancel(true);
+        request = null;
+        running = false;
+        flipItemsList = List.of();
+    }
+
+    public boolean isRunning() {
+        return running;
+    }
+
+    static List<FlipItem> calculate(JsonObject products, List<Book> books,
+                                    double taxPercentage, double minimumProfit) {
+        List<FlipItem> result = new ArrayList<>();
+        for (Book book : books) {
+            JsonObject buy = products.getAsJsonObject(book.getLevel(book.level()));
+            JsonObject sell = products.getAsJsonObject(book.getLevel(book.sellLevel()));
+            if (buy == null || sell == null) continue;
+            double bid = topPrice(buy, "sell_summary");
+            double ask = topPrice(buy, "buy_summary");
+            double sellBid = topPrice(sell, "sell_summary");
+            double sellAsk = topPrice(sell, "buy_summary");
+            if (bid <= 0 || ask <= 0 || sellBid <= 0 || sellAsk <= 0) continue;
+            boolean instaBuy = (ask - bid) / ask * 100 <= book.instaBuyPercentage();
+            boolean instaSell = (sellAsk - sellBid) / sellAsk * 100 <= book.instaSellPercentage();
+            // The UI uses the existing top order price. No invented price improvement.
+            double cost = (instaBuy ? ask : bid) * book.getQtyAmount(book.level());
+            double revenue = (instaSell ? sellBid : sellAsk) * (1 - taxPercentage / 100);
+            double profit = revenue - cost;
+            if (!Double.isFinite(profit) || profit <= 0 || profit < minimumProfit) continue;
+            JsonObject buyQuick = buy.getAsJsonObject("quick_status");
+            JsonObject sellQuick = sell.getAsJsonObject("quick_status");
+            if (buyQuick == null || sellQuick == null) continue;
+            // Historical execution flow, rather than standing order depth.
+            double buyFlow = movingWeek(buyQuick, instaBuy ? "buyMovingWeek" : "sellMovingWeek")
+                    / book.getQtyAmount(book.level());
+            double sellFlow = movingWeek(sellQuick, instaSell ? "sellMovingWeek" : "buyMovingWeek");
+            double flow = Math.min(buyFlow, sellFlow);
+            if (flow <= 0) continue;
+            double score = profit * Math.log10(flow + 1) / Math.sqrt(cost);
+            result.add(new FlipItem(book, cost, score, instaBuy, instaSell));
+        }
+        result.sort(Comparator.comparingDouble(FlipItem::score).reversed());
+        return List.copyOf(result);
+    }
+
+    private static double movingWeek(JsonObject quick, String key) {
+        return quick.has(key) ? Math.max(0, quick.get(key).getAsDouble()) : 0;
+    }
+
+    private static double topPrice(JsonObject product, String side) {
+        JsonArray orders = product.getAsJsonArray(side);
+        if (orders == null || orders.isEmpty()) return -1;
+        double price = orders.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
+        return Double.isFinite(price) ? price : -1;
     }
 
     public List<FlipItem> getFlipItemsList() {
         return flipItemsList;
     }
-
 }

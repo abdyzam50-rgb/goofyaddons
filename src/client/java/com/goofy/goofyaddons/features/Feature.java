@@ -12,4 +12,14 @@ public interface Feature {
     void resume();
 
     void onTick();
+
+    boolean isRunning();
+
+    default void poll() {}
+
+    default boolean needsMenu() { return isRunning(); }
+
+    default boolean canYield() { return true; }
+
+    default void yieldMenu() {}
 }

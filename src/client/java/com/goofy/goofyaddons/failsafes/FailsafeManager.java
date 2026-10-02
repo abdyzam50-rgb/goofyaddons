@@ -14,6 +14,10 @@ public class FailsafeManager {
         failsafes.add(new ScheduledReboot());
     }
 
+    public void reset() {
+        failsafes.forEach(Failsafe::reset);
+    }
+
     public void onTick() {
         if (!FeatureManager.INSTANCE.isMacroRunning()) return;
         failsafes.stream().forEach(failsafe -> failsafe.onTick());

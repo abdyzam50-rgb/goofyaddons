@@ -1,55 +1,127 @@
 package com.goofy.goofyaddons.features;
 
+import com.goofy.goofyaddons.config.GoofyConfig;
+import com.goofy.goofyaddons.failsafes.FailsafeManager;
 import com.goofy.goofyaddons.features.bookflipper.BazaarFlipper;
-import net.minecraft.client.Minecraft;
-
-
-import java.util.ArrayList;
+import com.goofy.goofyaddons.features.generalflipper.GeneralFlipper;
+import com.goofy.goofyaddons.utils.ChatUtils;
 import java.util.List;
 
-
 public class FeatureManager {
-    Minecraft minecraft = Minecraft.getInstance();
-    List<Feature> featureList = new ArrayList<>();
-    Feature currentFeature = null;
-
-
     public static final FeatureManager INSTANCE = new FeatureManager();
+    private final BazaarFlipper books = new BazaarFlipper();
+    private final GeneralFlipper general = new GeneralFlipper();
+    private final MenuScheduler scheduler = new MenuScheduler();
+    private TradingMode mode = TradingMode.BOOKS;
+    private TradingMode requested;
+    private boolean started;
+    private boolean paused;
+    private Feature previousOwner;
 
-    private FeatureManager() {
-        featureList.add(new BazaarFlipper());
+    private FeatureManager() {}
+
+    private List<Feature> engines() {
+        return switch (mode) {
+            case BOOKS -> List.of(books);
+            case GENERAL -> List.of(general);
+            case BOTH -> List.of(books, general);
+        };
     }
 
     public void onTick() {
-        if (currentFeature == null) return;
-        currentFeature.onTick();
+        if (!started || paused) return;
+        try {
+        if (requested != null && scheduler.canSwitch()) applyMode(requested);
+        for (Feature engine : engines()) engine.poll();
+        Feature owner = scheduler.select(engines());
+        if (owner != previousOwner && previousOwner != null) previousOwner.yieldMenu();
+        previousOwner = owner;
+        if (owner != null) owner.onTick();
+        } catch (RuntimeException failure) {
+            org.slf4j.LoggerFactory.getLogger(FeatureManager.class).error("Trading tick failed; pausing", failure);
+            safetyPause("Unexpected trading error; ownership records retained.");
+        }
+    }
+
+    public void startConfigured() {
+        CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
+        if (!books.restoreBudget()) return;
+        general.restoreBudget(); // Count persisted ordinary-item positions even in Books mode.
+        if (general.hasStateError()) {
+            ChatUtils.clientMessage("Cannot start: general-order state is unreadable. File preserved; check logs.");
+            return;
+        }
+        if (started && paused) { resume(); return; }
+        if (started) return;
+        started = true;
+        paused = false;
+        applyMode(GoofyConfig.INSTANCE.tradingMode);
     }
 
     public void start(String name) {
-        currentFeature = featureList.stream().filter(feature -> feature.name().equals(name)).findFirst().orElse(null);
-        if (currentFeature == null) return;
-        currentFeature.start();
+        GoofyConfig.INSTANCE.tradingMode = name.equals("GeneralFlipper") ? TradingMode.GENERAL : TradingMode.BOOKS;
+        startConfigured();
+    }
+
+    public void cycleMode() {
+        TradingMode next = (requested != null ? requested : GoofyConfig.INSTANCE.tradingMode).next();
+        GoofyConfig.INSTANCE.tradingMode = next;
+        GoofyConfig.save();
+        if (!started) { mode = next; ChatUtils.clientMessage("Trading mode: " + next); return; }
+        requested = next;
+        ChatUtils.clientMessage("Switching to " + next + " after the current menu transaction.");
+    }
+
+    private void applyMode(TradingMode next) {
+        if (previousOwner != null) previousOwner.yieldMenu();
+        List<Feature> old = engines();
+        mode = next;
+        requested = null;
+        List<Feature> enabled = engines();
+        for (Feature engine : old) if (!enabled.contains(engine)) {
+            if (engine == books) books.pauseForMode();
+            else engine.pause();
+        }
+        for (Feature engine : enabled) engine.start();
+        scheduler.reset();
+        previousOwner = null;
+        ChatUtils.clientMessage("Trading mode: " + mode);
     }
 
     public void stop() {
-        if (currentFeature == null) return;
-        currentFeature.stop();
-        currentFeature = null;
+        if (!started) return;
+        books.stop();
+        general.stop();
+        started = false;
+        paused = false;
+        requested = null;
+        scheduler.reset();
+        previousOwner = null;
+        FailsafeManager.INSTANCE.reset();
     }
 
     public void pause() {
-        if (currentFeature == null) return;
-        currentFeature.pause();
+        if (!started || paused) return;
+        paused = true;
+        books.pause();
+        general.pause();
+        scheduler.reset();
+        previousOwner = null;
+    }
 
+    public void safetyPause(String reason) {
+        ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting.");
+        pause();
     }
 
     public void resume() {
-        if (currentFeature == null) return;
-        currentFeature.resume();
+        if (!started || !paused) return;
+        paused = false;
+        for (Feature engine : engines()) engine.resume();
+        scheduler.reset();
     }
 
     public boolean isMacroRunning() {
-        return currentFeature != null;
+        return started && engines().stream().anyMatch(Feature::isRunning);
     }
-
 }
