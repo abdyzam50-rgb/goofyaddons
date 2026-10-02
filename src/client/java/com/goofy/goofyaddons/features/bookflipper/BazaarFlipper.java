@@ -100,6 +100,9 @@ public class BazaarFlipper implements Feature {
     private int combine_Counter_2 = 0;
     private boolean attemptedToClaim = false;
     private boolean didReceiveItems = false;
+    // Outbid buy order this flipper clicked "Cancel Order" on, and whether Hypixel confirmed the refund.
+    private Task cancelClickedTask;
+    private boolean cancelRefunded;
     private int anvil_Counter = -1;
     private int anvil_Counter_2 = -1;
     private int combine_Counter = -1;
@@ -138,6 +141,7 @@ public class BazaarFlipper implements Feature {
     public BazaarFlipper() {
         ChatHook.onMessage("filled", this::handleFilledMessage);
         ChatHook.onMessage("Claimed", this::handleClaimedMessage);
+        ChatHook.onMessage("Cancelled", this::handleCancelledMessage);
         bazaarMonitor.hook(this::handleOutbid);
     }
 
@@ -213,6 +217,8 @@ public class BazaarFlipper implements Feature {
         activeTask = null;
         lastState = null;
         attemptedToClaim = false;
+        cancelClickedTask = null;
+        cancelRefunded = false;
         needToStoreExcessBook = false;
         inventoryIsFull = false;
         overFlowProt = false;
@@ -721,6 +727,8 @@ public class BazaarFlipper implements Feature {
             case OUTBID -> {
                 Task task = taskInState(Task.BookState.OUTBID);
                 if (task == null) {
+                    cancelClickedTask = null;
+                    cancelRefunded = false;
                     debug("[BazaarFlipper] OUTBID: no task left in OUTBID, going to IDLE");
                     minecraft.player.closeContainer();
                     state = State.IDLE;
@@ -744,7 +752,11 @@ public class BazaarFlipper implements Feature {
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
 
                     if (slot.isEmpty()) {
-                        if(recheckBookOrders(task,"missing-buy-order")) return;
+                        // Our own cancel was confirmed by Hypixel's refund receipt, so the order is expected to be gone.
+                        boolean cancelConfirmed = cancelClickedTask == task && cancelRefunded;
+                        if(!cancelConfirmed && recheckBookOrders(task,"missing-buy-order")) return;
+                        cancelClickedTask = null;
+                        cancelRefunded = false;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] OUTBID: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -791,6 +803,8 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Order") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     List<Integer> slot = inventoryScanner.findContainer("Cancel Order");
                     if (slot.isEmpty()) return;
+                    cancelClickedTask = task;
+                    cancelRefunded = false;
                     InventoryUtils.clickSlot(slot.getFirst(), false);
                 }
             }
@@ -1455,6 +1469,12 @@ public class BazaarFlipper implements Feature {
             return;
         }
         // Buy claims are acknowledged by an observed inventory increase, never generic chat.
+    }
+
+    private void handleCancelledMessage(String string) {
+        if (!running || paused || state != State.OUTBID || cancelClickedTask == null) return;
+        if (TradingSafety.cancellationReceipt(string, cancelClickedTask.getBook().getRomanLevel(cancelClickedTask.getBook().level()), false))
+            cancelRefunded = true;
     }
 
     private int inputBooksInInventory(Task task) {

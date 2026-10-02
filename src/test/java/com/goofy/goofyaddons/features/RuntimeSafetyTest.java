@@ -57,9 +57,18 @@ class RuntimeSafetyTest {
         assertFalse(TradingSafety.claimReceipt("[Bazaar] Claimed 1,000 coins from selling 2x Fuming Potato Book Extra!", "Fuming Potato Book", 2));
     }
     @Test void cancellationCannotBeInferredFromArbitraryChat() {
-        assertFalse(TradingSafety.cancellationReceipt("Cancel your Potato order", "Potato"));
-        assertFalse(TradingSafety.cancellationReceipt("[Bazaar] Cancelled buy order for Potato Extra!", "Potato"));
-        assertTrue(TradingSafety.cancellationReceipt("[Bazaar] Cancelled buy order for 12x Potato!", "Potato"));
+        assertFalse(TradingSafety.cancellationReceipt("Cancel your Potato order", "Potato", false));
+        assertFalse(TradingSafety.cancellationReceipt("[Bazaar] Cancelled buy order for Potato Extra!", "Potato", false));
+        assertTrue(TradingSafety.cancellationReceipt("[Bazaar] Cancelled buy order for 12x Potato!", "Potato", false));
+    }
+    @Test void hypixelRefundReceiptsConfirmCancellationForTheRightSide() {
+        // Exact receipts captured in the user's diagnostics.
+        assertTrue(TradingSafety.cancellationReceipt("[Bazaar] Cancelled! Refunded 2,188,148 coins from cancelling Buy Order!", "Wisdom I", false));
+        assertTrue(TradingSafety.cancellationReceipt("[Bazaar] Cancelled! Refunded 32x Enchanted Ink Sac from cancelling Sell Offer!", "Enchanted Ink Sac", true));
+        assertFalse(TradingSafety.cancellationReceipt("[Bazaar] Cancelled! Refunded 2,188,148 coins from cancelling Buy Order!", "Wisdom I", true));
+        assertFalse(TradingSafety.cancellationReceipt("[Bazaar] Cancelled! Refunded 32x Enchanted Ink Sac from cancelling Sell Offer!", "Enchanted Ink Sac", false));
+        assertFalse(TradingSafety.cancellationReceipt("[Bazaar] Cancelled! Refunded 32x Enchanted Ink Sack from cancelling Sell Offer!", "Enchanted Ink Sac", true));
+        assertFalse(TradingSafety.cancellationReceipt("[Bazaar] Cancelling order...", "Wisdom I", false));
     }
     @Test void genericBazaarProductScreensAreNotOrdersScreens() {
         assertFalse(TradingSafety.ordersTitle("Bazaar"));

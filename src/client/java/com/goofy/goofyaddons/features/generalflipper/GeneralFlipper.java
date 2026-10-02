@@ -795,7 +795,11 @@ public class GeneralFlipper implements Feature {
     }
 
     private void onNotice(String message) {
-        if (!running || paused || active == null || !message.contains(active.item.name())) return;
+        if (!running || paused || active == null) return;
+        // Checked before the item-name filter: a cancelled buy order's receipt only names the refunded coins.
+        if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && active.cancelRequested
+                && TradingSafety.cancellationReceipt(message, active.item.name(), selling)) receipt = true;
+        if (!message.contains(active.item.name())) return;
         if (step == Step.VERIFY_SALE && claimPending) {
             Double coins = TradeReceipts.saleProceeds(message, active.item.name(), claimUnits);
             if (coins != null) { receipt = true; claimedProceeds = coins; }
@@ -804,8 +808,6 @@ public class GeneralFlipper implements Feature {
             Double coins = TradeReceipts.saleProceeds(message, active.item.name(), cancelSoldUnits);
             if (coins != null) claimedProceeds = coins;
         }
-        if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && active.cancelRequested
-                && TradingSafety.cancellationReceipt(message, active.item.name())) receipt = true;
     }
     private boolean recordAcquisition() {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
