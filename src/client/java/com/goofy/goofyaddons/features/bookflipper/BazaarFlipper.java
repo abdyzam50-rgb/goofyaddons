@@ -119,16 +119,6 @@ public class BazaarFlipper implements Feature {
     private List<BookList> bookLists = new ArrayList<>();
     private List<Task> taskList = new ArrayList<>();
 
-    private static final Map<Task.BookState, Integer> STATE_PRIORITY = Map.of(
-            Task.BookState.REPLACE_SELL, 1,
-            Task.BookState.BAZAAR_ORDER_CHECK, 2,
-            Task.BookState.ANVIL, 3,
-            Task.BookState.COMBINE, 4,
-            Task.BookState.SELL, 5,
-            Task.BookState.STORE, 6,
-            Task.BookState.SELECTED, 7,
-            Task.BookState.OUTBID, 8
-    );
 
 
     public BazaarFlipper() {
@@ -309,7 +299,8 @@ public class BazaarFlipper implements Feature {
         if (!running || paused) return false;
         if (state == State.FETCHING) return !flipCalculator.isRunning() && !flipCalculator.getFlipItemsList().isEmpty();
         if (state == State.IDLE) return needToStoreExcessBook || System.currentTimeMillis() >= nextFetchMs
-                || taskList.stream().anyMatch(task -> STATE_PRIORITY.containsKey(task.getBookState()));
+                || taskList.stream().anyMatch(task -> com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule
+                        .actionable(task.getBookState()));
         return true;
     }
 
@@ -568,19 +559,8 @@ public class BazaarFlipper implements Feature {
                     return;
                 }
 
-                Task taskToHandle = null;
-
-                // here we loop through every task and pick based of priority
-                for (Task task : taskList) {
-                    if (!isStartUpCheckCompleted && task.getBookState().equals(Task.BookState.OUTBID) || inventoryIsFull && task.getBookState().equals(Task.BookState.OUTBID))
-                        continue;
-                    Integer rank = STATE_PRIORITY.get(task.getBookState());
-                    if (rank == null) continue;
-
-                    if (taskToHandle == null || rank > STATE_PRIORITY.get(taskToHandle.getBookState())) {
-                        taskToHandle = task;
-                    }
-                }
+                Task taskToHandle = com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule
+                        .next(taskList, isStartUpCheckCompleted, inventoryIsFull);
 
                 if (taskToHandle == null) {
                     if (System.currentTimeMillis() >= nextFetchMs) state = State.FETCHING;
@@ -881,6 +861,12 @@ public class BazaarFlipper implements Feature {
                     store_Counter = slot.size();
 
                     if (inventoryScanner.getEmptyContainerSlots() == 0) {
+                        if (usingSecondPage) {
+                            // Switching to page two while already on it reopened the same full
+                            // page forever, until the watchdog happened to notice.
+                            safetyHalt("Book storage is full on both pages; free space before trading continues.");
+                            return;
+                        }
                         debug("[BazaarFlipper] STORE: first page container full, switching to second page");
                         usingSecondPage = true;
                         store_Counter = -1;
@@ -1062,8 +1048,11 @@ public class BazaarFlipper implements Feature {
                         return;
                     }
 
-                    if (task.bookList.size() > inventoryScanner.getEmptyInventorySlots()) {
-                        debug("[BazaarFlipper] ANVIL: need " + task.bookList.size() + " inventory slot(s) but only " + inventoryScanner.getEmptyInventorySlots() + " empty, scheduling task for store");
+                    // Books already in the inventory hold the slots they need. Counting them
+                    // again sent the task to STORE and straight back here, cycling.
+                    long toRetrieve = task.bookList.stream().filter(entry -> entry.location != 0).count();
+                    if (toRetrieve > inventoryScanner.getEmptyInventorySlots()) {
+                        debug("[BazaarFlipper] ANVIL: need " + toRetrieve + " inventory slot(s) to retrieve but only " + inventoryScanner.getEmptyInventorySlots() + " empty, scheduling task for store");
                         task.setBookState(Task.BookState.STORE);
                         task.actionSchedule = Task.ActionSchedule.STORE_ANVIL;
                         return;

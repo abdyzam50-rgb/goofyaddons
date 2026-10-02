@@ -569,6 +569,39 @@ unrecognisable, surfacing as a 30-second step timeout; the exact-match gates in
 immediately with a specific reason instead of being retried until the watchdog
 noticed.
 
+### Book loop batch — closing the cycle
+
+Aimed at the book engine completing a flip and starting another, rather than at the test
+seam. All three findings here are the ones that describe a loop that cannot close.
+
+- **R09: fixed.** The priority table's sense was inverted and unlabelled. IDLE picks the
+  *highest* rank, so the effective order was OUTBID > SELECTED > STORE > SELL > COMBINE >
+  ANVIL > BAZAAR_ORDER_CHECK > REPLACE_SELL. REPLACE_SELL is the only state that collects
+  proceeds and removes a task, and it ranked below everything; SELECTED, which commits
+  coins to a new order, ranked near the top. Since the outbid monitor re-queues work every
+  20 seconds and filled buy orders also route through OUTBID, something almost always
+  outranked completion, so finished books could sit unlisted and settled sales uncollected
+  while the engine kept opening new positions. **This is the most likely reason the engine
+  does not loop in practice.** The policy now reads "finish and realise value before
+  starting new work" and lives in `BookSchedule`, which is pure and covered by 13 tests;
+  six of them fail against the old ordering.
+- **R07: fixed.** A full storage page set `usingSecondPage = true` even when already on
+  page two, so the engine reopened the same full page indefinitely until the watchdog
+  happened to notice. Being full on both pages is now an explicit stop with a reason.
+- **R08: fixed.** The anvil retrieval check compared the whole `bookList` size against
+  empty inventory slots, counting books that were already in the inventory holding the
+  slots they need. That sent the task to STORE and straight back, cycling. It now counts
+  only the books still in storage.
+
+**A loop gap found here and deliberately not fixed.** A task parked in IN_BUY_ORDER or
+SELL_ORDER is only woken by a chat notice or by the outbid monitor. If the fill notice is
+missed, nothing re-checks it: `BookSchedule` reports no work, the capital stays reserved,
+and the engine polls flips forever without progressing that position. The general engine
+has a periodic per-position re-check; the book engine has no equivalent. The OUTBID path
+cannot be reused as one, because after clicking into an order it clicks Cancel Order — so
+re-checking a healthy unfilled order through it would cancel it and lose queue position.
+Closing this needs a read-only verification state, which is more than this batch.
+
 ### Findings with no status record anywhere in this document
 
 A09, A13, A15, A16, A17, A23, A24, A25, A29, A31, A33, R02, R03, R04, R05, R06,
