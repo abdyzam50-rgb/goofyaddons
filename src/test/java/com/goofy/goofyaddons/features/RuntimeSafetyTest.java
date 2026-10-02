@@ -22,6 +22,23 @@ class RuntimeSafetyTest {
         assertTrue(TradingSafety.combinedBookArrived(0,1,true));
         assertTrue(TradingSafety.combinedBookArrived(3,4,true));
     }
+    @Test void anExistingBookOrderIsOnlyAdoptedWhenItsAmountCouldBeOurs() {
+        // A route needing 16 units can never have ordered more than 16.
+        assertTrue(TradingSafety.adoptableOrderTotal(16, 16));
+        assertTrue(TradingSafety.adoptableOrderTotal(8, 16), "a partially claimed order is still ours");
+        assertTrue(TradingSafety.adoptableOrderTotal(1, 1), "a one-unit route accepts exactly one");
+        assertFalse(TradingSafety.adoptableOrderTotal(32, 16), "a larger same-name order is not ours");
+        assertFalse(TradingSafety.adoptableOrderTotal(2, 1));
+    }
+
+    @Test void anUnreadableOrNonsensicalOrderAmountIsNeverAdopted() {
+        assertFalse(TradingSafety.adoptableOrderTotal(null, 16), "unreadable must never be claimed");
+        assertFalse(TradingSafety.adoptableOrderTotal(0, 16));
+        assertFalse(TradingSafety.adoptableOrderTotal(-4, 16));
+        assertFalse(TradingSafety.adoptableOrderTotal(16, 0), "an unknown requirement cannot authorise a claim");
+        assertFalse(TradingSafety.adoptableOrderTotal(16, -1));
+    }
+
     @Test void unreadableOrDifferentOrderQuantitiesCannotBeAdopted() {
         assertFalse(TradingSafety.orderQuantityMatches(16,null));
         assertFalse(TradingSafety.orderQuantityMatches(16,32));

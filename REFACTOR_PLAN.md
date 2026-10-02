@@ -292,7 +292,7 @@ themselves; stage 4 is the one that needs careful fixtures.
 
 | # | Stage | Contents | Risk | Gate | Status |
 |---|---|---|---|---|---|
-| 0 | Baseline | Get `./gradlew test` green and recorded | none | Suite runs; result captured | **blocked** — Maven Central 429s through this proxy; no cached `fabric-loom` offline |
+| 0 | Baseline | Get `./gradlew test` green and recorded | none | Suite runs; result captured | **done** — 141 tests, 0 failures; `build` produces the jar. Recipe below |
 | 1 | Cheap bugs | C1, C2, C4, B6 | low | Regression test per bug: stop→start leaves no pending claim; safety-pause then resume in BOTH does not halt | **done** (`cc7767c`), engine changes by inspection only |
 | 2 | Hot paths | A1, A4, A2 (coalescing only) + C3 | low | No market recompute or quote mutation off the tick path; HUD frame cost flat w.r.t. allowlist size | **done**, see note below |
 | 3 | Shared menu layer | B1 (pure pieces first, then settle/recheck), A3 | medium | Both engines drive the same observation code; existing menu/confirmation tests pass unchanged | **partly done**, see note below |
@@ -387,6 +387,33 @@ Ordering rationale: 1 and 2 are independent and shippable immediately. 3 must
 precede 4 and 5, because both need the observation snapshot to express their
 rules. 4 before 5 because B2's records are the biggest consumers of B3's
 grouping.
+
+### Running the suite in a constrained environment
+
+Two things blocked it, neither a repository defect:
+
+1. Gradle's `mavenCentral()` resolves to `repo.maven.apache.org`, which this
+   environment's proxy rate-limits (HTTP 429). `repo1.maven.org` serves the same
+   artifacts and is not limited. Adding it *before* `mavenCentral()` in
+   `settings.gradle`'s `pluginManagement` and in `build.gradle`'s `repositories`
+   gets resolution through. The limit is volume-based, so the first few runs still
+   fail partway; each one caches what it fetched, and about ten attempts reach a
+   full resolve.
+2. The container had only JDK 21 against this project's Java 25 target. A Temurin 25
+   from `api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse`
+   passed to `./gradlew -Dorg.gradle.java.home=<jdk>` works; Gradle's foojay
+   toolchain resolver does not, because the plugin portal is also limited here.
+
+**Neither change is committed** — the mirror is a third-party host and belongs in a
+developer's own setup, not in the project's build. If cloud sessions should do this
+automatically, a SessionStart hook is the right place.
+
+Worth noting separately: `.github/workflows/build.yml` runs `./gradlew build` only in
+the `build-release` job, which is gated on `github.ref == 'refs/heads/master'`. So no
+branch push builds or tests anything, and this repository currently has **zero**
+recorded workflow runs, so Actions appears disabled entirely. Branch pushes therefore
+produce no releases and no Discord posts today — but if Actions is ever enabled, the
+`notify-discord` job does run on `'**'`, which is the live half of A33.
 
 ### Still open, beyond the stages above
 

@@ -382,11 +382,24 @@ The subsequent BOOKS-mode bundle preserved the actual Overload I confirmation: O
 ## Structure and cost batch — 2026-10-02, branch `claude/refactor-plan`
 
 Scope: structure and per-tick/per-frame cost, planned in REFACTOR_PLAN.md. This was
-not a re-audit, so a finding absent below is untouched rather than checked. **No
-entry here is marked verified.** The gradle suite could not run in the review
-environment (Maven Central returned HTTP 429 through the proxy; the offline cache
-has no fabric-loom), so every engine-level claim is source inspection plus
-standalone execution of the pure helpers.
+not a re-audit, so a finding absent below is untouched rather than checked.
+
+**The suite now runs.** Earlier parts of this batch were reviewed by inspection
+because `./gradlew test` could not resolve dependencies; that is resolved. Gradle's
+`mavenCentral()` resolves to `repo.maven.apache.org`, which this environment's proxy
+rate-limits, while `repo1.maven.org` serves the same artifacts; and the review
+container had only JDK 21 against a Java 25 target. With a Central mirror and a
+provisioned JDK 25 (neither committed — see REFACTOR_PLAN.md for the recipe):
+
+- **141 tests, 0 failures, 0 errors, 0 skipped**, across 22 classes.
+- `compileJava`, `compileClientJava` and `compileTestJava` all succeed, so every
+  change in this batch compiles against Minecraft 26.1.2 — which inspection alone
+  could not establish.
+- `./gradlew build` succeeds and produces `goofyaddons-1.3.7-BETA.jar`.
+
+What this does *not* cover: no test can construct either engine (A32), so the
+engine-level state and control-flow changes in this batch are still exercised only
+by inspection, and no live server order was placed.
 
 ### Findings touched
 
@@ -397,12 +410,24 @@ standalone execution of the pure helpers.
   calculator, monitor and general engine still each decide when to ask.
   Consolidating them moves how stale a snapshot can be when a money decision
   reads it, which needs fixtures. R15 stays open.
-- **A06: confirmed still open, and narrowed.** 1.3.5 added verification for
-  orders this engine *submits* (`verifyBookPlacement` plus
-  `TradingSafety.orderMatchesIntent`). The *adoption* path is unchanged:
-  STARTUP_BAZAAR_CHECK and OUTBID locate an existing `BUY <name>` by display name
-  and claim it without checking amount or reserved price against the task.
-  `GeneralFlipper.orderMatchesPosition` still has no book equivalent.
+- **A06: partially addressed.** 1.3.5 covered orders this engine *submits*
+  (`verifyBookPlacement` plus `TradingSafety.orderMatchesIntent`). The *adoption*
+  path was not: STARTUP_BAZAAR_CHECK and OUTBID located an existing `BUY <name>` by
+  display name and claimed it without reading its amount. Both now go through
+  `bookOrderAdoptable`, which requires a readable total that this route could
+  actually have ordered; an unreadable total is retried as an observation through
+  the existing recheck policy and then retained rather than claimed.
+  `TradingSafety.adoptableOrderTotal` is pure and tested.
+
+  **Not closed, and why.** The check is an upper bound, not equality: a route can
+  never have ordered more than its full requirement, so a *larger* same-name order
+  is rejected, but a smaller one is indistinguishable from a partially claimed
+  order and is still accepted. Equality needs the original order size, which the
+  journal cannot reconstruct — that is A11. A price check is also not possible yet
+  for the same reason: `reservedUnitCost` is rebuilt from the current flip
+  calculation on restart, not from the order, so comparing it to an order placed
+  earlier would halt on legitimate positions. Sell-side adoption in SELL and
+  REPLACE_SELL is also still unvalidated. **A06 depends on A11.**
 - **A08: unchanged.** Repeated-scan memoisation in STORE/ANVIL/COMBINE reduced
   query count but did not touch the rule, which is still "the source no longer
   shows it". The replacement transfer model is specified as B2 in
@@ -493,15 +518,17 @@ A09, A13, A15, A16, A17, A23, A24, A25, A29, A31, A33, R02, R03, R04, R05, R06,
 R07, R08, R09, R10, R11, R14 — twenty-two entries that are stated as neither open
 nor closed by any status section. They should be treated as open until checked.
 
-**Validation:** no live orders were placed. The gradle suite did not run. Pure
-helper logic verified by standalone execution: the `Book` invariant (98
+**Validation:** no live orders were placed. The suite runs green (141 tests, 0
+failures) and the production build succeeds; see the note at the top of this section
+for how. Pure helper logic was additionally verified by standalone execution: the `Book` invariant (98
 assertions), `Chat.strip` against the expression it replaced (20,025 inputs
 including the `§\n` case where `.` must not match the line terminator),
 `OrderLore.creator`/`MenuSettle`/`MenuText` (37 assertions), and the shared
 future's cancellation and failure propagation. New JUnit tests: `BookTest`,
 `ChatTest`, `MenuTextTest`, `MenuSettleTest`, `OrderCreatorTest`, and three
-`BookJournal` dedupe tests. A local `./gradlew test` is still required before any
-of this is trusted.
+`BookJournal` dedupe tests, and two `adoptableOrderTotal` tests in
+`RuntimeSafetyTest`. A run on the maintainer's own toolchain is still worth doing,
+since the result above used a mirror and a provisioned JDK.
 
 ## Logic cleanup batch — 2026-10-02
 

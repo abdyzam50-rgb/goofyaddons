@@ -535,6 +535,7 @@ public class BazaarFlipper implements Feature {
 
                     exposedBooks.add(task.getBook().id());
                     if (!checkpoint()) return;
+                    if (!bookOrderAdoptable(task, slot.getFirst(), "startup-order-amount-unreadable")) return;
                     int amount = inventoryScanner.checkOrder(slot.getFirst());
                     if (amount > inventoryScanner.getEmptyInventorySlots()) {
                         debug("[BazaarFlipper] STARTUP_BAZAAR_CHECK: not enough empty inventory slots to claim " + amount + " items, going to IDLE");
@@ -769,6 +770,7 @@ public class BazaarFlipper implements Feature {
                         return;
                     }
 
+                    if (!bookOrderAdoptable(task, slot.getFirst(), "outbid-order-amount-unreadable")) return;
                     int amount = inventoryScanner.checkOrder(slot.getFirst());
                     if (amount > inventoryScanner.getEmptyInventorySlots()) {
                         debug("[BazaarFlipper] OUTBID: not enough empty inventory slots to claim " + amount + " items, going to IDLE and marking inventory full");
@@ -1764,6 +1766,26 @@ public class BazaarFlipper implements Feature {
         task.setBookState(submittedNextState);
         submittedBookTask=null;submittedNextState=null;
         state=State.IDLE;clock.stop();
+    }
+
+    /**
+     * A06: the engine used to locate an existing BUY order by display name and claim it
+     * without reading its amount. Adoption now requires a readable total that this route
+     * could actually have ordered; anything else is retried as an observation, then
+     * retained rather than claimed.
+     */
+    private boolean bookOrderAdoptable(Task task, int slot, String reason) {
+        var lore = minecraft.player.containerMenu.slots.get(slot).getItem().get(net.minecraft.core.component.DataComponents.LORE);
+        String text = lore == null ? "" : String.join("\n", lore.lines().stream().map(line -> line.getString()).toList());
+        Integer total = com.goofy.goofyaddons.features.generalflipper.OrderLore.total(text);
+        if (total == null && recheckBookOrders(task, reason)) return false;
+        if (!TradingSafety.adoptableOrderTotal(total, task.getBook().getQtyAmount(task.getBook().level()))) {
+            Diagnostics.event("ERROR","books.order_amount_rejected",java.util.Map.of("trade",task.getProfitTradeId(),
+                    "parsedTotal",total==null?"unreadable":total,"fullRequirement",task.getBook().getQtyAmount(task.getBook().level()),"lore",text));
+            safetyHalt("Existing book order amount is unreadable or larger than this route could have ordered; position retained.");
+            return false;
+        }
+        return true;
     }
 
     private boolean recheckBookOrders(Task task,String reason) {

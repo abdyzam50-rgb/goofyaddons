@@ -61,6 +61,19 @@ public final class TradingSafety {
         return expected > 0 && observed != null && expected == observed;
     }
 
+    /**
+     * Whether an existing book order may be adopted as this route's own.
+     *
+     * <p>The original order size is not recoverable from the journal (A11), so this is
+     * an upper bound rather than an equality check: a route can never have ordered more
+     * than its full requirement, so a larger same-name order is not ours. A smaller one
+     * is indistinguishable from a partially claimed order and is still accepted. An
+     * unreadable total is never adopted.
+     */
+    public static boolean adoptableOrderTotal(Integer total, int fullRequirement) {
+        return total != null && total > 0 && fullRequirement > 0 && total <= fullRequirement;
+    }
+
     public static boolean orderMatchesIntent(int expectedUnits,double expectedPrice,Integer units,Double price) {
         return orderQuantityMatches(expectedUnits,units) && Double.isFinite(expectedPrice) && expectedPrice>0
                 && price!=null && Double.isFinite(price) && price>0 && Math.abs(price-expectedPrice)<=0.000001;
