@@ -48,6 +48,21 @@ class OrderLoreTest {
         assertTrue(OrderLore.canOpenSellOptionsAfterClaim(options,0,false));
         assertFalse(OrderLore.canOpenSellOptionsAfterClaim("Loading...",4,true));
     }
+    @Test void observedSellOfferWithoutFilledLineIsVerifiedAsUnfilled() {
+        String observed="Worth 7.6M coins\n\nOffer amount: 32x\n\nPrice per unit: 239,998.6 coins\n\nBy: [MVP+] curedmc\n\nClick to view options!";
+        assertEquals(32,OrderLore.total(observed));
+        assertEquals(new OrderLore.Fill(0,32),OrderLore.fill(observed));
+        assertTrue(OrderLore.canOpenSellOptionsAfterClaim(observed,0,false));
+        assertEquals(new OrderLore.Fill(12,32),OrderLore.fill(observed+"\nFilled: 12/32 (37.5%)"));
+        assertEquals(new OrderLore.Fill(32,32),OrderLore.fill(observed+"\nFilled: 32/32 (100%)"));
+    }
+    @Test void missingMalformedOrConflictingFillEvidenceIsNotAssumedZero() {
+        assertNull(OrderLore.fill("Offer amount: 32x"));
+        assertNull(OrderLore.fill("Offer amount: 32x\nFilled: Loading...\nClick to view options!"));
+        assertNull(OrderLore.fill("Offer amount: 32x\nYou have coins to claim!\nClick to view options!"));
+        assertNull(OrderLore.total("Offer amount: 32x\nFilled: 0/64"));
+        assertNull(OrderLore.total("Offer amount: 32x\nOrder amount: 64x"));
+    }
     @Test void invalidOrMissingFillCountsAreRejected() {
         assertNull(OrderLore.fill("Filled: 300/256"));
         assertNull(OrderLore.fill("Filled: 0/0"));

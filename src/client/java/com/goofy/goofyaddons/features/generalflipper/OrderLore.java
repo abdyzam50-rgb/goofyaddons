@@ -6,12 +6,18 @@ import java.util.regex.Pattern;
 public final class OrderLore {
     public record Fill(int filled, int total) {}
     private static final Pattern FILLED = Pattern.compile("Filled:\\s*([\\d,]+)\\s*/\\s*([\\d,]+)");
-    private static final Pattern TOTAL = Pattern.compile("(?im)^\\s*(?:Order amount|Amount|Quantity):\\s*([\\d,]+)(?:x|\\s|$)");
+    private static final Pattern TOTAL = Pattern.compile("(?im)^\\s*(?:Order amount|Offer amount|Amount|Quantity):\\s*([\\d,]+)(?:x|\\s|$)");
     private static final Pattern CLAIMABLE = Pattern.compile("You have\\s+([\\d,]+)\\s+(?:items?|units?)", Pattern.CASE_INSENSITIVE);
 
     public static Fill fill(String lore) {
         Matcher match = FILLED.matcher(clean(lore));
-        if (!match.find()) return null;
+        if (!match.find()) {
+            String text=clean(lore);
+            Integer quantity=explicitTotal(text);
+            boolean noFillField=!Pattern.compile("(?i)Filled\\s*:").matcher(text).find();
+            boolean noClaimHint=!Pattern.compile("(?i)You have").matcher(text).find();
+            return quantity!=null && noFillField && noClaimHint && text.contains("Click to view options!") ? new Fill(0,quantity) : null;
+        }
         try {
             int filled = number(match.group(1));
             int total = number(match.group(2));
@@ -46,14 +52,20 @@ public final class OrderLore {
     public static Integer total(String lore) {
         Fill fill=fill(lore);
         if(FILLED.matcher(clean(lore)).find() && fill==null) return null;
-        Matcher match=TOTAL.matcher(clean(lore));
-        Integer explicit=null;
-        if(match.find()) {
-            try { explicit=number(match.group(1)); } catch(NumberFormatException bad) { return null; }
-            if(explicit<=0) return null;
-        }
+        Integer explicit=explicitTotal(clean(lore));
+        if(TOTAL.matcher(clean(lore)).find() && explicit==null) return null;
         if(fill!=null && explicit!=null && fill.total()!=explicit) return null;
         return explicit!=null ? explicit : fill==null ? null : fill.total();
+    }
+    private static Integer explicitTotal(String text) {
+        Matcher match=TOTAL.matcher(text);Integer total=null;
+        while(match.find()) {
+            int value;
+            try { value=number(match.group(1)); } catch(NumberFormatException bad) { return null; }
+            if(value<=0 || total!=null && total!=value) return null;
+            total=value;
+        }
+        return total;
     }
     private static String clean(String lore) { return lore==null ? "" : lore.replaceAll("§.","").replace('\u00a0',' '); }
     public static boolean canOpenOptionsAfterClaim(String lore,int before,int current,int expected) {
