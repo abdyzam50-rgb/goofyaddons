@@ -67,6 +67,7 @@ public final class ProfitHud {
         g.enableScissor(x,y,x+w,y+bounds.height());
         var manager=FeatureManager.INSTANCE;
         var s=ProfitTracker.INSTANCE.summary();
+        String ledgerError=ProfitTracker.INSTANCE.error();
         text(g,"GOOFYADDONS",x+12,y+12,TEXT);
         String status=manager.status();
         int accent=status.equals("RUNNING")?GREEN:status.equals("STOPPED")?MUTED:RED;
@@ -78,10 +79,10 @@ public final class ProfitHud {
         boolean compact=bounds.height()<232;
         int spacing=compact?11:16, profitSpacing=compact?14:18;
         int row=y+(compact?50:54);
-        row(g,s.incomplete()>0?"Confirmed subtotal":"Confirmed profit",ProfitTracker.INSTANCE.error()==null?ProfitDisplay.coins(s.profit()):"--",x,row,w,s.profit()<0?RED:GREEN); row+=profitSpacing;
-        row(g,"Profit / hour",ProfitTracker.INSTANCE.error()==null?ProfitDisplay.coins(s.perHour()):"--",x,row,w,s.profit()<0?RED:GREEN); row+=profitSpacing;
-        row(g,"Books",ProfitTracker.INSTANCE.error()==null?ProfitDisplay.coins(s.books()):"--",x,row,w,TEXT); row+=spacing;
-        row(g,"General",ProfitTracker.INSTANCE.error()==null?ProfitDisplay.coins(s.general()):"--",x,row,w,TEXT); row+=spacing;
+        row(g,s.incomplete()>0?"Confirmed subtotal":"Confirmed profit",ledgerError==null?ProfitDisplay.coins(s.profit()):"--",x,row,w,s.profit()<0?RED:GREEN); row+=profitSpacing;
+        row(g,"Profit / hour",ledgerError==null?ProfitDisplay.coins(s.perHour()):"--",x,row,w,s.profit()<0?RED:GREEN); row+=profitSpacing;
+        row(g,"Books",ledgerError==null?ProfitDisplay.coins(s.books()):"--",x,row,w,TEXT); row+=spacing;
+        row(g,"General",ledgerError==null?ProfitDisplay.coins(s.general()):"--",x,row,w,TEXT); row+=spacing;
         row(g,"Active time",ProfitDisplay.duration(s.activeMillis()),x,row,w,TEXT); row+=spacing;
         row(g,"Claims / incomplete",s.settlements()+" / "+s.incomplete(),x,row,w,s.incomplete()>0?RED:TEXT); row+=spacing;
         row(g,"Tracked positions",Integer.toString(CapitalManager.INSTANCE.positionCount()),x,row,w,TEXT); row+=spacing;
@@ -89,7 +90,7 @@ public final class ProfitHud {
         double purse=new ScoreboardUtils().getPurse();
         row(g,"Spendable",purse<0?"--":ProfitDisplay.coins(CapitalManager.INSTANCE.available(purse)),x,row,w,TEXT); row+=spacing;
         row(g,"Price data",BazaarApi.latestFresh()==null?"Waiting / stale":"Fresh",x,row,w,MUTED); row+=19;
-        String warning=ProfitTracker.INSTANCE.error();
+        String warning=ledgerError;
         if (warning==null && s.incomplete()>0) warning="Profit excludes incomplete claims";
         if (warning==null && s.activeMillis()<60000) warning="Rate appears after 1 active minute";
         text(g,fit(mc,warning==null?"/goofyprofit hud | reset | left | right":warning,w-24),x+12,y+bounds.height()-15,warning==null?MUTED:RED);

@@ -17,9 +17,25 @@ public final class BazaarApi {
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
+    private static CompletableFuture<JsonObject> inFlight;
+
     private BazaarApi() {}
 
+    /**
+     * Shares one outstanding request between every caller. Each caller gets its own
+     * dependent handle, so cancelling it (engine stop/pause) cannot cancel the request
+     * the other engines are still waiting on.
+     */
     public static CompletableFuture<JsonObject> fetch() {
+        CompletableFuture<JsonObject> shared;
+        synchronized (BazaarApi.class) {
+            if (inFlight == null || inFlight.isDone()) inFlight = request();
+            shared = inFlight;
+        }
+        return shared.thenApply(root -> root);
+    }
+
+    private static CompletableFuture<JsonObject> request() {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.hypixel.net/v2/skyblock/bazaar"))
                 .timeout(Duration.ofSeconds(15)).GET().build();

@@ -26,7 +26,7 @@ public class InventoryScanner {
             ItemStack item = menu.slots.get(i).getItem();
             if (item.isEmpty()) continue;
             if (item.getCustomName() == null) continue;
-            if (!item.getCustomName().getString().replaceAll("§.","").equals(name)) continue;
+            if (!Chat.strip(item.getCustomName().getString()).equals(name)) continue;
             slots.add(i);
         }
         return slots;
@@ -42,7 +42,7 @@ public class InventoryScanner {
             ItemStack item = slot.getItem();
             if (item.isEmpty()) continue;
             ItemLore lore = item.get(DataComponents.LORE);
-            if (!isEnchantedBook(item) || lore == null || !lore.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string))) continue;
+            if (!isEnchantedBook(item) || lore == null || !lore.lines().stream().anyMatch(l -> Chat.strip(l.getString()).equals(string))) continue;
             slots.add(slot.index);
         }
         return slots;
@@ -56,7 +56,7 @@ public class InventoryScanner {
             ItemStack item = menu.slots.get(i).getItem();
             if (item.isEmpty()) continue;
             ItemLore lore = item.get(DataComponents.LORE);
-            if (!isEnchantedBook(item) || lore == null || !lore.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string))) continue;
+            if (!isEnchantedBook(item) || lore == null || !lore.lines().stream().anyMatch(l -> Chat.strip(l.getString()).equals(string))) continue;
             slots.add(i);
         }
         return slots;
@@ -120,7 +120,7 @@ public class InventoryScanner {
         ItemLore lore = item.get(DataComponents.LORE);
         ItemLore lore2 = item2.get(DataComponents.LORE);
         if (lore == null || lore2 == null) return false;
-        if (lore.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string)) && lore2.lines().stream().anyMatch(l -> l.getString().replaceAll("§.","").equals(string)))
+        if (lore.lines().stream().anyMatch(l -> Chat.strip(l.getString()).equals(string)) && lore2.lines().stream().anyMatch(l -> Chat.strip(l.getString()).equals(string)))
             return false;
         return true;
     }

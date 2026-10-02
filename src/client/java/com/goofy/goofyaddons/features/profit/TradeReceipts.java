@@ -7,7 +7,7 @@ public final class TradeReceipts {
     public static Double saleProceeds(String message,String item,int expectedUnits) {
         if(message==null || item==null || expectedUnits<=0) return null;
         var match=Pattern.compile("^\\[Bazaar] Claimed ([\\d,]+(?:\\.\\d+)?) coins from selling ([\\d,]+)x "
-                +Pattern.quote(item)+"[!.]?$",Pattern.CASE_INSENSITIVE).matcher(message.replaceAll("§.",""));
+                +Pattern.quote(item)+"[!.]?$",Pattern.CASE_INSENSITIVE).matcher(com.goofy.goofyaddons.utils.Chat.strip(message));
         if (!match.matches()) return null;
         try {
             int units=Integer.parseInt(match.group(2).replace(",",""));
@@ -18,7 +18,7 @@ public final class TradeReceipts {
     public static Double unitPrice(String lore) {
         if(lore==null) return null;
         var match=Pattern.compile("(?:Unit price|Price per unit):\\s*([\\d,]+(?:\\.\\d+)?)",Pattern.CASE_INSENSITIVE)
-                .matcher(lore.replaceAll("§.",""));
+                .matcher(com.goofy.goofyaddons.utils.Chat.strip(lore));
         if (!match.find()) return null;
         try { double coins=Double.parseDouble(match.group(1).replace(",","")); return Double.isFinite(coins) && coins>0 ? coins : null; }
         catch (NumberFormatException bad) { return null; }

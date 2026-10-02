@@ -290,14 +290,42 @@ Each stage is one commit/PR with its own fixtures, mirroring
 `FULL_REPAIR_PLAN.md`'s completion rules. Stages 0–2 are low-risk and pay for
 themselves; stage 4 is the one that needs careful fixtures.
 
-| # | Stage | Contents | Risk | Gate |
-|---|---|---|---|---|
-| 0 | Baseline | Get `./gradlew test` green and recorded | none | Suite runs; result captured |
-| 1 | Cheap bugs | C1, C2, C4, B6 | low | Regression test per bug: stop→start leaves no pending claim; safety-pause then resume in BOTH does not halt |
-| 2 | Hot paths | A1, A2, A4 + C3 | low | No market recompute or quote mutation off the tick path; one fetch per refresh window in BOTH mode; HUD frame cost flat w.r.t. allowlist size |
+| # | Stage | Contents | Risk | Gate | Status |
+|---|---|---|---|---|---|
+| 0 | Baseline | Get `./gradlew test` green and recorded | none | Suite runs; result captured | **blocked** — Maven Central 429s through this proxy; no cached `fabric-loom` offline |
+| 1 | Cheap bugs | C1, C2, C4, B6 | low | Regression test per bug: stop→start leaves no pending claim; safety-pause then resume in BOTH does not halt | **done** (`cc7767c`), engine changes by inspection only |
+| 2 | Hot paths | A1, A4, A2 (coalescing only) + C3 | low | No market recompute or quote mutation off the tick path; HUD frame cost flat w.r.t. allowlist size | **done**, see note below |
 | 3 | Shared menu layer | B1 (pure pieces first, then settle/recheck), A3 | medium | Both engines drive the same observation code; existing menu/confirmation tests pass unchanged |
 | 4 | Movement model | B2, and A5 on top of it | **high** | Replay buy → partial claim → cancel → store across both pages → retrieve → combine → sell → claim, with wrong page, full storage, lookalike books, cursor-held output; no move recorded from disappearance alone |
 | 5 | State shape | B3, B4, B5 | medium | `stop()` provably resets everything; no state has two actions in one tick; one failure contract |
+
+### Stage 2 as shipped, and what was deliberately left out
+
+A1 and A4 landed in full. A2 landed **only as in-flight request coalescing**:
+`BazaarApi.fetch()` now shares one outstanding request between callers, handing
+each a dependent future so one engine's `cancel(true)` cannot kill the request
+another is waiting on. That removes duplicate work whenever the three pollers
+overlap, but it does **not** consolidate their cadences — `FlipCalculator`
+(20 s), `BazaarMonitor` (20 s) and `GeneralFlipper` (`refreshSeconds`) still
+each decide when to ask.
+
+Full consolidation to a single owner was deferred on purpose. It changes how
+old a snapshot can be at the moment a money decision reads it, and
+`TradingSafety.fresh` allows up to 60 s. Shifting that boundary without being
+able to run the suite is not a trade worth making, so it becomes its own stage
+with its own fixtures.
+
+Also deliberately kept: the `deepCopy` in `BazaarQuoteCache.publish`. It is one
+copy per accepted snapshot, not per tick, and it is the isolation guarantee that
+makes "readers treat the published JSON as immutable" true rather than merely
+observed.
+
+One more cost found while doing stage 2 and fixed with it:
+`DiagnosticLog.redact` compiled seven patterns on every call, on a path that
+runs for every logged string — and `BazaarFlipper.debug()` logs many times per
+tick. Patterns are now static. The eager string concatenation in those `debug()`
+arguments is still paid whether or not the event is kept; making those lazy is a
+stage 5 item, since it touches every call site.
 
 Ordering rationale: 1 and 2 are independent and shippable immediately. 3 must
 precede 4 and 5, because both need the observation snapshot to express their

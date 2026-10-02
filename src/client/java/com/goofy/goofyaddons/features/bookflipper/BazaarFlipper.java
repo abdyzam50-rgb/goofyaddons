@@ -354,16 +354,16 @@ public class BazaarFlipper implements Feature {
             if (System.currentTimeMillis() - ordersSeenAt < 750) return;
             List<String> names = minecraft.player.containerMenu.slots.stream()
                     .filter(slot -> slot.container != minecraft.player.getInventory())
-                    .map(slot -> slot.getItem().getHoverName().getString().replaceAll("§.", "")).toList();
+                    .map(slot -> com.goofy.goofyaddons.utils.Chat.strip(slot.getItem().getHoverName().getString())).toList();
             for (Task task : taskList) {
-                if(minecraft.screen.getTitle().getString().replaceAll("§.","").contains("Co-op Bazaar Orders")) {
+                if(com.goofy.goofyaddons.utils.Chat.strip(minecraft.screen.getTitle().getString()).contains("Co-op Bazaar Orders")) {
                     for(var slot:minecraft.player.containerMenu.slots) {
-                        String name=slot.getItem().getHoverName().getString().replaceAll("§.","");
+                        String name=com.goofy.goofyaddons.utils.Chat.strip(slot.getItem().getHoverName().getString());
                         if(!java.util.Set.of("BUY "+task.getBook().getRomanLevel(task.getBook().level()),"SELL "+task.getBook().getRomanLevel(task.getBook().sellLevel())).contains(name)) continue;
                         var lore=slot.getItem().get(net.minecraft.core.component.DataComponents.LORE);
                         String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
                         if(!com.goofy.goofyaddons.features.generalflipper.OrderLore.ownOrder(text,minecraft.getUser().getName())) {
-                            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(text.replaceAll("§.","")).find()
+                            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(com.goofy.goofyaddons.utils.Chat.strip(text)).find()
                                     && recheckBookOrders(task,"order-creator-unreadable")) return;
                             safetyHalt("Co-op book order creator differs or is unreadable; manual reconciliation required.");return;
                         }
@@ -1346,7 +1346,7 @@ public class BazaarFlipper implements Feature {
 
     private boolean containerNameCheck(String name) {
         if (minecraft.screen == null) return false;
-        return minecraft.screen.getTitle().getString().replaceAll("§.","").contains(name);
+        return com.goofy.goofyaddons.utils.Chat.strip(minecraft.screen.getTitle().getString()).contains(name);
     }
 
 

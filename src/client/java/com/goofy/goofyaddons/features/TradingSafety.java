@@ -8,7 +8,7 @@ public final class TradingSafety {
 
     public static boolean ordersTitle(String title) {
         if (title==null) return false;
-        String normalized=title.replaceAll("§.", "").replace(' ',' ').strip().replaceAll("\\s+", " ");
+        String normalized=com.goofy.goofyaddons.utils.Chat.strip(title).replace(' ',' ').strip().replaceAll("\\s+", " ");
         return java.util.Set.of("Your Bazaar Orders", "Bazaar Orders", "Co-op Bazaar Orders", "Manage Orders",
                 "Bazaar ➜ Orders", "Bazaar → Orders", "Bazaar ➜ Manage Orders", "Bazaar → Manage Orders").contains(normalized);
     }
@@ -40,7 +40,7 @@ public final class TradingSafety {
     }
 
     public static boolean cancellationReceipt(String message, String item) {
-        String clean = message.replaceAll("§.", "");
+        String clean = com.goofy.goofyaddons.utils.Chat.strip(message);
         return clean.matches("(?i)^\\[Bazaar] Cancelled (?:buy|sell) order for (?:[\\d,]+x )?"
                 + java.util.regex.Pattern.quote(item) + "[!.]?$");
     }
@@ -51,7 +51,7 @@ public final class TradingSafety {
 
     public static boolean confirmationTitle(String title,boolean selling) {
         if(title==null) return false;
-        String clean=title.replaceAll("§.","").strip();
+        String clean=com.goofy.goofyaddons.utils.Chat.strip(title).strip();
         return selling ? java.util.Set.of("Confirm Sell Offer","Confirm Sell Order").contains(clean) : clean.equals("Confirm Buy Order");
     }
     public static boolean combinedBookArrived(int previousOutput,int currentOutput,boolean cursorEmpty) {

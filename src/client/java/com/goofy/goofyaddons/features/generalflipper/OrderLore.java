@@ -67,7 +67,7 @@ public final class OrderLore {
         }
         return total;
     }
-    private static String clean(String lore) { return lore==null ? "" : lore.replaceAll("§.","").replace('\u00a0',' '); }
+    private static String clean(String lore) { return com.goofy.goofyaddons.utils.Chat.strip(lore).replace('\u00a0',' '); }
     public static boolean canOpenOptionsAfterClaim(String lore,int before,int current,int expected) {
         return current>=before+expected && current>=before && expected>=0
                 && clean(lore).contains("Click to view options!")

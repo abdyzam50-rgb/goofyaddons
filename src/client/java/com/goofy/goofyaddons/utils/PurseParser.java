@@ -8,7 +8,7 @@ public final class PurseParser {
     private PurseParser() {}
     public static double parse(String line) {
         if(line==null) return -1;
-        var match=LINE.matcher(line.replaceAll("§.","").replace('\u00a0',' ').strip());
+        var match=LINE.matcher(Chat.strip(line).replace('\u00a0',' ').strip());
         if(!match.matches()) return -1;
         try {
             double amount=Double.parseDouble(match.group(1).replace(",",""));

@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 /** Supported confirmation evidence; absent, conflicting or unknown fields fail closed. */
 public final class ConfirmationCheck {
     private ConfirmationCheck() {}
-    private static String clean(String value) { return value==null ? "" : value.replaceAll("§.","").replace('\u00a0',' ').strip(); }
+    private static String clean(String value) { return com.goofy.goofyaddons.utils.Chat.strip(value).replace('\u00a0',' ').strip(); }
     public static boolean matches(String title,boolean selling,String buttonName,String lore,String expectedItem,int quantity,double price) {
         if(!TradingSafety.confirmationTitle(title,selling) || expectedItem==null || quantity<=0 || !Double.isFinite(price) || price<=0) return false;
         String text=clean(lore),item=clean(expectedItem);

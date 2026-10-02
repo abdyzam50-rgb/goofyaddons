@@ -82,6 +82,11 @@ public class GeneralFlipper implements Feature {
     private String recheckReason;
     private long quotesAt;
     private long nextPoll;
+    // Recomputed once per tick by refreshSnapshot(); read by the scheduler and the HUD,
+    // neither of which may recompute the market or advance quote state themselves.
+    private List<GeneralCalculator.Candidate> snapshotCandidates = List.of();
+    private double snapshotPurse = -1;
+    private boolean snapshotFresh;
     private Position active;
     private Step step;
     private boolean selling;
@@ -136,12 +141,13 @@ public class GeneralFlipper implements Feature {
     public String taskItem() {
         return active == null ? "No item selected" : active.item.name();
     }
+    /** Pure reader: the HUD calls this every frame, so it must not recompute or mutate. */
     public String activity() {
         if (active != null) return "General: " + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
-        if (!freshQuotes()) return "Waiting for price data";
+        if (!snapshotFresh) return "Waiting for price data";
         if (!positions.isEmpty()) return "Waiting for general orders";
-        if (capital.available(new ScoreboardUtils().getPurse()) <= 0) return "Capital limit / purse reserve reached";
-        return candidates().isEmpty() ? "No flips meet the configured filters" : "Selecting eligible flips";
+        if (capital.available(snapshotPurse) <= 0) return "Capital limit / purse reserve reached";
+        return snapshotCandidates.isEmpty() ? "No flips meet the configured filters" : "Selecting eligible flips";
     }
 
     public void restoreBudget() {
@@ -176,6 +182,7 @@ public class GeneralFlipper implements Feature {
             return false;
         });
         active = null;
+        clearSnapshot();
         save();
     }
 
@@ -183,7 +190,15 @@ public class GeneralFlipper implements Feature {
         paused = true;
         invalidateRequest();
         active = null;
+        clearSnapshot();
         save();
+    }
+
+    /** A snapshot only describes a running engine; never let a stale one be read back. */
+    private void clearSnapshot() {
+        snapshotCandidates = List.of();
+        snapshotFresh = false;
+        snapshotPurse = -1;
     }
     @Override public void resume() { if (running) start(); }
 
@@ -194,7 +209,9 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void poll() {
-        if (!running || paused || blocked || request != null || System.currentTimeMillis() < nextPoll) return;
+        if (!running || paused || blocked) return;
+        refreshSnapshot();
+        if (request != null || System.currentTimeMillis() < nextPoll) return;
         nextPoll = System.currentTimeMillis() + settings().refreshSeconds * 1000L;
         int run = generation;
         try {
@@ -221,8 +238,8 @@ public class GeneralFlipper implements Feature {
         if (active != null) return true;
         long now = System.currentTimeMillis();
         if (positions.stream().anyMatch(position -> position.stage == Stage.RECONCILE || now - position.checkedAt >= settings().refreshSeconds * 1000L)) return true;
-        return freshQuotes() && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
-                && !candidates().isEmpty();
+        return snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
+                && !snapshotCandidates.isEmpty();
     }
 
     @Override public void onTick() {
@@ -376,9 +393,10 @@ public class GeneralFlipper implements Feature {
                 return;
             }
         }
-        if (!freshQuotes() || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
+        if (!snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
+        // Reserving capital stays on a live purse read; only ranking uses the snapshot.
         double purse = new ScoreboardUtils().getPurse();
-        for (GeneralCalculator.Candidate candidate : candidates()) {
+        for (GeneralCalculator.Candidate candidate : snapshotCandidates) {
             if (itemCount(candidate.item().id()) > 0 || capital.occupied(candidate.item().id())
                     || System.currentTimeMillis() < cooldownUntil.getOrDefault(candidate.item().id(), 0L)) continue;
             if (!capital.reserve(OWNER, candidate.item().id(), candidate.cost(), purse)) continue;
@@ -660,20 +678,36 @@ public class GeneralFlipper implements Feature {
             if (slot.container == minecraft.player.getInventory() && slot.getContainerSlot()<36 && slot.getContainerSlot()>=0 && slot.getItem().isEmpty()) empty++;
         }
         return GeneralCalculator.calculate(products, settings(), GoofyConfig.INSTANCE.bazaarTaxPercentage,
-                capital.available(new ScoreboardUtils().getPurse()), TradingSafety.conservativeCapacity(empty, 4));
+                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(empty, 4));
     }
 
     private double currentAsk() {
         JsonObject product = products == null ? null : products.getAsJsonObject(active.item.id());
         return product == null ? -1 : GeneralCalculator.topPrice(product, "buy_summary");
     }
+    /** Pure: whether the quotes this engine already adopted are usable right now. */
     private boolean freshQuotes() {
-        JsonObject latest=BazaarApi.latestFresh();
-        if(latest!=null) {
-            long updated=latest.get("lastUpdated").getAsLong();
-            if(updated>quotesAt) {products=latest.getAsJsonObject("products");quotesAt=updated;}
-        }
         return products != null && TradingSafety.fresh(quotesAt, System.currentTimeMillis());
+    }
+
+    /** Adopting a newer snapshot mutates engine state, so it belongs on the tick path only. */
+    private void adoptLatestQuotes() {
+        JsonObject latest=BazaarApi.latestFresh();
+        if(latest==null) return;
+        long updated=latest.get("lastUpdated").getAsLong();
+        if(updated>quotesAt) {products=latest.getAsJsonObject("products");quotesAt=updated;}
+    }
+
+    /**
+     * One market evaluation and one purse read per tick. Everything that used to
+     * recompute these per query - needsMenu() on every scheduler pass and activity()
+     * on every rendered frame - now reads the result.
+     */
+    private void refreshSnapshot() {
+        adoptLatestQuotes();
+        snapshotPurse = new ScoreboardUtils().getPurse();
+        snapshotFresh = freshQuotes();
+        snapshotCandidates = snapshotFresh ? candidates() : List.of();
     }
     private GeneralSettings settings() { return GoofyConfig.INSTANCE.general; }
     private boolean priceMenu() { return menu(selling ? "At what price" : "How much do you want to pay"); }
@@ -724,7 +758,7 @@ public class GeneralFlipper implements Feature {
     private boolean ambiguousOrders() {
         int end = Math.max(0, minecraft.player.containerMenu.slots.size() - 36);
         List<String> names = minecraft.player.containerMenu.slots.subList(0, end).stream()
-                .map(slot -> slot.getItem().getHoverName().getString().replaceAll("§.", "")).toList();
+                .map(slot -> com.goofy.goofyaddons.utils.Chat.strip(slot.getItem().getHoverName().getString())).toList();
         if (TradingSafety.ambiguousOrders(names, active.item.name())) {
             fail("Duplicate or paginated orders; manual reconciliation required."); return true;
         }
@@ -734,9 +768,9 @@ public class GeneralFlipper implements Feature {
         String tooltip=lore(slot);
         Integer total=OrderLore.total(tooltip);
         if(total==null && recheckOrders("order-fields-unreadable")) return false;
-        if (minecraft.screen!=null && minecraft.screen.getTitle().getString().replaceAll("§.","").contains("Co-op Bazaar Orders")
+        if (minecraft.screen!=null && com.goofy.goofyaddons.utils.Chat.strip(minecraft.screen.getTitle().getString()).contains("Co-op Bazaar Orders")
                 && !OrderLore.ownOrder(tooltip,minecraft.getUser().getName())) {
-            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(tooltip.replaceAll("§.","")).find()
+            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(com.goofy.goofyaddons.utils.Chat.strip(tooltip)).find()
                     && recheckOrders("order-creator-unreadable")) return false;
             fail("Co-op order belongs to another player or its creator is unreadable; position retained.");return false;
         }
@@ -768,7 +802,7 @@ public class GeneralFlipper implements Feature {
         for (int i = 0; i < end; i++) {
             ItemStack item = minecraft.player.containerMenu.slots.get(i).getItem();
             if (item.isEmpty()) continue;
-            String name = item.getHoverName().getString().replaceAll("§.", "");
+            String name = com.goofy.goofyaddons.utils.Chat.strip(item.getHoverName().getString());
             if (exact ? name.equals(text) : name.contains(text)) return i;
         }
         return -1;
@@ -778,7 +812,7 @@ public class GeneralFlipper implements Feature {
         return lore == null ? "" : String.join("\n", lore.lines().stream().map(line -> line.getString()).toList());
     }
     private double unitPrice(int slot) {
-        Double price=TradeReceipts.unitPrice(lore(slot).replaceAll("§.",""));
+        Double price=TradeReceipts.unitPrice(com.goofy.goofyaddons.utils.Chat.strip(lore(slot)));
         return price==null ? -1 : price;
     }
     private int itemCount(String id) {

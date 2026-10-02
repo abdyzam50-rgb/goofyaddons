@@ -23,16 +23,23 @@ public final class DiagnosticLog {
         if (maxBytes<1 || archives<1) throw new IllegalArgumentException("Invalid retention");
         this.directory=directory; this.maxBytes=maxBytes; this.archives=archives;
     }
+    // Compiled once: redact() runs for every logged string, so per-call compilation showed up.
+    private static final java.util.regex.Pattern PLAYER_LINE=java.util.regex.Pattern.compile("(?im)^(?:By|Created by|Order by|Seller|Buyer|Owner|Placed by|Co-op member):.*$");
+    private static final java.util.regex.Pattern VENDOR_LINE=java.util.regex.Pattern.compile("(?m)^-\\s*[\\d,]+x\\s+.*$");
+    private static final java.util.regex.Pattern CREDENTIAL=java.util.regex.Pattern.compile("(?i)(authorization|access[_-]?token|api[_-]?key|password|sessionid)([\\s=:]+)[^\\s,;]+");
+    private static final java.util.regex.Pattern BEARER=java.util.regex.Pattern.compile("(?i)bearer\\s+[^\\s,;]+");
+    private static final java.util.regex.Pattern EMAIL=java.util.regex.Pattern.compile("[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}");
+
     public static String redact(String text) {
         if (text==null) return "";
         String home=System.getProperty("user.home","");
         if (!home.isBlank()) text=text.replace(home,"<home>");
-        text=text.replaceAll("§.","")
-                .replaceAll("(?im)^(?:By|Created by|Order by|Seller|Buyer|Owner|Placed by|Co-op member):.*$","<player redacted>")
-                .replaceAll("(?m)^-\\s*[\\d,]+x\\s+.*$","<vendor redacted>");
-        return text.replaceAll("(?i)(authorization|access[_-]?token|api[_-]?key|password|sessionid)([\\s=:]+)[^\\s,;]+","$1$2<redacted>")
-                .replaceAll("(?i)bearer\\s+[^\\s,;]+","Bearer <redacted>")
-                .replaceAll("[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}","<email>");
+        text=com.goofy.goofyaddons.utils.Chat.strip(text);
+        text=PLAYER_LINE.matcher(text).replaceAll("<player redacted>");
+        text=VENDOR_LINE.matcher(text).replaceAll("<vendor redacted>");
+        text=CREDENTIAL.matcher(text).replaceAll("$1$2<redacted>");
+        text=BEARER.matcher(text).replaceAll("Bearer <redacted>");
+        return EMAIL.matcher(text).replaceAll("<email>");
     }
     private String safeJson(Object value) {
         var tree=gson.toJsonTree(value);
