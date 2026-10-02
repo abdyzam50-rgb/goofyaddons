@@ -9,7 +9,7 @@ public final class TradingSafety {
     public static boolean ordersTitle(String title) {
         if (title==null) return false;
         String normalized=title.replaceAll("§.", "").replace(' ',' ').strip().replaceAll("\\s+", " ");
-        return java.util.Set.of("Your Bazaar Orders", "Bazaar Orders", "Manage Orders",
+        return java.util.Set.of("Your Bazaar Orders", "Bazaar Orders", "Co-op Bazaar Orders", "Manage Orders",
                 "Bazaar ➜ Orders", "Bazaar → Orders", "Bazaar ➜ Manage Orders", "Bazaar → Manage Orders").contains(normalized);
     }
 

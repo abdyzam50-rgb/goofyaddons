@@ -58,6 +58,12 @@ class RuntimeSafetyTest {
         assertFalse(TradingSafety.ordersTitle("Confirm Buy Order"));
         assertFalse(TradingSafety.ordersTitle(null));
     }
+    @Test void coopOrdersMenuFromDiagnosticBundleIsRecognized() {
+        assertTrue(TradingSafety.ordersTitle("Co-op Bazaar Orders"));
+        assertTrue(TradingSafety.ordersTitle("§6Co-op Bazaar Orders"));
+        assertFalse(TradingSafety.ordersTitle("Co-op Bazaar"));
+        assertFalse(TradingSafety.ordersTitle("Co-op Bazaar Orders Confirmation"));
+    }
     @Test void duplicateAndPagedOrdersCannotBeAdopted() {
         assertTrue(TradingSafety.ambiguousOrders(List.of("BUY Potato", "BUY Potato"), "Potato"));
         assertTrue(TradingSafety.ambiguousOrders(List.of("SELL Potato", "Next Page"), "Potato"));
