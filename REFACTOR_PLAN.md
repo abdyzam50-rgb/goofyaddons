@@ -425,8 +425,15 @@ The enabler every remaining stage waits behind. Two halves:
 | Observation model | `SlotView`/`MenuSnapshot` (pure menu + queries), `LiveMenu` (the one adapter) | **done**, 19 tests |
 | Actions | `GameActions` + `LiveActions` + `RecordingActions` fake | **done**, 4 tests |
 | `GeneralFlipper` effects | every click, command, message, close and sign write through the seam | **done** |
-| `BazaarFlipper` effects | same, across 26 direct `clickSlot` sites and 17 closes | not started |
-| Observation migration | one snapshot per tick, replacing ad-hoc `InventoryScanner` calls in both engines | not started |
+| `GameWorld` + fake | `inWorld`, `username`, `signEditorOpen`, `menu`, client-thread hop | **done** |
+| `GeneralFlipper` migration | zero Minecraft references; store path injected | **done**, driven by 9 tests |
+| `BazaarFlipper` effects + migration | 26 direct `clickSlot` sites, 17 closes, 79 game reads, 74 scanner calls | not started |
+
+**A lesson worth keeping.** Two "the engine must not click" assertions passed while the
+rule they tested was disabled. Refusing a bad order and quietly adopting it both perform
+no server action — the second just closes the menu. Zero clicks is therefore not
+sufficient evidence; these tests also assert the engine warned the player. Any future
+safety test on this codebase should be mutation-checked before it is trusted.
 
 **What the probe established.** `EngineSeamProbeTest` constructs a `GeneralFlipper` with
 injected effects inside a plain JVM. It works: `Minecraft.getInstance()` returns null in a

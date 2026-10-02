@@ -467,7 +467,30 @@ by inspection, and no live server order was placed.
   rest of the migration needs no Minecraft bootstrap, only the replacement of direct
   `minecraft.` reads. `BazaarFlipper`'s 26 direct click sites are not migrated.
 
-  **The observation model is not wired in yet, on purpose.** Having `InventoryScanner` delegate per call
+  **The migration landed for the general engine, and it can now be driven by a test.**
+  `GameWorld`/`LiveWorld`/`FakeWorld` complete the seam, `GeneralFlipper` holds no
+  reference to Minecraft at all, and its store path is injected so construction no longer
+  depends on a running game. Two couplings had to be broken to get there, both found by
+  probing rather than by reading: `GeneralFlipper.statePath()` resolved FabricLoader, which
+  made `load()` fail and latch `blocked`; and `BazaarFlipper`'s journal field resolved
+  FabricLoader at construction, which made `FeatureManager`'s static initialiser unusable
+  in a test and so put every `safetyPause` path out of reach. The journal is now lazy.
+
+  `GeneralFlipperDrivingTest` runs real ticks against a described menu and asserts what
+  reached the server. It covers: an unexpected menu, an orders list missing its controls,
+  a paginated list, an order whose amount differs from the tracked position, a co-op order
+  owned by another player, and the one positive case — with nothing on screen the engine
+  asks for its orders list and does nothing else.
+
+  **Two of those assertions were worthless until a mutation test exposed them.** Disabling
+  the order-quantity check left the suite green, twice. The first cause was a fixture whose
+  timestamps were at the epoch, so the holding-age limit fired before the identity checks
+  were reached. The second was subtler and is worth recording: refusing a bad order and
+  quietly adopting it *both* perform no server action — accepting one merely closes the
+  menu. "No clicks" therefore does not test the rule. Those cases now also assert that the
+  engine warned the player, and the mutation fails them.
+
+  **The observation model is not wired into the book engine, on purpose.** Having `InventoryScanner` delegate per call
   would rebuild a ~90-slot snapshot on each of the 16-plus scans per tick, which is a
   performance regression. The migration is to take one snapshot per tick and pass it
   down, which is also the A3 observation snapshot deferred earlier. Until that lands,

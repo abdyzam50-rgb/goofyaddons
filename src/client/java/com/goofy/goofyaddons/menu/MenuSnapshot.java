@@ -166,6 +166,77 @@ public record MenuSnapshot(int containerId, String title, boolean cursorEmpty, L
     }
 
     /**
+     * Stripped hover names of the container region, positionally.
+     *
+     * <p>Empty slots are included so an index into this list still matches the menu,
+     * which is what the ambiguity check relies on.
+     */
+    public List<String> containerHoverNames() {
+        List<String> names = new ArrayList<>();
+        int end = containerEnd();
+        for (int i = 0; i < end && i < slots.size(); i++) {
+            names.add(com.goofy.goofyaddons.utils.Chat.strip(slots.get(i).hoverName()));
+        }
+        return names;
+    }
+
+    /**
+     * First container slot whose hover name matches, or -1.
+     *
+     * <p>Distinct from {@link #namedInContainer}, which reads the custom name. The
+     * engines use both against different menus, so they stay separate predicates.
+     */
+    public int firstByHoverName(String text, boolean exact) {
+        int end = containerEnd();
+        for (int i = 0; i < end && i < slots.size(); i++) {
+            SlotView slot = slots.get(i);
+            if (slot.empty()) continue;
+            String name = com.goofy.goofyaddons.utils.Chat.strip(slot.hoverName());
+            if (exact ? name.equals(text) : name.contains(text)) return i;
+        }
+        return -1;
+    }
+
+    /** Total count of this Hypixel item anywhere the player owns, armour included. */
+    public int countInInventory(String customId) {
+        if (customId == null) return 0;
+        int count = 0;
+        for (SlotView slot : slots) {
+            if (!slot.inPlayerInventory() || slot.empty()) continue;
+            if (customId.equals(slot.customId())) count += slot.count();
+        }
+        return count;
+    }
+
+    /**
+     * Stack limit observed for this item, clamped to 1..64, or 1 when none is held.
+     *
+     * <p>Scans every slot, the container included, because the limit is a property of
+     * the item rather than of where it sits. A later match wins, as upstream.
+     */
+    public int stackLimitFor(String customId) {
+        int limit = 1;
+        if (customId == null) return limit;
+        for (SlotView slot : slots) {
+            if (slot.empty() || !customId.equals(slot.customId())) continue;
+            limit = Math.max(1, Math.min(64, slot.maxStackSize()));
+        }
+        return limit;
+    }
+
+    /** Room left in part-filled stacks of this item, in the player's 36 main slots. */
+    public int partialStackSpace(String customId) {
+        if (customId == null) return 0;
+        int space = 0;
+        for (SlotView slot : slots) {
+            if (!ownInventorySlot(slot) || slot.empty()) continue;
+            if (!customId.equals(slot.customId())) continue;
+            space += Math.max(0, slot.maxStackSize() - slot.count());
+        }
+        return space;
+    }
+
+    /**
      * Whether the anvil's two input slots are not both the expected book.
      *
      * <p>False when either input is absent or carries no lore at all, because an

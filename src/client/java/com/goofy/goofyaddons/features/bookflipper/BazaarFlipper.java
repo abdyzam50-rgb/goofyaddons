@@ -69,7 +69,7 @@ public class BazaarFlipper implements Feature {
     private final Set<String> exposedBooks = new HashSet<>();
     private boolean recoveryRequired;
     private boolean modePaused;
-    private final BookJournal journal = new BookJournal(FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-book-orders.json"));
+    private BookJournal bookJournal;
     private final TransactionWatchdog watchdog = new TransactionWatchdog();
     private final Map<String, Long> heldSince = new HashMap<>();
     private Task pendingSaleClaim;
@@ -1602,7 +1602,7 @@ public class BazaarFlipper implements Feature {
         if (!journalLoaded) {
             journalLoaded = true;
             try {
-                List<BookJournal.Position> saved = journal.read();
+                List<BookJournal.Position> saved = journal().read();
                 for (BookJournal.Position position : saved) {
                     CapitalManager.INSTANCE.restore("books", position.book().id(), position.cost(), true);
                 }
@@ -1620,6 +1620,18 @@ public class BazaarFlipper implements Feature {
         return true;
     }
 
+    /**
+     * Resolved on first use. Touching FabricLoader in a field initialiser made
+     * FeatureManager's static initialiser unusable outside a running game, which in turn
+     * meant no test could reach any code path that calls safetyPause.
+     */
+    private BookJournal journal() {
+        if (bookJournal == null) {
+            bookJournal = new BookJournal(FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-book-orders.json"));
+        }
+        return bookJournal;
+    }
+
     private boolean checkpoint() {
         if (!journalLoaded || recoveryRequired && taskList.isEmpty() && bookLists.isEmpty()) return !recoveryRequired;
         try {
@@ -1633,7 +1645,7 @@ public class BazaarFlipper implements Feature {
                 positions.put(extra.book.id(), new BookJournal.Position(extra.book,
                         previous == null ? GoofyConfig.INSTANCE.maxTradingCapital : previous.cost()));
             }
-            journal.writeTracked(positions.values().stream().sorted(Comparator.comparing(position -> position.book().id())).toList(), exposedBooks);
+            journal().writeTracked(positions.values().stream().sorted(Comparator.comparing(position -> position.book().id())).toList(), exposedBooks);
             return true;
         } catch (Exception failed) {
             Diagnostics.failure("books.journal_save_failed",failed);

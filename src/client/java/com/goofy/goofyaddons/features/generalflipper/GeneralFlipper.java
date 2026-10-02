@@ -15,13 +15,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
-import net.minecraft.world.item.component.ItemLore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,8 +55,11 @@ public class GeneralFlipper implements Feature {
         double cost() { return quantity * unitCost; }
     }
 
-    private final Minecraft minecraft = Minecraft.getInstance();
+    private final com.goofy.goofyaddons.menu.GameWorld world;
+    private final java.util.function.Supplier<Path> statePath;
     private final com.goofy.goofyaddons.menu.GameActions actions;
+    /** The menu as observed once this tick; every decision below reads this, not the game. */
+    private com.goofy.goofyaddons.menu.MenuSnapshot view = new com.goofy.goofyaddons.menu.MenuSnapshot(0, null, true, List.of());
     private final CapitalManager capital = CapitalManager.INSTANCE;
     private final List<Position> positions = new ArrayList<>();
     private final java.util.Map<String, Long> cooldownUntil = new java.util.HashMap<>();
@@ -105,13 +101,25 @@ public class GeneralFlipper implements Feature {
     private long lastCommand;
 
     public GeneralFlipper() {
-        this(new com.goofy.goofyaddons.menu.LiveActions());
+        // Resolved lazily: touching FabricLoader at construction would make this engine
+        // unconstructable outside a running game, including in a test.
+        this(new com.goofy.goofyaddons.menu.LiveWorld(), new com.goofy.goofyaddons.menu.LiveActions(),
+                () -> FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-general-orders.json"));
     }
 
-    /** Effects are injectable so a test can assert the exact clicks an engine produced. */
-    GeneralFlipper(com.goofy.goofyaddons.menu.GameActions actions) {
+    /** The seam: a test supplies a menu to observe, a store to use, and records what the engine does. */
+    GeneralFlipper(com.goofy.goofyaddons.menu.GameWorld world, com.goofy.goofyaddons.menu.GameActions actions,
+                   java.util.function.Supplier<Path> statePath) {
+        this.world = world;
         this.actions = actions;
+        this.statePath = statePath;
         ChatHook.onMessage("[Bazaar]", this::onNotice);
+    }
+
+    /** One observation per tick. Decisions inside a tick then share a single view. */
+    private void observe() {
+        var observed = world.menu();
+        view = observed == null ? new com.goofy.goofyaddons.menu.MenuSnapshot(0, null, true, List.of()) : observed;
     }
 
     @Override public String name() { return "GeneralFlipper"; }
@@ -215,13 +223,14 @@ public class GeneralFlipper implements Feature {
 
     @Override public void poll() {
         if (!running || paused || blocked) return;
+        observe();
         refreshSnapshot();
         if (request != null || System.currentTimeMillis() < nextPoll) return;
         nextPoll = System.currentTimeMillis() + settings().refreshSeconds * 1000L;
         int run = generation;
         try {
             request = BazaarApi.fetch();
-            request.whenComplete((root, error) -> minecraft.execute(() -> {
+            request.whenComplete((root, error) -> world.onClientThread(() -> {
                 if (generation != run || !running || paused) return;
                 try {
                     if (error != null) throw new IllegalStateException("Bazaar request failed", error);
@@ -248,7 +257,8 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void onTick() {
-        if (!running || paused || blocked || minecraft.player == null || minecraft.level == null) return;
+        if (!running || paused || blocked || !world.inWorld()) return;
+        observe();
         if (active == null) selectWork();
         if (active == null || paused || blocked) return;
         long now = System.currentTimeMillis();
@@ -259,23 +269,23 @@ public class GeneralFlipper implements Feature {
             if(reopeningOrders) {
                 command("managebazaarorders");
                 if(!ordersReady()) {
-                    if(minecraft.screen!=null) recheckOrders(recheckReason);
+                    if(view.title()!=null) recheckOrders(recheckReason);
                     return;
                 }
                 reopeningOrders=false;
             }
-            if(minecraft.screen!=null && (step==Step.ORDERS || step==Step.VERIFY_ORDER || step==Step.VERIFY_CANCEL || step==Step.VERIFY_SALE)
-                    && !TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) {
+            if((step==Step.ORDERS || step==Step.VERIFY_ORDER || step==Step.VERIFY_CANCEL || step==Step.VERIFY_SALE)
+                    && view.title()!=null && !TradingSafety.ordersTitle(view.title())) {
                 recheckOrders("unexpected-verification-menu");return;
             }
-            if(minecraft.screen!=null && (step==Step.ORDERS || step==Step.VERIFY_ORDER || step==Step.VERIFY_CANCEL || step==Step.VERIFY_SALE)
-                    && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()) && !ordersReady()) {
+            if((step==Step.ORDERS || step==Step.VERIFY_ORDER || step==Step.VERIFY_CANCEL || step==Step.VERIFY_SALE)
+                    && TradingSafety.ordersTitle(view.title()) && !ordersReady()) {
                 recheckOrders("orders-not-loaded");return;
             }
             switch (step) {
                 case OPEN_ORDERS -> {
                     command("managebazaarorders");
-                    if (minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) transition(Step.ORDERS);
+                    if (TradingSafety.ordersTitle(view.title())) transition(Step.ORDERS);
                 }
                 case ORDERS -> inspectOrders();
                 case CANCEL_DETAIL -> cancelDetail();
@@ -286,7 +296,7 @@ public class GeneralFlipper implements Feature {
                 }
                 case PRODUCT -> openProduct();
                 case QUANTITY -> {
-                    if (minecraft.screen instanceof AbstractSignEditScreen) transition(Step.SIGN);
+                    if (world.signEditorOpen()) transition(Step.SIGN);
                     else if (menu("How many")) {
                         int custom = find("Custom Amount", false);
                         if (custom < 0) custom = find("Custom", false);
@@ -294,7 +304,7 @@ public class GeneralFlipper implements Feature {
                     } else if (priceMenu()) transition(Step.PRICE);
                 }
                 case SIGN -> {
-                    if (minecraft.screen instanceof AbstractSignEditScreen) {
+                    if (world.signEditorOpen()) {
                         if (!actions.writeSign(Integer.toString(active.quantity))) {
                             fail("Could not write the order amount onto the sign; no order submitted."); return;
                         }
@@ -304,7 +314,7 @@ public class GeneralFlipper implements Feature {
                 case PRICE -> choosePrice();
                 case CONFIRM -> {
                     if (!menu("Confirm")) return;
-                    if(!TradingSafety.confirmationTitle(minecraft.screen.getTitle().getString(),selling)) {
+                    if(!TradingSafety.confirmationTitle(view.title(),selling)) {
                         fail("Unexpected confirmation type; no order submitted.");return;
                     }
                     if (!freshQuotes()) { fail("Quotes expired before order confirmation."); return; }
@@ -313,12 +323,12 @@ public class GeneralFlipper implements Feature {
                     }
                     int confirm = 13;
                     if (!loadedSlot(confirm)) return;
-                    if(!confirmationStability.ready(minecraft.player.containerMenu.containerId,
-                            minecraft.screen.getTitle().getString()+"\n"+minecraft.player.containerMenu.slots.get(confirm).getItem().getHoverName().getString()+"\n"+lore(confirm),
+                    if(!confirmationStability.ready(view.containerId(),
+                            view.title()+"\n"+view.slot(confirm).hoverName()+"\n"+lore(confirm),
                             !lore(confirm).isBlank(),now)) return;
                     double expectedPrice=selling?active.sellPrice:active.unitCost;
-                    if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),selling,
-                            minecraft.player.containerMenu.slots.get(confirm).getItem().getHoverName().getString(),lore(confirm),active.item.name(),active.quantity,expectedPrice)) {
+                    if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(view.title(),selling,
+                            view.slot(confirm).hoverName(),lore(confirm),active.item.name(),active.quantity,expectedPrice)) {
                         fail("Confirmation item, quantity or price is unreadable or differs; no order submitted.");return;
                     }
                     if(selling) {
@@ -676,13 +686,9 @@ public class GeneralFlipper implements Feature {
     }
 
     private List<GeneralCalculator.Candidate> candidates() {
-        if (minecraft.player == null || products == null) return List.of();
-        int empty = 0;
-        for (Slot slot : minecraft.player.containerMenu.slots) {
-            if (slot.container == minecraft.player.getInventory() && slot.getContainerSlot()<36 && slot.getContainerSlot()>=0 && slot.getItem().isEmpty()) empty++;
-        }
+        if (!world.inWorld() || products == null) return List.of();
         return GeneralCalculator.calculate(products, settings(), GoofyConfig.INSTANCE.bazaarTaxPercentage,
-                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(empty, 4));
+                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4));
     }
 
     private double currentAsk() {
@@ -717,10 +723,10 @@ public class GeneralFlipper implements Feature {
     private boolean priceMenu() { return menu(selling ? "At what price" : "How much do you want to pay"); }
     // Now strips formatting codes, matching BazaarFlipper. A code inside the label used
     // to make a known menu unrecognisable, which surfaced as a step timeout.
-    private boolean menu(String title) { return minecraft.screen != null
-            && com.goofy.goofyaddons.utils.MenuText.titleContains(minecraft.screen.getTitle().getString(), title); }
-    private boolean loadedSlot(int slot) { return slot >= 0 && slot < minecraft.player.containerMenu.slots.size()
-            && minecraft.player.containerMenu.slots.get(slot).hasItem(); }
+    private boolean menu(String title) {
+        return com.goofy.goofyaddons.utils.MenuText.titleContains(view.title(), title);
+    }
+    private boolean loadedSlot(int slot) { return view.loaded(slot); }
     private void click(int slot) { if (loadedSlot(slot)) actions.click(slot, false); }
     private void transition(Step next) {
         Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
@@ -730,7 +736,7 @@ public class GeneralFlipper implements Feature {
     }
     private void command(String text) {
         long now = System.currentTimeMillis();
-        if (minecraft.screen == null && now - lastCommand > 1500) {
+        if (view.title() == null && now - lastCommand > 1500) {
             actions.command(text);
             lastCommand = now;
         }
@@ -750,10 +756,8 @@ public class GeneralFlipper implements Feature {
 
     private int findOrder(boolean sell) { return find((sell ? "SELL " : "BUY ") + active.item.name(), true); }
     private boolean ordersReady() {
-        if (minecraft.screen == null) return false;
-        String title = minecraft.screen.getTitle().getString();
-        if (!TradingSafety.ordersTitle(title)) return false;
-        if (!ordersSettle.settled(minecraft.player.containerMenu.containerId, System.currentTimeMillis())) return false;
+        if (!TradingSafety.ordersTitle(view.title())) return false;
+        if (!ordersSettle.settled(view.containerId(), System.currentTimeMillis())) return false;
         if (find("Go Back", false) < 0 && find("Close", true) < 0) return false;
         if (find("Next Page", false) >= 0 || find("Previous Page", false) >= 0) {
             fail("Orders span multiple pages; automatic ownership checks are blocked."); return false;
@@ -761,10 +765,7 @@ public class GeneralFlipper implements Feature {
         return true;
     }
     private boolean ambiguousOrders() {
-        int end = com.goofy.goofyaddons.utils.MenuText.containerEnd(minecraft.player.containerMenu.slots.size());
-        List<String> names = minecraft.player.containerMenu.slots.subList(0, end).stream()
-                .map(slot -> com.goofy.goofyaddons.utils.Chat.strip(slot.getItem().getHoverName().getString())).toList();
-        if (TradingSafety.ambiguousOrders(names, active.item.name())) {
+        if (TradingSafety.ambiguousOrders(view.containerHoverNames(), active.item.name())) {
             fail("Duplicate or paginated orders; manual reconciliation required."); return true;
         }
         return false;
@@ -773,8 +774,8 @@ public class GeneralFlipper implements Feature {
         String tooltip=lore(slot);
         Integer total=OrderLore.total(tooltip);
         if(total==null && recheckOrders("order-fields-unreadable")) return false;
-        if (minecraft.screen!=null && com.goofy.goofyaddons.utils.MenuText.titleContains(minecraft.screen.getTitle().getString(),"Co-op Bazaar Orders")) {
-            OrderLore.Creator creator=OrderLore.creator(tooltip,minecraft.getUser().getName());
+        if (com.goofy.goofyaddons.utils.MenuText.titleContains(view.title(),"Co-op Bazaar Orders")) {
+            OrderLore.Creator creator=OrderLore.creator(tooltip,world.username());
             if(creator==OrderLore.Creator.UNREADABLE && recheckOrders("order-creator-unreadable")) return false;
             if(creator!=OrderLore.Creator.OWN) {
                 fail("Co-op order belongs to another player or its creator is unreadable; position retained.");return false;
@@ -789,47 +790,17 @@ public class GeneralFlipper implements Feature {
         return true;
     }
     private int capacityFor(String id) {
-        int empty = 0;
-        int partial = 0;
-        int stackLimit = 1;
-        for (Slot slot : minecraft.player.containerMenu.slots) {
-            ItemStack stack = slot.getItem();
-            CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-            boolean matches = data != null && id.equals(data.copyTag().getStringOr("id", ""));
-            if (matches) stackLimit = Math.max(1, Math.min(64, stack.getMaxStackSize()));
-            if (slot.container != minecraft.player.getInventory() || slot.getContainerSlot() >= 36) continue;
-            if (stack.isEmpty()) empty++;
-            else if (matches) partial += Math.max(0, stack.getMaxStackSize() - stack.getCount());
-        }
-        return TradingSafety.conservativeCapacity(empty, 4) * stackLimit + partial;
+        // Policy stays here; the three observations come from the snapshot.
+        return TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4) * view.stackLimitFor(id)
+                + view.partialStackSpace(id);
     }
-    private int find(String text, boolean exact) {
-        int end = com.goofy.goofyaddons.utils.MenuText.containerEnd(minecraft.player.containerMenu.slots.size());
-        for (int i = 0; i < end; i++) {
-            ItemStack item = minecraft.player.containerMenu.slots.get(i).getItem();
-            if (item.isEmpty()) continue;
-            String name = com.goofy.goofyaddons.utils.Chat.strip(item.getHoverName().getString());
-            if (exact ? name.equals(text) : name.contains(text)) return i;
-        }
-        return -1;
-    }
-    private String lore(int slot) {
-        ItemLore lore = minecraft.player.containerMenu.slots.get(slot).getItem().get(DataComponents.LORE);
-        return lore == null ? "" : String.join("\n", lore.lines().stream().map(line -> line.getString()).toList());
-    }
+    private int find(String text, boolean exact) { return view.firstByHoverName(text, exact); }
+    private String lore(int slot) { return view.loreAt(slot); }
     private double unitPrice(int slot) {
         Double price=TradeReceipts.unitPrice(com.goofy.goofyaddons.utils.Chat.strip(lore(slot)));
         return price==null ? -1 : price;
     }
-    private int itemCount(String id) {
-        int count = 0;
-        for (Slot slot : minecraft.player.containerMenu.slots) {
-            if (slot.container != minecraft.player.getInventory()) continue;
-            CustomData data = slot.getItem().get(DataComponents.CUSTOM_DATA);
-            if (data != null && id.equals(data.copyTag().getStringOr("id", ""))) count += slot.getItem().getCount();
-        }
-        return count;
-    }
+    private int itemCount(String id) { return view.countInInventory(id); }
 
     private void onNotice(String message) {
         if (!running || paused || active == null || !message.contains(active.item.name())) return;
@@ -882,7 +853,7 @@ public class GeneralFlipper implements Feature {
         FeatureManager.INSTANCE.safetyPause(message);
     }
 
-    private Path statePath() { return FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-general-orders.json"); }
+    private Path statePath() { return statePath.get(); }
     private void load() {
         loaded = true;
         try {
