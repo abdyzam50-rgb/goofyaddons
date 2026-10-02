@@ -49,6 +49,7 @@ public class BazaarFlipper implements Feature {
         IDLE,
         OUTBID,
         BAZAAR_NAVIGATION,
+        VERIFY_PLACEMENT,
         STORE,
         ANVIL,
         COMBINE,
@@ -104,8 +105,16 @@ public class BazaarFlipper implements Feature {
     private boolean overFlowProt = false;
     private int tick;
 
+    private final com.goofy.goofyaddons.features.MenuRecheck menuRecheck=new com.goofy.goofyaddons.features.MenuRecheck();
     private Task activeTask = null;
+    private final com.goofy.goofyaddons.features.MenuObservationStability confirmationStability=new com.goofy.goofyaddons.features.MenuObservationStability();
     private Task confirmationTask;
+    private Task submittedBookTask;
+    private Task.BookState submittedNextState;
+    private boolean submittedBookSelling;
+    private int submittedBookUnits;
+    private double submittedBookPrice;
+    private long submittedBookAt;
     private double confirmationPrice;
     private boolean confirmationSelling;
     private long confirmationSelectedAt;
@@ -143,6 +152,9 @@ public class BazaarFlipper implements Feature {
         state.put("ordersContainer",ordersContainer);state.put("storagePage",usingSecondPage?2:1);
         state.put("combineCounter",combine_Counter);state.put("anvilCounter",anvil_Counter);state.put("storeCounter",store_Counter);
         state.put("extraBookStacks",bookLists.size());
+        state.put("submittedTrade",submittedBookTask==null?"none":submittedBookTask.getProfitTradeId());
+        state.put("submittedUnits",submittedBookUnits);state.put("submittedPrice",submittedBookPrice);
+        state.put("submittedSelling",submittedBookSelling);state.put("menuRechecks",menuRecheck.attempts());
         state.put("tasks",taskList.stream().map(task->java.util.Map.of("trade",task.getProfitTradeId(),"item",task.getBook().id(),"state",task.getBookState().name(),"remaining",task.getAmountToOrder())).toList());
         return state;
     }
@@ -151,6 +163,7 @@ public class BazaarFlipper implements Feature {
         Task task=pendingBuyClaim;
         if (task==null) task=switch (state) {
             case BAZAAR_NAVIGATION -> activeTask;
+            case VERIFY_PLACEMENT -> submittedBookTask;
             case STARTUP_BAZAAR_CHECK -> taskInState(Task.BookState.BAZAAR_ORDER_CHECK);
             case OUTBID -> taskInState(Task.BookState.OUTBID);
             case STORE -> taskInState(Task.BookState.STORE);
@@ -339,6 +352,8 @@ public class BazaarFlipper implements Feature {
                         var lore=slot.getItem().get(net.minecraft.core.component.DataComponents.LORE);
                         String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
                         if(!com.goofy.goofyaddons.features.generalflipper.OrderLore.ownOrder(text,minecraft.getUser().getName())) {
+                            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(text.replaceAll("§.","")).find()
+                                    && recheckBookOrders(task,"order-creator-unreadable")) return;
                             safetyHalt("Co-op book order creator differs or is unreadable; manual reconciliation required.");return;
                         }
                     }
@@ -471,8 +486,8 @@ public class BazaarFlipper implements Feature {
                     Diagnostics.command("managebazaarorders");
                 }
 
-                if (containerNameCheck("Bazaar")) clock.start(randomizer());
-                if (containerNameCheck("Bazaar") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()))) clock.start(randomizer());
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     // Waiting for chat message to appear here
                     if (attemptedToClaim) {
                         if (!didReceiveItems) return;
@@ -482,6 +497,7 @@ public class BazaarFlipper implements Feature {
 
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
                     if (slot.isEmpty()) {
+                        if(recheckBookOrders(task,"missing-buy-order")) return;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] STARTUP_BAZAAR_CHECK: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -657,16 +673,16 @@ public class BazaarFlipper implements Feature {
                     activeTask.setReservedUnitCost(Math.max(unitPrice, activeTask.getReservedUnitCost()));
                     if (!checkpoint()) return;
                     bazaarMonitor.add(activeTask.getBook(), unitPrice, false);
-                    confirmationTask=activeTask;confirmationPrice=unitPrice;confirmationSelling=false;confirmationSelectedAt=System.currentTimeMillis();
+                    confirmationTask=activeTask;confirmationPrice=unitPrice;confirmationSelling=false;confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
                     InventoryUtils.clickSlot(12, false);
                 }
 
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     if(!verifyBookConfirmation()) return;
+                    recordBookSubmission(activeTask,false);
                     InventoryUtils.clickSlot(13, false);
                     confirmationTask=null;
-                    CapitalManager.INSTANCE.purchased("books", activeTask.getBook().id());
                     yieldAfterMs = System.currentTimeMillis() + 1000;
                     // first we check if the order was an insta buy
                     if (activeTask.instaBuy) {
@@ -675,17 +691,19 @@ public class BazaarFlipper implements Feature {
                         return;
                     }
 
-                    debug("[BazaarFlipper] BAZAAR_NAVIGATION: confirmed buy order for " + activeTask.getBook() + ", schedule was " + activeTask.actionSchedule);
+                    debug("[BazaarFlipper] BAZAAR_NAVIGATION: submitted buy order for " + activeTask.getBook() + ", schedule was " + activeTask.actionSchedule);
                     switch (activeTask.actionSchedule) {
-                        case SELECTED_COMBINE_STORE_BUYORDER -> activeTask.setBookState(Task.BookState.ANVIL);
+                        case SELECTED_COMBINE_STORE_BUYORDER -> submittedNextState=Task.BookState.ANVIL;
 
-                        case SELECTED_STORE_BUYORDER -> activeTask.setBookState(Task.BookState.STORE);
+                        case SELECTED_STORE_BUYORDER -> submittedNextState=Task.BookState.STORE;
 
-                        case NONE -> activeTask.setBookState(Task.BookState.IN_BUY_ORDER);
+                        case NONE -> submittedNextState=Task.BookState.IN_BUY_ORDER;
                     }
-                    state = State.IDLE;
+                    state = State.VERIFY_PLACEMENT;
                 }
             }
+
+            case VERIFY_PLACEMENT -> verifyBookPlacement();
 
             case OUTBID -> {
                 Task task = taskInState(Task.BookState.OUTBID);
@@ -701,8 +719,8 @@ public class BazaarFlipper implements Feature {
                     Diagnostics.command("managebazaarorders");
                 }
 
-                if (containerNameCheck("Bazaar")) clock.start(randomizer());
-                if (containerNameCheck("Bazaar") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()))) clock.start(randomizer());
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     // Waiting for chat message to appear here
                     if (attemptedToClaim) {
                         if (!didReceiveItems) return;
@@ -713,6 +731,7 @@ public class BazaarFlipper implements Feature {
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
 
                     if (slot.isEmpty()) {
+                        if(recheckBookOrders(task,"missing-buy-order")) return;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] OUTBID: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -1151,8 +1170,8 @@ public class BazaarFlipper implements Feature {
                     Diagnostics.command("managebazaarorders");
                 }
 
-                if (containerNameCheck("Bazaar")) clock.start(randomizer());
-                if (containerNameCheck("Bazaar") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()))) clock.start(randomizer());
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     List<Integer> slot = new ArrayList<>();
 
                     slot.addAll(inventoryScanner.findContainer("SELL " + task.getBook().getRomanLevel(task.getBook().sellLevel())));
@@ -1161,6 +1180,8 @@ public class BazaarFlipper implements Feature {
                         InventoryUtils.clickSlot(slot.getFirst(), false);
                         return;
                     }
+
+                    if(slot.isEmpty() && recheckBookOrders(task,"missing-sell-order")) return;
 
                     slot.addAll(inventoryScanner.findLoreInv(task.getBook().getRomanLevel(task.getBook().sellLevel())));
 
@@ -1196,18 +1217,20 @@ public class BazaarFlipper implements Feature {
                     }
                     bazaarMonitor.finish(task.getBook(), false);
                     bazaarMonitor.add(task.getBook(), inventoryScanner.getUnitPrice(12), true);
-                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();
+                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
                     InventoryUtils.clickSlot(12, false);
                 }
 
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     if(!verifyBookConfirmation()) return;
+                    recordBookSubmission(task,true);
                     InventoryUtils.clickSlot(13, false);
                     confirmationTask=null;
                     yieldAfterMs = System.currentTimeMillis() + 1000;
-                    debug("[BazaarFlipper] SELL: placed sell order for " + task.getBook());
-                    task.setBookState(Task.BookState.SELL_ORDER);
+                    debug("[BazaarFlipper] SELL: submitted sell order for " + task.getBook());
+                    submittedNextState=Task.BookState.SELL_ORDER;
+                    state=State.VERIFY_PLACEMENT;
 
                     debug("[BazaarFlipper] SELL: TaskSize:" + taskList.size());
                 }
@@ -1227,8 +1250,8 @@ public class BazaarFlipper implements Feature {
                     Diagnostics.command("managebazaarorders");
                 }
 
-                if (containerNameCheck("Bazaar")) clock.start(randomizer());
-                if (containerNameCheck("Bazaar") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()))) clock.start(randomizer());
+                if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     List<Integer> slot = new ArrayList<>();
 
                     slot.addAll(inventoryScanner.findContainer("SELL " + task.getBook().getRomanLevel(task.getBook().sellLevel())));
@@ -1246,6 +1269,8 @@ public class BazaarFlipper implements Feature {
                         InventoryUtils.clickSlot(slot.getFirst(), false);
                         return;
                     }
+
+                    if(slot.isEmpty() && recheckBookOrders(task,"missing-sell-order")) return;
 
                     slot.addAll(inventoryScanner.findLoreInv(task.getBook().getRomanLevel(task.getBook().sellLevel())));
 
@@ -1284,18 +1309,20 @@ public class BazaarFlipper implements Feature {
                         safetyHalt("Repriced book sale would violate the minimum net profit."); return;
                     }
                     bazaarMonitor.add(task.getBook(), inventoryScanner.getUnitPrice(12), true);
-                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();
+                    confirmationTask=task;confirmationPrice=inventoryScanner.getUnitPrice(12);confirmationSelling=true;confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
                     InventoryUtils.clickSlot(12, false);
                 }
 
                 if (containerNameCheck("Confirm")) clock.start(randomizer());
                 if (containerNameCheck("Confirm") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     if(!verifyBookConfirmation()) return;
+                    recordBookSubmission(task,true);
                     InventoryUtils.clickSlot(13, false);
                     confirmationTask=null;
                     yieldAfterMs = System.currentTimeMillis() + 1000;
-                    debug("[BazaarFlipper] REPLACE_SELL: replaced sell order for " + task.getBook());
-                    task.setBookState(Task.BookState.SELL_ORDER);
+                    debug("[BazaarFlipper] REPLACE_SELL: submitted replacement sell order for " + task.getBook());
+                    submittedNextState=Task.BookState.SELL_ORDER;
+                    state=State.VERIFY_PLACEMENT;
                     debug("[BazaarFlipper] REPLACE_SELL: TaskSize:" + taskList.size());
                 }
             }
@@ -1321,6 +1348,7 @@ public class BazaarFlipper implements Feature {
             inventoryIsFull = false;
         }
         lastState = state;
+        menuRecheck.reset();
 
         if (state == State.FETCHING) {
             flipItemList.clear();
@@ -1597,6 +1625,8 @@ public class BazaarFlipper implements Feature {
     }
 
     private void safetyHalt(String reason) {
+        paused=true; // Latch this engine before fallible evidence capture/cleanup.
+        Diagnostics.event("ERROR","books.transaction_blocked",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot()));
         recoveryRequired |= !taskList.isEmpty() || !bookLists.isEmpty();
         checkpoint();
         paused = true;
@@ -1628,9 +1658,65 @@ public class BazaarFlipper implements Feature {
         return true;
     }
 
+    private void recordBookSubmission(Task task,boolean sale) {
+        submittedBookTask=task;submittedBookSelling=sale;submittedBookAt=System.currentTimeMillis();
+        submittedBookUnits=sale?1:task.getAmountToOrder();submittedBookPrice=confirmationPrice;
+        Diagnostics.event("INFO","order.submission_intent",java.util.Map.of("engine","books","trade",task.getProfitTradeId(),
+                "units",submittedBookUnits,"unitPrice",submittedBookPrice,"selling",sale));
+    }
+
+    private void verifyBookPlacement() {
+        Task task=submittedBookTask;
+        if(task==null) {safetyHalt("Book submission intent missing; ownership retained.");return;}
+        if(System.currentTimeMillis()-submittedBookAt<2000) return;
+        if(minecraft.screen==null) {
+            clock.start(randomizer());
+            if(clock.shouldFire()) {Diagnostics.command("managebazaarorders");clock.stop();}
+            return;
+        }
+        boolean orders=TradingSafety.ordersTitle(minecraft.screen.getTitle().getString());
+        if(!orders || !inventoryScanner.isMenuLoaded(35) || inventoryScanner.findContainer("Close").isEmpty()) {
+            if(!recheckBookOrders(task,"placement-menu-not-ready")) safetyHalt("Cannot load fresh book order verification; intent retained.");
+            return;
+        }
+        String item=task.getBook().getRomanLevel(submittedBookSelling?task.getBook().sellLevel():task.getBook().level());
+        var slots=inventoryScanner.findContainer((submittedBookSelling?"SELL ":"BUY ")+item);
+        if(slots.isEmpty()) {
+            if(!recheckBookOrders(task,"submitted-order-not-visible")) safetyHalt("Submitted book order still absent after fresh-menu checks; intent retained without resubmitting.");
+            return;
+        }
+        var stack=minecraft.player.containerMenu.slots.get(slots.getFirst()).getItem();
+        var lore=stack.get(net.minecraft.core.component.DataComponents.LORE);
+        String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
+        Integer units=com.goofy.goofyaddons.features.generalflipper.OrderLore.total(text);
+        Double price=TradeReceipts.unitPrice(text);
+        if((units==null || price==null) && recheckBookOrders(task,"placement-fields-unreadable")) return;
+        if(!TradingSafety.orderMatchesIntent(submittedBookUnits,submittedBookPrice,units,price)) {
+            safetyHalt("Submitted book order amount/price differs or is unreadable; intent retained.");return;
+        }
+        Diagnostics.event("INFO","order.verified",java.util.Map.of("engine","books","trade",task.getProfitTradeId(),"item",item,"units",submittedBookUnits));
+        if(!submittedBookSelling) CapitalManager.INSTANCE.purchased("books",task.getBook().id());
+        task.setBookState(submittedNextState);
+        submittedBookTask=null;submittedNextState=null;
+        state=State.IDLE;clock.stop();
+    }
+
+    private boolean recheckBookOrders(Task task,String reason) {
+        var decision=menuRecheck.missing(state+":"+task.getProfitTradeId(),System.currentTimeMillis());
+        if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
+            Diagnostics.event("WARN","order.observation_recheck",java.util.Map.of("engine","books","reason",reason,
+                    "trade",task.getProfitTradeId(),"attempt",menuRecheck.attempts(),"context",Diagnostics.detailedSnapshot()));
+            minecraft.player.closeContainer();ordersContainer=-1;ordersSeenAt=0;clock.stop();
+        }
+        return decision!=com.goofy.goofyaddons.features.MenuRecheck.Decision.EXHAUSTED;
+    }
+
     private boolean verifyBookConfirmation() {
         Task task=confirmationTask;
         boolean sale=state==State.SELL || state==State.REPLACE_SELL;
+        if(!sale && task!=null && !java.util.Set.of(Task.ActionSchedule.NONE,Task.ActionSchedule.SELECTED_STORE_BUYORDER,Task.ActionSchedule.SELECTED_COMBINE_STORE_BUYORDER).contains(task.actionSchedule)) {
+            safetyHalt("Book buy schedule is incompatible with submission; no confirmation clicked.");return false;
+        }
         if(task==null || confirmationSelling!=sale || !taskList.contains(task)
                 || System.currentTimeMillis()-confirmationSelectedAt>30000 || !sale && task!=activeTask) {
             safetyHalt("Book confirmation has no matching price-selection intent.");return false;
@@ -1638,11 +1724,18 @@ public class BazaarFlipper implements Feature {
         var stack=minecraft.player.containerMenu.slots.get(13).getItem();
         var lore=stack.get(net.minecraft.core.component.DataComponents.LORE);
         String text=lore==null?"":String.join("\n",lore.lines().stream().map(line->line.getString()).toList());
+        if(!confirmationStability.ready(minecraft.player.containerMenu.containerId,
+                minecraft.screen.getTitle().getString()+"\n"+stack.getHoverName().getString()+"\n"+text,!stack.isEmpty() && lore!=null,System.currentTimeMillis())) return false;
         int quantity=sale?1:task.getAmountToOrder();
         String item=task.getBook().getRomanLevel(sale?task.getBook().sellLevel():task.getBook().level());
-        if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),sale,
-                stack.getHoverName().getString(),text,item,quantity,confirmationPrice) || !bookPriceAllowed(task,confirmationPrice,sale)) {
-            safetyHalt("Book confirmation item, quantity, price or net profit could not be verified.");return false;
+        boolean previewMatches=com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),sale,
+                stack.getHoverName().getString(),text,item,quantity,confirmationPrice);
+        boolean profitAllowed=bookPriceAllowed(task,confirmationPrice,sale);
+        Diagnostics.event(previewMatches && profitAllowed?"INFO":"ERROR","books.confirmation_check",java.util.Map.of(
+                "trade",task.getProfitTradeId(),"expectedItem",item,"expectedUnits",quantity,"expectedUnitPrice",confirmationPrice,
+                "previewMatches",previewMatches,"profitAllowed",profitAllowed,"context",Diagnostics.detailedSnapshot()));
+        if(!previewMatches || !profitAllowed) {
+            safetyHalt(!previewMatches ? "Book confirmation item, quantity or price could not be verified." : "Book confirmation no longer meets minimum net profit.");return false;
         }
         if(sale) {
             if(inventoryScanner.findLoreInv(item).size()!=1) {

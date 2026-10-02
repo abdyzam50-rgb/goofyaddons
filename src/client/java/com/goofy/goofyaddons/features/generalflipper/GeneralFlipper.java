@@ -76,6 +76,10 @@ public class GeneralFlipper implements Feature {
     private CompletableFuture<JsonObject> request;
     private int generation;
     private JsonObject products;
+    private final com.goofy.goofyaddons.features.MenuObservationStability confirmationStability=new com.goofy.goofyaddons.features.MenuObservationStability();
+    private final com.goofy.goofyaddons.features.MenuRecheck menuRecheck=new com.goofy.goofyaddons.features.MenuRecheck();
+    private boolean reopeningOrders;
+    private String recheckReason;
     private long quotesAt;
     private long nextPoll;
     private Position active;
@@ -230,6 +234,22 @@ public class GeneralFlipper implements Feature {
         if (now < nextAction) return;
         nextAction = now + GoofyConfig.INSTANCE.minActionDelay;
         try {
+            if(reopeningOrders) {
+                command("managebazaarorders");
+                if(!ordersReady()) {
+                    if(minecraft.screen!=null) recheckOrders(recheckReason);
+                    return;
+                }
+                reopeningOrders=false;
+            }
+            if(minecraft.screen!=null && (step==Step.ORDERS || step==Step.VERIFY_ORDER || step==Step.VERIFY_CANCEL || step==Step.VERIFY_SALE)
+                    && !TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) {
+                recheckOrders("unexpected-verification-menu");return;
+            }
+            if(minecraft.screen!=null && (step==Step.ORDERS || step==Step.VERIFY_ORDER || step==Step.VERIFY_CANCEL || step==Step.VERIFY_SALE)
+                    && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()) && !ordersReady()) {
+                recheckOrders("orders-not-loaded");return;
+            }
             switch (step) {
                 case OPEN_ORDERS -> {
                     command("managebazaarorders");
@@ -272,6 +292,9 @@ public class GeneralFlipper implements Feature {
                     }
                     int confirm = 13;
                     if (!loadedSlot(confirm)) return;
+                    if(!confirmationStability.ready(minecraft.player.containerMenu.containerId,
+                            minecraft.screen.getTitle().getString()+"\n"+minecraft.player.containerMenu.slots.get(confirm).getItem().getHoverName().getString()+"\n"+lore(confirm),
+                            !lore(confirm).isBlank(),now)) return;
                     double expectedPrice=selling?active.sellPrice:active.unitCost;
                     if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(minecraft.screen.getTitle().getString(),selling,
                             minecraft.player.containerMenu.slots.get(confirm).getItem().getHoverName().getString(),lore(confirm),active.item.name(),active.quantity,expectedPrice)) {
@@ -296,6 +319,7 @@ public class GeneralFlipper implements Feature {
                     minecraft.player.closeContainer();
                 }
                 case VERIFY_ORDER -> {
+                    if(now-stepSince<2000) return; // Allow escrow/setup to reach the server before opening orders.
                     command("managebazaarorders");
                     if (!ordersReady()) return;
                     if (ambiguousOrders()) return;
@@ -311,6 +335,8 @@ public class GeneralFlipper implements Feature {
                         active.stage = Stage.INVENTORY;
                         if(!recordAcquisition()) return;
                         finishWork();
+                    } else {
+                        recheckOrders("placement-not-visible");
                     }
                 }
                 case VERIFY_SALE -> {
@@ -319,6 +345,8 @@ public class GeneralFlipper implements Feature {
                     if (TradingSafety.saleComplete(claimPending, receipt, findOrder(true) < 0, itemCount(active.item.id()))) {
                         if(!recordSale(claimUnits, claimedProceeds)) return;
                         completePosition();
+                    } else {
+                        recheckOrders("sale-not-reconciled");
                     }
                 }
             }
@@ -375,6 +403,8 @@ public class GeneralFlipper implements Feature {
         int buy = findOrder(false);
         int sell = findOrder(true);
         int inventory = itemCount(active.item.id());
+        if(buy<0 && sell<0 && active.stage!=Stage.PLANNED && (active.stage!=Stage.INVENTORY || inventory==0)
+                && recheckOrders("tracked-order-absent")) return;
         if (active.stage != Stage.PLANNED) {
             long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
             if (TradingSafety.holdingLimit(held, System.currentTimeMillis(), settings().maxHoldingSeconds,
@@ -504,7 +534,7 @@ public class GeneralFlipper implements Feature {
             }
         }
         // A fully filled order can be claimed directly without an order detail screen.
-        if (itemCount(active.item.id()) > inventoryBefore && findOrder(selling) < 0) {
+        if (ordersReady() && itemCount(active.item.id()) > inventoryBefore && findOrder(selling) < 0) {
             minecraft.player.closeContainer();
             transition(Step.VERIFY_CANCEL);
         }
@@ -514,12 +544,21 @@ public class GeneralFlipper implements Feature {
         int count = itemCount(active.item.id());
         long elapsed = System.currentTimeMillis() - stepSince;
         boolean itemsArrived = count > inventoryBefore && count >= inventoryBefore + expectedClaim;
-        if (expectedClaim > 0 && count < inventoryBefore + expectedClaim) return;
-        if (!itemsArrived && !receipt) return;
+        if (expectedClaim > 0 && count < inventoryBefore + expectedClaim) {
+            command("managebazaarorders");
+            if(ordersReady()) recheckOrders("cancel-inventory-not-visible");
+            return;
+        }
+        if (!itemsArrived && !receipt) {
+            command("managebazaarorders");
+            if(ordersReady()) recheckOrders("cancel-outcome-not-visible");
+            return;
+        }
         if (elapsed < 500) return;
         // Reopen orders to verify cancellation before creating a replacement.
         command("managebazaarorders");
-        if (!ordersReady() || ambiguousOrders() || findOrder(selling) >= 0) return;
+        if (!ordersReady() || ambiguousOrders()) return;
+        if(findOrder(selling)>=0) {recheckOrders("cancel-not-visible");return;}
         if (selling && cancelSoldUnits > 0) {
             if(!recordSale(cancelSoldUnits, claimedProceeds)) return;
             cancelSoldUnits = 0;
@@ -644,6 +683,7 @@ public class GeneralFlipper implements Feature {
     private void click(int slot) { if (loadedSlot(slot)) InventoryUtils.clickSlot(slot, false); }
     private void transition(Step next) {
         Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
+        confirmationStability.reset();menuRecheck.reset();reopeningOrders=false;
         step = next; stepSince = System.currentTimeMillis(); lastCommand = 0;
         ordersContainer = -1; ordersSeenAt = 0;
     }
@@ -653,6 +693,18 @@ public class GeneralFlipper implements Feature {
             Diagnostics.command(text);
             lastCommand = now;
         }
+    }
+
+    private boolean recheckOrders(String reason) {
+        recheckReason=reason;
+        var decision=menuRecheck.missing(step+":"+active.tradeId,System.currentTimeMillis());
+        if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
+            Diagnostics.event("WARN","order.observation_recheck",java.util.Map.of("reason",reason,"trade",active.tradeId==null?"legacy":active.tradeId,
+                    "attempt",menuRecheck.attempts(),"step",step.name(),"context",Diagnostics.detailedSnapshot()));
+            minecraft.player.closeContainer();ordersContainer=-1;ordersSeenAt=0;lastCommand=0;
+            reopeningOrders=true;
+        }
+        return decision!=com.goofy.goofyaddons.features.MenuRecheck.Decision.EXHAUSTED;
     }
 
     private int findOrder(boolean sell) { return find((sell ? "SELL " : "BUY ") + active.item.name(), true); }
@@ -681,8 +733,11 @@ public class GeneralFlipper implements Feature {
     private boolean orderMatchesPosition(int slot) {
         String tooltip=lore(slot);
         Integer total=OrderLore.total(tooltip);
+        if(total==null && recheckOrders("order-fields-unreadable")) return false;
         if (minecraft.screen!=null && minecraft.screen.getTitle().getString().replaceAll("§.","").contains("Co-op Bazaar Orders")
                 && !OrderLore.ownOrder(tooltip,minecraft.getUser().getName())) {
+            if(!java.util.regex.Pattern.compile("(?m)^\\s*By:").matcher(tooltip.replaceAll("§.","")).find()
+                    && recheckOrders("order-creator-unreadable")) return false;
             fail("Co-op order belongs to another player or its creator is unreadable; position retained.");return false;
         }
         if (!TradingSafety.orderQuantityMatches(active.quantity,total)) {

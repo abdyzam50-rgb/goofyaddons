@@ -366,3 +366,15 @@ Validation: 88 tests passed, zero failures/errors/skips; production build and gi
 - A19: fixed publication ordering with synchronized timestamp comparison; equal/older source snapshots cannot replace a newer one. BazaarQuoteCacheTest checks out-of-order publication, equal timestamps, input mutation and expiry.
 
 Validation: 96 tests passed, zero failures/errors/skips; production build and git diff --check passed. See STAGE_2_REPAIR.md. Other stage-2 findings and whole-engine/live validation remain open.
+
+## Live diagnostic follow-up — 1.3.4-BETA
+
+The 1.3.3-BETA live Overload I confirmation pause revealed that book safetyHalt closed the menu before capturing detailed evidence. Fixed by recording books.transaction_blocked and books.confirmation_check before closure. Both engines now defer confirmation evaluation until the same loaded preview is unchanged for 750ms. Missing live tooltip compatibility remains unresolved because the uploaded bundle lost the tooltip; the patch preserves it for a subsequent failure. See CONFIRMATION_DIAGNOSTIC_FIX.md. 98 tests passed and production build succeeded.
+
+## Live order-observation follow-up — 1.3.5-BETA
+
+The uploaded Ectoplasm setup run confirmed server acceptance after the engine opened its initial orders list; the same stale container then remained open until timeout. Added a shared bounded close/reopen observation policy to general placement/claim/cancellation checks and corresponding book order paths, preserving transaction intent and deadlines. Book placement now has a dedicated verification state and validates quantity/price before advancing; A03's immediate click-success transition is addressed, while full journal reconstruction (A11), legacy book reconciliation and full-engine replay remain open. A07 is tightened for book orders-only branches; A14's arbitrary-menu absence fallback now requires an orders snapshot. See ORDER_RECHECK_FIX.md. 103 tests passed and production build succeeded; live verification remains outstanding.
+
+## Observed confirmation compatibility — 1.3.6-BETA
+
+The subsequent BOOKS-mode bundle preserved the actual Overload I confirmation: Order: 16x Overload I with matching unit/total prices and profitAllowed=true. The parser did not support Order as an identity/quantity field. Added the exact observed field and a sanitized regression fixture; the valid-preview test failed before the fix and passed afterward, while conflicting/malformed variants remain rejected. This resolves that specific live format under A04, not all possible tooltip variants. See BOOK_CONFIRMATION_FORMAT_FIX.md. 105 tests passed, production build succeeded and git diff --check passed.

@@ -1,0 +1,19 @@
+{
+  "title": "Confirm Buy Order",
+  "buttonName": "Buy Order",
+  "lore": [
+    "Bazaar",
+    "",
+    "Price per unit: 685,510.0 coins",
+    "",
+    "Order: 16x Overload I",
+    "Total price: 10,968,160 coins",
+    "",
+    "Orders are shared by co-op!",
+    "",
+    "Click to submit order!"
+  ],
+  "expectedItem": "Overload I",
+  "expectedUnits": 16,
+  "expectedUnitPrice": 685510.0
+}
