@@ -100,6 +100,14 @@ public class BazaarFlipper implements Feature {
     private int combine_Counter_2 = 0;
     private boolean attemptedToClaim = false;
     private boolean didReceiveItems = false;
+    // Outbid buy order this flipper clicked "Cancel Order" on, and whether Hypixel confirmed the refund.
+    private Task cancelClickedTask;
+    private boolean cancelRefunded;
+    // Buy orders placed but not yet checked in the orders menu. They are verified together in one visit.
+    private record PendingPlacement(Task task, int units, double price, long at, Task.BookState next) {}
+    private final List<PendingPlacement> pendingPlacements = new ArrayList<>();
+    // Consecutive outbids per book without a fill; drives BazaarMonitor.outbidBackoff.
+    private final Map<String, Integer> outbidStreak = new HashMap<>();
     private int anvil_Counter = -1;
     private int anvil_Counter_2 = -1;
     private int combine_Counter = -1;
@@ -138,6 +146,7 @@ public class BazaarFlipper implements Feature {
     public BazaarFlipper() {
         ChatHook.onMessage("filled", this::handleFilledMessage);
         ChatHook.onMessage("Claimed", this::handleClaimedMessage);
+        ChatHook.onMessage("Cancelled", this::handleCancelledMessage);
         bazaarMonitor.hook(this::handleOutbid);
     }
 
@@ -213,6 +222,10 @@ public class BazaarFlipper implements Feature {
         activeTask = null;
         lastState = null;
         attemptedToClaim = false;
+        cancelClickedTask = null;
+        cancelRefunded = false;
+        pendingPlacements.clear();
+        outbidStreak.clear();
         needToStoreExcessBook = false;
         inventoryIsFull = false;
         overFlowProt = false;
@@ -570,6 +583,7 @@ public class BazaarFlipper implements Feature {
 
                 // here we loop through every task and pick based of priority
                 for (Task task : taskList) {
+                    if (isPendingPlacement(task)) continue;
                     if (!isStartUpCheckCompleted && task.getBookState().equals(Task.BookState.OUTBID) || inventoryIsFull && task.getBookState().equals(Task.BookState.OUTBID))
                         continue;
                     Integer rank = STATE_PRIORITY.get(task.getBookState());
@@ -580,6 +594,14 @@ public class BazaarFlipper implements Feature {
                     }
                 }
 
+                // Let Hypixel close the confirmation we just clicked before opening the next menu.
+                if (!pendingPlacements.isEmpty() && containerNameCheck("Confirm")) return;
+                // Keep placing queued buy orders back to back, then check them all in one orders-menu visit.
+                if (!pendingPlacements.isEmpty() && (taskToHandle == null || taskToHandle.getBookState() != Task.BookState.SELECTED)) {
+                    debug("[BazaarFlipper] IDLE: verifying " + pendingPlacements.size() + " placed buy order(s)");
+                    state = State.VERIFY_PLACEMENT;
+                    return;
+                }
                 if (taskToHandle == null) {
                     if (System.currentTimeMillis() >= nextFetchMs) state = State.FETCHING;
                     return;
@@ -671,17 +693,22 @@ public class BazaarFlipper implements Feature {
                     if (!bookPriceAllowed(activeTask, unitPrice, false)) {
                         safetyHalt("Book buy price no longer meets the minimum net profit."); return;
                     }
+                    double purse = scoreboardUtils.getPurse();
+                    // Hypixel briefly drops the sidebar while redrawing it. Re-read next tick instead of
+                    // treating an unreadable purse as missing capital; the watchdog still bounds the wait.
+                    if (!ScoreboardUtils.readable(purse)) return;
                     if (!Double.isFinite(requiredCoins) || unitPrice <= 0
-                            || requiredCoins > scoreboardUtils.getPurse()
+                            || requiredCoins > purse
                             || !CapitalManager.INSTANCE.resize("books", activeTask.getBook().id(),
                                     Math.max(fullCost, CapitalManager.INSTANCE.cost("books", activeTask.getBook().id())),
-                                    scoreboardUtils.getPurse())) {
+                                    purse)) {
                         safetyHalt("Book purchase exceeds the available capital/purse.");
                         return;
                     }
                     activeTask.setReservedUnitCost(Math.max(unitPrice, activeTask.getReservedUnitCost()));
                     if (!checkpoint()) return;
-                    bazaarMonitor.add(activeTask.getBook(), unitPrice, false);
+                    bazaarMonitor.add(activeTask.getBook(), unitPrice, false,
+                            BazaarMonitor.outbidBackoff(outbidStreak.getOrDefault(activeTask.getBook().id(), 0)));
                     confirmationTask=activeTask;confirmationPrice=unitPrice;confirmationSelling=false;confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
                     InventoryUtils.clickSlot(12, false);
                 }
@@ -708,7 +735,9 @@ public class BazaarFlipper implements Feature {
 
                         case NONE -> submittedNextState=Task.BookState.IN_BUY_ORDER;
                     }
-                    state = State.VERIFY_PLACEMENT;
+                    pendingPlacements.add(new PendingPlacement(activeTask, submittedBookUnits, submittedBookPrice, submittedBookAt, submittedNextState));
+                    submittedBookTask=null;submittedNextState=null;
+                    state = State.IDLE;
                 }
             }
 
@@ -717,6 +746,8 @@ public class BazaarFlipper implements Feature {
             case OUTBID -> {
                 Task task = taskInState(Task.BookState.OUTBID);
                 if (task == null) {
+                    cancelClickedTask = null;
+                    cancelRefunded = false;
                     debug("[BazaarFlipper] OUTBID: no task left in OUTBID, going to IDLE");
                     minecraft.player.closeContainer();
                     state = State.IDLE;
@@ -740,11 +771,25 @@ public class BazaarFlipper implements Feature {
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
 
                     if (slot.isEmpty()) {
-                        if(recheckBookOrders(task,"missing-buy-order")) return;
+                        // Our own cancel was confirmed by Hypixel's refund receipt, so the order is expected to be gone.
+                        boolean cancelConfirmed = cancelClickedTask == task && cancelRefunded;
+                        if(!cancelConfirmed && recheckBookOrders(task,"missing-buy-order")) return;
+                        cancelClickedTask = null;
+                        cancelRefunded = false;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] OUTBID: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
                             task.setBookState(Task.BookState.ANVIL);
+                            return;
+                        }
+
+                        // A partial fill stays in the inventory and is combined once the batch is complete,
+                        // instead of an anvil and ender chest trip on every outbid.
+                        if (canHoldPartialFill(task)) {
+                            debug("[BazaarFlipper] OUTBID: keeping " + task.bookList.size() + " partial stack(s) in inventory, re-placing buy order for " + task.getBook());
+                            task.actionSchedule = Task.ActionSchedule.NONE;
+                            activeTask = task;
+                            task.setBookState(Task.BookState.SELECTED);
                             return;
                         }
 
@@ -778,6 +823,7 @@ public class BazaarFlipper implements Feature {
                     beginBuyClaim(task, amount, slot.getFirst());
                     InventoryUtils.clickSlot(slot.getFirst(), false);
                     if (amount > 0) {
+                        outbidStreak.remove(task.getBook().id()); // It is filling at this price; chase promptly again.
                         debug("[BazaarFlipper] OUTBID: claiming " + amount + " of " + task.getBook());
                         handleItemAssigning(task, amount);
                     }
@@ -787,6 +833,8 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Order") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     List<Integer> slot = inventoryScanner.findContainer("Cancel Order");
                     if (slot.isEmpty()) return;
+                    cancelClickedTask = task;
+                    cancelRefunded = false;
                     InventoryUtils.clickSlot(slot.getFirst(), false);
                 }
             }
@@ -1453,6 +1501,25 @@ public class BazaarFlipper implements Feature {
         // Buy claims are acknowledged by an observed inventory increase, never generic chat.
     }
 
+    private boolean canHoldPartialFill(Task task) {
+        if (task.bookList.isEmpty()) return false;
+        for (BookList book : task.bookList) if (book.location != 0) return false;
+        // Leave room for every outstanding buy order to be claimed, plus the usual slot reserve.
+        int owed = 0;
+        for (Task other : taskList) {
+            Task.BookState bookState = other.getBookState();
+            if (bookState == Task.BookState.IN_BUY_ORDER || bookState == Task.BookState.SELECTED || bookState == Task.BookState.OUTBID)
+                owed += other.getAmountToOrder();
+        }
+        return inventoryScanner.getEmptyInventorySlots() >= owed + 4;
+    }
+
+    private void handleCancelledMessage(String string) {
+        if (!running || paused || state != State.OUTBID || cancelClickedTask == null) return;
+        if (TradingSafety.cancellationReceipt(string, cancelClickedTask.getBook().getRomanLevel(cancelClickedTask.getBook().level()), false))
+            cancelRefunded = true;
+    }
+
     private int inputBooksInInventory(Task task) {
         return (int) inventoryScanner.matchingBookInInventory(task.getBook()).stream()
                 .filter(slot -> inventoryScanner.getLevel(slot) == task.getBook().level()).count();
@@ -1524,6 +1591,7 @@ public class BazaarFlipper implements Feature {
             if (!stripped.equals(task.getBook().getRomanLevel(task.getBook().sellLevel())) && isSellOffer) continue;
 
             debug("[BazaarFlipper] onOrderNotice: matched task " + task.getBook() + ", queuing state change");
+            if (!isSellOffer) outbidStreak.remove(task.getBook().id());
             listOfTaskToChange.add(task);
             bazaarMonitor.finish(task.getBook(), isSellOffer);
         }
@@ -1564,8 +1632,11 @@ public class BazaarFlipper implements Feature {
             if (book.isSellOrder && (task.getBookState() == Task.BookState.REPLACE_SELL || task.getBookState() == Task.BookState.SELL_ORDER)) {
                 debug("[BazaarFlipper] handleOutbid: sell order for " + task.getBook() + " was outbid/undercut, queuing state change");
                 listOfTaskToChange.add(task);
-            } else if (!book.isSellOrder && task.getBookState() == Task.BookState.IN_BUY_ORDER) {
+            } else if (!book.isSellOrder && (task.getBookState() == Task.BookState.IN_BUY_ORDER || isPendingPlacement(task)
+                    || task == submittedBookTask && !submittedBookSelling)) {
+                // An order still awaiting verification is queued too; it is handled once it reaches IN_BUY_ORDER.
                 debug("[BazaarFlipper] handleOutbid: buy order for " + task.getBook() + " was outbid, queuing state change");
+                outbidStreak.merge(task.getBook().id(), 1, Integer::sum);
                 listOfTaskToChange.add(task);
             }
         }
@@ -1688,7 +1759,19 @@ public class BazaarFlipper implements Feature {
         return true;
     }
 
+    private void loadPendingPlacement() {
+        PendingPlacement next=pendingPlacements.removeFirst();
+        submittedBookTask=next.task();submittedBookSelling=false;submittedBookUnits=next.units();
+        submittedBookPrice=next.price();submittedBookAt=next.at();submittedNextState=next.next();
+    }
+
+    private boolean isPendingPlacement(Task task) {
+        for (PendingPlacement pending : pendingPlacements) if (pending.task() == task) return true;
+        return false;
+    }
+
     private void verifyBookPlacement() {
+        if(submittedBookTask==null && !pendingPlacements.isEmpty()) loadPendingPlacement();
         Task task=submittedBookTask;
         if(task==null) {safetyHalt("Book submission intent missing; ownership retained.");return;}
         if(System.currentTimeMillis()-submittedBookAt<2000) return;
@@ -1721,6 +1804,8 @@ public class BazaarFlipper implements Feature {
         if(!submittedBookSelling) CapitalManager.INSTANCE.purchased("books",task.getBook().id());
         task.setBookState(submittedNextState);
         submittedBookTask=null;submittedNextState=null;
+        // The orders menu is still open: check the next placed order in the same visit.
+        if(!pendingPlacements.isEmpty()) {loadPendingPlacement();return;}
         state=State.IDLE;clock.stop();
     }
 
@@ -1766,6 +1851,7 @@ public class BazaarFlipper implements Feature {
             }
         } else {
             double purse=scoreboardUtils.getPurse();
+            if(!ScoreboardUtils.readable(purse)) return false; // Sidebar mid-redraw; re-check next tick.
             double cost=confirmationPrice*quantity;
             if(quantity>inventoryScanner.getEmptyInventorySlots() || cost>purse || !CapitalManager.INSTANCE.resize("books",task.getBook().id(),
                     Math.max(CapitalManager.INSTANCE.cost("books",task.getBook().id()),task.getReservedUnitCost()*task.getBook().getQtyAmount(task.getBook().level())),purse)) {

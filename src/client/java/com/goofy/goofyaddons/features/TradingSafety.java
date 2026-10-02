@@ -39,10 +39,14 @@ public final class TradingSafety {
         return com.goofy.goofyaddons.features.profit.TradeReceipts.saleProceeds(message, item, expectedUnits) != null;
     }
 
-    public static boolean cancellationReceipt(String message, String item) {
-        String clean = message.replaceAll("§.", "");
-        return clean.matches("(?i)^\\[Bazaar] Cancelled (?:buy|sell) order for (?:[\\d,]+x )?"
-                + java.util.regex.Pattern.quote(item) + "[!.]?$");
+    public static boolean cancellationReceipt(String message, String item, boolean selling) {
+        String clean = message.replaceAll("§.", "").strip();
+        String quoted = java.util.regex.Pattern.quote(item);
+        if (clean.matches("(?i)^\\[Bazaar] Cancelled " + (selling ? "sell" : "buy") + " order for (?:[\\d,]+x )?" + quoted + "[!.]?$")) return true;
+        // Hypixel's current wording. A cancelled buy order refunds coins and does not name the item.
+        return selling
+                ? clean.matches("(?i)^\\[Bazaar] Cancelled! Refunded (?:[\\d,]+x )?" + quoted + " from cancelling Sell (?:Offer|Order)!$")
+                : clean.matches("(?i)^\\[Bazaar] Cancelled! Refunded [\\d,]+(?:\\.\\d+)? coins from cancelling Buy Order!$");
     }
 
     public static boolean saleComplete(boolean claimPending, boolean matchingReceipt, boolean orderAbsent, int inventory) {

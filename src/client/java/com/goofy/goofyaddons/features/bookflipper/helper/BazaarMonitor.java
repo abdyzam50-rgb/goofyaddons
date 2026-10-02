@@ -43,8 +43,22 @@ public class BazaarMonitor {
     }
 
     public void add(Book book, double price, boolean isSellOrder) {
+        add(book, price, isSellOrder, DURATION);
+    }
+
+    /** Only reports this order as outbid once it has stood for {@code delayMs}. */
+    public void add(Book book, double price, boolean isSellOrder, long delayMs) {
         finish(book, isSellOrder);
-        monitorItemList.add(new BazaarMonitorItem(book, price, isSellOrder, now.getAsLong()));
+        monitorItemList.add(new BazaarMonitorItem(book, price, isSellOrder, now.getAsLong(), Math.max(DURATION, delayMs)));
+    }
+
+    /**
+     * How long a re-placed order waits before it may be chased again. Each consecutive outbid without
+     * a fill doubles the wait (20s, 40s, 80s, 160s, then 320s), so two bots can't trade 0.1 coin
+     * outbids forever while every other book waits behind the cancel/re-place cycle.
+     */
+    public static long outbidBackoff(int consecutiveOutbids) {
+        return DURATION << Math.min(Math.max(consecutiveOutbids, 0), 4);
     }
 
     public void finish(Book book, boolean isSellOffer) {
@@ -95,7 +109,7 @@ public class BazaarMonitor {
                     JsonObject products = root.getAsJsonObject("products");
                     // Hooks may remove monitors. Iterate a snapshot on the client thread.
                     for (BazaarMonitorItem item : List.copyOf(monitorItemList)) {
-                        if (!monitorItemList.contains(item) || now.getAsLong() - item.time < DURATION) continue;
+                        if (!monitorItemList.contains(item) || now.getAsLong() - item.time < item.delay) continue;
                         if (!isOutbid(item.price, bestPrice(products, item), item.isSellOrder)) continue;
                         monitorItemList.remove(item);
                         for (Consumer<BazaarMonitorItem> hook : List.copyOf(hookList)) hook.accept(item);
@@ -138,13 +152,15 @@ public class BazaarMonitor {
         public final Book book;
         private final double price;
         private final long time;
+        private final long delay;
 
         public BazaarMonitorItem(Book book, double price, boolean isSellOrder) {
-            this(book, price, isSellOrder, System.currentTimeMillis());
+            this(book, price, isSellOrder, System.currentTimeMillis(), DURATION);
         }
 
-        private BazaarMonitorItem(Book book, double price, boolean isSellOrder, long time) {
+        private BazaarMonitorItem(Book book, double price, boolean isSellOrder, long time, long delay) {
             this.time = time;
+            this.delay = delay;
             this.book = book;
             this.price = price;
             this.isSellOrder = isSellOrder;

@@ -112,6 +112,23 @@ class TradingRegressionTest {
     }
 
     @Test
+    void repeatedOutbidsBackOffInsteadOfChasingEveryTenthOfACoin() {
+        assertEquals(20000, BazaarMonitor.outbidBackoff(0));
+        assertEquals(40000, BazaarMonitor.outbidBackoff(1));
+        assertEquals(160000, BazaarMonitor.outbidBackoff(3));
+        assertEquals(320000, BazaarMonitor.outbidBackoff(4));
+        assertEquals(320000, BazaarMonitor.outbidBackoff(50));
+        AtomicLong now=new AtomicLong(0);
+        BazaarMonitor monitor=new BazaarMonitor(()->CompletableFuture.completedFuture(response(101,250,now.get())),Runnable::run,now::get);
+        AtomicInteger notices=new AtomicInteger();monitor.hook(item->notices.incrementAndGet());
+        monitor.add(book,100,false,BazaarMonitor.outbidBackoff(2));monitor.start();
+        now.set(21000);monitor.refresh();
+        assertEquals(0,notices.get()); // Outbid, but still inside the 80s backoff.
+        now.set(81000);monitor.refresh();
+        assertEquals(1,notices.get());
+    }
+
+    @Test
     void staleMonitorResponsesCannotTriggerOrderCancellationAndFreshResponsesRecover() {
         AtomicLong now=new AtomicLong(100000);
         AtomicLong source=new AtomicLong(1);
