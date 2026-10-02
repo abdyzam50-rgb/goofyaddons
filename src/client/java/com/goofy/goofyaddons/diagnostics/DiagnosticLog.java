@@ -14,7 +14,11 @@ public final class DiagnosticLog {
     private final int archives;
     private final Gson gson=new Gson();
     private final String session=UUID.randomUUID().toString();
-    private long sequence;
+    private final java.util.concurrent.atomic.AtomicLong sequence = new java.util.concurrent.atomic.AtomicLong();
+    public record Captured(long sequence, String time, long monotonicNanos, String level, String type, com.google.gson.JsonElement data) {}
+    public Captured capture(String level, String type, Map<String,?> data) {
+        return new Captured(sequence.incrementAndGet(), Instant.now().toString(), System.nanoTime(), level, type, gson.toJsonTree(data));
+    }
     public DiagnosticLog(Path directory,long maxBytes,int archives) {
         if (maxBytes<1 || archives<1) throw new IllegalArgumentException("Invalid retention");
         this.directory=directory; this.maxBytes=maxBytes; this.archives=archives;
@@ -53,11 +57,14 @@ public final class DiagnosticLog {
         }
     }
     public synchronized void append(String level,String type,Map<String,?> data) throws IOException {
+        append(capture(level,type,data));
+    }
+    public synchronized void append(Captured captured) throws IOException {
         Files.createDirectories(directory);
         Path current=directory.resolve("events.jsonl");
         var event=new LinkedHashMap<String,Object>();
-        event.put("schema",1);event.put("session",session);event.put("sequence",++sequence);
-        event.put("time",Instant.now().toString());event.put("level",level);event.put("event",type);event.put("data",data);
+        event.put("schema",2);event.put("session",session);event.put("sequence",captured.sequence());
+        event.put("time",captured.time());event.put("monotonicNanos",captured.monotonicNanos());event.put("writeTime",Instant.now().toString());event.put("level",captured.level());event.put("event",captured.type());event.put("data",captured.data());
         byte[] bytes=(safeJson(event)+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
         if (Files.exists(current) && Files.size(current)+bytes.length>maxBytes) {
             Files.deleteIfExists(directory.resolve("events."+archives+".jsonl"));

@@ -41,4 +41,16 @@ class DiagnosticLogTest {
         for(int i=0;i<8;i++) log.export(Map.of("index",i));
         try(var files=Files.list(directory.resolve("bundles"))) {assertTrue(files.count()<=5);}
     }
+    @Test void queuedCaptureKeepsOriginalTimeAndAnImmutablePayload() throws Exception {
+        var log=new DiagnosticLog(directory,100000,2);
+        var nested=new java.util.HashMap<String,Object>();nested.put("count",3);
+        var captured=log.capture("ERROR","safety.pause",Map.of("nested",nested));
+        nested.put("count",999);
+        log.append(captured);
+        var event=JsonParser.parseString(Files.readString(directory.resolve("events.jsonl"))).getAsJsonObject();
+        assertEquals(captured.time(),event.get("time").getAsString());
+        assertEquals(captured.monotonicNanos(),event.get("monotonicNanos").getAsLong());
+        assertEquals(3,event.getAsJsonObject("data").getAsJsonObject("nested").get("count").getAsInt());
+        assertTrue(event.has("writeTime"));
+    }
 }

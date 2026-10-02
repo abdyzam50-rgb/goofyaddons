@@ -117,10 +117,16 @@ public class FeatureManager {
     }
 
     public void safetyPause(String reason) {
-        Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot()));
-        statusReason = reason;
-        ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting.");
-        pause();
+        SafetyActions.latch(() -> {
+            statusReason = reason;
+            paused = true;
+            scheduler.reset();
+            previousOwner = null;
+        }, failure -> org.slf4j.LoggerFactory.getLogger(FeatureManager.class)
+                .error("Safety cleanup failed; trading remains paused", failure),
+                books::pause, general::pause,
+                () -> Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot())),
+                () -> ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting."));
     }
 
     public void resumeAfterTravel() {

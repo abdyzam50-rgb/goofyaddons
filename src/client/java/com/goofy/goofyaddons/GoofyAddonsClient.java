@@ -36,8 +36,17 @@ public class GoofyAddonsClient implements ClientModInitializer {
                 Diagnostics.tick();
                 return;
             }
-            FailsafeManager.INSTANCE.onTick();
-            FeatureManager.INSTANCE.onTick();
+            boolean stopRequested = false;
+            while (GoofyKeybinds.stopKey.consumeClick()) stopRequested = true;
+            if (com.goofy.goofyaddons.features.SafetyActions.tradingTick(stopRequested, FeatureManager.INSTANCE::stop,
+                    FailsafeManager.INSTANCE::onTick, FeatureManager.INSTANCE::onTick)) {
+                // Discard queued starts/mode changes so stop wins the entire tick.
+                while (GoofyKeybinds.startKey.consumeClick()) {}
+                while (GoofyKeybinds.modeKey.consumeClick()) {}
+                ProfitTracker.INSTANCE.tick(false);
+                Diagnostics.tick();
+                return;
+            }
             ProfitTracker.INSTANCE.tick(FeatureManager.INSTANCE.isTradingActive());
 
             // Reload only while stopped, and once per key press.
@@ -53,9 +62,6 @@ public class GoofyAddonsClient implements ClientModInitializer {
             }
             while (GoofyKeybinds.modeKey.consumeClick()) {
                 FeatureManager.INSTANCE.cycleMode();
-            }
-            while (GoofyKeybinds.stopKey.consumeClick()) {
-                FeatureManager.INSTANCE.stop();
             }
             Diagnostics.tick();
             } catch (RuntimeException failure) {

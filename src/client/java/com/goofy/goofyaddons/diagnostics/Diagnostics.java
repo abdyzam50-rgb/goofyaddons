@@ -12,12 +12,10 @@ import net.minecraft.network.chat.Component;
 import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class Diagnostics {
     private static DiagnosticLog LOG;
-    private static final ThreadPoolExecutor WORKER=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(512),r->{Thread t=new Thread(r,"Goofy diagnostics");t.setDaemon(true);return t;});
-    private static final AtomicLong DROPPED=new AtomicLong();
+    private static final DiagnosticQueue WORKER=new DiagnosticQueue(512,64);
     private static final Map<String,String> LAST=new HashMap<>();
     private static volatile String error;
     private static long heartbeat;
@@ -25,18 +23,29 @@ public final class Diagnostics {
     private Diagnostics() {}
     public static void event(String level,String type,Map<String,?> data) {
         if(LOG==null) return;
-        Map<String,?> copy=new LinkedHashMap<>(data);
-        try { WORKER.execute(()->{
-            try {
-                long dropped=DROPPED.getAndSet(0);
-                if(dropped>0) LOG.append("WARN","logging.events_dropped",Map.of("count",dropped));
-                LOG.append(level,type,copy);
-            } catch(Exception failure) {
-                if(error==null) LoggerFactory.getLogger(Diagnostics.class).error("Diagnostic log cannot be written",failure);
-                error=failure.getClass().getSimpleName();
-            }
-        }); } catch(RejectedExecutionException full) { DROPPED.incrementAndGet(); }
+        try {
+            var captured=LOG.capture(level,type,data);
+            boolean critical=level.equals("ERROR") || level.equals("WARN") || type.startsWith("trade.")
+                    || type.startsWith("order.") || type.startsWith("safety.") || type.startsWith("session.");
+            boolean accepted=WORKER.submit(critical,()->{
+                long dropped=WORKER.takePendingDropped();
+                try {
+                    LOG.append(captured);
+                    if(dropped>0) LOG.append("WARN","logging.events_dropped",Map.of("count",dropped,"total",WORKER.totalDropped(),"critical",WORKER.criticalDropped()));
+                    error=null;
+                } catch(Exception failure) {
+                    WORKER.restorePendingDropped(dropped);
+                    if(error==null) LoggerFactory.getLogger(Diagnostics.class).error("Diagnostic log cannot be written",failure);
+                    error=failure.getClass().getSimpleName();
+                }
+            });
+            if(!accepted && critical) LoggerFactory.getLogger(Diagnostics.class).error("Critical diagnostic event rejected: {} (total critical drops {})",type,WORKER.criticalDropped());
+        } catch(RuntimeException failure) {
+            // Observation must never prevent a stop, pause, or transaction guard.
+            LoggerFactory.getLogger(Diagnostics.class).error("Cannot capture diagnostic event {}",type,failure);
+        }
     }
+
     public static void failure(String type,Throwable failure) {
         if(LOG==null) return;
         java.io.StringWriter out=new java.io.StringWriter();failure.printStackTrace(new java.io.PrintWriter(out));
@@ -45,7 +54,12 @@ public final class Diagnostics {
         event("ERROR",type,data);
     }
     public static Map<String,Object> snapshot() { return snapshot(false); }
-    public static Map<String,Object> detailedSnapshot() { return snapshot(true); }
+    public static Map<String,Object> detailedSnapshot() {
+        try { return snapshot(true); }
+        catch (RuntimeException failure) {
+            return Map.of("contextUnavailable",failure.getClass().getSimpleName());
+        }
+    }
     private static Map<String,Object> snapshot(boolean detailed) {
         var data=new LinkedHashMap<String,Object>();
         Minecraft mc=Minecraft.getInstance();var manager=FeatureManager.INSTANCE;
@@ -64,7 +78,21 @@ public final class Diagnostics {
             var items=new ArrayList<Map<String,Object>>();
             for(int i=0;i<mc.player.getInventory().getContainerSize();i++) {
                 var stack=mc.player.getInventory().getItem(i);
-                if(!stack.isEmpty()) items.add(Map.of("slot",i,"type",net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),"count",stack.getCount()));
+                if(!stack.isEmpty()) {
+                    var item=new LinkedHashMap<String,Object>();
+                    item.put("slot",i);item.put("type",net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());item.put("count",stack.getCount());
+                    var custom=stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+                    if(custom!=null) {
+                        var tag=custom.copyTag();item.put("hypixelId",tag.getStringOr("id",""));
+                        var enchants=tag.getCompound("enchantments").orElse(null);
+                        if(enchants!=null) {
+                            var levels=new TreeMap<String,Integer>();
+                            for(String key:enchants.keySet()) levels.put(key,enchants.getIntOr(key,-1));
+                            item.put("enchantments",levels);
+                        }
+                    }
+                    items.add(item);
+                }
             }
             data.put("inventory",items);
             var menuItems=new ArrayList<Map<String,Object>>();
@@ -81,7 +109,7 @@ public final class Diagnostics {
             data.put("minDelay",GoofyConfig.INSTANCE.minActionDelay);data.put("maxDelay",GoofyConfig.INSTANCE.maxActionDelay);
         }
         if(detailed) data.put("engines",manager.diagnosticState());
-        data.put("droppedEvents",DROPPED.get());data.put("logError",error==null?"none":error);
+        data.put("droppedEvents",WORKER.totalDropped());data.put("criticalDroppedEvents",WORKER.criticalDropped());data.put("logError",error==null?"none":error);
         return data;
     }
     private static java.util.List<String> menuLore(net.minecraft.world.item.ItemStack stack) {
@@ -115,16 +143,17 @@ public final class Diagnostics {
         for(String id:List.of("goofyaddons","minecraft","fabricloader","fabric-api")) FabricLoader.getInstance().getModContainer(id).ifPresent(mod->versions.put(id,mod.getMetadata().getVersion().getFriendlyString()));
         event("INFO","session.started",Map.of("versions",versions,"java",System.getProperty("java.version"),"os",System.getProperty("os.name")));
         ClientCommandRegistrationCallback.EVENT.register((dispatcher,registry)->dispatcher.register(ClientCommands.literal("goofydebug")
-            .executes(context->{context.getSource().sendFeedback(Component.literal("Diagnostics: logs/goofyaddons | dropped: "+DROPPED.get()+" | error: "+(error==null?"none":error)+" | /goofydebug export"));return 1;})
+            .executes(context->{context.getSource().sendFeedback(Component.literal("Diagnostics: logs/goofyaddons | dropped: "+WORKER.totalDropped()+" | error: "+(error==null?"none":error)+" | /goofydebug export"));return 1;})
             .then(ClientCommands.literal("export").executes(context->{
                 var state=snapshot(true);var source=context.getSource();var mc=Minecraft.getInstance();
                 source.sendFeedback(Component.literal("Creating diagnostic bundle..."));
-                try { WORKER.execute(()->{
+                boolean accepted=WORKER.submit(false,()->{
                     try { var file=LOG.export(state);mc.execute(()->source.sendFeedback(Component.literal("Saved diagnostics: "+file))); }
                     catch(Exception failed) {mc.execute(()->source.sendFeedback(Component.literal("Diagnostic export failed: "+failed.getClass().getSimpleName())));}
-                }); } catch(RejectedExecutionException full) {source.sendFeedback(Component.literal("Diagnostic queue full; retry export shortly."));return 0;}
+                });
+                if(!accepted) {source.sendFeedback(Component.literal("Diagnostic queue full; retry export shortly."));return 0;}
                 return 1;
             }))));
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client->{event("INFO","session.stopping",snapshot());WORKER.shutdown();try {WORKER.awaitTermination(2,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}});
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client->{try {event("INFO","session.stopping",snapshot());} catch(RuntimeException failed) {failure("session.snapshot_failed",failed);} finally {WORKER.shutdown();}try {WORKER.awaitTermination(2,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}});
     }
 }
