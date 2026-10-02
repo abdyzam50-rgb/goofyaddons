@@ -34,6 +34,19 @@ Per-release repair records, oldest first:
 - [development/BOOK_CONFIRMATION_FORMAT_FIX.md](development/BOOK_CONFIRMATION_FORMAT_FIX.md) — 1.3.6-BETA
 - [development/BOOK_PLAN_RECOVERY_FIX.md](development/BOOK_PLAN_RECOVERY_FIX.md)
 
+## Building and testing
+
+```
+./gradlew test     # the suite
+./gradlew build    # suite plus the jar in build/libs/
+```
+
+Needs a JDK 25. In a Claude Code cloud session, `.claude/hooks/session-start.sh` provisions
+one and warms the dependency cache automatically; see that script's header for why Maven
+Central needs a mirror and retries there. It writes the JDK choice and the mirror into the
+Gradle user home rather than into `build.gradle` or `settings.gradle`, so a local workaround
+can never change how anyone else builds.
+
 ## Layout
 
 ```
