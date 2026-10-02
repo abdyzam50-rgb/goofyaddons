@@ -22,6 +22,13 @@ class OrderLoreTest {
         assertNull(OrderLore.total("Filled: 50%"));
         assertNull(OrderLore.total(null));
     }
+    @Test void partialClaimMustArriveBeforeReopeningTheRemainingOrder() {
+        String remaining="Order amount: 32x\nFilled: 4/32 (12.5%)\nPrice per unit: 133,350.4 coins\nClick to view options!";
+        assertTrue(OrderLore.canOpenOptionsAfterClaim(remaining,1,4,3));
+        assertFalse(OrderLore.canOpenOptionsAfterClaim(remaining,1,3,3));
+        assertFalse(OrderLore.canOpenOptionsAfterClaim("Loading...",1,4,3));
+        assertFalse(OrderLore.canOpenOptionsAfterClaim(remaining+"\nYou have 1 item to claim!",1,4,3));
+    }
     @Test void invalidOrMissingFillCountsAreRejected() {
         assertNull(OrderLore.fill("Filled: 300/256"));
         assertNull(OrderLore.fill("Filled: 0/0"));

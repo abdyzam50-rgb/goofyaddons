@@ -87,7 +87,7 @@ public final class Diagnostics {
     private static java.util.List<String> menuLore(net.minecraft.world.item.ItemStack stack) {
         var lore=stack.get(net.minecraft.core.component.DataComponents.LORE);
         if(lore==null) return java.util.List.of();
-        return lore.lines().stream().map(line->line.getString().replaceAll("§.", "").replaceAll("(?i)^(?:Created by|Order by|Seller|Buyer|Owner|Placed by|Co-op member):.*$","<player redacted>")).toList();
+        return lore.lines().stream().map(line->line.getString().replaceAll("§.", "").replaceAll("(?i)^(?:By|Created by|Order by|Seller|Buyer|Owner|Placed by|Co-op member):.*$","<player redacted>").replaceAll("^-\\s*[\\d,]+x\\s+.*$","<vendor redacted>")).toList();
     }
     public static void tick() {
         long sample=System.currentTimeMillis();

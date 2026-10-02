@@ -41,5 +41,10 @@ public final class OrderLore {
         return explicit!=null ? explicit : fill==null ? null : fill.total();
     }
     private static String clean(String lore) { return lore==null ? "" : lore.replaceAll("§.","").replace('\u00a0',' '); }
+    public static boolean canOpenOptionsAfterClaim(String lore,int before,int current,int expected) {
+        return current>=before+expected && current>=before && expected>=0
+                && clean(lore).contains("Click to view options!")
+                && claimable(lore,true)==0;
+    }
     private static int number(String value) { return Integer.parseInt(value.replace(",", "")); }
 }

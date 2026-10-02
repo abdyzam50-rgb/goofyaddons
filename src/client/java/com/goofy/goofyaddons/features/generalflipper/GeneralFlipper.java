@@ -87,6 +87,7 @@ public class GeneralFlipper implements Feature {
     private boolean claimPending;
     private int claimUnits;
     private int cancelSoldUnits;
+    private boolean reopenedCancelOptions;
     private Double claimedProceeds;
     private int ordersContainer = -1;
     private long ordersSeenAt;
@@ -387,6 +388,7 @@ public class GeneralFlipper implements Feature {
             }
             purseBefore = new ScoreboardUtils().getPurse();
             receipt = false;
+            reopenedCancelOptions=false;
             click(buy);
             transition(Step.CANCEL_DETAIL);
             return;
@@ -420,6 +422,7 @@ public class GeneralFlipper implements Feature {
                 }
                 purseBefore = new ScoreboardUtils().getPurse();
                 receipt = false;
+                reopenedCancelOptions=false;
                 click(sell);
                 transition(Step.CANCEL_DETAIL);
                 return;
@@ -453,6 +456,18 @@ public class GeneralFlipper implements Feature {
                 click(cancel);
                 minecraft.player.closeContainer();
                 transition(Step.VERIFY_CANCEL);
+                return;
+            }
+        }
+        // Partial buy claims leave the order in the list. Reopen its options
+        // only after the expected inventory delta and the server's options hint.
+        if (!selling && !reopenedCancelOptions && ordersReady() && !ambiguousOrders()) {
+            int order=findOrder(false);
+            if(order>=0 && OrderLore.canOpenOptionsAfterClaim(lore(order),inventoryBefore,itemCount(active.item.id()),expectedClaim)) {
+                if(!orderMatchesPosition(order)) return;
+                Diagnostics.event("INFO","order.claim_then_open_options",java.util.Map.of("trade",active.tradeId,"inventoryBefore",inventoryBefore,"inventoryNow",itemCount(active.item.id()),"expectedClaim",expectedClaim));
+                reopenedCancelOptions=true;
+                click(order);
                 return;
             }
         }
@@ -664,8 +679,8 @@ public class GeneralFlipper implements Feature {
         return lore == null ? "" : String.join("\n", lore.lines().stream().map(line -> line.getString()).toList());
     }
     private double unitPrice(int slot) {
-        Matcher match = Pattern.compile("Unit price:\\s*([\\d,.]+)").matcher(lore(slot));
-        return match.find() ? Double.parseDouble(match.group(1).replace(",", "")) : -1;
+        Double price=TradeReceipts.unitPrice(lore(slot).replaceAll("§.",""));
+        return price==null ? -1 : price;
     }
     private int itemCount(String id) {
         int count = 0;
