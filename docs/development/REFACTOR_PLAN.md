@@ -420,6 +420,25 @@ produce no releases and no Discord posts today — but if Actions is ever enable
 
 The enabler every remaining stage waits behind. Two halves:
 
+**Resume here.** The next piece is the book-engine seam migration. The pattern is proven on
+the general engine; this is the same work at roughly four times the size, in the riskier
+codebase:
+
+| In `BazaarFlipper` | Count |
+|---|---|
+| `minecraft.*` reads | 79 |
+| `inventoryScanner.*` calls | 74 |
+| direct `clickSlot` sites | 26 |
+| `closeContainer` | 17 |
+| `Diagnostics.command` | 10 |
+
+Do it in verifiable chunks, running the suite after each rather than as one diff: observation
+reads first, then effects, then state. Fold B3 and B4 in while in those lines - the 34
+`clock.start(randomizer())` pairs and the loose state fields are exactly what gets rewritten
+anyway - and inject the clock reads inside `Task` and `utils/Clock` at the same time. After
+that: the slot-map storage model as pure logic with fixtures, then swap the storage pipeline
+over.
+
 | Half | What | Status |
 |---|---|---|
 | Observation model | `SlotView`/`MenuSnapshot` (pure menu + queries), `LiveMenu` (the one adapter) | **done**, 19 tests |
