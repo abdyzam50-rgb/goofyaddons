@@ -132,7 +132,7 @@ public class GeneralFlipper implements Feature {
     public boolean hasStateError() { return blocked; }
     public java.util.Map<String,Object> diagnosticState() {
         var state=new java.util.LinkedHashMap<String,Object>();
-        state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:System.currentTimeMillis()-stepSince);
+        state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:world.now()-stepSince);
         state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
         state.put("claimUnits",claimUnits);state.put("inventoryBefore",inventoryBefore);state.put("expectedClaim",expectedClaim);
         state.put("ordersContainer",ordersSettle.container());state.put("selling",selling);
@@ -225,8 +225,8 @@ public class GeneralFlipper implements Feature {
         if (!running || paused || blocked) return;
         observe();
         refreshSnapshot();
-        if (request != null || System.currentTimeMillis() < nextPoll) return;
-        nextPoll = System.currentTimeMillis() + settings().refreshSeconds * 1000L;
+        if (request != null || world.now() < nextPoll) return;
+        nextPoll = world.now() + settings().refreshSeconds * 1000L;
         int run = generation;
         try {
             request = BazaarApi.fetch();
@@ -234,7 +234,7 @@ public class GeneralFlipper implements Feature {
                 if (generation != run || !running || paused) return;
                 try {
                     if (error != null) throw new IllegalStateException("Bazaar request failed", error);
-                    long updated = TradingSafety.sourceTime(root, System.currentTimeMillis());
+                    long updated = TradingSafety.sourceTime(root, world.now());
                     if(updated<quotesAt) return;
                     products = root.getAsJsonObject("products");
                     quotesAt = updated;
@@ -250,7 +250,7 @@ public class GeneralFlipper implements Feature {
     @Override public boolean needsMenu() {
         if (!running || paused || blocked) return false;
         if (active != null) return true;
-        long now = System.currentTimeMillis();
+        long now = world.now();
         if (positions.stream().anyMatch(position -> position.stage == Stage.RECONCILE || now - position.checkedAt >= settings().refreshSeconds * 1000L)) return true;
         return snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
                 && !snapshotCandidates.isEmpty();
@@ -261,7 +261,7 @@ public class GeneralFlipper implements Feature {
         observe();
         if (active == null) selectWork();
         if (active == null || paused || blocked) return;
-        long now = System.currentTimeMillis();
+        long now = world.now();
         if (now - stepSince > 30000) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
         if (now < nextAction) return;
         nextAction = now + com.goofy.goofyaddons.utils.ActionDelay.next();
@@ -389,7 +389,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private void selectWork() {
-        long now = System.currentTimeMillis();
+        long now = world.now();
         for (Position position : positions) {
             if(position.settlementPending) {
                 active=position;
@@ -412,7 +412,7 @@ public class GeneralFlipper implements Feature {
         double purse = new ScoreboardUtils().getPurse();
         for (GeneralCalculator.Candidate candidate : snapshotCandidates) {
             if (itemCount(candidate.item().id()) > 0 || capital.occupied(candidate.item().id())
-                    || System.currentTimeMillis() < cooldownUntil.getOrDefault(candidate.item().id(), 0L)) continue;
+                    || world.now() < cooldownUntil.getOrDefault(candidate.item().id(), 0L)) continue;
             if (!capital.reserve(OWNER, candidate.item().id(), candidate.cost(), purse)) continue;
             Position position = new Position();
             position.item = candidate.item();
@@ -439,7 +439,7 @@ public class GeneralFlipper implements Feature {
                 && recheckOrders("tracked-order-absent")) return;
         if (active.stage != Stage.PLANNED) {
             long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
-            if (TradingSafety.holdingLimit(held, System.currentTimeMillis(), settings().maxHoldingSeconds,
+            if (TradingSafety.holdingLimit(held, world.now(), settings().maxHoldingSeconds,
                     active.unitCost, freshQuotes() ? currentAsk() * (1 - GoofyConfig.INSTANCE.bazaarTaxPercentage / 100) : -1,
                     settings().maxDrawdownPercentage)) {
                 fail("Holding age/drawdown limit reached for " + active.item.name() + ". Position retained for review."); return;
@@ -465,7 +465,7 @@ public class GeneralFlipper implements Feature {
             capital.purchased(OWNER, active.item.id());
             int claimable = OrderLore.claimable(lore(buy), inventory);
             boolean cancel = claimable > 0 || inventory > 0 || shouldReprice(false)
-                    || System.currentTimeMillis() - active.placedAt >= settings().orderTimeoutSeconds * 1000L;
+                    || world.now() - active.placedAt >= settings().orderTimeoutSeconds * 1000L;
             if (!cancel) { finishWork(); return; }
             selling = false;
             inventoryBefore = inventory;
@@ -533,7 +533,7 @@ public class GeneralFlipper implements Feature {
             transition(Step.OPEN_PRODUCT);
         } else if (active.stage == Stage.SELL_ORDER || active.cancelRequested) {
             fail("Tracked sell/cancel position is absent; ownership is uncertain. Position retained for manual reconciliation.");
-        } else if (System.currentTimeMillis() - active.placedAt > 5000) {
+        } else if (world.now() - active.placedAt > 5000) {
             fail("Tracked buy order and inventory are both missing; manual reconciliation required.");
         }
     }
@@ -574,7 +574,7 @@ public class GeneralFlipper implements Feature {
 
     private void verifyCancellation() {
         int count = itemCount(active.item.id());
-        long elapsed = System.currentTimeMillis() - stepSince;
+        long elapsed = world.now() - stepSince;
         boolean itemsArrived = count > inventoryBefore && count >= inventoryBefore + expectedClaim;
         if (expectedClaim > 0 && count < inventoryBefore + expectedClaim) {
             command("managebazaarorders");
@@ -678,7 +678,7 @@ public class GeneralFlipper implements Feature {
 
     private boolean shouldReprice(boolean sell) {
         if (!freshQuotes() || active.reprices >= settings().maxReprices
-                || System.currentTimeMillis() - active.placedAt < settings().repriceCooldownSeconds * 1000L) return false;
+                || world.now() - active.placedAt < settings().repriceCooldownSeconds * 1000L) return false;
         JsonObject product = products.getAsJsonObject(active.item.id());
         if (product == null) return false;
         double price = GeneralCalculator.topPrice(product, sell ? "buy_summary" : "sell_summary");
@@ -697,7 +697,7 @@ public class GeneralFlipper implements Feature {
     }
     /** Pure: whether the quotes this engine already adopted are usable right now. */
     private boolean freshQuotes() {
-        return products != null && TradingSafety.fresh(quotesAt, System.currentTimeMillis());
+        return products != null && TradingSafety.fresh(quotesAt, world.now());
     }
 
     /** Adopting a newer snapshot mutates engine state, so it belongs on the tick path only. */
@@ -731,11 +731,11 @@ public class GeneralFlipper implements Feature {
     private void transition(Step next) {
         Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
         confirmationStability.reset();menuRecheck.reset();reopeningOrders=false;
-        step = next; stepSince = System.currentTimeMillis(); lastCommand = 0;
+        step = next; stepSince = world.now(); lastCommand = 0;
         ordersSettle.reset();
     }
     private void command(String text) {
-        long now = System.currentTimeMillis();
+        long now = world.now();
         if (view.title() == null && now - lastCommand > 1500) {
             actions.command(text);
             lastCommand = now;
@@ -744,7 +744,7 @@ public class GeneralFlipper implements Feature {
 
     private boolean recheckOrders(String reason) {
         recheckReason=reason;
-        var decision=menuRecheck.missing(step+":"+active.tradeId,System.currentTimeMillis());
+        var decision=menuRecheck.missing(step+":"+active.tradeId,world.now());
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
             Diagnostics.event("WARN","order.observation_recheck",java.util.Map.of("reason",reason,"trade",active.tradeId==null?"legacy":active.tradeId,
                     "attempt",menuRecheck.attempts(),"step",step.name(),"context",Diagnostics.detailedSnapshot()));
@@ -757,7 +757,7 @@ public class GeneralFlipper implements Feature {
     private int findOrder(boolean sell) { return find((sell ? "SELL " : "BUY ") + active.item.name(), true); }
     private boolean ordersReady() {
         if (!TradingSafety.ordersTitle(view.title())) return false;
-        if (!ordersSettle.settled(view.containerId(), System.currentTimeMillis())) return false;
+        if (!ordersSettle.settled(view.containerId(), world.now())) return false;
         if (find("Go Back", false) < 0 && find("Close", true) < 0) return false;
         if (find("Next Page", false) >= 0 || find("Previous Page", false) >= 0) {
             fail("Orders span multiple pages; automatic ownership checks are blocked."); return false;
@@ -828,14 +828,14 @@ public class GeneralFlipper implements Feature {
         return true;
     }
     private void finishWork() {
-        if (active != null && positions.contains(active)) active.checkedAt = System.currentTimeMillis();
+        if (active != null && positions.contains(active)) active.checkedAt = world.now();
         save();
         active = null;
         actions.closeMenu();
     }
     private void completePosition() {
         if (active.stage == Stage.BUY_ORDER || active.stage == Stage.PLANNED) {
-            cooldownUntil.put(active.item.id(), System.currentTimeMillis() + settings().orderTimeoutSeconds * 1000L);
+            cooldownUntil.put(active.item.id(), world.now() + settings().orderTimeoutSeconds * 1000L);
         }
         capital.release(OWNER, active.item.id());
         positions.remove(active);

@@ -13,6 +13,15 @@ public interface GameWorld {
     /** The player's name, or null when unknown. Needed to tell a co-op order apart. */
     String username();
 
+    /**
+     * The current time in milliseconds.
+     *
+     * <p>On the seam rather than read directly, so a test can advance time instead of
+     * sleeping. The observation helpers already take a clock as an argument; this is what
+     * lets an engine hand them a controlled one.
+     */
+    long now();
+
     /** Whether a quantity sign is the open screen. */
     boolean signEditorOpen();
 

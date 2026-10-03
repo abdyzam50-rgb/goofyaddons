@@ -16,6 +16,8 @@ public final class LiveWorld implements GameWorld {
         return minecraft.getUser() == null ? null : minecraft.getUser().getName();
     }
 
+    @Override public long now() { return System.currentTimeMillis(); }
+
     @Override public boolean signEditorOpen() {
         return Minecraft.getInstance().screen instanceof AbstractSignEditScreen;
     }

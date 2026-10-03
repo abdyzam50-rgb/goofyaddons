@@ -41,7 +41,7 @@ class GeneralFlipperDrivingTest {
         // placedAt/heldSince must be recent: an epoch timestamp trips the holding-age
         // limit on the first tick, and the engine then fails before reaching the
         // order-identity checks these tests are about.
-        long now = System.currentTimeMillis();
+        long now = world.clock();
         Files.writeString(state, ("""
                 [{"item":{"id":"ENCHANTED_COAL","name":"Enchanted Coal"},"quantity":16,"unitCost":100.0,
                   "sellPrice":130.0,"stage":"BUY_ORDER","submitted":true,"cancelRequested":false,"reprices":0,
@@ -72,23 +72,18 @@ class GeneralFlipperDrivingTest {
         return actions.performed().stream().anyMatch(action -> action.startsWith("message:"));
     }
 
-    private static void tick(GeneralFlipper engine, int times) throws InterruptedException {
-        for (int i = 0; i < times; i++) {
-            engine.onTick();
-            Thread.sleep(60); // clears the fixed 51ms inter-action delay
-        }
-    }
-
     /**
-     * Ticks for a wall-clock span. Needed because an orders list is only "ready" after
-     * the same container has been observed for 750ms, and a transition restarts that
-     * window, so a short tick count never reaches the decisions worth asserting on.
+     * Runs ticks over a span of simulated time.
+     *
+     * <p>Time is advanced rather than slept through. That matters for more than speed: an
+     * orders list is only "ready" once the same container has been observed for 750ms, a
+     * transition restarts that window, and the observation recheck fires at 1500ms, so a
+     * test has to be able to cross those boundaries exactly rather than approximately.
      */
-    private static void drive(GeneralFlipper engine, long millis) throws InterruptedException {
-        long until = System.currentTimeMillis() + millis;
-        while (System.currentTimeMillis() < until) {
+    private static void drive(GeneralFlipper engine, FakeWorld world, long millis) {
+        for (long elapsed = 0; elapsed < millis; elapsed += 60) {
             engine.onTick();
-            Thread.sleep(60);
+            world.advance(60);
         }
     }
 
@@ -124,7 +119,7 @@ class GeneralFlipperDrivingTest {
                 List.of(SlotView.named(11, "Create Buy Order", List.of("§7Click!")))));
         GeneralFlipper engine = engine(world, actions);
 
-        drive(engine, 2500);
+        drive(engine, world, 2500);
 
         assertEquals(List.of(), actions.serverEffects(),
                 "an unexpected menu must never be clicked, however many ticks pass");
@@ -138,7 +133,7 @@ class GeneralFlipperDrivingTest {
                 List.of(SlotView.named(11, "BUY Enchanted Coal", List.of("§7Order amount: §a16", "§7Filled: §a0§7/§a16")))));
         GeneralFlipper engine = engine(world, actions);
 
-        drive(engine, 2500);
+        drive(engine, world, 2500);
 
         assertEquals(List.of(), actions.serverEffects(),
                 "a list without its controls is not loaded, so nothing may be clicked");
@@ -153,7 +148,7 @@ class GeneralFlipperDrivingTest {
                 SlotView.named(25, "Next Page", List.of()))));
         GeneralFlipper engine = engine(world, actions);
 
-        drive(engine, 2500);
+        drive(engine, world, 2500);
 
         assertEquals(List.of(), actions.serverEffects(), "paginated orders must never be clicked");
     }
@@ -166,7 +161,7 @@ class GeneralFlipperDrivingTest {
                 SlotView.named(26, "Close", List.of()))));
         GeneralFlipper engine = engine(world, actions);
 
-        drive(engine, 2500);
+        drive(engine, world, 2500);
 
         assertEquals(List.of(), actions.serverEffects(),
                 "an order of 64 is not this position's order of 16, so it must not be touched");
@@ -182,7 +177,7 @@ class GeneralFlipperDrivingTest {
                 SlotView.named(26, "Close", List.of()))));
         GeneralFlipper engine = engine(world, actions);
 
-        drive(engine, 2500);
+        drive(engine, world, 2500);
 
         assertEquals(List.of(), actions.serverEffects(),
                 "another player's co-op order must never be claimed or cancelled");
@@ -190,11 +185,28 @@ class GeneralFlipperDrivingTest {
                 "the engine must refuse someone else's order, not quietly adopt it");
     }
 
+    @Test void aTickCostsNoRealTimeSoLongSequencesAreTestable() throws Exception {
+        // Ten minutes of engine time, well past every settle, recheck and timeout window.
+        RecordingActions actions = new RecordingActions();
+        FakeWorld world = new FakeWorld().showing(menu("Your Bazaar Orders", 27, List.of(
+                SlotView.named(11, "BUY Enchanted Coal", List.of("§7Order amount: §a64")),
+                SlotView.named(26, "Close", List.of()))));
+        GeneralFlipper engine = engine(world, actions);
+
+        long startedAt = System.currentTimeMillis();
+        drive(engine, world, 600_000);
+        long realMillis = System.currentTimeMillis() - startedAt;
+
+        assertTrue(realMillis < 10_000, "600s of engine time took " + realMillis + "ms of real time");
+        assertEquals(List.of(), actions.serverEffects(), "and still never clicked the wrong order");
+    }
+
     @Test void anEngineWithNothingOnScreenAsksForItsOrdersAndClicksNothing() throws Exception {
         RecordingActions actions = new RecordingActions();
-        GeneralFlipper engine = engine(new FakeWorld().showingNothing(), actions);
+        FakeWorld world = new FakeWorld().showingNothing();
+        GeneralFlipper engine = engine(world, actions);
 
-        tick(engine, 3);
+        drive(engine, world, 200);
 
         assertTrue(actions.performed().contains("command:managebazaarorders"),
                 "with no menu open the engine should ask for its orders list");

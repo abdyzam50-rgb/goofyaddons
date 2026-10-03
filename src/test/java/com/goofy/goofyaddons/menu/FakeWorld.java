@@ -9,6 +9,7 @@ public final class FakeWorld implements GameWorld {
     private String username = "GoofyPlayer";
     private boolean signOpen;
     private MenuSnapshot menu;
+    private long now = 1_000_000_000L;
 
     public FakeWorld inWorld(boolean value) { this.inWorld = value; return this; }
     public FakeWorld username(String value) { this.username = value; return this; }
@@ -18,6 +19,13 @@ public final class FakeWorld implements GameWorld {
     /** No menu open: the engine sees a player in the world with nothing on screen. */
     public FakeWorld showingNothing() { this.menu = new MenuSnapshot(0, null, true, java.util.List.of()); return this; }
 
+    /** Moves the clock forward, the way a test waits without waiting. */
+    public FakeWorld advance(long millis) { this.now += millis; return this; }
+
+    /** Current fake time, for a test that needs to reason about a deadline. */
+    public long clock() { return now; }
+
+    @Override public long now() { return now; }
     @Override public boolean inWorld() { return inWorld; }
     @Override public String username() { return username; }
     @Override public boolean signEditorOpen() { return signOpen; }
