@@ -502,8 +502,7 @@ public class BazaarFlipper implements Feature {
 
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
                     if (slot.isEmpty()) {
-                        if(!selfConsumedOrder(task) && exposedBooks.contains(task.getBook().id())
-                                && recheckBookOrders(task,"missing-buy-order")) return;
+                        if(exposedBooks.contains(task.getBook().id()) && recheckBookOrders(task,"missing-buy-order")) return;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] STARTUP_BAZAAR_CHECK: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -731,7 +730,7 @@ public class BazaarFlipper implements Feature {
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
 
                     if (slot.isEmpty()) {
-                        if(!selfConsumedOrder(task) && recheckBookOrders(task,"missing-buy-order")) return;
+                        if(recheckBookOrders(task,"missing-buy-order")) return;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] OUTBID: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -1546,14 +1545,6 @@ public class BazaarFlipper implements Feature {
                 .filter(slot -> inventoryScanner.getLevel(slot) == task.getBook().level()).count();
     }
 
-    /**
-     * Trade whose BUY order this engine itself just claimed. Claiming a partially filled order
-     * consumes the order, so finding it gone on the next pass is the expected outcome rather
-     * than a lost observation - rechecking it burned three menu reopens per claim and logged a
-     * WARN for each.
-     */
-    private String claimedOrderTrade;
-
     private void beginBuyClaim(Task task, int amount, int slot) {
         if (amount <= 0) return;
         pendingBuyClaim = task;
@@ -1562,7 +1553,6 @@ public class BazaarFlipper implements Feature {
         var lore = minecraft.player.containerMenu.slots.get(slot).getItem().get(net.minecraft.core.component.DataComponents.LORE);
         buyClaimUnitPrice = lore == null ? null : TradeReceipts.unitPrice(String.join("\n", lore.lines().stream().map(line -> line.getString()).toList()));
         buyClaimEvent = java.util.UUID.randomUUID().toString();
-        claimedOrderTrade = task.getProfitTradeId();
         attemptedToClaim = true;
         didReceiveItems = false;
     }
@@ -1829,7 +1819,6 @@ public class BazaarFlipper implements Feature {
         buyClaimExpected = 0;
         buyClaimUnitPrice = null;
         buyClaimEvent = null;
-        claimedOrderTrade = null;
         pendingSaleClaim = null;
         saleClaimReceipt = false;
         saleClaimProceeds = null;
@@ -1917,15 +1906,6 @@ public class BazaarFlipper implements Feature {
         return true;
     }
 
-    /** True once, for the trade whose order this engine's own claim removed. */
-    private boolean selfConsumedOrder(Task task) {
-        if(claimedOrderTrade==null || !claimedOrderTrade.equals(task.getProfitTradeId())) return false;
-        claimedOrderTrade=null;
-        Diagnostics.event("INFO","books.order_consumed_by_claim",java.util.Map.of("engine","books",
-                "trade",task.getProfitTradeId(),"item",task.getBook().getRomanLevel(task.getBook().level())));
-        return true;
-    }
-
     /**
      * Whether this route may commit coins to a new buy order now. Three limits the general
      * engine has always had and the book engine had none of: how many routes may hold capital
@@ -1961,6 +1941,18 @@ public class BazaarFlipper implements Feature {
 
     private final java.util.Map<String,Long> parkReported=new java.util.HashMap<>();
 
+    /**
+     * Re-observes the orders menu before trusting that a tracked order is gone.
+     *
+     * <p>Do not shortcut this after the engine's own claim. 1.3.8 did, reasoning that a claim
+     * consumes the order so its absence is expected, and the field caught it within minutes:
+     * claiming the filled part of a partially filled buy order leaves the remainder live, and
+     * the menu does not necessarily show it on the very next pass. These rechecks are the
+     * settle window that lets the menu agree with reality. Skipping them let the engine read
+     * "no order" while a 16x order was still open and place a second 14x order for the same
+     * book beside it - 26m committed across two orders, which the duplicate-order check then
+     * halted on. They cost about seven seconds per claim and they stay.
+     */
     private boolean recheckBookOrders(Task task,String reason) {
         var decision=menuRecheck.missing(state+":"+task.getProfitTradeId(),System.currentTimeMillis());
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
