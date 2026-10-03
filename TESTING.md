@@ -5,7 +5,7 @@ the GitHub file view (**Raw** / the download button), not by copying the page.
 
 ```
 dist/goofyaddons-1.3.8-BETA.jar
-sha256 27c979a7c0a6f951c670637b63ad45d6db61e75b25c5dbe6279aaaf8f6d95610
+sha256 9687ea9e4b2a1e3ff1f855701b8e7e6d546516d309151e12e0233d87d41120ab
 ```
 
 ## What you need

@@ -1171,7 +1171,23 @@ public class BazaarFlipper implements Feature {
 
                     combine_Counter = mergedInInventory;
 
-                    if(slot.isEmpty()) return; // Missing inputs alone never prove that the combine succeeded.
+                    // Missing inputs alone never prove that the combine succeeded, so this cannot
+                    // click. It also cannot just return forever: the model said a pair was in the
+                    // inventory, the inventory disagreed, and the state machine span 110 times in
+                    // 36 seconds until the watchdog stopped it. Field cause: the buy order had
+                    // filled but was never claimed, so the books were still in the Bazaar while
+                    // the model had them in hand.
+                    if(slot.isEmpty()) {
+                        var decision = com.goofy.goofyaddons.features.bookflipper.helper.CombineRecovery
+                                .decide(++combineInputsAbsent, COMBINE_ABSENT_TICKS,
+                                        combineReconciled.contains(task.getProfitTradeId()));
+                        if(decision == com.goofy.goofyaddons.features.bookflipper.helper
+                                .CombineRecovery.Action.WAIT) return;
+                        combineInputsAbsent = 0;
+                        reconcileCombineInputs(task, firstBook.level, decision);
+                        return;
+                    }
+                    combineInputsAbsent = 0;
                     InventoryUtils.clickSlot(slot.getFirst(), true);
                 }
             }
@@ -1817,6 +1833,8 @@ public class BazaarFlipper implements Feature {
      */
     private void clearTransactionState() {
         reportedUnclaimedSales = false;
+        combineInputsAbsent = 0;
+        combineReconciled.clear();
         pendingBuyClaim = null;
         buyClaimBefore = 0;
         buyClaimExpected = 0;
@@ -1991,6 +2009,43 @@ public class BazaarFlipper implements Feature {
     }
 
     private boolean reportedUnclaimedSales;
+
+    /**
+     * Sends a task whose combine inputs are not where the model says back to the Bazaar to be
+     * re-read, rather than spinning or halting.
+     *
+     * <p>The model is not corrected here and the book list is not edited. The books are real -
+     * they were sitting unclaimed in a filled buy order - so dropping them from the model would
+     * make the task believe it needs to order them again, and buy the same books twice. The
+     * order-check path re-reads the live orders menu and claims what is actually there, which
+     * corrects the model the only way that cannot double-spend.
+     *
+     * <p>Once per task per run. A second divergence on the same task is not a timing artefact,
+     * so that one still halts.
+     */
+    private void reconcileCombineInputs(Task task, int level,
+            com.goofy.goofyaddons.features.bookflipper.helper.CombineRecovery.Action decision) {
+        String trade = task.getProfitTradeId();
+        boolean again = decision == com.goofy.goofyaddons.features.bookflipper.helper
+                .CombineRecovery.Action.HALT;
+        combineReconciled.add(trade);
+        Diagnostics.event(again ? "ERROR" : "WARN", "books.combine_inputs_absent", java.util.Map.of(
+                "engine","books","trade",trade,"level",level,
+                "item",task.getBook().getRomanLevel(level),
+                "modelledInInventory",task.bookList.stream().filter(b -> b.level==level && b.location==0).count(),
+                "secondAttempt",again,"context",Diagnostics.detailedSnapshot()));
+        if(again) {
+            safetyHalt("Combine inputs are still absent after re-reading the Bazaar; positions preserved.");
+            return;
+        }
+        minecraft.player.closeContainer();
+        task.setBookState(Task.BookState.BAZAAR_ORDER_CHECK);
+        state = State.STARTUP_BAZAAR_CHECK;
+    }
+
+    private int combineInputsAbsent;
+    private static final int COMBINE_ABSENT_TICKS = 10;
+    private final java.util.Set<String> combineReconciled = new java.util.HashSet<>();
 
     private boolean recheckBookOrders(Task task,String reason) {
         var decision=menuRecheck.missing(state+":"+task.getProfitTradeId(),System.currentTimeMillis());
