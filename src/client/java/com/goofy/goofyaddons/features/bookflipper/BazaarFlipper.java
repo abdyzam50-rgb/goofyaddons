@@ -493,6 +493,7 @@ public class BazaarFlipper implements Feature {
 
                 if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()))) clock.start(randomizer());
                 if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                    reportUnclaimedSales();
                     // Waiting for chat message to appear here
                     if (attemptedToClaim) {
                         if (!didReceiveItems) return;
@@ -720,6 +721,7 @@ public class BazaarFlipper implements Feature {
 
                 if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString()))) clock.start(randomizer());
                 if ((minecraft.screen!=null && TradingSafety.ordersTitle(minecraft.screen.getTitle().getString())) && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
+                    reportUnclaimedSales();
                     // Waiting for chat message to appear here
                     if (attemptedToClaim) {
                         if (!didReceiveItems) return;
@@ -1814,6 +1816,7 @@ public class BazaarFlipper implements Feature {
      * later run wait on, or account for, a task that no longer exists.
      */
     private void clearTransactionState() {
+        reportedUnclaimedSales = false;
         pendingBuyClaim = null;
         buyClaimBefore = 0;
         buyClaimExpected = 0;
@@ -1953,6 +1956,42 @@ public class BazaarFlipper implements Feature {
      * book beside it - 26m committed across two orders, which the duplicate-order check then
      * halted on. They cost about seven seconds per claim and they stay.
      */
+    /**
+     * Says once per run how many coins are sitting in filled sell offers nobody collected.
+     *
+     * <p>Startup reconciles BUY orders and ignores SELL entries, so a sale that fills after a
+     * session ends is stranded: the coins stay in the Bazaar and the ledger never learns the
+     * flip completed. Four field sessions left 26,240,759 coins across seven fully filled
+     * offers exactly this way. Reporting it is deliberately all this does - collecting coins
+     * the engine has no live task for means attributing a sale to a route from memory, and
+     * getting that wrong writes a false number into the profit ledger.
+     */
+    private void reportUnclaimedSales() {
+        if (reportedUnclaimedSales) return;
+        reportedUnclaimedSales = true;
+        var names = new java.util.ArrayList<String>();
+        var lores = new java.util.ArrayList<java.util.List<String>>();
+        var slots = minecraft.player.containerMenu.slots;
+        for (int i = 0; i < Math.max(0, slots.size() - 36); i++) {
+            var stack = slots.get(i).getItem();
+            if (stack.isEmpty()) continue;
+            var lore = stack.get(net.minecraft.core.component.DataComponents.LORE);
+            names.add(stack.getHoverName().getString().replaceAll("\u00a7.", ""));
+            lores.add(lore == null ? java.util.List.of()
+                    : lore.lines().stream().map(line -> line.getString().replaceAll("\u00a7.", "")).toList());
+        }
+        var found = com.goofy.goofyaddons.features.bookflipper.helper.OrphanSales.scan(names, lores);
+        if (found.isEmpty()) return;
+        long coins = com.goofy.goofyaddons.features.bookflipper.helper.OrphanSales.total(found);
+        Diagnostics.event("WARN","books.unclaimed_sales",java.util.Map.of("engine","books",
+                "offers",found.size(),"coins",coins,
+                "detail",found.stream().map(sale -> sale.units()+"x "+sale.item()+"="+sale.coins()).toList()));
+        ChatUtils.clientMessage("BazaarFlipper: " + String.format("%,d", coins) + " coins unclaimed across "
+                + found.size() + " filled sell offer(s). Collect them in /managebazaarorders.");
+    }
+
+    private boolean reportedUnclaimedSales;
+
     private boolean recheckBookOrders(Task task,String reason) {
         var decision=menuRecheck.missing(state+":"+task.getProfitTradeId(),System.currentTimeMillis());
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
