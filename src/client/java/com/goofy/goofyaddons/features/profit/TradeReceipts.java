@@ -6,8 +6,13 @@ public final class TradeReceipts {
     private TradeReceipts() {}
     public static Double saleProceeds(String message,String item,int expectedUnits) {
         if(message==null || item==null || expectedUnits<=0) return null;
+        // Hypixel appends " at <gross unit price> each" to a sale claim. The pattern anchored
+        // at the item name, so every real claim receipt failed to match: the engine armed a
+        // sale claim, collected the coins, never recognised its own receipt, and halted with
+        // the sale unrecorded. It is why no session ever logged a completed sale.
         var match=Pattern.compile("^\\[Bazaar] Claimed ([\\d,]+(?:\\.\\d+)?) coins from selling ([\\d,]+)x "
-                +Pattern.quote(item)+"[!.]?$",Pattern.CASE_INSENSITIVE).matcher(com.goofy.goofyaddons.utils.Chat.strip(message));
+                +Pattern.quote(item)+"(?: at [\\d,]+(?:\\.\\d+)? each)?[!.]?$",
+                Pattern.CASE_INSENSITIVE).matcher(com.goofy.goofyaddons.utils.Chat.strip(message));
         if (!match.matches()) return null;
         try {
             int units=Integer.parseInt(match.group(2).replace(",",""));

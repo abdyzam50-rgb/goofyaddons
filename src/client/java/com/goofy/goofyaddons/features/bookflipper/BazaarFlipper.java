@@ -81,6 +81,9 @@ public class BazaarFlipper implements Feature {
     private Double buyClaimUnitPrice;
     private String buyClaimEvent;
     private Double saleClaimProceeds;
+    /** When the sale claim was clicked, so a slow receipt does not read as an unexplained loss. */
+    private long saleClaimAt;
+    private static final long SALE_RECEIPT_GRACE_MS = 10_000;
     private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
     private long yieldAfterMs;
     private long nextFetchMs;
@@ -1331,6 +1334,7 @@ public class BazaarFlipper implements Feature {
                             pendingSaleClaim = task;
                             saleClaimReceipt = false;
                             saleClaimProceeds = null;
+                            saleClaimAt = System.currentTimeMillis();
                         }
                         InventoryUtils.clickSlot(slot.getFirst(), false);
                         return;
@@ -1352,7 +1356,20 @@ public class BazaarFlipper implements Feature {
                         resizeRetainedExtras(task.getBook(), task.getReservedUnitCost());
                         pendingSaleClaim = null;
                         saleClaimReceipt = false;
+                        saleClaimAt = 0;
+                    } else if (pendingSaleClaim == task
+                            && System.currentTimeMillis() - saleClaimAt < SALE_RECEIPT_GRACE_MS) {
+                        // The claim went in and the offer is gone, but Hypixel has not said so
+                        // yet. Halting here would stop a run that has already been paid, so the
+                        // receipt gets a bounded window before the absence counts as unexplained.
+                        return;
                     } else {
+                        Diagnostics.event("ERROR","books.sale_claim_unconfirmed",java.util.Map.of(
+                                "trade",task.getProfitTradeId(),
+                                "item",task.getBook().getRomanLevel(task.getBook().sellLevel()),
+                                "claimPending",pendingSaleClaim==task,"receiptSeen",saleClaimReceipt,
+                                "msSinceClaim",pendingSaleClaim==task?System.currentTimeMillis()-saleClaimAt:-1,
+                                "context",Diagnostics.detailedSnapshot()));
                         safetyHalt("Tracked book sell order/inventory missing without a matching claim; position retained.");
                     }
                     return;
@@ -1816,6 +1833,7 @@ public class BazaarFlipper implements Feature {
         pendingSaleClaim = null;
         saleClaimReceipt = false;
         saleClaimProceeds = null;
+        saleClaimAt = 0;
         submittedBookTask = null;
         submittedNextState = null;
         submittedBookSelling = false;
