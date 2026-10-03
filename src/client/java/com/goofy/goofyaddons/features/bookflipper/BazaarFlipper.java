@@ -564,7 +564,7 @@ public class BazaarFlipper implements Feature {
                 }
 
                 Task taskToHandle = com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule
-                        .next(taskList, isStartUpCheckCompleted, inventoryIsFull);
+                        .next(taskList, isStartUpCheckCompleted, inventoryIsFull, this::mayOpenBookOrder);
 
                 if (taskToHandle == null) {
                     if (System.currentTimeMillis() >= nextFetchMs) state = State.FETCHING;
@@ -688,6 +688,7 @@ public class BazaarFlipper implements Feature {
                     }
 
                     debug("[BazaarFlipper] BAZAAR_NAVIGATION: submitted buy order for " + activeTask.getBook() + ", schedule was " + activeTask.actionSchedule);
+                    activeTask.recordPlacement(System.currentTimeMillis());
                     switch (activeTask.actionSchedule) {
                         case SELECTED_COMBINE_STORE_BUYORDER -> submittedNextState=Task.BookState.ANVIL;
 
@@ -731,6 +732,7 @@ public class BazaarFlipper implements Feature {
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] OUTBID: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
+                            task.resetReprices();
                             task.setBookState(Task.BookState.ANVIL);
                             return;
                         }
@@ -1905,6 +1907,41 @@ public class BazaarFlipper implements Feature {
                 "trade",task.getProfitTradeId(),"item",task.getBook().getRomanLevel(task.getBook().level())));
         return true;
     }
+
+    /**
+     * Whether this route may commit coins to a new buy order now. Three limits the general
+     * engine has always had and the book engine had none of: how many routes may hold capital
+     * at once, how soon an outbid route may re-place, and how many times it may do so at all.
+     * A route re-placed immediately and without limit just churns cancel/re-place laps against
+     * whoever outbid it, for a fraction of a coin more each time.
+     */
+    private boolean mayOpenBookOrder(Task task) {
+        long now=System.currentTimeMillis();
+        if(task.lastPlacedAt()>0) {
+            if(task.reprices()>=GoofyConfig.INSTANCE.maxBookReprices) return parkBook(task,"reprice-budget-spent",now);
+            if(now-task.lastPlacedAt()<GoofyConfig.INSTANCE.bookRepriceCooldownSeconds*1000L)
+                return parkBook(task,"reprice-cooldown",now);
+        }
+        // A route already holding capital is not counted against itself.
+        long active=com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule.activePositions(taskList);
+        if(active>=GoofyConfig.INSTANCE.maxActiveBooks && !CapitalManager.INSTANCE.occupied(task.getBook().id()))
+            return parkBook(task,"max-active-books",now);
+        return true;
+    }
+
+    /** Reports a held-back route once per minute rather than on every tick. */
+    private boolean parkBook(Task task,String reason,long now) {
+        Long last=parkReported.get(task.getProfitTradeId());
+        if(last==null || now-last>=60_000) {
+            parkReported.put(task.getProfitTradeId(),now);
+            Diagnostics.event("INFO","books.order_deferred",java.util.Map.of("engine","books",
+                    "trade",task.getProfitTradeId(),"reason",reason,"reprices",task.reprices(),
+                    "item",task.getBook().name()));
+        }
+        return false;
+    }
+
+    private final java.util.Map<String,Long> parkReported=new java.util.HashMap<>();
 
     private boolean recheckBookOrders(Task task,String reason) {
         var decision=menuRecheck.missing(state+":"+task.getProfitTradeId(),System.currentTimeMillis());

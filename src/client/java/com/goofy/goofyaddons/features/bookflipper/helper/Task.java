@@ -80,6 +80,32 @@ public class Task {
     /** Records that the order was seen, restarting the wait without changing state. */
     public void markOrderObserved(long now) { orderWaitSince = now; }
 
+    /**
+     * How often this route has been outbid and re-placed, and when it was last placed. The
+     * general engine has carried a reprice budget and cooldown since it was written; the book
+     * engine re-placed an outbid order immediately and without limit, so a contested book
+     * churned cancel/re-place laps indefinitely at a fraction of a coin more each time.
+     */
+    private int reprices;
+    private long lastPlacedAt;
+
+    public int reprices() { return reprices; }
+    public long lastPlacedAt() { return lastPlacedAt; }
+
+    /**
+     * Records that an order for this route was actually submitted. Counted on submission
+     * rather than on the decision to re-place, so the budget allows exactly
+     * maxBookReprices re-placements after the first order, and a decision that never
+     * reaches the Bazaar costs nothing.
+     */
+    public void recordPlacement(long now) {
+        if (lastPlacedAt > 0) reprices++;
+        lastPlacedAt = now;
+    }
+
+    /** Clears the reprice budget once the route has actually moved on (filled, or restarted). */
+    public void resetReprices() { reprices = 0; }
+
     // -1 will indicate failure, 0 will indicate success
     public int assignBook(Book book, int level, int location, int amountOfBook) {
         if (amountOfBook == 0) return 0;

@@ -169,4 +169,53 @@ class BookScheduleTest {
         }
         assertTrue(BookSchedule.actionable(Task.BookState.VERIFY_ORDER));
     }
+
+    // --- the order gate: limits the general engine always had and this one had none of ---
+
+    @Test void aVetoedRouteIsSkippedButOtherWorkStillRuns() {
+        Task newOrder = task(WISE, Task.BookState.SELECTED);
+        Task store = task(JERRY, Task.BookState.STORE);
+        assertSame(store, BookSchedule.next(List.of(newOrder, store), true, false, t -> false));
+    }
+
+    @Test void theVetoOnlyAppliesToCommittingCoins() {
+        // Holding back work that realises a position is what pins capital, so the gate must
+        // not be able to veto anything but SELECTED.
+        for (Task.BookState state : Task.BookState.values()) {
+            if (!BookSchedule.actionable(state) || state == Task.BookState.SELECTED) continue;
+            Task task = task(WISE, state);
+            assertSame(task, BookSchedule.next(List.of(task), true, false, t -> false),
+                    state + " must not be vetoable");
+        }
+    }
+
+    @Test void aVetoedRouteYieldsNothingWhenItIsTheOnlyWork() {
+        Task newOrder = task(WISE, Task.BookState.SELECTED);
+        assertNull(BookSchedule.next(List.of(newOrder), true, false, t -> false));
+        assertSame(newOrder, BookSchedule.next(List.of(newOrder), true, false, t -> true));
+    }
+
+    @Test void onlyRoutesHoldingCapitalCountAsActivePositions() {
+        assertEquals(0, BookSchedule.activePositions(List.of(
+                task(WISE, Task.BookState.SELECTED), task(JERRY, Task.BookState.BAZAAR_ORDER_CHECK))),
+                "a route that has not ordered yet holds nothing");
+        assertEquals(2, BookSchedule.activePositions(List.of(
+                task(WISE, Task.BookState.IN_BUY_ORDER), task(JERRY, Task.BookState.SELL_ORDER))));
+        assertEquals(1, BookSchedule.activePositions(List.of(
+                task(WISE, Task.BookState.OUTBID), task(JERRY, Task.BookState.SELECTED))));
+    }
+
+    @Test void theRepriceBudgetCountsPlacementsNotDecisions() {
+        Task task = task(WISE, Task.BookState.SELECTED);
+        assertEquals(0, task.reprices());
+        assertEquals(0, task.lastPlacedAt(), "nothing placed yet, so no cooldown applies");
+        task.recordPlacement(1000);
+        assertEquals(0, task.reprices(), "the first order is not a reprice");
+        task.recordPlacement(2000);
+        task.recordPlacement(3000);
+        assertEquals(2, task.reprices());
+        assertEquals(3000, task.lastPlacedAt());
+        task.resetReprices();
+        assertEquals(0, task.reprices(), "progress clears the budget");
+    }
 }

@@ -55,6 +55,15 @@ public class GoofyConfig {
     public int maxBookHoldingSeconds = 21600;
     /** How long a placed book order may sit untouched before it is re-read. */
     public int bookOrderRecheckSeconds = 180;
+    /**
+     * Book-engine counterparts of general.maxActiveItems, general.repriceCooldownSeconds and
+     * general.maxReprices. Without them the book engine opened one order per eligible route at
+     * once (committing far more than the purse could cover) and re-placed an outbid order
+     * immediately and forever.
+     */
+    public int maxActiveBooks = 2;
+    public int bookRepriceCooldownSeconds = 120;
+    public int maxBookReprices = 3;
     public boolean profitHudEnabled = true;
     public String profitHudSide = "RIGHT";
     public double profitHudScale = 1.25;
@@ -70,9 +79,19 @@ public class GoofyConfig {
     static void load(Path path) {
         try {
             if (!Files.exists(path)) {
+                // A fresh file is written with built-in defaults, including a 300m capital
+                // limit and a 50m purse reserve nobody chose. A field run started on exactly
+                // this path - a new config directory, a silently created default file - and
+                // traded under limits that did not match the ones the player had set
+                // elsewhere. Defaults are a starting point to review, not a mandate, so
+                // trading stays blocked until the file is read and reloaded.
                 INSTANCE = new GoofyConfig();
-                loadError = null;
                 save(path);
+                loadError = "Wrote a new goofyaddons.json with built-in defaults (capital "
+                        + (long) INSTANCE.maxTradingCapital + ", reserve " + (long) INSTANCE.purseReserve
+                        + "). Review it at " + path + " and press \\ to reload before trading.";
+                Diagnostics.event("WARN","config.defaults_written",java.util.Map.of("path",path.toString(),
+                        "capital",INSTANCE.maxTradingCapital,"reserve",INSTANCE.purseReserve));
                 return;
             }
             String json = Files.readString(path);
@@ -114,6 +133,8 @@ public class GoofyConfig {
         if (!Double.isFinite(bazaarTaxPercentage) || bazaarTaxPercentage < 0 || bazaarTaxPercentage >= 100
                 || !Double.isFinite(minNetProfit) || minNetProfit < 0 || maxBookHoldingSeconds < 60
                 || bookOrderRecheckSeconds < 30
+                || maxActiveBooks < 1 || maxActiveBooks > 10
+                || bookRepriceCooldownSeconds < 30 || maxBookReprices < 0 || maxBookReprices > 10
                 || !Double.isFinite(maxBookDrawdownPercentage) || maxBookDrawdownPercentage <= 0 || maxBookDrawdownPercentage > 100) {
             throw new IllegalArgumentException("Invalid sale tax or minimum net profit");
         }

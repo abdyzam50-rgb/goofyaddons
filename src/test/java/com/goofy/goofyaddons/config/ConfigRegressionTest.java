@@ -88,4 +88,39 @@ class ConfigRegressionTest {
         GoofyConfig.load(file);
         assertNull(GoofyConfig.loadError());
     }
+
+    @Test
+    void aFreshlyWrittenDefaultConfigBlocksTradingUntilItIsReviewed() throws Exception {
+        // A field run started in a new config directory, where the mod silently wrote
+        // defaults and traded under a 300m capital limit and a 50m reserve the player had
+        // not chosen - their own file, with 65m and 15m, was somewhere else entirely.
+        Path file = directory.resolve("goofyaddons.json");
+        GoofyConfig.INSTANCE = null;
+        GoofyConfig.load(file);
+        assertTrue(Files.exists(file), "the defaults are still written out to edit");
+        assertNotNull(GoofyConfig.INSTANCE);
+        assertNotNull(GoofyConfig.loadError(), "defaults nobody chose must not trade");
+        assertTrue(GoofyConfig.loadError().contains(file.toString()),
+                "the message must say which file to look at");
+        GoofyConfig.load(file);
+        assertNull(GoofyConfig.loadError(), "reloading the reviewed file clears the block");
+    }
+
+    @Test
+    void theBookEngineLimitsAreValidatedLikeTheGeneralOnes() throws Exception {
+        Path file = directory.resolve("goofyaddons.json");
+        for (String bad : new String[]{"{\"maxActiveBooks\":0}", "{\"maxActiveBooks\":11}",
+                "{\"bookRepriceCooldownSeconds\":29}", "{\"maxBookReprices\":-1}",
+                "{\"maxBookReprices\":11}"}) {
+            Files.writeString(file, bad);
+            GoofyConfig.INSTANCE = null;
+            GoofyConfig.load(file);
+            assertNotNull(GoofyConfig.loadError(), bad + " should have been rejected");
+        }
+        Files.writeString(file, "{\"maxActiveBooks\":2,\"bookRepriceCooldownSeconds\":120,\"maxBookReprices\":3}");
+        GoofyConfig.INSTANCE = null;
+        GoofyConfig.load(file);
+        assertNull(GoofyConfig.loadError());
+        assertEquals(2, GoofyConfig.INSTANCE.maxActiveBooks);
+    }
 }

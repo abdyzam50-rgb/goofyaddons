@@ -63,16 +63,36 @@ public final class BookSchedule {
      * Among equal ranks the earliest task wins, so ordering stays stable across ticks.
      */
     public static Task next(List<Task> tasks, boolean startupComplete, boolean inventoryFull) {
+        return next(tasks, startupComplete, inventoryFull, task -> true);
+    }
+
+    /**
+     * As {@link #next(List, boolean, boolean)}, but {@code mayOpenOrder} vetoes committing
+     * coins to a new order. Only SELECTED spends capital, so only SELECTED is gated: work
+     * that finishes or realises an existing position is never held back, because holding it
+     * back is what pins capital.
+     */
+    public static Task next(List<Task> tasks, boolean startupComplete, boolean inventoryFull,
+                            java.util.function.Predicate<Task> mayOpenOrder) {
         Task chosen = null;
         int best = Integer.MIN_VALUE;
         for (Task task : tasks) {
             Task.BookState state = task.getBookState();
             if (state == Task.BookState.OUTBID && (!startupComplete || inventoryFull)) continue;
+            if (state == Task.BookState.SELECTED && !mayOpenOrder.test(task)) continue;
             Integer rank = PRIORITY.get(state);
             if (rank == null || rank <= best) continue;
             chosen = task;
             best = rank;
         }
         return chosen;
+    }
+
+    /** Tasks whose capital is already committed to a live order or to books in hand. */
+    public static long activePositions(List<Task> tasks) {
+        return tasks.stream().filter(task -> switch (task.getBookState()) {
+            case SELECTED, BAZAAR_ORDER_CHECK -> false;
+            default -> true;
+        }).count();
     }
 }
