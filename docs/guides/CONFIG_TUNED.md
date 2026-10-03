@@ -19,7 +19,7 @@ default file it just wrote and tells you the full path; use that path.
 | `maxBookReprices` | *(absent)* | 3 | New in 1.3.8. After three re-placements the route is parked instead of fighting whoever outbid it. Set it to `0` to never re-place after being outbid, or raise it if you would rather keep chasing. |
 | `bookOrderRecheckSeconds` | *(absent, defaulted to 180)* | 180 | Stated explicitly so it is visible rather than implied. |
 | `minActionDelay` / `maxActionDelay` | 125 / 225 | 150 / 400 | 125–225ms is a tight, very regular band. The extra spread costs little and looks far less mechanical. |
-| `books` | *(your list)* | unchanged | Keep whatever routes you had; the list above the snippet was cut off in what you sent, so paste yours back in. |
+| `books` | *(your list)* | unchanged | Six routes, reconstructed from your own session logs since the list was truncated in what you posted. Green Thumb costs ~31.2m a route, so it alone nearly fills a 35m limit and no run has ever managed to start it; drop it unless you raise the limit. |
 
 Everything else is left exactly as you had it. `general.*` is already well tuned — the three new
 book settings above are deliberately modelled on `general.maxActiveItems`,
@@ -37,9 +37,13 @@ book settings above are deliberately modelled on `general.maxActiveItems`,
 
 ## The file
 
+Ready to paste: [`goofyaddons.tuned.json`](goofyaddons.tuned.json). The `books` array is
+reconstructed from the routes your own sessions logged - six routes, all level 1 to level 5 -
+since the list was cut off in what you posted. Check it against yours.
+
 ```json
 {
-  "books": [ ... keep your existing routes here ... ],
+  "books": [ ... six level-1 routes, see goofyaddons.tuned.json ... ],
   "tradingMode": "BOOKS",
   "modeKey": 77,
   "maxTradingCapital": 35000000.0,
@@ -49,7 +53,7 @@ book settings above are deliberately modelled on `general.maxActiveItems`,
   "maxBookReprices": 3,
   "bookOrderRecheckSeconds": 180,
   "general": {
-    "items": [ ... keep your existing 25 items here ... ],
+    "items": [ ... your 25 items, see goofyaddons.tuned.json ... ],
     "maxCoinsPerItem": 8000000.0,
     "maxItemsPerOrder": 64,
     "maxActiveItems": 3,

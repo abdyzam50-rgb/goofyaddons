@@ -123,4 +123,23 @@ class ConfigRegressionTest {
         assertNull(GoofyConfig.loadError());
         assertEquals(2, GoofyConfig.INSTANCE.maxActiveBooks);
     }
+
+    @Test
+    void theConfigShippedInTheGuidesLoadsAndValidates() throws Exception {
+        // A config handed to a player has to survive the real validator, or they paste it in
+        // and the mod refuses to trade with no obvious reason why.
+        Path source = Path.of("docs", "guides", "goofyaddons.tuned.json");
+        assertTrue(Files.exists(source), "missing " + source.toAbsolutePath());
+        Path file = directory.resolve("goofyaddons.json");
+        Files.writeString(file, Files.readString(source));
+        GoofyConfig.INSTANCE = null;
+        GoofyConfig.load(file);
+        assertNull(GoofyConfig.loadError());
+        assertEquals(6, GoofyConfig.INSTANCE.books.size());
+        assertEquals(2, GoofyConfig.INSTANCE.maxActiveBooks);
+        assertEquals(35_000_000, GoofyConfig.INSTANCE.maxTradingCapital);
+        assertTrue(GoofyConfig.INSTANCE.maxTradingCapital
+                        <= 55_000_000 - GoofyConfig.INSTANCE.purseReserve,
+                "the capital limit must bind before the purse does");
+    }
 }
