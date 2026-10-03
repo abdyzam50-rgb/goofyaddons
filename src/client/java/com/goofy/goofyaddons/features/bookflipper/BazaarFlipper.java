@@ -499,7 +499,8 @@ public class BazaarFlipper implements Feature {
 
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
                     if (slot.isEmpty()) {
-                        if(exposedBooks.contains(task.getBook().id()) && recheckBookOrders(task,"missing-buy-order")) return;
+                        if(!selfConsumedOrder(task) && exposedBooks.contains(task.getBook().id())
+                                && recheckBookOrders(task,"missing-buy-order")) return;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] STARTUP_BAZAAR_CHECK: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -726,7 +727,7 @@ public class BazaarFlipper implements Feature {
                     List<Integer> slot = inventoryScanner.findContainer("BUY " + task.getBook().getRomanLevel(task.getBook().level()));
 
                     if (slot.isEmpty()) {
-                        if(recheckBookOrders(task,"missing-buy-order")) return;
+                        if(!selfConsumedOrder(task) && recheckBookOrders(task,"missing-buy-order")) return;
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] OUTBID: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -1526,6 +1527,14 @@ public class BazaarFlipper implements Feature {
                 .filter(slot -> inventoryScanner.getLevel(slot) == task.getBook().level()).count();
     }
 
+    /**
+     * Trade whose BUY order this engine itself just claimed. Claiming a partially filled order
+     * consumes the order, so finding it gone on the next pass is the expected outcome rather
+     * than a lost observation - rechecking it burned three menu reopens per claim and logged a
+     * WARN for each.
+     */
+    private String claimedOrderTrade;
+
     private void beginBuyClaim(Task task, int amount, int slot) {
         if (amount <= 0) return;
         pendingBuyClaim = task;
@@ -1534,6 +1543,7 @@ public class BazaarFlipper implements Feature {
         var lore = minecraft.player.containerMenu.slots.get(slot).getItem().get(net.minecraft.core.component.DataComponents.LORE);
         buyClaimUnitPrice = lore == null ? null : TradeReceipts.unitPrice(String.join("\n", lore.lines().stream().map(line -> line.getString()).toList()));
         buyClaimEvent = java.util.UUID.randomUUID().toString();
+        claimedOrderTrade = task.getProfitTradeId();
         attemptedToClaim = true;
         didReceiveItems = false;
     }
@@ -1800,6 +1810,7 @@ public class BazaarFlipper implements Feature {
         buyClaimExpected = 0;
         buyClaimUnitPrice = null;
         buyClaimEvent = null;
+        claimedOrderTrade = null;
         pendingSaleClaim = null;
         saleClaimReceipt = false;
         saleClaimProceeds = null;
@@ -1886,6 +1897,15 @@ public class BazaarFlipper implements Feature {
         return true;
     }
 
+    /** True once, for the trade whose order this engine's own claim removed. */
+    private boolean selfConsumedOrder(Task task) {
+        if(claimedOrderTrade==null || !claimedOrderTrade.equals(task.getProfitTradeId())) return false;
+        claimedOrderTrade=null;
+        Diagnostics.event("INFO","books.order_consumed_by_claim",java.util.Map.of("engine","books",
+                "trade",task.getProfitTradeId(),"item",task.getBook().getRomanLevel(task.getBook().level())));
+        return true;
+    }
+
     private boolean recheckBookOrders(Task task,String reason) {
         var decision=menuRecheck.missing(state+":"+task.getProfitTradeId(),System.currentTimeMillis());
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
@@ -1929,9 +1949,27 @@ public class BazaarFlipper implements Feature {
         } else {
             double purse=scoreboardUtils.getPurse();
             double cost=confirmationPrice*quantity;
-            if(quantity>inventoryScanner.getEmptyInventorySlots() || cost>purse || !CapitalManager.INSTANCE.resize("books",task.getBook().id(),
-                    Math.max(CapitalManager.INSTANCE.cost("books",task.getBook().id()),task.getReservedUnitCost()*task.getBook().getQtyAmount(task.getBook().level())),purse)) {
-                safetyHalt("Book buy capacity or capital changed before confirmation.");return false;
+            int empty=inventoryScanner.getEmptyInventorySlots();
+            String product=task.getBook().id();
+            double hold=Math.max(CapitalManager.INSTANCE.cost("books",product),
+                    task.getReservedUnitCost()*task.getBook().getQtyAmount(task.getBook().level()));
+            // One compound condition used to cover four separate causes and halt with one
+            // message, so a field report could not say which of them fired. Each arm now
+            // names itself, and the ledger numbers go into the event either way.
+            String cause=quantity>empty?"inventory-capacity":cost>purse?"cost-exceeds-purse"
+                    :CapitalManager.INSTANCE.refusal(product,hold,purse);
+            if(cause==null && !CapitalManager.INSTANCE.resize("books",product,hold,purse)) cause="ledger-resize-refused";
+            if(cause!=null) {
+                java.util.Map<String,Object> detail=new java.util.LinkedHashMap<>();
+                detail.put("trade",task.getProfitTradeId());detail.put("cause",cause);
+                detail.put("units",quantity);detail.put("emptySlots",empty);
+                detail.put("orderCost",cost);detail.put("holdRequested",hold);detail.put("purse",purse);
+                detail.put("committed",CapitalManager.INSTANCE.committed());
+                detail.put("pending",CapitalManager.INSTANCE.pending());
+                detail.put("capitalLimit",CapitalManager.INSTANCE.limit());
+                detail.put("reserve",CapitalManager.INSTANCE.reserve());
+                Diagnostics.event("ERROR","books.capital_check_failed",detail);
+                safetyHalt("Book buy blocked before confirmation ("+cause+"); position retained.");return false;
             }
         }
         return true;

@@ -1,4 +1,4 @@
-# Field test protocol — 1.3.7-BETA
+# Field test protocol — 1.3.8-BETA
 
 Thirteen commits of engine changes have been verified by a 201-test suite and by reading the
 code. **None of it has met a real Hypixel menu.** This protocol exists to close that gap in

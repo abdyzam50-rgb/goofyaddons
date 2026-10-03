@@ -1,11 +1,11 @@
-# Testing build 1.3.7-BETA
+# Testing build 1.3.8-BETA
 
 A jar built from the `claude/refactor-plan` branch is in [`dist/`](dist/). Download it from
 the GitHub file view (**Raw** / the download button), not by copying the page.
 
 ```
-dist/goofyaddons-1.3.7-BETA.jar
-sha256 ee6ab434459c205556de83281bdee9667d30f0b71c3b7270296e881b06dcdb8c
+dist/goofyaddons-1.3.8-BETA.jar
+sha256 a5922469ebc91fd1efeeb27600d97da25ec8ece6ed43fc2f32185b5226df1e1b
 ```
 
 ## What you need
