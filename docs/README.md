@@ -8,6 +8,7 @@
 | [guides/PROFIT_TRACKER.md](guides/PROFIT_TRACKER.md) | The profit HUD, its commands and how it accounts |
 | [guides/RUNTIME_SAFETY.md](guides/RUNTIME_SAFETY.md) | What the safety pauses mean and how to recover |
 | [../TESTING.md](../TESTING.md) | Installing a test build, and what testers should know first |
+| [guides/FIELD_TEST.md](guides/FIELD_TEST.md) | Staged protocol for a first live run, cheapest stage first |
 
 ## Development
 

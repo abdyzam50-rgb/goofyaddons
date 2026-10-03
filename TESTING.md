@@ -64,6 +64,12 @@ The status panel was also rebuilt: one card instead of two, confirmed profit as 
 large number, signed so a loss reads as a loss without relying on colour, and rows that are
 dropped rather than silently clipped when the window is short or the HUD scale is high.
 
+## Running a first test
+
+Do not just press J and hope. [docs/guides/FIELD_TEST.md](docs/guides/FIELD_TEST.md) is a staged
+protocol: stage 1 is a genuine dry run using config alone, where no flip can qualify so nothing
+can be ordered, and it rules out most of what could go wrong before anything is spent.
+
 ## Reporting a problem
 
 Run `/goofydebug export`, which writes a ZIP under `.minecraft/logs/goofyaddons/bundles/`,
