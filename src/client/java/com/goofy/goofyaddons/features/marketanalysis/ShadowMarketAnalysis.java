@@ -124,11 +124,20 @@ public final class ShadowMarketAnalysis {
         return report!=null && env.config()==previousConfig && env.config().marketAnalysis.enabled
                 && TradingSafety.fresh(report.marketAt(),env.now())?report:null;
     }
+    public MarketAnalysisProtocol.Report automaticHeadReport() {
+        if(!env.config().marketAnalysis.automaticSelection)return null;
+        var fresh=latestReport();if(fresh==null)return null;
+        refreshPipeline();
+        if(pipeline.next().isEmpty())return null;
+        return new MarketAnalysisProtocol.Report(fresh.marketAt(),fresh.dataAt(),fresh.generatedAt(),fresh.historyUsed(),
+                fresh.historyStatus(),fresh.upstreamCommit(),fresh.total(),fresh.counts(),List.of(pipeline.next().getFirst().route()));
+    }
     public Map<String,Object> diagnosticState() {
         var result=new LinkedHashMap<String,Object>();
         boolean enabled=env.config()!=null && env.config().marketAnalysis.enabled;
         boolean fresh=report!=null && TradingSafety.fresh(report.marketAt(),env.now());
         result.put("mode","SHADOW");result.put("enabled",enabled);result.put("status",!enabled?"DISABLED":report!=null&&!fresh?"STALE":status);
+        result.put("automaticSelection",enabled && env.config().marketAnalysis.automaticSelection);
         if(lastError!=null)result.put("error",lastError);
         result.put("executionAuthority",false);result.put("comparison",comparison);
         if(fresh) result.put("report",report);

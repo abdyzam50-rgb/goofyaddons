@@ -2,9 +2,10 @@ package com.goofy.goofyaddons.features.marketanalysis;
 
 import java.net.URI;
 
-/** Shadow analysis only. These settings cannot enable trade execution or replace ownership records. */
+/** Calculator connection and opt-in selection; traders still own transaction verification. */
 public final class MarketAnalysisSettings {
     public boolean enabled = false;
+    public boolean automaticSelection = false;
     /** Opt-in local account dashboard; independent of recommendation requests. */
     public boolean dashboardEnabled = false;
     public String endpoint = "http://127.0.0.1:8789/v1/recommendations";
@@ -13,6 +14,7 @@ public final class MarketAnalysisSettings {
     public int maxRecommendations = 10;
 
     public void validate() {
+        if(automaticSelection && !enabled)throw new IllegalArgumentException("Automatic selection requires market analysis enabled");
         if (endpoint == null) throw new IllegalArgumentException("Calculator endpoint is missing");
         URI uri = URI.create(endpoint);
         if (!"http".equals(uri.getScheme()) || !java.util.Set.of("127.0.0.1", "localhost", "[::1]").contains(uri.getHost())

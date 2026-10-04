@@ -27,6 +27,9 @@ public class FeatureManager {
         return marketAnalysis.latestReport();
     }
     public void invalidateMarketReport() { marketAnalysis.stop(); }
+    public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
+        return marketAnalysis.automaticHeadReport();
+    }
     private List<Feature> engines() {
         return switch (mode) {
             case BOOKS -> List.of(books);

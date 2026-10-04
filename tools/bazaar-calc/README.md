@@ -82,7 +82,7 @@ The page shows:
 - A shared **Planned next** allocation preview (mod and companion 1.3.31+), comparing
   configured book/general routes against one spendable budget, conservative input
   capacity, occupied products and active-position limits. Deferred candidates show
-  the limiting condition. Unconfigured routes are research only. This preview
+  the limiting condition. In manual mode, unconfigured routes are research only. Automatic mode accepts supported discovered routes. This preview
   reserves no real money, places no orders and is rebuilt from current observations;
   it is not a persistent execution queue or a combined profit/hour guarantee.
 - Fresh calculator route predictions, ranked individually by expected coins/hour.
@@ -289,11 +289,13 @@ timers do not: offline time cannot masquerade as measured execution.
 
 After ten eligible cycles with the **same input/output IDs and exact batch size**
 in the preceding 24 hours, the calculator uses their 75th-percentile duration as
-a conservative floor for its current market cycle estimate. This can reduce an
-optimistic coins/hour forecast; it cannot accelerate the forecast or replace current
-prices, tax, capital limits or entry filters. No samples means ordinary market
-estimates. The dashboard shows collection counts and errors. Predictions remain
-advisory; this does not turn the planned-next preview into an execution queue.
+a timing adjustment for its current market cycle estimate. Throughput can increase
+or decrease, bounded to 0.5–1.5 times the market rate; weight grows from 10 through
+30 cycles. Current prices, tax, capital limits and entry filters remain authoritative.
+No samples means ordinary market estimates. The dashboard separates market-only
+rate, calibrated rate and observed gameplay net rate. These are individual route
+rates, not additive portfolio earnings. Automatic selection uses calibrated ranking
+when explicitly enabled; the trader still verifies the live transaction.
 
 Back up both mod JSON files and the companion's persistent user-data folder to retain measured
 history. The distribution ZIP deliberately excludes all runtime data.
@@ -384,3 +386,22 @@ submission; learned denials persist in Minecraft's config directory as
 Minecraft, remove that item's entry and restart. The mutation category remains
 excluded. Existing holdings/orders still use recovery and exit checks. Public Bazaar
 quotes cannot establish which account requirements have been fulfilled.
+
+
+## Automatic route selection (1.3.38+)
+
+Set `marketAnalysis.enabled` and `marketAnalysis.automaticSelection` to true, run
+the matching companion, and start trading. Legacy configs default to manual
+selection. Manual `books` and `general.items` arrays may be empty in automatic mode;
+spending, profit, margin, volume, inventory and per-engine position limits remain.
+The client uses the shared planner's highest-priority eligible proposal for the
+next new position, then rebuilds the plan after reservations/holdings change.
+
+Known native product names and independently supported free-combine book routes
+come from `automatic-products.json`, sourced from the attributed NEU catalog and
+bundled calculator rules. Mutation crops, learned missing requirements, unknown
+product names, instant/crafting/NPC/forge and unsupported book combines are excluded.
+Automatic traders wait when the companion/report is unavailable or stale; existing
+positions keep their ordinary recovery and exit logic. Eligibility on the dashboard
+means a route can be considered, not that it will immediately get a slot or capital.
+No position-limit or pricing restrictions are removed.

@@ -16,6 +16,16 @@ export const packet = () => ({ protocol: PROTOCOL, requestId: 'test-1', market: 
 const history = { asOf: now, stats: {}, hold: {}, names: {} };
 const run = (body = packet(), h = history) => recommend(body, h, { commit }, now);
 
+test('automatic selection makes supported routes executable with empty manual lists and keeps exclusions',()=>{
+ const b=packet();b.constraints.automaticSelection=true;b.constraints.configuredGeneralItems=[];b.constraints.configuredBookRoutes=[];
+ b.market.products.REFINED_MINERAL=product(100,140);b.market.products.CHORUS_FRUIT=product(100,150);b.market.products.SYNTHETIC_UNKNOWN=product(100,200);
+ const r=run(b);assert.ok(r.rows.some(x=>x.inputId==='REFINED_MINERAL'));
+ assert.ok(r.rows.some(x=>x.kind==='BOOK'));assert.ok(r.rows.every(x=>x.configured));
+ assert.ok(r.rows.every(x=>!['CHORUS_FRUIT','SYNTHETIC_UNKNOWN'].includes(x.inputId)));
+ b.constraints.excludedProducts=['REFINED_MINERAL'];assert.ok(run(b).rows.every(x=>x.inputId!=='REFINED_MINERAL'));
+ b.constraints.automaticSelection='true';assert.throws(()=>run(b),/automatic selection/);
+});
+
 test('excludes every Garden mutation even when explicitly configured, retaining other Garden routes', async () => {
   const { default: catalog } = await import('./mutation-products.json', { with: { type: 'json' } });
   const b=packet();b.constraints.mode='GENERAL';b.market.products={};

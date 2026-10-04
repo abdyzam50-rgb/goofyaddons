@@ -19,6 +19,7 @@ function savePreferences(){
 function inspect(p){selectedRoute=routeId(p);put('copy-status','');render();$('route-detail').scrollIntoView({behavior:'smooth',block:'start'});}
 function button(text,action){const b=document.createElement('button');b.type='button';b.className='route-link';b.textContent=text;b.addEventListener('click',action);return b;}
 function renderRoutes(predictions) {
+ const automatic=state.account?.analysis?.automaticSelection===true;
  const shown=visibleRoutes(predictions,{search:$('route-search').value,engine:$('route-engine').value,scope:$('route-scope').value,sort:$('route-sort').value,favorites});
  const cards=$('best-flips');cards.replaceChildren();
  for(const [i,p]of shown.slice(0,3).entries()){
@@ -28,25 +29,28 @@ function renderRoutes(predictions) {
   const rate=document.createElement('p');rate.className='value coin';rate.textContent=coins(p.coinsPerHour);
   const units=document.createElement('p');units.className='muted';units.textContent='Estimated coins/hour';
   const cost=document.createElement('p');cost.textContent=`Capital ${coins(p.capitalUsed)} · profit/batch ${coins(p.profitPerBatch)}`;
-  const status=document.createElement('p');status.className='muted';status.textContent=routeDisposition(p,state.pipeline);
+  const status=document.createElement('p');status.className='muted';status.textContent=routeDisposition(p,state.pipeline,automatic);
   card.append(rank,title,rate,units,cost,status);cards.append(card);
  }
  put('route-count',`${shown.length} shown / ${predictions.length} reported${state.predictions?.total>predictions.length?` · ${state.predictions.total} eligible before report limit`:''}`);
  const routes=$('prediction-rows');routes.replaceChildren();
  for(const p of shown){
   const tr=document.createElement('tr'),name=document.createElement('td');name.append(button(`${favorites.includes(routeId(p))?'★ ':''}${routeName(p)}`,()=>inspect(p)));tr.append(name);
-  for(const value of [p.kind??'—',`${p.batch} / ${p.inputUnits??'—'}`,coins(p.capitalUsed),coins(p.profitPerBatch),p.capitalUsed>0?`${coins(p.profitPerBatch/p.capitalUsed*100)}%`:'—',coins(p.coinsPerHour),`${coins(p.cycleSeconds/60)} min`,p.confidence,routeDisposition(p,state.pipeline)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}routes.append(tr);
+  for(const value of [p.kind??'—',`${p.batch} / ${p.inputUnits??'—'}`,coins(p.capitalUsed),coins(p.profitPerBatch),p.capitalUsed>0?`${coins(p.profitPerBatch/p.capitalUsed*100)}%`:'—',coins(p.coinsPerHour),`${coins(p.cycleSeconds/60)} min`,p.confidence,routeDisposition(p,state.pipeline,automatic)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}routes.append(tr);
  }
  if(!shown.length)empty(routes,10,predictions.length?'No matches. Clear filters to see all reported routes.':state.predictionReason||'Waiting for a fresh calculator forecast.');
  const selected=predictions.find(p=>routeId(p)===selectedRoute),details=$('detail-values');details.replaceChildren();
- put('detail-name',selected?routeName(selected):'Inspect a flip');put('detail-status',selected?routeDisposition(selected,state.pipeline):selectedRoute?'Selected route is absent from the fresh report.':'Select a route to see its inputs, limits and evidence.');
+ put('detail-name',selected?routeName(selected):'Inspect a flip');put('detail-status',selected?routeDisposition(selected,state.pipeline,automatic):selectedRoute?'Selected route is absent from the fresh report.':'Select a route to see its inputs, limits and evidence.');
  $('favorite-route').disabled=!selected;$('copy-route').disabled=!selected?.inputId;
  put('favorite-route',selected&&favorites.includes(routeId(selected))?'Remove favorite':'Favorite');
  if(selected)for(const [label,value]of [
   ['Input product',selected.inputId??'Not supplied'],['Output product',selected.outputId??'Not supplied'],['Batch / input units',`${selected.batch} / ${selected.inputUnits??'—'}`],
   ['Capital required',coins(selected.capitalUsed)],['Estimated batch profit',coins(selected.profitPerBatch)],['Estimated cycle',`${coins(selected.cycleSeconds/60)} min`],
   ['Book combine operations',selected.kind==='BOOK'?Math.max(0,selected.inputUnits-selected.batch):'None'],['Limited by',selected.limitedBy??'Not supplied'],['Price basis',selected.priceBasis??'Current market forecast'],
-  ['Market evidence',selected.confidence==='MEASURED'?'Observed market samples · personal fills may differ':'Estimated fill model'],['Quote age',age(state.predictions?.marketAt)],['Execution scope',selected.configured?'Configured':'Research only']]){
+  ['Market evidence',selected.confidence==='MEASURED'?'Observed market samples · personal fills may differ':'Estimated fill model'],['Quote age',age(state.predictions?.marketAt)],['Execution scope',selected.configured?(automatic?'Automatic selection':'Configured'):'Research only'],
+  ['Market-only coins/hour',coins(selected.executionEvidence?.marketCoinsPerHour??selected.coinsPerHour)],
+  ['Gameplay adjustment',selected.executionEvidence?.samples?`${selected.executionEvidence.samples} cycles · ${coins(selected.executionEvidence.throughputFactor)}× throughput`:'Waiting for 10 matching completed cycles'],
+  ['Observed gameplay coins/hour',selected.executionEvidence?.samples?coins(selected.executionEvidence.observedCoinsPerHour):'—']]){
    const group=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;group.append(dt,dd);details.append(group);
  }
 }
@@ -71,7 +75,7 @@ function render() {
   put('predicted',coins(predictions[0]?.coinsPerHour));
   put('measured-rate',live?coins(state.measuredProfitPerHour):'—');
   put('measured-rate-note',live&&Number.isFinite(state.measuredProfitPerHour)?'Receipt-confirmed profit / tracked active time; paused time excluded':a?.profit?.incomplete?'Unavailable: some settlements have unknown profit':'Needs known-profit settlements and at least 60 seconds of active time');
-  put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded gameplay outcomes · ${state.execution?.eligible ?? 0} eligible. Timing adjusts after 10 uninterrupted, known-cost cycles of the same route and batch in 24 hours.`);
+  put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded gameplay outcomes · ${state.execution?.eligible ?? 0} eligible. Hourly forecasts adjust up or down after 10 uninterrupted, known-cost cycles of the same route and batch in 24 hours; evidence weight grows through 30 cycles.`);
   put('forecast-status',state.predictionReason || 'One eligible route; not total earnings');
   const positionProfit=state.positionProfit;
   put('position-profit',coins(positionProfit?.total));$('position-profit').classList.toggle('negative',positionProfit?.total<0);

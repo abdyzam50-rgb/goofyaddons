@@ -8,7 +8,7 @@ test('search, engine, configured and favorite filters stay display-only; sorting
  assert.equal(visibleRoutes(rows,{sort:'capital'})[0],general);assert.equal(visibleRoutes(rows,{sort:'cycle'})[0],general);assert.deepEqual(rows,[book,general]);
 });
 test('pipeline membership, deferred reasons and research scope remain distinct',()=>{
- assert.equal(routeDisposition(book,{next:[{route:book}]}),'In allocation preview');assert.equal(routeDisposition(book,{deferred:[{routeKey:book.routeKey,reason:'Inventory full'}]}),'Inventory full');assert.match(routeDisposition(general),/Research only/);
+ assert.equal(routeDisposition(book,{next:[{route:book}]}),'In allocation preview');assert.equal(routeDisposition(book,{deferred:[{routeKey:book.routeKey,reason:'Inventory full'}]}),'Inventory full');assert.match(routeDisposition(general),/Research only/);assert.equal(routeDisposition(book,null,true),'Automatically eligible');
 });
 test('observed work stages count exact book and general states without implying fill percentages',()=>{
  const c=workStages({general:{positions:[{stage:'BUY_ORDER'},{stage:'INVENTORY'},{stage:'RECONCILE'}]},books:{tasks:[{state:'COMBINE'},{state:'STORE'},{state:'SELL_ORDER'},{state:'OUTBID'},{state:'VERIFY_ORDER'}]}});

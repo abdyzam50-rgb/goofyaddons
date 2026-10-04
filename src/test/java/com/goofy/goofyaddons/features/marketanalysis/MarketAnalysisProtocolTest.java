@@ -44,6 +44,18 @@ class MarketAnalysisProtocolTest {
         assertEquals(1,report.rows().size());assertEquals("ESTIMATED",report.rows().getFirst().confidence());
         assertEquals(books,c.books);assertEquals(items,c.general.items);assertTrue(report.rows().getFirst().configured());
     }
+    @Test void automaticEligibilityWorksWithEmptyListsAndCalibrationSurvivesTheBridge() {
+        var c=config();c.marketAnalysis.automaticSelection=true;c.general.items=java.util.List.of();c.books=java.util.List.of();
+        var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
+        row.add("executionEvidence",JsonParser.parseString("""
+                {"samples":30,"throughputFactor":1.25,"marketCycleSeconds":3000,"marketCoinsPerHour":135.246,
+                 "p75ObservedSeconds":2400,"observedCoinsPerHour":150,"latestAt":0}
+                """));row.getAsJsonObject("executionEvidence").addProperty("latestAt",NOW);
+        var parsed=MarketAnalysisProtocol.parse(r,request(c,NOW),NOW);
+        assertTrue(parsed.rows().getFirst().configured());assertEquals(30,parsed.rows().getFirst().executionEvidence().get("samples"));
+        row.getAsJsonObject("executionEvidence").addProperty("throughputFactor",3);
+        assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+    }
     @Test void requestContainsOnlyMarketAndConstraintsNoPlayerIdentityOrJournal() {
         var r=request(config(),NOW);
         assertEquals(Set.of("protocol","requestId","market","constraints"),r.keySet());

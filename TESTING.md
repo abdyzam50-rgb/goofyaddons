@@ -355,3 +355,11 @@ requirement detection skips unsubmitted buys without pausing or clicking purchas
 with instance-local denial persistence and restart coverage. Descriptive requirement
 lore and unrelated Garden products remain eligible. Existing submitted orders and
 held stock retain recovery/exit handling.
+
+1.3.38: automatic eligibility with empty manual lists, trusted native names and
+supported book-combine caps; current-price/budget/entry revalidation; planner-head
+reservation/exclusion and expiry checks. The real general trader repeats two full
+automatic cycles. Java/Node integration covers automatic responses. Gameplay timing
+calibration can raise or lower forecasts with bounded evidence weighting; bridge
+validation preserves calibration details and rejects invalid factors. Browser
+checks verify automatic scope and observed/market/gameplay forecast details.

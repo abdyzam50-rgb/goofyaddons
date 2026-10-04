@@ -16,6 +16,8 @@ const account={protocol:'goofy-dashboard/1',sessionId:'browser-check',sentAt:clo
   profit:{profit:83500,settlements:6,incomplete:1},analysis:{report:{marketAt:clock,historyUsed:true,rows:[
     {kind:'BOOK',routeKey:'ENCHANTMENT_OVERLOAD:4:5',inputId:'ENCHANTMENT_OVERLOAD_4',outputId:'ENCHANTMENT_OVERLOAD_5',inputUnits:2,capitalUsed:20000,limitedBy:'buy fill',priceBasis:'current offer',inputName:'Overload IV',outputName:'Overload V',batch:1,profitPerBatch:12000,coinsPerHour:48000,cycleSeconds:900,confidence:'MEASURED',configured:true},
     {kind:'GENERAL',routeKey:'ENCHANTED_COAL',inputId:'ENCHANTED_COAL',outputId:'ENCHANTED_COAL',inputUnits:16,capitalUsed:32000,limitedBy:'sell fill',priceBasis:'current offer',inputName:'Enchanted Coal',outputName:'Enchanted Coal',batch:16,profitPerBatch:7500,coinsPerHour:30000,cycleSeconds:900,confidence:'ESTIMATED',configured:true}]}}};
+account.analysis.automaticSelection=true;
+account.analysis.report.rows[0].executionEvidence={samples:30,throughputFactor:0.75,marketCoinsPerHour:64000,observedCoinsPerHour:47000};
 account.analysis.pipeline={status:'READY',executionAuthority:false,expiresAt:clock+60000,reason:'Remaining coins do not fit another reported eligible batch',
   account:{available:1050000,pending:20000,inventoryCapacity:29,bookSlots:1,generalSlots:2},plannedCapital:400000,capitalLeft:650000,
   next:[{priority:1,route:{kind:'GENERAL',inputId:'ENCHANTED_QUARTZ',outputId:'ENCHANTED_QUARTZ',inputUnits:16,capitalUsed:400000,profitPerBatch:7500,cycleSeconds:900,confidence:'ESTIMATED'}}],
@@ -61,6 +63,9 @@ try {
     await evaluate(`document.querySelector('#prediction-rows button').click();`);
     assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/ENCHANTMENT_OVERLOAD_4/);
     assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Book combine operations1/);
+    assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Automatic selection/);
+    assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/30 cycles/);
+    assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Observed gameplay coins\/hour/);
     await evaluate(`document.getElementById('favorite-route').click();document.getElementById('route-engine').value='all';document.getElementById('route-scope').value='favorites';document.getElementById('route-scope').dispatchEvent(new Event('input'));`);
     assert.equal(await evaluate(`document.getElementById('prediction-rows').children.length`),1);
     assert.match(await evaluate(`document.getElementById('favorite-route').textContent`),/Remove favorite/);

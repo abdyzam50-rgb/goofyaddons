@@ -2,6 +2,7 @@
 import { assembleMarket, quotesFromBazaar, buyLeg, sellLeg, evaluate, DEFAULT_SETTINGS, DEFAULT_PROFILE,
   enchantRules, booksNeeded, combineXpCost, parseBookId, actionSeconds, curve, at, seriousFlags } from './engine.mjs';
 import mutationCatalog from './mutation-products.json' with { type: 'json' };
+import automaticCatalog from './automatic-products.json' with { type: 'json' };
 export const PROTOCOL = 'goofy-bazaar-shadow/1';
 const finite = (v, min, max, name) => {
   if (!Number.isFinite(v) || v < min || v > max) throw new Error(`Invalid ${name}`);
@@ -17,6 +18,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
     throw new Error('Invalid protocol/request');
   const root = body.market, c = body.constraints;
   if (!object(root) || root.success !== true || !object(root.products) || !object(c)) throw new Error('Invalid market/constraints');
+  if(c.automaticSelection!==undefined && typeof c.automaticSelection!=='boolean')throw new Error('Invalid automatic selection');
   const marketAt = finite(root.lastUpdated, now - 60000, now + 5000, 'market timestamp');
   if (!['BOOKS', 'GENERAL', 'BOTH'].includes(c.mode)) throw new Error('Invalid trading mode');
   const coins = finite(c.availableCapital, 0, 1e13, 'capital');
@@ -62,6 +64,10 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const eligible = m => m && m.bid > 0 && m.ask > 0 && !excluded.has(m.id) && !excluded.has(parseBookId(m.id)?.enchant);
   const add = (kind, source, target, n, level = 0, sellLevel = 0) => {
     if (!eligible(source) || !eligible(target)) return;
+    if(c.automaticSelection && (kind==='GENERAL' ? !automaticCatalog.products[source.id] :
+      !automaticCatalog.books[parseBookId(source.id)?.enchant]?.routes.some(([a,b])=>a===level&&b===sellLevel))) {
+      counts.unsupported++;return;
+    }
     if (seriousFlags(source).length || seriousFlags(target).length) { counts.warnings++; return; }
     counts.evaluated++;
     const budget = kind === 'GENERAL' ? Math.min(coins, g.maxCoinsPerItem) : coins;
@@ -101,7 +107,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
       profitPerBatch: profitPerOutput * batch, capitalUsed: o.capitalUsed,
       outputsPerHour, coinsPerHour: outputsPerHour * profitPerOutput, cycleSeconds: batch / outputsPerHour * 3600,
       confidence: measured ? 'MEASURED' : 'ESTIMATED', buyBasis: buy.fill.basis, sellBasis: sell.fill.basis,
-      configured: kind === 'BOOK' ? configuredBooks.has(routeKey) : configuredGeneral.has(routeKey),
+      configured: c.automaticSelection===true || (kind === 'BOOK' ? configuredBooks.has(routeKey) : configuredGeneral.has(routeKey)),
       limitedBy: o.limitedBy, priceBasis: sell.priceBasis ?? 'current offer',
       assumptions: ['market-wide observations, not guaranteed personal fills', 'sequential position cycle', 'GUI overhead/lag estimates'] });
   };

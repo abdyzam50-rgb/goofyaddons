@@ -31,6 +31,14 @@ class CalculatorIntegrationTest {
             assertEquals(1,report.rows().size());assertEquals("SYNTHETIC_ORDINARY",report.rows().getFirst().inputId());
             assertFalse(report.rows().getFirst().configured());assertTrue(report.rows().getFirst().coinsPerHour()>0);
             assertEquals("6dd0ae9565fd555dec9dbe5eca3a2f48ca3218cc",report.upstreamCommit());
+            c.marketAnalysis.automaticSelection=true;c.general.items=java.util.List.of();c.books=java.util.List.of();
+            // Synthetic prices intentionally have no relation to historical market prices.
+            c.marketAnalysis.maxHistoryAgeHours=1;
+            var automaticPacket=MarketAnalysisProtocol.request("integration-auto",MarketAnalysisProtocolTest.market(System.currentTimeMillis()),
+                    c,TradingMode.BOTH,10000,32,2,3,Set.of());
+            var automaticResponse=new MarketAnalysisClient().request("http://127.0.0.1:"+port+"/v1/recommendations",automaticPacket).get(10,TimeUnit.SECONDS);
+            var automaticReport=MarketAnalysisProtocol.parse(automaticResponse,automaticPacket,System.currentTimeMillis());
+            assertFalse(automaticReport.rows().isEmpty());assertTrue(automaticReport.rows().stream().allMatch(MarketAnalysisProtocol.Recommendation::configured));
             var account=com.google.gson.JsonParser.parseString("""
                     {"protocol":"goofy-dashboard/1","sessionId":"java-integration","account":{"connected":true,"name":"LocalTest"},
                      "status":{"state":"STOPPED"},"inventory":[{"slot":0,"name":"Coal","count":2}],"books":{"tasks":[]},

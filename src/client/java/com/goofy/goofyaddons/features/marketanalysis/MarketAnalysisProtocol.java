@@ -15,7 +15,14 @@ public final class MarketAnalysisProtocol {
     public record Recommendation(String kind, String routeKey, String inputId, String outputId,
                                  int inputUnits, int batch, double profitPerBatch, double capitalUsed,
                                  double outputsPerHour, double coinsPerHour, double cycleSeconds,
-                                 String confidence, boolean configured, String limitedBy, String priceBasis) {}
+                                 String confidence, boolean configured, String limitedBy, String priceBasis, Map<String,Object> executionEvidence) {
+        public Recommendation(String kind,String routeKey,String inputId,String outputId,int inputUnits,int batch,
+                double profitPerBatch,double capitalUsed,double outputsPerHour,double coinsPerHour,double cycleSeconds,
+                String confidence,boolean configured,String limitedBy,String priceBasis) {
+            this(kind,routeKey,inputId,outputId,inputUnits,batch,profitPerBatch,capitalUsed,outputsPerHour,coinsPerHour,cycleSeconds,
+                    confidence,configured,limitedBy,priceBasis,Map.of());
+        }
+    }
     public record Report(long marketAt, long dataAt, long generatedAt, boolean historyUsed,
                          String historyStatus, String upstreamCommit, int total, Map<String,Integer> counts, List<Recommendation> rows) {}
 
@@ -25,6 +32,7 @@ public final class MarketAnalysisProtocol {
         root.add("market", market);
         var c = new JsonObject();
         c.addProperty("mode", mode.name()); c.addProperty("availableCapital", Math.max(0, available));
+        c.addProperty("automaticSelection",config.marketAnalysis.automaticSelection);
         c.addProperty("inventoryCapacity", Math.max(0, capacity));
         c.addProperty("bookSlots", Math.max(0, bookSlots)); c.addProperty("generalSlots", Math.max(0, generalSlots));
         c.addProperty("taxPercentage", config.bazaarTaxPercentage); c.addProperty("bookMinProfit", config.minNetProfit);
@@ -89,7 +97,8 @@ public final class MarketAnalysisProtocol {
                 JsonObject quick = product.getAsJsonObject("quick_status");
                 if (quick == null || Math.min(number(quick,"sellMovingWeek"),number(quick,"buyMovingWeek")) < number(general,"minWeeklyVolume"))
                     throw new IllegalArgumentException("General route violates volume limits");
-                configured = strings(c.getAsJsonArray("configuredGeneralItems")).contains(key);
+                configured = c.has("automaticSelection") && bool(c,"automaticSelection")
+                        ? AutomaticSelection.generalItem(input)!=null : strings(c.getAsJsonArray("configuredGeneralItems")).contains(key);
             } else {
                 int from = integer(r,"level",1,9), to = integer(r,"sellLevel",2,10);
                 if (!input.matches("ENCHANTMENT_[A-Z0-9_]+_[0-9]+")) throw new IllegalArgumentException("Invalid book product");
@@ -98,7 +107,8 @@ public final class MarketAnalysisProtocol {
                         || batch!=1 || n != 1 << (to-from) || !input.equals(base+"_"+from) || !output.equals(base+"_"+to)
                         || !key.equals(base+":"+from+":"+to) || excluded.contains(base) || profit + 1e-6 < number(c,"bookMinProfit"))
                     throw new IllegalArgumentException("Book route violates supported combining limits");
-                configured = strings(c.getAsJsonArray("configuredBookRoutes")).contains(key);
+                configured = c.has("automaticSelection") && bool(c,"automaticSelection")
+                        ? AutomaticSelection.book(input,output)!=null : strings(c.getAsJsonArray("configuredBookRoutes")).contains(key);
             }
             String confidence = string(r,"confidence"), buyBasis = string(r,"buyBasis"), sellBasis = string(r,"sellBasis");
             boolean measured = buyBasis.equals("measured") && sellBasis.equals("measured") && historyUsed;
@@ -109,8 +119,20 @@ public final class MarketAnalysisProtocol {
             if (!same(coins,rate*profit) || !same(seconds,batch/rate*3600) || coins > previous + 1e-6)
                 throw new IllegalArgumentException("Calculator ranking/throughput is inconsistent");
             previous = coins;
+            Map<String,Object> evidence=Map.of();
+            if(r.has("executionEvidence")) {
+                var e=r.getAsJsonObject("executionEvidence");
+                int samples=integer(e,"samples",10,2000);double factor=positive(e,"throughputFactor");
+                double baseline=positive(e,"marketCycleSeconds"),baselineCoins=positive(e,"marketCoinsPerHour");
+                long latest=timestamp(e,"latestAt");
+                if(factor<0.5 || factor>1.5 || !same(seconds,baseline/factor) || !same(coins,baselineCoins*factor)
+                        || latest>now+5000 || now-latest>86400000)throw new IllegalArgumentException("Invalid personal execution calibration");
+                evidence=Map.of("samples",samples,"throughputFactor",factor,"marketCycleSeconds",baseline,
+                        "marketCoinsPerHour",baselineCoins,"p75ObservedSeconds",positive(e,"p75ObservedSeconds"),
+                        "observedCoinsPerHour",number(e,"observedCoinsPerHour"),"latestAt",latest);
+            }
             rows.add(new Recommendation(kind,key,input,output,units,batch,batchProfit,capital,rate,coins,seconds,confidence,configured,
-                    string(r,"limitedBy"),string(r,"priceBasis")));
+                    string(r,"limitedBy"),string(r,"priceBasis"),evidence));
         }
         Map<String,Integer> counts = new LinkedHashMap<>();
         if (response.has("counts")) {

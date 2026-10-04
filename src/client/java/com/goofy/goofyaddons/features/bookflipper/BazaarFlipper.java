@@ -361,7 +361,8 @@ public class BazaarFlipper implements Feature {
     @Override
     public boolean needsMenu() {
         if (!running || paused || recoveryAwaitQuotes) return false;
-        if (state == State.FETCHING) return !flipCalculator.isRunning() && !flipCalculator.getFlipItemsList().isEmpty();
+        if (state == State.FETCHING) return GoofyConfig.INSTANCE.marketAnalysis.automaticSelection
+                ? !automaticFlips().isEmpty() : !flipCalculator.isRunning() && !flipCalculator.getFlipItemsList().isEmpty();
         if (state == State.IDLE) return needToStoreExcessBook || System.currentTimeMillis() >= nextFetchMs
                 || taskList.stream().anyMatch(task -> com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule
                         .actionable(task.getBookState()));
@@ -455,9 +456,9 @@ public class BazaarFlipper implements Feature {
             }
 
             case FETCHING -> {
-                if (flipCalculator.isRunning()) return;
+                if (!GoofyConfig.INSTANCE.marketAnalysis.automaticSelection && flipCalculator.isRunning()) return;
                 flipItemList.clear();
-                flipItemList.addAll(flipCalculator.getFlipItemsList());
+                flipItemList.addAll(GoofyConfig.INSTANCE.marketAnalysis.automaticSelection?automaticFlips():flipCalculator.getFlipItemsList());
                 if (flipItemList.isEmpty()) {
                     if (System.currentTimeMillis() >= nextFetchMs) refreshFlips();
                     return;
@@ -1570,6 +1571,9 @@ public class BazaarFlipper implements Feature {
     }
 
     private void processData() {
+        if(GoofyConfig.INSTANCE.marketAnalysis.automaticSelection) {
+            flipItemList.clear();flipItemList.addAll(automaticFlips());
+        }
         double purse = scoreboardUtils.getPurse();
         // Money Check
         debug("[BazaarFlipper] PROCESSDATA: purse=" + purse + ", flipItemList size=" + flipItemList.size());
@@ -1628,7 +1632,14 @@ public class BazaarFlipper implements Feature {
 
     private void refreshFlips() {
         nextFetchMs = System.currentTimeMillis() + FETCH_RETRY_MS;
+        if(GoofyConfig.INSTANCE.marketAnalysis.automaticSelection) {flipCalculator.reset();return;}
         flipCalculator.Refresh();
+    }
+    private List<FlipItem> automaticFlips() {
+        var market=BazaarApi.latestFresh();
+        return market==null?List.of():com.goofy.goofyaddons.features.marketanalysis.AutomaticSelection.books(
+                com.goofy.goofyaddons.features.FeatureManager.INSTANCE.automaticReport(),System.currentTimeMillis(),
+                market.getAsJsonObject("products"),GoofyConfig.INSTANCE.bazaarTaxPercentage,GoofyConfig.INSTANCE.minNetProfit);
     }
 
     private int randomizer() {

@@ -27,6 +27,17 @@ class ShadowMarketAnalysisTest {
         public CompletableFuture<JsonObject> request(String endpoint,JsonObject body){packet=body;requests++;return reply;}
         void complete(long now){var r=MarketAnalysisProtocolTest.response(now);r.addProperty("requestId",packet.get("requestId").getAsString());reply.complete(r);}
     }
+    @Test void automaticHeadReplansAfterReservationAndExpiresWithForecast() {
+        var env=new Env();env.cfg.marketAnalysis.automaticSelection=true;env.cfg.general.items=List.of();env.cfg.books=List.of();
+        var bridge=new Bridge();var observer=new ShadowMarketAnalysis(env,bridge,(type,data)->{});
+        observer.poll(TradingMode.BOTH);bridge.complete(env.clock);
+        assertNotNull(observer.automaticHeadReport());
+        assertEquals("ENCHANTED_COAL",observer.automaticHeadReport().rows().getFirst().inputId());
+        assertTrue(env.capital.reserve("general","ENCHANTED_COAL",1000,10000));
+        assertNull(observer.automaticHeadReport());
+        env.capital.release("general","ENCHANTED_COAL");env.clock+=61000;
+        assertNull(observer.automaticHeadReport());
+    }
     @Test void disabledDoesNothingAndShadowRepliesDoNotChangeCapitalOrWatchlists() {
         var env=new Env();var bridge=new Bridge();List<String> events=new ArrayList<>();
         var observer=new ShadowMarketAnalysis(env,bridge,(type,data)->events.add(type));

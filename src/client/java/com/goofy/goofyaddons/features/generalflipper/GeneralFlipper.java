@@ -134,7 +134,7 @@ public class GeneralFlipper implements Feature {
                         BazaarAccess.instance().deny(id,reason);FeatureManager.INSTANCE.invalidateMarketReport();
                     }
                     @Override public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {
-                        return FeatureManager.INSTANCE.marketReport();
+                        return GoofyConfig.INSTANCE.marketAnalysis.automaticSelection?FeatureManager.INSTANCE.automaticReport():FeatureManager.INSTANCE.marketReport();
                     }
                     @Override public void placed(Position position) {
                         ProfitTracker.INSTANCE.beginExecution(position.tradeId,OWNER,position.item.id(),position.item.id(),position.quantity,position.quantity,position.placedAt);
@@ -469,6 +469,12 @@ public class GeneralFlipper implements Feature {
         // Reserving capital stays on a live purse read; only ranking uses the snapshot.
         double purse = services.purse();
         for (GeneralCalculator.Candidate candidate : snapshotCandidates) {
+            if(GoofyConfig.INSTANCE.marketAnalysis.automaticSelection) {
+                var latest=services.recommendations();
+                if(latest==null || !TradingSafety.fresh(latest.marketAt(),world.now()) || latest.rows().isEmpty()
+                        || !latest.rows().getFirst().kind().equals("GENERAL")
+                        || !latest.rows().getFirst().inputId().equals(candidate.item().id()))continue;
+            }
             if (itemCount(candidate.item().id()) > 0 || capital.occupied(candidate.item().id())
                     || world.now() < cooldownUntil.getOrDefault(candidate.item().id(), 0L)) continue;
             if (!capital.reserve(OWNER, candidate.item().id(), candidate.cost(), purse)) continue;
@@ -855,6 +861,10 @@ public class GeneralFlipper implements Feature {
 
     private List<GeneralCalculator.Candidate> candidates() {
         if (!world.inWorld() || products == null) return List.of();
+        if(GoofyConfig.INSTANCE.marketAnalysis.automaticSelection)
+            return com.goofy.goofyaddons.features.marketanalysis.AutomaticSelection.general(services.recommendations(),world.now(),
+                    products,settings(),GoofyConfig.INSTANCE.bazaarTaxPercentage,capital.available(snapshotPurse),
+                    TradingSafety.conservativeCapacity(view.emptyInventorySlots(),4),services.excludedProducts());
         return GeneralCalculator.rankByForecast(GeneralCalculator.calculate(products, settings(), GoofyConfig.INSTANCE.bazaarTaxPercentage,
                 capital.available(snapshotPurse), TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4))
                 .stream().filter(c->!services.excludedProducts().contains(c.item().id())).toList(),services.recommendations(),world.now());

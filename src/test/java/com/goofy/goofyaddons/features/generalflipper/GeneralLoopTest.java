@@ -49,6 +49,11 @@ class GeneralLoopTest {
             var ids=new HashSet<>(BazaarAccess.MUTATIONS);ids.addAll(excluded.keySet());return ids;
         }
         @Override public void excludeProduct(String id,String reason) {excluded.put(id,reason);}
+        @Override public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {
+            return new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report(world.clock(),world.clock(),world.clock(),true,
+                    "FRESH","a".repeat(40),1,Map.of(),List.of(new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Recommendation(
+                    "GENERAL",productId,productId,productId,16,16,400,1600,576,14400,100,"ESTIMATED",true,"fills","current offer")));
+        }
         Market(FakeWorld world) { this.world = world; capital.configure(100000, 0); }
         @Override public CapitalManager capital() { return capital; }
         @Override public double purse() { return purse; }
@@ -205,6 +210,15 @@ class GeneralLoopTest {
         assertEquals(0, market.ledger.summary().incomplete());
         assertEquals("[]", Files.readString(dir.resolve("orders.json")));
         assertEquals(4, effects.stream().filter(a -> a.equals("click:13")).count(), "one submission per side per cycle");
+    }
+
+    @Test void automaticSelectionRepeatsActualTraderCyclesWithEmptyManualLists() throws Exception {
+        GoofyConfig.INSTANCE.marketAnalysis.enabled=true;
+        GoofyConfig.INSTANCE.marketAnalysis.automaticSelection=true;
+        GoofyConfig.INSTANCE.general.items=List.of();
+        GoofyConfig.INSTANCE.books=List.of();
+        repeatsCompleteBuyClaimSellAndSettlementCycles();
+        assertTrue(GoofyConfig.INSTANCE.general.items.isEmpty());
     }
 
     @Test void completedBuyTransitionsToInventoryWithoutACancellationReceipt() throws Exception {

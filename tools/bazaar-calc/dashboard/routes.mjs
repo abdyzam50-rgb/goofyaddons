@@ -9,10 +9,10 @@ export function visibleRoutes(routes,{search='',engine='all',scope='all',sort='r
  const score=p=>sort==='profit'?p.profitPerBatch:sort==='capital'?-p.capitalUsed:sort==='cycle'?-p.cycleSeconds:p.coinsPerHour;
  return filtered.toSorted((a,b)=>(Number.isFinite(score(b))?score(b):-Infinity)-(Number.isFinite(score(a))?score(a):-Infinity)||routeId(a).localeCompare(routeId(b)));
 }
-export function routeDisposition(p,plan) {
+export function routeDisposition(p,plan,automatic=false) {
  if(plan?.next?.some(x=>routeId(x.route)===routeId(p)))return 'In allocation preview';
  const deferred=plan?.deferred?.find(x=>x.routeKey===p.routeKey);
- return deferred?.reason ?? (p.configured?'Configured route':'Research only · not configured for execution');
+ return deferred?.reason ?? (p.configured?(automatic?'Automatically eligible':'Configured route'):'Research only · not configured for execution');
 }
 export function workStages(account) {
  const counts={buy:0,combine:0,sell:0,review:0};

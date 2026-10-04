@@ -37,13 +37,19 @@ export class ExecutionHistory {
     if(recent.length<10)return;
     const times=recent.map(s=>s.observedMillis/1000).sort((a,b)=>a-b);
     const observed=times[Math.ceil(times.length*0.75)-1];
-    // Current market remains authoritative: personal observations can only add delay.
+    // Current spreads remain authoritative; repeated personal timings adjust throughput either way.
     row.marketCycleSeconds=row.cycleSeconds;
-    row.cycleSeconds=Math.max(row.cycleSeconds,observed);
+    const strength=Math.min(1,times.length/30);
+    const rawFactor=Math.max(0.5,Math.min(1.5,row.marketCycleSeconds/observed));
+    const factor=1+(rawFactor-1)*strength;
+    row.cycleSeconds=row.marketCycleSeconds/factor;
     row.outputsPerHour=row.batch/row.cycleSeconds*3600;
     row.coinsPerHour=row.outputsPerHour*row.profitPerOutput;
-    row.executionEvidence={samples:times.length,p75ObservedSeconds:observed,latestAt:Math.max(...recent.map(s=>s.completedAt))};
-    row.assumptions.push('recent personal whole-cycle observations provide a conservative timing floor');
+    row.executionEvidence={samples:times.length,p75ObservedSeconds:observed,latestAt:Math.max(...recent.map(s=>s.completedAt)),
+      throughputFactor:factor,marketCycleSeconds:row.marketCycleSeconds,
+      marketCoinsPerHour:row.batch/row.marketCycleSeconds*3600*row.profitPerOutput,
+      observedCoinsPerHour:recent.reduce((sum,s)=>sum+s.profit,0)/recent.reduce((sum,s)=>sum+s.observedMillis,0)*3600000};
+    row.assumptions.push('recent personal whole-cycle timings adjust throughput; bounded and weighted by sample count');
   }
   status(){return {samples:this.rows.size,eligible:[...this.rows.values()].filter(s=>s.eligible).length,error:this.error};}
 }
