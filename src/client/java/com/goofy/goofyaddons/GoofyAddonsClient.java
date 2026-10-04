@@ -8,16 +8,13 @@ import com.goofy.goofyaddons.features.FeatureManager;
 import com.goofy.goofyaddons.features.profit.ProfitHud;
 import com.goofy.goofyaddons.features.profit.ProfitTracker;
 import com.goofy.goofyaddons.keybinds.GoofyKeybinds;
-import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLevelEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 
 
 public class GoofyAddonsClient implements ClientModInitializer {
-    private boolean reloadHeld;
 
     @Override
     public void onInitializeClient() {
@@ -26,7 +23,9 @@ public class GoofyAddonsClient implements ClientModInitializer {
         com.goofy.goofyaddons.features.CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
         ChatHook.register();
         GoofyKeybinds.register();
+        com.goofy.goofyaddons.config.ConfigReload.register();
         ProfitHud.register();
+        com.goofy.goofyaddons.features.marketanalysis.LocalDashboard.register();
         final Minecraft minecraft = Minecraft.getInstance();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             try {
@@ -36,10 +35,13 @@ public class GoofyAddonsClient implements ClientModInitializer {
                 Diagnostics.tick();
                 return;
             }
+            boolean reloadRequested=false;
+            while(GoofyKeybinds.reloadKey.consumeClick())reloadRequested=true;
             boolean stopRequested = false;
             while (GoofyKeybinds.stopKey.consumeClick()) stopRequested = true;
             if (com.goofy.goofyaddons.features.SafetyActions.tradingTick(stopRequested, FeatureManager.INSTANCE::stop,
                     FailsafeManager.INSTANCE::onTick, FeatureManager.INSTANCE::onTick)) {
+                if(reloadRequested)com.goofy.goofyaddons.config.ConfigReload.reload();
                 // Discard queued starts/mode changes so stop wins the entire tick.
                 while (GoofyKeybinds.startKey.consumeClick()) {}
                 while (GoofyKeybinds.modeKey.consumeClick()) {}
@@ -49,13 +51,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
             }
             ProfitTracker.INSTANCE.tick(FeatureManager.INSTANCE.isTradingActive());
 
-            // Reload only while stopped, and once per key press.
-            boolean reloadDown = InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_BACKSLASH);
-            if (reloadDown && !reloadHeld && !FeatureManager.INSTANCE.isMacroRunning()) {
-                GoofyConfig.load();
-                com.goofy.goofyaddons.features.CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
-            }
-            reloadHeld = reloadDown;
+            if(reloadRequested)com.goofy.goofyaddons.config.ConfigReload.reload();
 
             while (GoofyKeybinds.startKey.consumeClick()) {
                 FeatureManager.INSTANCE.startConfigured();

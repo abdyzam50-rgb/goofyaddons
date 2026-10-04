@@ -36,6 +36,22 @@ class ProfitLedgerTest {
         l.sell("t","general","Potato","sale",1,80.0);
         assertEquals(-20,l.summary().profit());
     }
+    @Test void writtenOffCostRemainsLostWhenANewFreeCopyAppears() {
+        var ledger=new ProfitLedger();ledger.acquire("t","books","Overload","buy",1,100.0);
+        assertTrue(ledger.writeOff("t","books","Overload","loss",1));
+        assertFalse(ledger.writeOff("t","books","Overload","loss",1));
+        assertEquals(-100,ledger.summary().profit());
+        ledger.acquire("t","books","Overload","found",1,0.0);
+        assertEquals(-100,ledger.summary().profit(),"finding a copy never reverses the loss");
+        ledger.sell("t","books","Overload","sale-found",1,30.0);
+        assertEquals(-70,ledger.summary().profit());assertEquals(2,ledger.history().size());
+    }
+    @Test void partialWriteOffConsumesOnlyTheLostCopiesCost() {
+        var ledger=new ProfitLedger();ledger.acquire("t","books","Overload","buy",4,400.0);
+        ledger.writeOff("t","books","Overload","loss",1);
+        ledger.sell("t","books","Overload","sale",3,360.0);
+        assertEquals(-40,ledger.summary().profit());
+    }
     @Test void refundsAndOpenInventoryDoNotCountAsProfit() {
         ProfitLedger l=new ProfitLedger();l.acquire("t","general","Potato","buy",10,1000.0);
         assertEquals(0,l.summary().profit());assertEquals(0,l.summary().settlements());
@@ -104,5 +120,28 @@ class ProfitLedgerTest {
         assertThrows(Exception.class,()->ProfitLedger.read(p));assertEquals("broken",Files.readString(p));
         Files.writeString(p,"{}");assertThrows(Exception.class,()->ProfitLedger.read(p));
         assertEquals("{}",Files.readString(p));
+    }
+    @Test void resumedTradePreservesKnownCostAndDoesNotAcquireTheSameBooksTwice() throws Exception {
+        var ledger=new ProfitLedger();ledger.acquire("saved","books","Wisdom","buy",16,1600.0);
+        var path=dir.resolve("profit.json");ledger.write(path);ledger=ProfitLedger.read(path);
+        assertFalse(ledger.recoverHoldings("saved","books","Wisdom",16));
+        assertEquals(1600.0,ledger.knownCost("saved",16));
+        ledger.sell("saved","books","Wisdom","saved:sale",16,2000.0);
+        assertEquals(400,ledger.summary().profit());assertEquals(0,ledger.summary().incomplete());
+    }
+    @Test void legacyRecoveryRecordsUnknownBasisRatherThanUsingTheReservationAsCost() {
+        var ledger=new ProfitLedger();assertTrue(ledger.recoverHoldings("legacy","books","Wisdom",16));
+        assertFalse(ledger.recoverHoldings("legacy","books","Wisdom",16));
+        assertNull(ledger.knownCost("legacy",16));
+        ledger.sell("legacy","books","Wisdom","sale",16,2000.0);
+        assertEquals(0,ledger.summary().profit());assertEquals(1,ledger.summary().incomplete());
+    }
+    @Test void onlyMissingRecoveredUnitsAreAddedAndLaterClaimsKeepTheirOwnBasis() {
+        var ledger=new ProfitLedger();ledger.acquire("partial","books","Wisdom","old",4,400.0);
+        assertTrue(ledger.recoverHoldings("partial","books","Wisdom",8));
+        ledger.acquire("partial","books","Wisdom","next",8,800.0);
+        ledger.sell("partial","books","Wisdom","sale",16,2000.0);
+        assertEquals(1,ledger.summary().incomplete());
+        assertThrows(IllegalArgumentException.class,()->ledger.recoverHoldings("partial","general","Coal",1));
     }
 }

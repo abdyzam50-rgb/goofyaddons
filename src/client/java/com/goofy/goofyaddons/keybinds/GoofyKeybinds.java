@@ -15,8 +15,11 @@ public class GoofyKeybinds {
     public static KeyMapping startKey;
     public static KeyMapping stopKey;
     public static KeyMapping modeKey;
+    public static KeyMapping reloadKey;
 
     public static void register() {
+        reloadKey=KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.goofyaddons.reload",InputConstants.Type.KEYSYM,org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSLASH,CATEGORY));
         modeKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.goofyaddons.mode", InputConstants.Type.KEYSYM,
                 GoofyConfig.INSTANCE.modeKey, CATEGORY));

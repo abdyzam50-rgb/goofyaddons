@@ -187,6 +187,40 @@ class TradingRegressionTest {
     }
 
     @Test
+    void unaffordableTopRoutesCannotCrowdOutAffordableBooks() {
+        var capital = new com.goofy.goofyaddons.features.CapitalManager();
+        capital.configure(35_000_000, 15_000_000);
+        // 30m in the purse, but only 7m remains under the capital limit.
+        capital.restore("general", "EXISTING", 28_000_000, false);
+        Book middle = new Book("ENCHANTMENT_MIDDLE", 1, 2, "Middle", 0, 0);
+        Book cheap = new Book("ENCHANTMENT_CHEAP", 1, 2, "Cheap", 0, 0);
+        List<FlipItem> items = List.of(new FlipItem(book, 20_000_000, 3, false, false),
+                new FlipItem(middle, 8_000_000, 2, false, false),
+                new FlipItem(cheap, 5_000_000, 1, false, false));
+        // The old raw-purse pass exhausts its budget on routes that fail reservation.
+        assertFalse(TradeBudget.select(items, List.of(), 30_000_000).stream().anyMatch(i -> i.book().equals(cheap)));
+        assertEquals(List.of(cheap), TradeBudget.select(items, List.of(),
+                capital.available(30_000_000), capital.occupiedProducts()).stream().map(FlipItem::book).toList());
+    }
+
+    @Test
+    void sharedSpendableBudgetExcludesOccupiedRoutesWithoutCountingPendingTwice() {
+        var capital = new com.goofy.goofyaddons.features.CapitalManager();
+        capital.configure(100, 20);
+        Book other = new Book("ENCHANTMENT_OTHER", 1, 2, "Other", 0, 0);
+        Task pending = new Task(other, false, false);
+        pending.setBookState(Task.BookState.SELECTED);
+        pending.setReservedUnitCost(15);
+        capital.restore("books", other.id(), 30, true);
+        List<FlipItem> items = List.of(new FlipItem(other, 40, 3, false, false),
+                new FlipItem(book, 50, 2, false, false));
+        assertEquals(List.of(book), TradeBudget.select(items, List.of(pending),
+                capital.available(100), capital.occupiedProducts()).stream().map(FlipItem::book).toList());
+        assertTrue(TradeBudget.select(items, List.of(pending),
+                capital.available(69), capital.occupiedProducts()).isEmpty());
+    }
+
+    @Test
     void pendingSellsKeepOwnershipOfTheirEnchantments() {
         Task selling = new Task(book, false, false);
         selling.setBookState(Task.BookState.SELL_ORDER);

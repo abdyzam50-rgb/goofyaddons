@@ -84,9 +84,18 @@ class ConfigRegressionTest {
         Files.writeString(file, "{}");
         GoofyConfig.INSTANCE = null;
         GoofyConfig.load(file);
+        var working=GoofyConfig.INSTANCE;
+        assertNull(GoofyConfig.lastLoadProblem());
         Files.writeString(file, "{broken");
         GoofyConfig.load(file);
         assertNull(GoofyConfig.loadError());
+        assertSame(working,GoofyConfig.INSTANCE);
+        assertNotNull(GoofyConfig.lastLoadProblem(),"a rejected reload must be reportable even with a working config");
+        Files.writeString(file,"{\"marketAnalysis\":{\"enabled\":true,\"dashboardEnabled\":true}}");
+        GoofyConfig.load(file);
+        assertNull(GoofyConfig.lastLoadProblem());
+        assertTrue(GoofyConfig.INSTANCE.marketAnalysis.enabled);
+        assertTrue(GoofyConfig.INSTANCE.marketAnalysis.dashboardEnabled);
     }
 
     @Test
@@ -142,4 +151,26 @@ class ConfigRegressionTest {
                         <= 55_000_000 - GoofyConfig.INSTANCE.purseReserve,
                 "the capital limit must bind before the purse does");
     }
+    @Test void legacyConfigKeepsMarketAnalysisDisabledAndRoundTripsExplicitShadowSettings() {
+        GoofyConfig.INSTANCE = null;
+        Path file = directory.resolve("shadow.json");
+        try { Files.writeString(file, "{}"); } catch (Exception e) { throw new RuntimeException(e); }
+        GoofyConfig.load(file);
+        assertFalse(GoofyConfig.INSTANCE.marketAnalysis.enabled);
+        GoofyConfig.INSTANCE.marketAnalysis.enabled = true;
+        GoofyConfig.INSTANCE.marketAnalysis.maxRecommendations = 5;
+        GoofyConfig.save(file);
+        GoofyConfig.INSTANCE = null; GoofyConfig.load(file);
+        assertTrue(GoofyConfig.INSTANCE.marketAnalysis.enabled);
+        assertEquals(5, GoofyConfig.INSTANCE.marketAnalysis.maxRecommendations);
+    }
+
+    @Test void nullOrRemoteAnalysisSettingsAreRejected() {
+        var c = new GoofyConfig(); c.marketAnalysis = null;
+        assertThrows(IllegalArgumentException.class, c::validate);
+        c.marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings();
+        c.marketAnalysis.endpoint = "http://example.com:8789/v1/recommendations";
+        assertThrows(IllegalArgumentException.class, c::validate);
+    }
+
 }

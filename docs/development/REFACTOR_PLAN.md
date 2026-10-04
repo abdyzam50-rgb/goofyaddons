@@ -493,6 +493,27 @@ stages 4, 5 and 6.
 
 ## Explicitly out of scope
 
+2026-10-03 loop improvement: [BOOK_LOOP_STRENGTHENING.md](BOOK_LOOP_STRENGTHENING.md)
+connects every `InventoryScanner` query to the book engine's shared tick snapshot,
+shares sale-price selection, adds validated storage retries and settles confirmed
+sale claims without redundant reopens. Remaining direct Minecraft reads/effects
+still prevent a full engine replay; this is partial migration rather than completion
+of stages 4–6.
+
+
+2026-10-03 slot-memory follow-up: [SLOT_MEMORY.md](SLOT_MEMORY.md) implements
+the runtime slot map and wires startup adoption, transfers and unexpected book
+location reconciliation to it. Combine/storage reuse a tick snapshot. Other
+book-engine reads still need migration, and durable restart recovery remains
+open; the complete Bazaar transaction replay gate is still outstanding.
+
+2026-10-03 follow-up: [BOOK_LOOP_REPAIR.md](BOOK_LOOP_REPAIR.md) records a
+user-requested behavior repair from live diagnostics. Combine and storage
+transfers now use the menu/action seam and have sequence coverage. The rest of
+`BazaarFlipper` still needs migration and a complete transaction replay; this
+does not complete stages 4–6. The scope limits below describe the original
+refactor, before that behavior repair.
+
 - The click *sequences* themselves (which slot, in what order) — those encode
   server behaviour that this session cannot verify against a live Hypixel menu.
 - The fail-closed checks in `TradingSafety`, `ConfirmationCheck` and `OrderLore`.

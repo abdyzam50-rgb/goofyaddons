@@ -1,0 +1,46 @@
+name: Collect public Bazaar market
+on:
+  schedule:
+    - cron: '17 0,6,12,18 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: bazaar-public-history
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Restore most recent public history
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous=$(gh run list --workflow collect-market.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$previous" ]; then
+            artifact=$(gh api "repos/$GH_REPO/actions/runs/$previous/artifacts" --jq '.artifacts[] | select(.name == "public-bazaar-history" and .expired == false) | .id')
+            if [ -n "$artifact" ]; then
+              gh run download "$previous" --name public-bazaar-history --dir tools/bazaar-calc/data
+            else
+              echo 'Previous artifact expired; starting a new public observation history.'
+            fi
+          fi
+      - name: Collect ten minutes of live observations
+        run: node tools/bazaar-calc/collect-market.mjs 10
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-bazaar-history
+          path: |
+            tools/bazaar-calc/data/live-history.json.gz
+            tools/bazaar-calc/data/collection-status.json
+          if-no-files-found: error
+          retention-days: 30

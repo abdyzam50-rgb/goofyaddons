@@ -76,7 +76,7 @@ public class FlipCalculator {
         return running;
     }
 
-    static List<FlipItem> calculate(JsonObject products, List<Book> books,
+    public static List<FlipItem> calculate(JsonObject products, List<Book> books,
                                     double taxPercentage, double minimumProfit) {
         List<FlipItem> result = new ArrayList<>();
         for (Book book : books) {

@@ -42,7 +42,14 @@ sourceSets.test.compileClasspath += sourceSets.client.output + sourceSets.client
 sourceSets.test.runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath
 
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform { excludeTags 'calculatorIntegration' }
+}
+
+// Optional real Java -> Node calculator check; the ordinary Java suite needs no Node runtime.
+tasks.register('calculatorIntegrationTest', Test) {
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform { includeTags 'calculatorIntegration' }
 }
 
 processResources {

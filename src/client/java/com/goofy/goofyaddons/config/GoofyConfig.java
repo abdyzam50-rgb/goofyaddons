@@ -39,6 +39,7 @@ public class GoofyConfig {
     public static GoofyConfig INSTANCE;
     /** Set while trading would run on built-in defaults because the user's file was rejected. */
     private static String loadError;
+    private static String lastLoadProblem;
 
 
     public TradingMode tradingMode = TradingMode.BOOKS;
@@ -46,6 +47,7 @@ public class GoofyConfig {
     public double maxTradingCapital = 300_000_000;
     public double purseReserve = 50_000_000;
     public GeneralSettings general = new GeneralSettings();
+    public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings();
     public int startKey = GLFW.GLFW_KEY_J;
     public int stopKey = GLFW.GLFW_KEY_K;
     public int minActionDelay = 100;
@@ -90,6 +92,7 @@ public class GoofyConfig {
                 loadError = "Wrote a new goofyaddons.json with built-in defaults (capital "
                         + (long) INSTANCE.maxTradingCapital + ", reserve " + (long) INSTANCE.purseReserve
                         + "). Review it at " + path + " and press \\ to reload before trading.";
+                lastLoadProblem=loadError;
                 Diagnostics.event("WARN","config.defaults_written",java.util.Map.of("path",path.toString(),
                         "capital",INSTANCE.maxTradingCapital,"reserve",INSTANCE.purseReserve));
                 return;
@@ -100,8 +103,10 @@ public class GoofyConfig {
             parsed.validate();
             INSTANCE = parsed;
             loadError = null;
+            lastLoadProblem = null;
             Diagnostics.event("INFO","config.loaded",java.util.Map.of("mode",parsed.tradingMode.name(),"capital",parsed.maxTradingCapital,"reserve",parsed.purseReserve));
         } catch (Exception e) {
+            lastLoadProblem="Config rejected: "+e.getMessage();
             Diagnostics.failure("config.load_failed",e);
             // Preserve both the file and the last working in-memory config.
             System.err.println("GoofyAddons config rejected: " + e.getMessage());
@@ -114,6 +119,10 @@ public class GoofyConfig {
     }
 
     /** Non-null when the config file was rejected and no valid config has been loaded yet. */
+    /** Latest read outcome, including failed reloads that retained a working config. */
+    public static String lastLoadProblem() { return lastLoadProblem; }
+    public static String location() { return configPath().toAbsolutePath().toString(); }
+
     public static String loadError() {
         return loadError;
     }
@@ -125,6 +134,8 @@ public class GoofyConfig {
             throw new IllegalArgumentException("Invalid mode or shared capital settings");
         }
         general.validate();
+        if (marketAnalysis == null) throw new IllegalArgumentException("marketAnalysis must be an object");
+        marketAnalysis.validate();
         if (!Double.isFinite(profitHudScale) || profitHudScale<0.75 || profitHudScale>3.0) throw new IllegalArgumentException("HUD scale must be between 0.75 and 3.0");
         if (!"LEFT".equals(profitHudSide) && !"RIGHT".equals(profitHudSide)) throw new IllegalArgumentException("HUD side must be LEFT or RIGHT");
         if (minActionDelay < 51 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {

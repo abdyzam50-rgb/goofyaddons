@@ -6,9 +6,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 
-/** Recovery barrier, not a replay log: uncertain server ownership requires review. */
+/** Saved ownership and trade identity; live verification reconstructs supported cycles before resumption. */
 public final class BookJournal {
-    public record Position(Book book, double cost) {}
+    public record Position(Book book, double cost, String tradeId) {
+        public Position(Book book, double cost) {this(book,cost,null);}
+    }
     private static final Gson GSON = new Gson();
     private final Path path;
     private String previous;
@@ -25,9 +27,22 @@ public final class BookJournal {
                     || position.book().level() < 1 || position.book().sellLevel() <= position.book().level()
                     || position.book().sellLevel() > 10 || position.book().name() == null
                     || position.book().name().isBlank() || !Double.isFinite(position.cost()) || position.cost() <= 0
+                    || position.tradeId()!=null && !position.tradeId().matches("[A-Za-z0-9_-]{1,100}")
                     || !ids.add(position.book().id())) throw new IllegalStateException("Invalid book journal");
         }
         return List.of(positions);
+    }
+    public void backupVerified(List<Position> expected) throws Exception {
+        if(!read().equals(expected))throw new IllegalStateException("Book journal changed during recovery check");
+        if(Files.exists(path))Files.copy(path,path.resolveSibling(path.getFileName()+".resumed-"+java.util.UUID.randomUUID()+".bak"));
+    }
+    /** Only a completed live check may retire old records; preserve the original as evidence. */
+    public void reconcileVerified(List<Position> expected, java.util.Set<String> stillPresent) throws Exception {
+        if(!read().equals(expected))throw new IllegalStateException("Book journal changed during recovery check");
+        List<Position> retained=expected.stream().filter(p->stillPresent.contains(p.book().id())).toList();
+        if(retained.equals(expected))return;
+        if(Files.exists(path))Files.copy(path,path.resolveSibling(path.getFileName()+".verified-"+java.util.UUID.randomUUID()+".bak"));
+        write(retained);
     }
     /** Persist only plans with observed ownership or a submission that may reach the server. */
     public void writeTracked(List<Position> plans, java.util.Set<String> exposed) throws Exception {

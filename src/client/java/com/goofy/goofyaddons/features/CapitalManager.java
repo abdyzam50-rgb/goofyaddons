@@ -55,6 +55,10 @@ public class CapitalManager {
         return null;
     }
     public int positionCount() { return allocations.size(); }
+    public Set<String> occupiedProducts() { return Set.copyOf(allocations.keySet()); }
+    public int ownerPositionCount(String owner) {
+        return (int) allocations.values().stream().filter(a -> a.owner().equals(owner)).count();
+    }
 
     public boolean reserve(String owner, String product, double cost, double purse) {
         if (!Double.isFinite(cost) || cost <= 0 || allocations.containsKey(product)

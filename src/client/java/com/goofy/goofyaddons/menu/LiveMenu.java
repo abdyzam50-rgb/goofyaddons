@@ -36,16 +36,19 @@ public final class LiveMenu {
         for (Slot slot : menu.slots) views.add(view(slot, slot.container == inventory));
         return new MenuSnapshot(menu.containerId,
                 minecraft.screen == null ? null : minecraft.screen.getTitle().getString(),
-                menu.getCarried().isEmpty(), views);
+                menu.getCarried().isEmpty(), views, view(-1,false,-1,menu.getCarried()));
     }
 
     private static SlotView view(Slot slot, boolean inPlayerInventory) {
-        ItemStack item = slot.getItem();
-        if (item.isEmpty()) return SlotView.empty(slot.index, inPlayerInventory, slot.getContainerSlot());
+        return view(slot.index,inPlayerInventory,slot.getContainerSlot(),slot.getItem());
+    }
+
+    private static SlotView view(int index, boolean inPlayerInventory, int containerSlot, ItemStack item) {
+        if (item.isEmpty()) return SlotView.empty(index, inPlayerInventory, containerSlot);
         ItemLore lore = item.get(DataComponents.LORE);
         CustomData data = item.get(DataComponents.CUSTOM_DATA);
         CompoundTag tag = data == null ? null : data.copyTag();
-        return new SlotView(slot.index, inPlayerInventory, slot.getContainerSlot(), false,
+        return new SlotView(index, inPlayerInventory, containerSlot, false,
                 item.getCustomName() == null ? null : item.getCustomName().getString(),
                 item.getHoverName().getString(),
                 lore == null ? null : lore.lines().stream().map(Component::getString).toList(),

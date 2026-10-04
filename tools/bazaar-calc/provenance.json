@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Goofythesecond/bazaar-calc",
+  "commit": "6dd0ae9565fd555dec9dbe5eca3a2f48ca3218cc",
+  "historyAsOf": 1791023048535,
+  "builtAt": 1791058073867,
+  "engine": "upstream shared engine, order-only adapter",
+  "historySource": "upstream contribution files, scripts/data/build-site.mjs --offline"
+}

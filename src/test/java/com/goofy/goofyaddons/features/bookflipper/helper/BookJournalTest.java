@@ -86,4 +86,32 @@ class BookJournalTest {
         journal.writeTracked(List.of(new BookJournal.Position(other, 2000000)), java.util.Set.of());
         assertTrue(new BookJournal(path).read().isEmpty());
     }
+    @Test void verifiedStaleEntriesAreBackedUpAndOnlyObservedOwnershipIsRetained() throws Exception {
+        var other=new Book("ENCHANTMENT_OVERLOAD",1,5,"Overload",0,0);
+        var path=dir.resolve("books.json");var journal=new BookJournal(path);
+        var saved=List.of(new BookJournal.Position(book,1000),new BookJournal.Position(other,2000));
+        journal.write(saved);journal.reconcileVerified(saved,java.util.Set.of(other.id()));
+        assertEquals(List.of(saved.get(1)),journal.read());
+        try(var files=Files.list(dir)) {assertEquals(2,files.count());}
+        journal.reconcileVerified(journal.read(),java.util.Set.of());assertTrue(journal.read().isEmpty());
+    }
+    @Test void aJournalChangedDuringLiveVerificationIsNeverCleared() throws Exception {
+        var journal=new BookJournal(dir.resolve("books.json"));var before=List.of(new BookJournal.Position(book,1000));
+        journal.write(before);journal.write(List.of(new BookJournal.Position(book,2000)));
+        assertThrows(IllegalStateException.class,()->journal.reconcileVerified(before,java.util.Set.of()));
+        assertEquals(2000,journal.read().getFirst().cost());
+    }
+
+    @Test void resumedTradeIdentitySurvivesAnotherProcessRestartAndOriginalIsBackedUp() throws Exception {
+        var path=dir.resolve("books.json");var journal=new BookJournal(path);
+        var legacy=List.of(new BookJournal.Position(book,1600));journal.write(legacy);journal.backupVerified(legacy);
+        var resumed=List.of(new BookJournal.Position(book,1600,"saved-trade"));journal.write(resumed);
+        assertEquals(resumed,new BookJournal(path).read());
+        try(var files=Files.list(dir)){var backup=files.filter(p->p.toString().endsWith(".bak")).findFirst().orElseThrow();
+            assertEquals(legacy,new BookJournal(backup).read());}
+    }
+    @Test void originalLegacyJsonWithoutTradeIdentityStillLoads() throws Exception {
+        var path=dir.resolve("books.json");Files.writeString(path,"[{\"book\":{\"id\":\"ENCHANTMENT_ULTIMATE_WISDOM\",\"level\":1,\"sellLevel\":5,\"name\":\"Wisdom\"},\"cost\":1600}]");
+        assertNull(new BookJournal(path).read().getFirst().tradeId());
+    }
 }

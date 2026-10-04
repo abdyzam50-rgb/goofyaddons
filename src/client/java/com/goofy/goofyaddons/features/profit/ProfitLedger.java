@@ -40,6 +40,29 @@ public final class ProfitLedger {
         return true;
     }
 
+    /** Add only observed units absent from the persisted lots; legacy cost is unknown. */
+    public boolean recoverHoldings(String id,String engine,String item,int observedUnits) {
+        if(observedUnits<0)throw new IllegalArgumentException("Invalid recovered quantity");
+        Trade trade=trades.get(id);
+        if(trade!=null && (!trade.engine.equals(engine) || !trade.item.equals(item)))throw new IllegalArgumentException("Trade identity changed");
+        int recorded=trade==null?0:trade.lots.stream().mapToInt(lot->lot.units).sum();
+        if(recorded>=observedUnits)return false;
+        return acquire(id,engine,item,java.util.UUID.randomUUID().toString(),observedUnits-recorded,null);
+    }
+
+    public Double knownCost(String id,int units) {
+        if(units<=0)return null;
+        Trade trade=trades.get(id);if(trade==null)return null;
+        int remaining=units;double cost=0;
+        for(var lot:trade.lots) {
+            int take=Math.min(remaining,lot.units);
+            if(take>0 && lot.cost==null)return null;
+            if(take>0)cost+=lot.cost*take/lot.units;
+            remaining-=take;if(remaining==0)return cost;
+        }
+        return null;
+    }
+
     public boolean sell(String id, String engine, String item, String event, int units, Double proceeds) {
         validateIdentity(id, engine, item, event, units);
         validateMoney(proceeds);
@@ -73,6 +96,9 @@ public final class ProfitLedger {
     public void activeTime(long millis) {
         if (millis < 0) throw new IllegalArgumentException("Invalid timer delta");
         activeMillis = Math.addExact(activeMillis,millis);
+    }
+    public boolean writeOff(String id,String engine,String item,String event,int units) {
+        return sell(id,engine,item,event,units,0.0);
     }
     public void resetSession() { sessionFirstSale=sales.size(); activeMillis=0; }
     public Summary summary() {

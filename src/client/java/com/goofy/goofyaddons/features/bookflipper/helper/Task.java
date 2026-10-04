@@ -36,15 +36,24 @@ public class Task {
     private Book book;
     private int amountToOrder;
     private double reservedUnitCost;
-    private final String profitTradeId = java.util.UUID.randomUUID().toString();
+    private final String profitTradeId;
     private BookState bookState;
     private long orderWaitSince;
     private boolean awaitingSale;
+    private boolean recovered;
+    public boolean recovered(){return recovered;}
+    public void markRecovered(){recovered=true;}
     // book location will be represented in integars, 0 = Inventory, 1 = EnderChest, 2 = EnderChestPage2
     public List<BookList> bookList = new ArrayList<>();
 
 
     public Task(Book book, boolean instaBuy, boolean instaSell) {
+        this(book,instaBuy,instaSell,java.util.UUID.randomUUID().toString());
+    }
+
+    public Task(Book book, boolean instaBuy, boolean instaSell, String tradeId) {
+        if(tradeId==null || tradeId.isBlank())throw new IllegalArgumentException("Missing trade identity");
+        profitTradeId=tradeId;
         this.book = book;
         this.instaBuy = instaBuy;
         this.instaSell = instaSell;
@@ -139,9 +148,46 @@ public class Task {
         return amountToOrder;
     }
 
+    /** A written-off book never remains a hypothetical asset or reduces future input needs. */
+    public int loseBook(BookList entry) {
+        if (!bookList.remove(entry)) return 0;
+        int units = book.baseUnits(entry.level);
+        amountToOrder += units;
+        return units;
+    }
+
+    public boolean acceptFound(BookList entry) {
+        int units = book.baseUnits(entry.level);
+        if (!book.equals(entry.book) || units <= 0 || units > amountToOrder
+                || entry.location < 0 || entry.location > 2 || bookList.contains(entry)) return false;
+        amountToOrder -= units;
+        entry.found = true;
+        bookList.add(entry);
+        bookList.sort(Comparator.comparingInt(b -> b.location));
+        return true;
+    }
+
     public boolean isCombinable() {
         Set<Integer> seen = new HashSet<>();
         return bookList.stream().anyMatch(book -> !seen.add(book.level));
+    }
+
+    /** Partial inputs must wait for the live buy order, never be listed as a finished book. */
+    public void finishCombining() {
+        boolean finished = amountToOrder == 0 && bookList.size() == 1
+                && bookList.getFirst().level == book.sellLevel() && bookList.getFirst().location == 0;
+        if (finished) {
+            actionSchedule = ActionSchedule.NONE;
+            setBookState(BookState.SELL);
+        } else if ((amountToOrder == 0 || isCombinable()) && bookList.stream().anyMatch(b -> b.location != 0)) {
+            setBookState(BookState.ANVIL);
+        } else if (actionSchedule == ActionSchedule.SELECTED_COMBINE_STORE_BUYORDER) {
+            setBookState(BookState.STORE);
+        } else if (amountToOrder > 0) {
+            setBookState(BookState.IN_BUY_ORDER);
+        } else {
+            throw new IllegalStateException("Book inputs do not form the required output");
+        }
     }
 
 

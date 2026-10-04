@@ -70,6 +70,7 @@ public final class Diagnostics {
             data.put("menuTitle",mc.screen.getTitle().getString());
         }
         data.put("purse",mc.player==null?-1:new ScoreboardUtils().getPurse());data.put("committed",CapitalManager.INSTANCE.committed());
+        data.put("purseStatus",mc.player==null?"player-absent":ScoreboardUtils.purseStatus());
         data.put("positions",CapitalManager.INSTANCE.positionCount());data.put("freshQuotes",BazaarApi.latestFresh()!=null);
         if(mc.player!=null) {
             data.put("container",mc.player.containerMenu.containerId);
@@ -99,7 +100,22 @@ public final class Diagnostics {
             int end=mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>?Math.max(0,mc.player.containerMenu.slots.size()-36):0;
             for(int i=0;i<end;i++) {
                 var stack=mc.player.containerMenu.slots.get(i).getItem();
-                if(!stack.isEmpty()) menuItems.add(Map.of("slot",i,"name",stack.getHoverName().getString(),"count",stack.getCount(),"lore",menuLore(stack)));
+                if(!stack.isEmpty()) {
+                    var item=new LinkedHashMap<String,Object>();
+                    item.put("slot",i);item.put("name",stack.getHoverName().getString());
+                    item.put("count",stack.getCount());item.put("lore",menuLore(stack));
+                    var custom=stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+                    if(custom!=null) {
+                        var tag=custom.copyTag();item.put("hypixelId",tag.getStringOr("id",""));
+                        var enchants=tag.getCompound("enchantments").orElse(null);
+                        if(enchants!=null) {
+                            var levels=new TreeMap<String,Integer>();
+                            for(String key:enchants.keySet()) levels.put(key,enchants.getIntOr(key,-1));
+                            item.put("enchantments",levels);
+                        }
+                    }
+                    menuItems.add(item);
+                }
             }
             data.put("menuItems",menuItems);
             }

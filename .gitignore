@@ -41,3 +41,6 @@ replay_*.log
 
 # Runtime and test logs
 logs/
+
+# Local Bazaar market observations
+tools/bazaar-calc/data/

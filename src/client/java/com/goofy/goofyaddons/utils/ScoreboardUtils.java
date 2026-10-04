@@ -9,16 +9,19 @@ import net.minecraft.world.scores.Scoreboard;
 
 public class ScoreboardUtils {
     private static final Minecraft minecraft = Minecraft.getInstance();
+    private static String purseStatus = "unobserved";
+    public static String purseStatus() { return purseStatus; }
+    private static double unreadable(String reason) { purseStatus = reason; return -1; }
 
     public double getPurse() {
         Double purse = (double) -1;
-        if (minecraft.player == null) return -1;
-        if (minecraft.level == null) return -1;
+        if (minecraft.player == null) return unreadable("player-absent");
+        if (minecraft.level == null) return unreadable("world-absent");
 
         Scoreboard scoreboard = minecraft.level.getScoreboard();
         Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
 
-        if (sidebar == null) return -1;
+        if (sidebar == null) return unreadable("sidebar-absent");
 
         for (PlayerScoreEntry entry : scoreboard.listPlayerScores(sidebar)) {
             String fakePlayer = entry.owner();
@@ -31,9 +34,12 @@ public class ScoreboardUtils {
                             + team.getPlayerSuffix().getString();
             if (!line.contains("Purse")) continue;
             double parsed=PurseParser.parse(line);
-            if(parsed<0 || purse>=0) return -1; // Multiple purse lines are ambiguous.
+            if(parsed<0) return unreadable("purse-line-unparseable");
+            if(purse>=0) return unreadable("multiple-purse-lines");
             purse=parsed;
         }
+        if (purse < 0) return unreadable("purse-line-absent");
+        purseStatus = "readable";
         return purse;
     }
 }

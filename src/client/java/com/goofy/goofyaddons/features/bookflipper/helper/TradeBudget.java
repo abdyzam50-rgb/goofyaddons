@@ -20,6 +20,15 @@ public final class TradeBudget {
                 available -= task.getReservedUnitCost() * task.getAmountToOrder();
             }
         }
+        return select(candidates, tasks, available, Set.of());
+    }
+
+    /** The shared ledger already accounts for reserves, commitments and pending purchases. */
+    public static List<FlipItem> select(List<FlipItem> candidates, List<Task> tasks,
+                                        double available, Set<String> occupiedProducts) {
+        if (!Double.isFinite(available) || available <= 0) return List.of();
+        Set<String> owned = new HashSet<>(occupiedProducts);
+        for (Task task : tasks) owned.add(task.getBook().id());
         List<FlipItem> selected = new ArrayList<>();
         for (FlipItem item : candidates) {
             // The engine safety-halts on instant buys/sells, so never plan them.
