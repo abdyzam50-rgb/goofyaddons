@@ -1,6 +1,6 @@
 // Public market observations only. No account credentials or Minecraft actions.
 import { dataFile } from './data-paths.mjs';
-import { TopTracker, summarizeTop, bookFlow, toLevels, validateBazaar, degradedBazaar, competition, delists } from './engine.mjs';
+import { TopTracker, summarizeTop, bookFlow, toLevels, validateBazaar, degradedBazaar, competition, delists, counterTrades } from './engine.mjs';
 import { readFileSync } from 'node:fs';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -61,11 +61,18 @@ export class MarketCollector {
         if (!flow || flow[0] !== hour) item.flows.push(flow = [hour,0,0,0,0,0,0]);
         flow[1]++; flow[2] += (ts-prev.ts)/1000; flow[3] += Number(change.outbid); flow[4] += Number(change.undercut);
         flow[5] += change.bidRemoved; flow[6] += change.askRemoved;
+        // Append real-trade fields to version-1 rows; old seven-field history stays readable.
+        const trades = counterTrades(prev,{buyWeek:q.buyMovingWeek,sellWeek:q.sellMovingWeek});
+        if (trades) {
+          flow[7] = (flow[7] ?? 0) + (ts-prev.ts)/1000;
+          flow[8] = (flow[8] ?? 0) + trades.bid;
+          flow[9] = (flow[9] ?? 0) + trades.ask;
+        }
       }
       item.episodes.push(...this.tracker.step(id,ts,bids,asks));
       // Keep the most recent 128 observations on each side, rather than unbounded bursts.
       item.episodes = ['bid','ask'].flatMap(side => item.episodes.filter(e => e.side === side).slice(-128));
-      this.previous.set(id,{ ts,bids,asks });
+      this.previous.set(id,{ ts,bids,asks,buyWeek:q.buyMovingWeek,sellWeek:q.sellMovingWeek });
     }
     this.state.asOf = ts; this.state.products = Object.keys(payload.products).length;
     this.prune(); this.historyCache = null;
@@ -87,12 +94,13 @@ export class MarketCollector {
       const latest = item.closes.at(-1);
       if (!latest || latest[0] < now-60000) continue;
       const pts = item.closes, w24 = pts.filter(r => r[0] >= now-DAY);
-      const aggregate = item.flows.reduce((a,r) => ({ n:a.n+r[1],secs:a.secs+r[2],ob:a.ob+r[3],uc:a.uc+r[4],br:a.br+r[5],ar:a.ar+r[6] }),{n:0,secs:0,ob:0,uc:0,br:0,ar:0});
+      const aggregate = item.flows.reduce((a,r) => ({ n:a.n+r[1],secs:a.secs+r[2],ob:a.ob+r[3],uc:a.uc+r[4],br:a.br+r[5],ar:a.ar+r[6],tsecs:a.tsecs+(r[7]??0),bt:a.bt+(r[8]??0),at:a.at+(r[9]??0) }),{n:0,secs:0,ob:0,uc:0,br:0,ar:0,tsecs:0,bt:0,at:0});
       const first = w24[0], last = w24.at(-1);
       const counters = first && last ? {span:(last[0]-first[0])/HOUR,b1:first[5],b2:last[5],s1:first[6],s2:last[6]} : undefined;
       const ago = pts.findLast(r => r[0] <= now-HOUR && r[0] >= now-3*HOUR);
+      const observed = competition(aggregate);
       stats[id] = { askMed:median(pts.map(r=>r[2])),bidMed:median(pts.map(r=>r[1])),spreadMed:median(pts.map(r=>(r[2]-r[1])/r[1])),days:7,
-        ...competition(aggregate),liveHours:aggregate.secs/3600,delists:delists(aggregate,counters),
+        ...observed,liveHours:observed.flowBasis ? observed.liveHours : aggregate.secs/3600,delists:delists(aggregate,counters),
         hourAgo:ago ? {bid:ago[1],ask:ago[2]} : null,
         ask24:median(w24.map(r=>r[2])),bid24:median(w24.map(r=>r[1])),n24:w24.length,
         ask7:median(pts.map(r=>r[2])),bid7:median(pts.map(r=>r[1])),n7:pts.length,

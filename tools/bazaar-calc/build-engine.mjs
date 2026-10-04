@@ -8,12 +8,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(process.argv[2] ?? '/tmp/bazaar-calc-review');
 const data = resolve(process.argv[3] ?? '/workspace/.setup/bazaar-calc-site-data');
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
-const expected = '6dd0ae9565fd555dec9dbe5eca3a2f48ca3218cc';
+const expected = '51268005376496bf993e0c1934b8a7e44656b0bc';
 if (commit !== expected) throw new Error('Upstream checkout does not match the reviewed commit');
 // The pin is recorded in provenance; updates require reviewing upstream behavior and rebuilding tests.
 const esbuild = await import(pathToFileURL(resolve(repo, 'node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/lib/main.js')));
 const exports = ['assembleMarket', 'quotesFromBazaar', 'buyLeg', 'sellLeg', 'evaluate', 'DEFAULT_SETTINGS', 'DEFAULT_PROFILE',
-  'enchantRules', 'booksNeeded', 'combineXpCost', 'parseBookId', 'actionSeconds', 'curve', 'at', 'seriousFlags', 'TopTracker', 'summarizeTop', 'bookFlow', 'toLevels', 'validateBazaar', 'degradedBazaar'];
+  'enchantRules', 'booksNeeded', 'combineXpCost', 'parseBookId', 'actionSeconds', 'curve', 'at', 'seriousFlags', 'TopTracker', 'summarizeTop', 'bookFlow', 'toLevels', 'validateBazaar', 'degradedBazaar', 'counterTrades'];
 // These pure exports are copied verbatim; importing stats.js would initialize PostgreSQL.
 const statsSource = readFileSync(resolve(repo, 'packages/server-core/dist/stats.js'), 'utf8');
 const pureStats = statsSource.slice(statsSource.indexOf('export function competition('), statsSource.indexOf('export async function computeStats('));
@@ -32,4 +32,21 @@ copyFileSync(resolve(repo, 'packages/shared/src/rules/enchants.json'), resolve(h
 writeFileSync(resolve(here, 'provenance.json'), JSON.stringify({ repository: 'https://github.com/Goofythesecond/bazaar-calc',
   commit, historyAsOf: source.asOf, builtAt: Date.now(), engine: 'upstream shared engine, order-only adapter',
   historySource: 'upstream contribution files, scripts/data/build-site.mjs --offline' }, null, 2) + '\n');
+// Native execution must use the same reviewed combine rules as the calculator.
+const catalogPath = resolve(here, 'automatic-products.json');
+const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
+const native = await import(pathToFileURL(resolve(here, 'engine.mjs')));
+catalog.books = {};
+for (const rule of Object.values(native.enchantRules())) {
+  if (rule.combine_status !== 'combinable' || !rule.combine_cap) continue;
+  const routes = [];
+  for (let from = 1; from < Math.min(10, rule.combine_cap); from++) {
+    for (let to = from + 1; to <= Math.min(10, rule.combine_cap); to++) {
+      if (native.booksNeeded(rule, from, to) &&
+          Array.from({length: to - from}, (_, i) => native.combineXpCost(rule, from + i)).every(x => x === 0)) routes.push([from, to]);
+    }
+  }
+  if (routes.length) catalog.books[rule.id] = {name: rule.name, routes};
+}
+writeFileSync(catalogPath, JSON.stringify(catalog, null, 2).replace(/[\u0080-\uffff]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')) + '\n');
 console.log(`Bundled Bazaar Calc ${commit}; history ${new Date(source.asOf).toISOString()}`);

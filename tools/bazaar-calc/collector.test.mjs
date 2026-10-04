@@ -94,3 +94,47 @@ test('HTTP health exposes collector freshness and recommendations use collected 
   assert.equal(report.dataAt,f.now); assert.ok(report.rows.length>0); assert.ok(report.rows.every(r=>r.confidence==='ESTIMATED'));
   assert.equal(health.collector.lastUpdated,f.now); assert.equal(health.collector.fresh,true); assert.equal(health.historyAsOf,f.now);
 });
+
+test('real trade counters override removals after an hour and survive legacy-row restart',async t => {
+  const f=await fixture(t),c=new MarketCollector(f.options),start=f.now;
+  for(let i=0;i<=90;i++) {
+    f.setTime(start+i*120000);const p=market(f.now,100,130,1000-i);
+    for(const product of Object.values(p.products)) {
+      product.quick_status.sellMovingWeek=100000+2*i;
+      product.quick_status.buyMovingWeek=100000+3*i;
+    }
+    c.accept(p);
+    if(i===29)assert.equal(c.history().stats.TEST_0.flowBasis,'book');
+    if(i===30) {
+      const s=c.history().stats.TEST_0;
+      assert.equal(s.flowBasis,'trades');assert.equal(s.observedBuyFlowH,60);assert.equal(s.observedSellFlowH,90);
+    }
+  }
+  const s=c.history().stats.TEST_0;
+  assert.equal(s.liveHours,3);assert.equal(s.delists.exact,true);
+  assert.equal(s.delists.bidTrades,180);assert.equal(s.delists.askTrades,270);
+  assert.equal(s.delists.bidRemoved,90);assert.equal(s.delists.askRemoved,90);
+  await c.save();const recovered=new MarketCollector(f.options);assert.deepEqual(recovered.history(),c.history());
+  // Version-1 installations had seven-field flow rows; they retain the book-based fallback.
+  for(const item of Object.values(c.state.items))item.flows=item.flows.map(row=>row.slice(0,7));
+  await c.save();const legacy=new MarketCollector(f.options);
+  assert.equal(legacy.status().storageError,null);assert.equal(legacy.history().stats.TEST_0.flowBasis,'book');
+  assert.equal(legacy.history().stats.TEST_0.observedBuyFlowH,30);
+});
+
+test('counter rollover, disconnected gaps and restart never invent trades',async t => {
+  const f=await fixture(t),c=new MarketCollector(f.options),start=f.now;
+  const accept=(ts,buy,sell)=>{
+    f.setTime(ts);const p=market(ts);
+    for(const product of Object.values(p.products))Object.assign(product.quick_status,{buyMovingWeek:buy,sellMovingWeek:sell});
+    c.accept(p);
+  };
+  accept(start,100000,100000);accept(start+20000,100004,100006);
+  let flow=c.state.items.TEST_0.flows[0];assert.deepEqual(flow.slice(7),[20,6,4]);
+  accept(start+40000,99999,100010);assert.deepEqual(flow.slice(7),[20,6,4]);
+  accept(start+60000,100002,100014);assert.deepEqual(flow.slice(7),[40,10,7]);
+  accept(start+260000,100100,100100);assert.deepEqual(flow.slice(7),[40,10,7]);
+  await c.save();const recovered=new MarketCollector(f.options);
+  f.setTime(start+280000);recovered.accept(market(f.now));
+  assert.deepEqual(recovered.state.items.TEST_0.flows[0].slice(7),[40,10,7]);
+});

@@ -8,11 +8,11 @@ to a prediction service.
 ## Components
 
 - `tools/bazaar-calc/engine.mjs`: bundled exports of the reviewed upstream shared
-  engine at `6dd0ae9565fd555dec9dbe5eca3a2f48ca3218cc`. Original notices and the
+  engine at `51268005376496bf993e0c1934b8a7e44656b0bc`. Original notices and the
   CC BY-NC-SA enchantment rule source accompany the bundle.
 - `history.json.gz`: derived statistics from the upstream offline contribution
-  builder, dated 2026-10-03 10:24:08.535 UTC. The build imported 114 polling hours
-  and summarized 412,618 episodes into 3,483 item-side summaries. Build time does
+  builder, refreshed in 1.3.40 to 2026-10-04 12:29:42.721 UTC. The build imported 125 polling hours
+  and summarized 182,730 episodes into 3,434 item-side summaries. Build time does
   not replace the recorded source time. Auction references are omitted.
 - `adapter.mjs`: constructs supported buy-order/sell-offer routes using upstream
   pricing, fill models, combining rules, warning flags and evaluation. It enforces
@@ -24,7 +24,9 @@ to a prediction service.
   timeouts, single-flight requests and failure backoff. It persists seven days of
   hourly prices and a rolling day of flow/competition, retaining the latest 128
   completed episodes per item side. Upstream TopTracker, bookFlow, summarizeTop,
-  competition and delists functions provide the observed fill inputs. Live history
+  competition and delists functions provide the observed fill inputs. As of 1.3.40,
+  counterTrades also records actual instant-trade deltas; flow uses these after
+  one observed hour, excluding weekly counter decreases and disconnected gaps. Live history
   replaces the bootstrap without re-dating it, and unobserved/stale products lose
   measurement inputs. Atomic minute checkpoints survive restarts; restarted order
   books do not manufacture continuity. `/health` reports freshness and failures.

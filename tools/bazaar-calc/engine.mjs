@@ -24,13 +24,23 @@ var BAZAAR = {
   dailyLimitDefault: 15e9,
   dailyLimitPerActionCap: 2147483647,
   dailyLimitResetUtcHour: 0,
-  // NPC shops (not the bazaar): most sell at most 640 of an item per player per day, reset 00:00 UTC
-  // (6,400 with Diaz's Shopping Spree perk). Source: hypixelskyblock.minecraft.wiki/w/Shops
-  npcDailyBuyLimit: 640
+  // NPC shops (not the bazaar): most sell at most 640 of an item per profile per day per merchant, reset 00:00 UTC;
+  // 6,400 while Diaz's "Shopping Spree" perk is active. Source: hypixelskyblock.minecraft.wiki/w/Shop (checked 2026-10-03)
+  npcDailyBuyLimit: 640,
+  npcDailyBuyLimitShoppingSpree: 6400,
+  // selling TO NPC shops pays no bazaar tax but earns at most 500,000,000 coins per profile per day (00:00 UTC), since
+  // 2025-10-15 (200M before). Source: hypixelskyblock.minecraft.wiki/w/Shop (checked 2026-10-03)
+  npcDailySellCoins: 5e8,
+  // Derpy's "QUAD TAXES!!!": "Pay 4x the normal amount of taxes!", bazaar tax included since 2024-07-02.
+  // Source: hypixelskyblock.minecraft.wiki/w/Derpy (checked 2026-10-03); Bazaar Utils applies the same x4.
+  quadTaxesMultiplier: 4
 };
-function taxRate(flipperLevel) {
+function taxRate(flipperLevel, quadTaxes = false) {
   const lvl = Math.max(0, Math.min(BAZAAR.maxFlipperLevel, Math.floor(flipperLevel)));
-  return BAZAAR.baseTax - lvl * BAZAAR.taxReductionPerFlipperLevel;
+  return (BAZAAR.baseTax - lvl * BAZAAR.taxReductionPerFlipperLevel) * (quadTaxes ? BAZAAR.quadTaxesMultiplier : 1);
+}
+function npcBuyLimit(shoppingSpree = false) {
+  return shoppingSpree ? BAZAAR.npcDailyBuyLimitShoppingSpree : BAZAAR.npcDailyBuyLimit;
 }
 function limitContribution(coins) {
   return Math.min(Math.max(0, coins), BAZAAR.dailyLimitPerActionCap);
@@ -4217,6 +4227,11 @@ var ACTIONS = {
     steps: ["click", "click"],
     menus: ["NPC shop menu", "click the item (one stack)"]
   },
+  npc_sell: {
+    label: "Sell one stack to an NPC shop",
+    steps: ["click", "click"],
+    menus: ["NPC shop menu", "click the stack in your inventory"]
+  },
   instant_sell: {
     label: "Instant sell",
     steps: ["command", "click", "click"],
@@ -4291,6 +4306,8 @@ var DEFAULT_PROFILE = {
   reputation: {},
   xpLevels: 0,
   coleMoltenForge: false,
+  quadTaxes: false,
+  npcShoppingSpree: false,
   ignoreRequirements: true
 };
 function isMet(r, p) {
@@ -4467,16 +4484,24 @@ function flagBookLadders(market) {
 // ../../tmp/bazaar-calc-review/packages/shared/dist/market/names.js
 var ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 function prettyName(id, name) {
-  if (name)
-    return name.replace(/%%\w+%%|§./g, "").trim();
+  if (name) {
+    const n = name.replace(/%%\w+%%|§./g, "").trim();
+    const bundle = /^ENCHANTED_BOOK_BUNDLE_(\w+)$/.exec(id);
+    if (bundle && n === "Enchanted Book Bundle") {
+      const r = enchantRules();
+      return `${n} (${r[`ENCHANTMENT_${bundle[1]}`]?.name ?? r[`ENCHANTMENT_ULTIMATE_${bundle[1]}`]?.name ?? titleCase(bundle[1])})`;
+    }
+    return n;
+  }
   const b = parseBookId(id);
   if (b) {
     const rule = enchantRules()[b.enchant];
     const base = rule?.name ?? b.enchant.replace(/^ENCHANTMENT_(ULTIMATE_)?/, "").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
     return `${base} ${ROMAN[b.level] ?? b.level}`;
   }
-  return id.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  return titleCase(id);
 }
+var titleCase = (s) => s.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
 // ../../tmp/bazaar-calc-review/packages/shared/dist/market/book.js
 var LEVEL = 8 + 8 + 4;
@@ -4504,6 +4529,7 @@ function assembleMarket(inp) {
       liveHours: s?.liveHours ?? 0,
       observedBuyFlowH: s?.observedBuyFlowH ?? null,
       observedSellFlowH: s?.observedSellFlowH ?? null,
+      flowBasis: s?.flowBasis ?? null,
       ref: s ? {
         askMed: s.askMed,
         bidMed: s.bidMed,
@@ -4517,7 +4543,8 @@ function assembleMarket(inp) {
         n7: s.n7 ?? 0,
         askVol24: s.askVol24 ?? null,
         bidVol24: s.bidVol24 ?? null,
-        delists: s.delists ?? null
+        delists: s.delists ?? null,
+        hourAgo: s.hourAgo ?? null
       } : null,
       topBid: r.bids,
       topAsk: r.asks,
@@ -4526,6 +4553,7 @@ function assembleMarket(inp) {
       ahLowestBin: a?.lowestBin ?? null,
       ahSales24h: a?.sales24h ?? 0,
       ahMedianSale24h: a?.medianSale24h ?? null,
+      npcSellPrice: inp.npcSell?.get(r.id) ?? null,
       flags: [],
       flagWhy: {}
     };
@@ -4682,7 +4710,12 @@ function at(c, qty) {
 // ../../tmp/bazaar-calc-review/packages/shared/dist/fill/toptrack.js
 var key = (p) => Math.round(p * 100);
 var better = (side, a, b) => side === "bid" ? a > b + 1e-9 : a < b - 1e-9;
-var amounts = (levels) => new Map(levels.map((l) => [key(l.price), l.amount]));
+var amountAt = (levels, k) => {
+  for (const l of levels)
+    if (key(l.price) === k)
+      return l.amount;
+  return 0;
+};
 var TopTracker = class {
   maxGapMs;
   open = /* @__PURE__ */ new Map();
@@ -4713,14 +4746,14 @@ var TopTracker = class {
       const before = side === "bid" ? prev.bids : prev.asks;
       const top = cur[0];
       if (st) {
-        const now = amounts(cur);
-        const removedHere = Math.max(0, (amounts(before).get(key(st.price)) ?? 0) - (now.get(key(st.price)) ?? 0));
+        const sk = key(st.price);
+        const removedHere = Math.max(0, amountAt(before, sk) - amountAt(cur, sk));
         let flow = removedHere;
         if (!top || better(side, st.price, top.price)) {
           flow = 0;
           for (const l of before)
             if (!top || !better(side, top.price, l.price))
-              flow += Math.max(0, l.amount - (now.get(key(l.price)) ?? 0));
+              flow += Math.max(0, l.amount - amountAt(cur, key(l.price)));
         }
         st.removed += removedHere;
         st.flow += flow;
@@ -4819,6 +4852,13 @@ function summarizeTop(eps, hours) {
   };
 }
 
+// ../../tmp/bazaar-calc-review/packages/shared/dist/fill/order-tracker.js
+var ORDER_LIFETIME_MS = 7 * 864e5;
+
+// ../../tmp/bazaar-calc-review/packages/shared/dist/fill/paper.js
+var PICK_EVERY = 5 * 6e4;
+var EXPIRE = 6 * 36e5;
+
 // ../../tmp/bazaar-calc-review/packages/shared/dist/calc/engine.js
 var DEFAULT_SETTINGS = {
   coins: 1e8,
@@ -4844,14 +4884,17 @@ var fmt = (v, d = 1) => {
 };
 function evaluate(route, s, p, capital = s.coins, limits) {
   const explain = [];
-  const tax = taxRate(s.bazaarFlipperLevel);
+  const tax = taxRate(s.bazaarFlipperLevel, p.quadTaxes);
   const costPerUnit = route.buys.reduce((a, b) => a + b.qty * b.price, 0);
   const profitPerUnit = route.sell.netPrice - costPerUnit;
   for (const b of route.buys)
     explain.push(`Per ${route.sell.name} sold: ${b.mode === "order" ? "buy order" : b.mode === "npc" ? `NPC shop (${b.source ?? "NPC"})` : "instant buy"} ${fmt(b.qty, 3)}x ${b.name} at ${fmt(b.price)} = ${fmt(b.qty * b.price)}`);
   for (const st of route.steps)
     explain.push(`${st.label}: ${fmt(st.opsPerUnit, 3)} operation(s) per unit`);
-  explain.push(`${route.sell.mode === "offer" ? "Sell offer" : route.sell.mode === "instant" ? "Instant sell" : "AH reference price"} ${route.sell.name} at ${fmt(route.sell.grossPrice)} - ${(tax * 100).toFixed(3)}% tax = ${fmt(route.sell.netPrice)}`);
+  if (route.sell.mode === "npc")
+    explain.push(`Sell ${route.sell.name} to an NPC shop at ${fmt(route.sell.grossPrice)} (no bazaar tax)`);
+  else
+    explain.push(`${route.sell.mode === "offer" ? "Sell offer" : route.sell.mode === "instant" ? "Instant sell" : "AH reference price"} ${route.sell.name} at ${fmt(route.sell.grossPrice)} - ${(tax * 100).toFixed(3)}% tax = ${fmt(route.sell.netPrice)}`);
   if (route.sell.currentPrice != null)
     explain.push(`Sale priced at the ${route.sell.priceBasis}: right now it is listed at ${fmt(route.sell.currentPrice)} (${((route.sell.currentPrice / route.sell.grossPrice - 1) * 100).toFixed(0)}% higher), which buyers are unlikely to pay by the time you sell`);
   explain.push(`Profit per unit = ${fmt(route.sell.netPrice)} - ${fmt(costPerUnit)} = ${fmt(profitPerUnit)}`);
@@ -4860,13 +4903,21 @@ function evaluate(route, s, p, capital = s.coins, limits) {
     caps.push({
       name: `${b.name} supply`,
       unitsH: b.flowH / b.qty,
-      why: b.mode === "order" ? `your buy orders fill ~${fmt(b.flowH)}/h (${b.share == null ? "competition unknown" : `on top ${(b.share * 100).toFixed(0)}%`})` : b.mode === "npc" ? `NPC shops sell at most ${BAZAAR.npcDailyBuyLimit}/day per item = ${fmt(b.flowH)}/h over your ${s.hoursPerDay} h` : `sellers list ~${fmt(b.flowH)}/h`
+      why: b.mode === "order" ? `your buy orders fill ~${fmt(b.flowH)}/h (${b.share == null ? "competition unknown" : `on top ${(b.share * 100).toFixed(0)}%`})` : b.mode === "npc" ? `NPC shops sell at most ${npcBuyLimit(p.npcShoppingSpree)}/day per item = ${fmt(b.flowH)}/h over your ${s.hoursPerDay} h` : `sellers list ~${fmt(b.flowH)}/h`
     });
   caps.push({
     name: `${route.sell.name} demand`,
     unitsH: route.sell.flowH,
     why: route.sell.mode === "offer" ? `your sell offers fill ~${fmt(route.sell.flowH)}/h (${route.sell.share == null ? "competition unknown" : `on top ${(route.sell.share * 100).toFixed(0)}%`})` : `buyers take ~${fmt(route.sell.flowH)}/h`
   });
+  if (route.sell.mode === "npc") {
+    const day = limits?.npcSellCoinsDay ?? BAZAAR.npcDailySellCoins;
+    caps.push({
+      name: "NPC sell cap",
+      unitsH: Math.max(0, day) / Math.max(1e-9, route.sell.grossPrice) / Math.max(0.1, s.hoursPerDay),
+      why: `NPC shops pay out at most ${fmt(BAZAAR.npcDailySellCoins / 1e6, 0)}M coins a day${day < BAZAAR.npcDailySellCoins ? ` (${fmt(Math.max(0, day) / 1e6, 0)}M left after your other NPC sales)` : ""}, spread over your ${s.hoursPerDay} h`
+    });
+  }
   const craftOps = route.steps.filter((x) => x.type === "craft").reduce((a, x) => a + x.opsPerUnit, 0);
   if (craftOps > 0)
     caps.push({ name: "your crafting speed", unitsH: s.craftsPerHourMax / craftOps, why: `${s.craftsPerHourMax} crafts/h max` });
@@ -4960,6 +5011,8 @@ function evaluate(route, s, p, capital = s.coins, limits) {
         clickS += U2 * b.qty / BAZAAR.maxInstantBuyUnits * actionSeconds("instant_buy", s);
       }
     }
+    if (route.sell.mode === "npc")
+      clickS += U2 / 64 * actionSeconds("npc_sell", s);
     if (route.sell.mode === "instant") {
       instantLimitH += U2 * route.sell.grossPrice;
       clickS += U2 / BAZAAR.maxInstantBuyUnits * actionSeconds("instant_sell", s);
@@ -5113,6 +5166,7 @@ function evaluate(route, s, p, capital = s.coins, limits) {
     activeSecondsH: use.clickS,
     orderPlan: use.legs,
     instantLimitCoinsH: use.instantLimitH,
+    npcSellCoinsH: route.sell.mode === "npc" ? unitsH * route.sell.grossPrice : 0,
     batch: chosen.B,
     batchOptions,
     unmet: unmet(reqs, p),
@@ -5159,7 +5213,7 @@ function buyLeg(ctx, m, qty, mode) {
   return { item: m.id, name: m.name, qty, mode, price: m.bid + 0.1, flowH: top.unitsH, share: top.onTop, undercutsH: m.undercutBuyH, fill, maxQty };
 }
 function sellLeg(ctx, m, mode) {
-  const tax = taxRate(ctx.settings.bazaarFlipperLevel);
+  const tax = taxRate(ctx.settings.bazaarFlipperLevel, ctx.profile.quadTaxes);
   if (mode === "instant") {
     const flow = buyFlowH(m), now2 = walkBook(m.topBid, instantBatch(ctx, 1, flow), m.bid), tb = typicalPrice(m, "bid");
     const gross2 = tb && TYPICAL_BAND * tb.price < now2 ? TYPICAL_BAND * tb.price : now2;
@@ -5230,21 +5284,29 @@ function degradedBazaar(d, prevCount) {
 }
 function bookFlow(prevBids, prevAsks, bids, asks) {
   const bestBid = bids[0]?.pricePerUnit ?? 0, bestAsk = asks[0]?.pricePerUnit ?? Infinity;
-  const nowBid = new Map(bids.map((o) => [Math.round(o.pricePerUnit * 100), o.amount]));
-  const nowAsk = new Map(asks.map((o) => [Math.round(o.pricePerUnit * 100), o.amount]));
+  const at2 = (side, cents) => {
+    for (const o of side)
+      if (Math.round(o.pricePerUnit * 100) === cents)
+        return o.amount;
+    return 0;
+  };
   let bidRemoved = 0, askRemoved = 0;
   for (const l of prevBids)
     if (l.price >= bestBid)
-      bidRemoved += Math.max(0, l.amount - (nowBid.get(Math.round(l.price * 100)) ?? 0));
+      bidRemoved += Math.max(0, l.amount - at2(bids, Math.round(l.price * 100)));
   for (const l of prevAsks)
     if (l.price <= bestAsk)
-      askRemoved += Math.max(0, l.amount - (nowAsk.get(Math.round(l.price * 100)) ?? 0));
+      askRemoved += Math.max(0, l.amount - at2(asks, Math.round(l.price * 100)));
   return {
     bidRemoved,
     askRemoved,
     outbid: prevBids[0] != null && bestBid > prevBids[0].price + 1e-9,
     undercut: prevAsks[0] != null && bestAsk < prevAsks[0].price - 1e-9
   };
+}
+function counterTrades(prev, now) {
+  const bid = now.sellWeek - prev.sellWeek, ask = now.buyWeek - prev.buyWeek;
+  return bid < 0 || ask < 0 ? null : { bid, ask };
 }
 var toLevels = (o) => o.map((x) => ({ price: Math.round(x.pricePerUnit * 100) / 100, amount: x.amount, orders: x.orders }));
 
@@ -9432,6 +9494,8 @@ var ProfileSchema = external_exports.object({
   slayers: external_exports.record(external_exports.string(), num(0, 10)),
   reputation: external_exports.record(external_exports.string(), num(0, 1e6)),
   coleMoltenForge: external_exports.coerce.boolean(),
+  quadTaxes: external_exports.coerce.boolean(),
+  npcShoppingSpree: external_exports.coerce.boolean(),
   ignoreRequirements: external_exports.coerce.boolean()
 }).partial().transform((v) => ({ ...DEFAULT_PROFILE, ...defined(v) }));
 var FilterSchema = external_exports.object({
@@ -9444,27 +9508,82 @@ var FilterSchema = external_exports.object({
   requirementsMet: external_exports.coerce.boolean().optional(),
   noFlags: external_exports.coerce.boolean().optional(),
   buyModes: external_exports.array(external_exports.enum(["instant", "order"])).optional(),
-  sellModes: external_exports.array(external_exports.enum(["instant", "offer", "ah_reference"])).optional(),
-  sort: external_exports.enum(["coinsH", "profitPerUnit", "marginPct", "unitsH", "capitalUsed"]).default("coinsH"),
+  sellModes: external_exports.array(external_exports.enum(["instant", "offer", "ah_reference", "npc"])).optional(),
+  sort: external_exports.enum(["coinsH", "scoreH", "profitPerUnit", "marginPct", "unitsH", "capitalUsed"]).default("coinsH"),
   limit: num(1, 500).default(100),
   offset: num(0, 1e6).default(0),
   includeAhForge: external_exports.coerce.boolean().optional(),
-  profitableOnly: external_exports.coerce.boolean().optional()
+  profitableOnly: external_exports.coerce.boolean().optional(),
+  /** only routes whose output is one of these items (your favourites) */
+  items: external_exports.array(external_exports.string().max(80)).max(500).optional()
 }).partial();
 var CalcBody = external_exports.object({ settings: SettingsSchema.optional(), profile: ProfileSchema.optional(), filters: FilterSchema.optional() });
-var PlanBody = CalcBody.extend({ options: external_exports.object({ kinds: external_exports.array(external_exports.enum(["bazaar", "craft", "book", "forge"])).optional(), requireMet: external_exports.boolean().optional(), maxPicks: external_exports.number().int().min(1).max(50).optional() }).optional() });
+var PlanBody = CalcBody.extend({ options: external_exports.object({ kinds: external_exports.array(external_exports.enum(["bazaar", "craft", "book", "forge", "npc"])).optional(), requireMet: external_exports.boolean().optional(), maxPicks: external_exports.number().int().min(1).max(50).optional() }).optional() });
+var AlertRulesSchema = external_exports.object({
+  minCoinsH: num(0, 1e12).optional(),
+  minMarginPct: num(0, 1e4).optional(),
+  kinds: external_exports.array(external_exports.enum(["bazaar", "craft", "book", "forge", "npc"])).optional(),
+  noWarnings: external_exports.coerce.boolean().optional(),
+  minConfidence: external_exports.enum(["low", "medium", "high"]).optional(),
+  /** only these items (favourites) */
+  items: external_exports.array(external_exports.string().max(80)).max(500).optional()
+});
+var AlertCheckBody = external_exports.object({ settings: external_exports.unknown().optional(), profile: external_exports.unknown().optional(), rules: external_exports.unknown().optional(), limit: num(1, 200) });
+var OrderSpec = external_exports.object({ id: external_exports.string().max(80).optional(), item: external_exports.string().min(1).max(80), side: external_exports.enum(["buy", "sell"]), price: external_exports.number().positive().max(1e10), amount: external_exports.number().int().min(1).max(71680) });
+var Tracked = OrderSpec.extend({
+  id: external_exports.string().max(80),
+  name: external_exports.string().max(200),
+  createdAt: external_exports.number(),
+  updatedAt: external_exports.number(),
+  ahead: external_exports.number(),
+  filled: external_exports.number(),
+  confirmed: external_exports.boolean(),
+  seen: external_exports.boolean(),
+  status: external_exports.enum(["top", "behind", "filled"]),
+  best: external_exports.number().nullable(),
+  level: external_exports.number(),
+  better: external_exports.number(),
+  buyWeek: external_exports.number().nullable().optional(),
+  sellWeek: external_exports.number().nullable().optional(),
+  decisionId: external_exports.string().max(80).optional(),
+  claimed: external_exports.number().min(0).optional(),
+  expired: external_exports.boolean().optional()
+});
+var OrdersCheckBody = external_exports.object({ orders: external_exports.array(external_exports.union([Tracked, OrderSpec])).min(1).max(50) });
 
 // <stdin>
 function competition(c) {
   const n = Number(c?.n ?? 0), secs = Number(c?.secs ?? 0);
   if (!c || n < 15 || secs <= 0)
-    return { undercutBuyH: null, undercutSellH: null, observedBuyFlowH: null, observedSellFlowH: null };
+    return { undercutBuyH: null, undercutSellH: null, observedBuyFlowH: null, observedSellFlowH: null, liveHours: 0, flowBasis: null };
   const per = secs / n, rate = (k) => k <= 0 ? 0 : -Math.log(1 - Math.min(0.99, k / n)) * (3600 / per);
-  return { undercutBuyH: rate(Number(c.ob)), undercutSellH: rate(Number(c.uc)), observedBuyFlowH: Number(c.br) / (secs / 3600), observedSellFlowH: Number(c.ar) / (secs / 3600) };
+  const tradeSecs = Number(c.tsecs ?? 0);
+  const trades = tradeSecs >= 3600;
+  const h = (trades ? tradeSecs : secs) / 3600;
+  return {
+    undercutBuyH: rate(Number(c.ob)),
+    undercutSellH: rate(Number(c.uc)),
+    observedBuyFlowH: Number(trades ? c.bt : c.br) / h,
+    observedSellFlowH: Number(trades ? c.at : c.ar) / h,
+    liveHours: h,
+    flowBasis: trades ? "trades" : "book"
+  };
 }
 function delists(c, k) {
-  const span = Number(k?.span ?? 0), watched = Number(c?.secs ?? 0) / 3600;
-  if (!c || !k || span < 3 || watched < 3)
+  const watched = Number(c?.secs ?? 0) / 3600, tradeH = Number(c?.tsecs ?? 0) / 3600;
+  if (!c || watched < 3)
+    return null;
+  if (tradeH >= 3)
+    return {
+      hours: watched,
+      exact: true,
+      bidRemoved: Number(c.br),
+      bidTrades: Number(c.bt) * (watched / tradeH),
+      askRemoved: Number(c.ar),
+      askTrades: Number(c.at) * (watched / tradeH)
+    };
+  const span = Number(k?.span ?? 0);
+  if (!k || span < 3)
     return null;
   const trades = (w1, w2) => Math.max((w2 - w1 + w1 / 168 * span) * (watched / span), Math.max(w1, w2) / 168 * watched);
   return {
@@ -9488,6 +9607,7 @@ export {
   buyLeg,
   combineXpCost,
   competition,
+  counterTrades,
   curve,
   degradedBazaar,
   delists,

@@ -203,7 +203,7 @@ suite excludes this optional check and has no Node dependency.
 
 ## Rebuild and provenance
 
-Engine pin: `6dd0ae9565fd555dec9dbe5eca3a2f48ca3218cc` from
+Engine pin: `51268005376496bf993e0c1934b8a7e44656b0bc` from
 https://github.com/Goofythesecond/bazaar-calc. The adapter uses upstream market,
 fill, pricing, timing, rule and evaluation functions; it does not substitute an
 independent Java price/volume heuristic for the calculator.
@@ -416,3 +416,26 @@ capital and the general per-item cap. Live trader confirmation checks still appl
 This removes double counting, without increasing configured spending limits.
 Inventory capacity still treats unknown products as potentially unstackable;
 large stacked orders require a separate verified stack-capacity implementation.
+
+## Upstream refresh (1.3.40)
+
+The bundled shared engine and public bootstrap history now use reviewed upstream
+commit `51268005376496bf993e0c1934b8a7e44656b0bc`. Bootstrap observations end at
+2026-10-04 12:29:42 UTC. The companion continues polling current Bazaar quotes every
+20 seconds and retains private market/gameplay history in the existing external
+data directory; replacing the companion does not reset it.
+
+The collector now records increases in Hypixel's weekly instant-trade counters.
+After at least one hour of valid consecutive observations, the upstream statistics
+use those trades instead of order-book removals for flow estimates. Removed orders
+can include cancellations. Counter decreases, gaps over 150 seconds and restart
+boundaries contribute no inferred trades. Older seven-field saved flow rows remain
+readable and use the existing book-based estimate until enough new trade evidence
+has accumulated. Exact same-window cancellation comparisons require three hours.
+
+Upstream also added confidence scores, paper/manual order tracking, notifications,
+NPC routes and mayor perks. This release updates the engine, history and scanner
+logic; it does not add those execution modes or change our dashboard's evidence
+labels into a confidence probability. Supported automatic routes remain ordinary
+buy-order/sell-offer flips and verified free book combines. The engine rebuild now
+regenerates the native book-route catalog from the same pinned combining rules.

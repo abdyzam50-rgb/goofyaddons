@@ -30,11 +30,14 @@ class CalculatorIntegrationTest {
             var report=MarketAnalysisProtocol.parse(response,packet,System.currentTimeMillis());
             assertEquals(1,report.rows().size());assertEquals("SYNTHETIC_ORDINARY",report.rows().getFirst().inputId());
             assertFalse(report.rows().getFirst().configured());assertTrue(report.rows().getFirst().coinsPerHour()>0);
-            assertEquals("6dd0ae9565fd555dec9dbe5eca3a2f48ca3218cc",report.upstreamCommit());
+            assertEquals("51268005376496bf993e0c1934b8a7e44656b0bc",report.upstreamCommit());
             c.marketAnalysis.automaticSelection=true;c.general.items=java.util.List.of();c.books=java.util.List.of();
-            // Synthetic prices intentionally have no relation to historical market prices.
-            c.marketAnalysis.maxHistoryAgeHours=1;
-            var automaticPacket=MarketAnalysisProtocol.request("integration-auto",MarketAnalysisProtocolTest.market(System.currentTimeMillis()),
+            // Use a catalog-known name absent from public history. Synthetic fixture quotes
+            // test automatic eligibility without depending on current real-market medians.
+            var automaticMarket=MarketAnalysisProtocolTest.market(System.currentTimeMillis());
+            var automaticProducts=new com.google.gson.JsonObject();
+            automaticProducts.add("AATROX_BATPHONE",product.deepCopy());automaticMarket.add("products",automaticProducts);
+            var automaticPacket=MarketAnalysisProtocol.request("integration-auto",automaticMarket,
                     c,TradingMode.BOTH,10000,32,2,3,Set.of());
             var automaticResponse=new MarketAnalysisClient().request("http://127.0.0.1:"+port+"/v1/recommendations",automaticPacket).get(10,TimeUnit.SECONDS);
             var automaticReport=MarketAnalysisProtocol.parse(automaticResponse,automaticPacket,System.currentTimeMillis());
