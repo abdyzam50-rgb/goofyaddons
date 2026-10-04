@@ -3,6 +3,7 @@ import { dataFile } from './data-paths.mjs';
 import { readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {validateDataset,COMMUNITY_PROTOCOL} from './community-protocol.mjs';
 const DAY=86400000;
 const validForecast=f=>f && Number.isFinite(f.cycleSeconds)&&f.cycleSeconds>0&&f.cycleSeconds<=30*86400
   &&[f.inputPerDay,f.outputPerDay].every(v=>Number.isFinite(v)&&v>0&&v<=1e15);
@@ -15,7 +16,7 @@ const weightedQuantile=(rows,key,q)=>{
 };
 export class ExecutionHistory {
   constructor({file=dataFile('execution-history.json'),now=Date.now}={}) {
-    this.file=file instanceof URL?fileURLToPath(file):file;this.now=now;this.rows=new Map();this.active=[];this.error=null;
+    this.file=file instanceof URL?fileURLToPath(file):file;this.now=now;this.rows=new Map();this.active=[];this.community=[];this.error=null;
     try { if(readFileSync(this.file).length>2*1024*1024)throw new Error('History too large');this.ingest(JSON.parse(readFileSync(this.file,'utf8')),false); }
     catch(e){if(e.code!=='ENOENT')this.error=`Execution history unreadable; preserved: ${e.message}`;}
   }
@@ -58,6 +59,12 @@ export class ExecutionHistory {
     if(new Set(active.map(s=>s.tradeId)).size!==active.length)throw new Error('Duplicate active execution');
     this.active=active; // Session-only lower bounds, never stored or counted as completed profit.
   }
+  setCommunity(samples) {
+    validateDataset({protocol:COMMUNITY_PROTOCOL,generatedAt:this.now(),samples},this.now());
+    this.community=samples.map(s=>({eventId:s.id,contributor:s.contributor,community:true,engine:s.engine,inputId:s.inputId,outputId:s.outputId,
+      inputUnits:s.inputUnits,batch:s.batch,completedAt:s.completedAt,observedMillis:s.observedMillis,forecast:s.forecast,
+      eligible:true,proceeds:1,profit:s.profitRatio??0,expectedProfit:s.profitRatio===null?null:1}));
+  }
   calibrate(row) {
     if(this.error)return;
     const matching=s=>s.engine===(row.kind==='BOOK'?'books':'general')&&s.inputId===row.inputId&&s.outputId===row.outputId
@@ -72,8 +79,8 @@ export class ExecutionHistory {
     // Transfer ratios, never raw durations, from the same engine and similar two-sided volumes.
     // Volume is expressed per output unit so 16-input book recipes can be compared fairly.
     const v=row.volumeEvidence,recipe=row.inputUnits/row.batch;
-    const peers=v&&v.inputEffectivePerDay>0&&v.outputEffectivePerDay>0?[...this.rows.values()].filter(s=>
-      s.engine===(row.kind==='BOOK'?'books':'general')&&!matching(s)&&s.eligible&&s.profit!=null&&s.proceeds!=null
+    const peers=v&&v.inputEffectivePerDay>0&&v.outputEffectivePerDay>0?[...this.rows.values(),...this.community].filter(s=>
+      s.engine===(row.kind==='BOOK'?'books':'general')&&(!matching(s)||s.community)&&s.eligible&&s.profit!=null&&s.proceeds!=null
       &&s.observedMillis>0&&s.observedMillis<=DAY&&s.completedAt>=this.now()-DAY&&validForecast(s.forecast)).map(s=>{
         const distance=Math.max(Math.abs(Math.log2((s.forecast.inputPerDay/(s.inputUnits/s.batch))/(v.inputEffectivePerDay/recipe))),
           Math.abs(Math.log2(s.forecast.outputPerDay/v.outputEffectivePerDay)));
@@ -82,10 +89,14 @@ export class ExecutionHistory {
       }).filter(s=>s.distance<=2):[];
     // Bound any one route's influence and require three independent completed trades.
     const families=new Map();for(const s of peers.sort((a,b)=>b.completedAt-a.completedAt)){
-      const key=`${s.inputId}:${s.outputId}:${s.inputUnits/s.batch}`,group=families.get(key)??[];
-      if(group.length<10)group.push(s);families.set(key,group);
+      const key=`${s.community?s.contributor:'personal'}:${s.inputId}:${s.outputId}:${s.inputUnits/s.batch}`,group=families.get(key)??[];
+      if(group.length<(s.community?3:10))group.push(s);families.set(key,group);
     }
-    const shared=[...families.values()].flat(),sharedWeight=shared.reduce((sum,s)=>sum+s.weight,0);
+    const contributorCounts=new Map();
+    const shared=[...families.values()].flat().filter(s=>{
+      if(!s.community)return true;const n=contributorCounts.get(s.contributor)??0;
+      if(n>=10)return false;contributorCounts.set(s.contributor,n+1);return true;
+    }).slice(0,2000),sharedWeight=shared.reduce((sum,s)=>sum+s.weight,0);
     const sharedRaw=shared.length>=3?weightedQuantile(shared,'ratio',0.25):1;
     const prior=1+(sharedRaw-1)*timingStrength(sharedRaw,sharedWeight);
     const sharedExpected=shared.filter(s=>s.expectedProfit>0);

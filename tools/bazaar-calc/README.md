@@ -625,3 +625,27 @@ These are captured only when exporting, so they do not enlarge routine heartbeat
 logs or change trading. Full-session totals remain available even after older
 events rotate out. Exported account/trade information stays in the local private
 bundle and is never part of packaged public market data.
+
+### Automatic community learning (companion 1.3.53)
+
+The companion downloads public gameplay corrections from the repository's
+`gameplay-data` branch every 15 minutes. Shared evidence supplies a bounded
+starting correction for same-engine routes with similar daily volumes; personal
+outcomes refine and eventually replace it. Imported data never changes your
+confirmed profit. Collector outages leave personal learning and trading running.
+
+Uploads require one-time opt-in enrollment. With an owner-provided collector URL
+and private contributor key, run `node community.mjs configure https://YOUR-COLLECTOR`
+with `GOOFY_CONTRIBUTOR_TOKEN` set, then restart the companion. Only complete,
+known-profit cycles with original forecasts are eligible. Public uploads contain
+product IDs, quantities, rounded timing, forecasts and normalized profit ratios;
+account names, balances, chat and raw receipts stay private. The dashboard shows
+sync status. `node community.mjs disable` disables uploads after restarting;
+`node server.mjs --no-community` disables both public downloads and uploads.
+Sharing settings and acknowledgements are stored outside the installation.
+
+Owner deployment, enrollment, tester commands, privacy and retention details:
+https://github.com/abdyzam50-rgb/goofyaddons/blob/master/tools/gameplay-collector/README.md
+This requires a deployed collector; installing the companion alone does not
+activate uploads or create the hosted service. Keep mod 1.3.52; this update
+changes the companion only.

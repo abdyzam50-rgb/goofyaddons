@@ -1,0 +1,9 @@
+{
+ "name":"goofy-gameplay-collector",
+ "main":"worker.mjs",
+ "compatibility_date":"2026-10-01",
+ "workers_dev":true,
+ "triggers":{"crons":["*/15 * * * *"]},
+ "vars":{"GITHUB_REPOSITORY":"abdyzam50-rgb/goofyaddons"},
+ "d1_databases":[{"binding":"DB","database_name":"goofy-gameplay","database_id":"REPLACE_WITH_CREATED_DATABASE_ID"}]
+}

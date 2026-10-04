@@ -8,6 +8,7 @@ import { DashboardForecast } from './dashboard-forecast.mjs';
 import { DashboardState } from './dashboard-state.mjs';
 import { MarketCollector } from './collector.mjs';
 import { ExecutionHistory } from './execution-history.mjs';
+import { CommunitySync } from './community.mjs';
 import { recommend, PROTOCOL } from './adapter.mjs';
 const history = JSON.parse(gunzipSync(readFileSync(new URL('./history.json.gz', import.meta.url))));
 const provenance = JSON.parse(readFileSync(new URL('./provenance.json', import.meta.url), 'utf8'));
@@ -18,7 +19,7 @@ const assets = new Map([
   ['/dashboard/upstream.css',['dashboard/upstream.css','text/css; charset=utf-8']],
   ['/dashboard/style.css',['dashboard/style.css','text/css; charset=utf-8']]
 ].map(([route,[file,type]])=>[route,{data:readFileSync(new URL(file,import.meta.url)),type}]));
-export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory() } = {}) {
+export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null } = {}) {
   const forecasts=new DashboardForecast({provenance});
   const server = createServer(async (req, res) => {
     const host = req.headers.host?.split(':')[0];
@@ -29,7 +30,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
     const send = (status, value) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
     if(req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) {send(403,{error:'Local origin required'});return;}
     if(req.method==='GET' && assets.has(req.url)) {const asset=assets.get(req.url);res.writeHead(200,{'Content-Type':asset.type,'Cache-Control':'no-store'});res.end(asset.data);return;}
-    if(req.method==='GET' && req.url==='/v1/dashboard') {const view=dashboard.view(collector);send(200,{...view,...forecasts.view(view,collector?.history()??history,executions),execution:executions.status()});return;}
+    if(req.method==='GET' && req.url==='/v1/dashboard') {const view=dashboard.view(collector);send(200,{...view,...forecasts.view(view,collector?.history()??history,executions),execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}});return;}
     if(req.method==='POST' && req.url==='/v1/account') {
       if(req.headers['x-goofy-dashboard']!=='local-v1' || req.headers['content-type']!=='application/json') {send(400,{error:'Invalid dashboard headers'});return;}
       try {
@@ -39,13 +40,14 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
         if(dashboard.accept(body)) {
           if(body.executions)executions.ingest(body.executions);
           executions.ingestActive(body.account.connected && body.status.state==='RUNNING' ? body.activeExecutions??[] : []);
+          community?.tick();
         }
         send(200,{ok:true,execution:executions.status()});
       } catch(error) {send(400,{error:error.message});}
       return;
     }
     if (req.method === 'GET' && req.url === '/health') {
-      send(200, { protocol: PROTOCOL, readOnly: true, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(), dataDirectory:dataDirectory() }); return;
+      send(200, { protocol: PROTOCOL, readOnly: true, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}, dataDirectory:dataDirectory() }); return;
     }
     if (req.method !== 'POST' || req.url !== '/v1/recommendations') { send(404, { error: 'Unknown endpoint' }); return; }
     if (req.headers['x-goofy-analysis'] !== 'shadow-v1' || req.headers['content-type'] !== 'application/json') { send(400, { error: 'Invalid request headers' }); return; }
@@ -65,16 +67,19 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
   return server;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const port = Number(process.argv[2] ?? 8789);
+  const port = Number(process.argv.slice(2).find(arg=>!arg.startsWith('--')) ?? 8789);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Port must be 1024–65535');
   const collector = process.argv.includes('--no-collect') ? null : new MarketCollector({ bootstrap: history });
-  const server = createCompanion({ collector });
+  const executions=new ExecutionHistory();let community=null;
+  if(!process.argv.includes('--no-community'))try{community=new CommunitySync({executions});}catch{console.error('Community settings unavailable; private collection and trading remain enabled.');}
+  const server = createCompanion({ collector,executions,community });
   server.listen(port, '127.0.0.1', () => {
     console.log(`Read-only Bazaar Calc companion: http://127.0.0.1:${port}; continuous collection ${collector ? 'enabled (20s)' : 'disabled'}`);
     console.log(`Persistent data: ${dataDirectory()}`);
     collector?.start();
+    community?.start();
   });
   for (const signal of ['SIGINT','SIGTERM']) process.once(signal, async () => {
-    server.close(); await collector?.stop();
+    server.close(); await collector?.stop();await community?.stop();
   });
 }

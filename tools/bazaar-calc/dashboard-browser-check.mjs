@@ -24,7 +24,8 @@ account.analysis.pipeline={status:'READY',executionAuthority:false,expiresAt:clo
   next:[{priority:1,route:{kind:'GENERAL',inputId:'ENCHANTED_QUARTZ',outputId:'ENCHANTED_QUARTZ',inputUnits:16,capitalUsed:400000,profitPerBatch:7500,cycleSeconds:900,confidence:'ESTIMATED'}}],
   deferred:[{routeKey:'EXPENSIVE',reason:'Insufficient spendable capital'}]};
 dashboard.accept(account);
-const server=createCompanion({dashboard,collector:{status:()=>({enabled:true,fresh:true,intervalSeconds:20}),history:()=>({asOf:clock}),quote:()=>({ask:20000,sourceAt:clock})}});
+const community={status:()=>({sharingEnabled:true,downloadsEnabled:true,imported:12,pending:2,lastUpload:clock,error:null})};
+const server=createCompanion({dashboard,community,collector:{status:()=>({enabled:true,fresh:true,intervalSeconds:20}),history:()=>({asOf:clock}),quote:()=>({ask:20000,sourceAt:clock})}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
 const product=(bid,ask)=>({sell_summary:[{pricePerUnit:bid,amount:1000,orders:10}],buy_summary:[{pricePerUnit:ask,amount:1000,orders:10}],
  quick_status:{buyMovingWeek:100000,sellMovingWeek:100000,buyVolume:1000,sellVolume:1000,buyOrders:10,sellOrders:10}});
@@ -56,6 +57,7 @@ try {
     await send('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:width<600});
     await send('Page.navigate',{url:base});await new Promise(r=>setTimeout(r,700));
     const result=await evaluate(`({overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,slots:document.querySelectorAll('#inventory-grid .inventory-slot').length,images:document.querySelectorAll('img').length,name:document.getElementById('account-name').textContent,rows:document.getElementById('prediction-rows').children.length,profit:document.getElementById('confirmed').textContent})`);
+    assert.match(await evaluate(`document.getElementById('community-note').textContent`),/12 imported outcomes.*uploads enabled.*2 pending/);
     assert.equal(result.overflow,0);assert.equal(result.slots,36);assert.equal(result.images,0);assert.equal(result.name,'Local preview');assert.equal(result.rows,2);assert.match(result.profit,/83/);assert.match(await evaluate(`document.getElementById('pipeline-rows').textContent`),/ENCHANTED_QUARTZ/);assert.match(await evaluate(`document.getElementById('pipeline-deferred').textContent`),/Insufficient spendable capital/);assert.notEqual(await evaluate(`document.getElementById('position-profit').textContent`),'—');assert.match(await evaluate(`document.getElementById('position-profit-note').textContent`),/2 priced/);
     await evaluate(`document.getElementById('storage-view').value='previous';document.getElementById('storage-view').dispatchEvent(new Event('input'));`);
     assert.match(await evaluate(`document.getElementById('storage').textContent`),/Previous book/);
