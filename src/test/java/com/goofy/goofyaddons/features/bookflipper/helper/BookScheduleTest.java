@@ -218,4 +218,14 @@ class BookScheduleTest {
         task.resetReprices();
         assertEquals(0, task.reprices(), "progress clears the budget");
     }
+    @Test void insufficientCashDefersABuyButAllowsSettlementAndLaterRetry() {
+        var capital=new com.goofy.goofyaddons.features.CapitalManager();capital.configure(1e13,0);
+        capital.restore("books",WISE.id(),640_120.8,false);
+        Task buy=task(WISE,Task.BookState.SELECTED),sale=task(JERRY,Task.BookState.REPLACE_SELL);
+        java.util.function.Predicate<Task> poor=t->capital.refusal(t.getBook().id(),640_120.8,560_105.7,211_046)==null;
+        assertNull(BookSchedule.next(List.of(buy),true,false,poor));
+        assertSame(sale,BookSchedule.next(List.of(buy,sale),true,false,poor));
+        assertSame(buy,BookSchedule.next(List.of(buy),true,false,
+                t->capital.refusal(t.getBook().id(),640_120.8,560_105.7,711_046)==null));
+    }
 }

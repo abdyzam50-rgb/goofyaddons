@@ -41,17 +41,22 @@ public class CapitalManager {
      * is ambiguous unless the losing arm says so itself.
      */
     public String refusal(String product, double cost, double purse) {
+        return refusal(product, cost, cost, purse);
+    }
+
+    /** Commitment includes owned inputs; only the next purchase needs liquid coins. */
+    public String refusal(String product, double cost, double purchaseCost, double purse) {
         // The scoreboard reports an unreadable purse as -1, which is finite but not a balance.
         if (!Double.isFinite(purse) || purse < 0) return "purse-unreadable";
         if (purse < reserve) return "purse-below-reserve";
-        if (!Double.isFinite(cost) || cost <= 0) return "cost-unreadable";
+        if (!Double.isFinite(cost) || cost <= 0 || !Double.isFinite(purchaseCost) || purchaseCost <= 0 || purchaseCost > cost) return "cost-unreadable";
         double committed = committed();
         Allocation own = allocations.get(product);
         if (own != null) committed -= own.cost();
         double pending = pending();
         if (own != null) pending -= own.pending();
         if (cost > limit - committed) return "capital-limit-reached";
-        if (cost > purse - reserve - pending) return "purse-minus-pending-too-low";
+        if (purchaseCost > purse - reserve - pending) return "purse-minus-pending-too-low";
         return null;
     }
     public int positionCount() { return allocations.size(); }
@@ -89,12 +94,14 @@ public class CapitalManager {
     }
 
     public boolean resize(String owner, String product, double cost, double purse) {
+        return resize(owner, product, cost, cost, purse);
+    }
+
+    public boolean resize(String owner, String product, double cost, double purchaseCost, double purse) {
         Allocation old = allocations.get(product);
-        if (old == null || !old.owner.equals(owner) || !Double.isFinite(cost) || cost <= 0) return false;
-        allocations.remove(product);
-        boolean fits = cost <= available(purse);
-        allocations.put(product, fits ? new Allocation(owner, cost, cost) : old);
-        return fits;
+        if (old == null || !old.owner.equals(owner) || refusal(product, cost, purchaseCost, purse) != null) return false;
+        allocations.put(product, new Allocation(owner, cost, purchaseCost));
+        return true;
     }
 
     public void purchased(String owner, String product) {

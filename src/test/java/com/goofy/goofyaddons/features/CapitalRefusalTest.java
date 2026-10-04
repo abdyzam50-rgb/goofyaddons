@@ -73,4 +73,32 @@ class CapitalRefusalTest {
         assertFalse(c.resize("books", "A", 70_000_000, 90_000_000));
         assertEquals(20_000_000, c.cost("books", "A"));
     }
+    @Test void partialBookCommitmentRequiresCashOnlyForTheRemainingInputs() {
+        CapitalManager c=ledger(2_000_000,0);
+        c.restore("books","LAST_STAND",640_120.8,false);
+        assertNull(c.refusal("LAST_STAND",640_120.8,560_105.7,600_000));
+        assertTrue(c.resize("books","LAST_STAND",640_120.8,560_105.7,600_000));
+        assertEquals(640_120.8,c.committed());assertEquals(560_105.7,c.pending());
+        assertEquals(39_894.3,c.available(600_000),0.000001);
+        assertFalse(c.reserve("general","OTHER",50_000,600_000));
+        c.purchased("books","LAST_STAND");assertEquals(0,c.pending());
+    }
+    @Test void exhaustedPurseLeavesHoldingsIntactAndCanResumeAfterProceedsArrive() {
+        CapitalManager c=ledger(10_000_000_000_000.0,0);
+        c.restore("books","LAST_STAND",640_120.8,false);
+        assertEquals("purse-minus-pending-too-low",c.refusal("LAST_STAND",640_120.8,560_105.7,211_046));
+        assertFalse(c.resize("books","LAST_STAND",640_120.8,560_105.7,211_046));
+        assertEquals(640_120.8,c.committed());assertEquals(0,c.pending());
+        assertTrue(c.resize("books","LAST_STAND",640_120.8,560_105.7,711_046));
+    }
+    @Test void partialPurchaseStillRespectsTotalCapitalAndOtherPendingSpending() {
+        CapitalManager c=ledger(700_000,50_000);
+        c.restore("books","A",600_000,false);c.restore("general","B",100_000,true);
+        assertEquals("capital-limit-reached",c.refusal("A",650_000,20_000,1_000_000));
+        assertEquals("purse-minus-pending-too-low",c.refusal("A",600_000,20_000,169_999));
+        assertNull(c.refusal("A",600_000,20_000,170_000));
+        assertTrue(c.resize("books","A",600_000,20_000,170_000));
+        assertEquals(120_000,c.pending());
+        assertFalse(c.resize("books","A",600_000,Double.NaN,170_000));
+    }
 }

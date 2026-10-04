@@ -122,3 +122,21 @@ and timeout checks. Changing trades resets cancellation and navigation state;
 reselecting the same trade retains once-only clicks and the verification deadline.
 The regression tests cover both the task switch and a still-pending cancellation.
 Existing order journals and config do not need clearing or migration.
+
+
+## Exhausted-purse book purchases (1.3.42)
+
+The full-purse diagnostic run committed about 114M across twelve positions, then
+attempted a seven-book Last Stand replenishment costing about 560K with only 211K
+liquid. This was ordinary cash exhaustion, but the purchase path paused both
+engines and prevented pending claims/sales from freeing cash. Unaffordable book
+buys now remain SELECTED, close the unsubmitted GUI, and yield to other work; live
+cash gates task selection, and a refusal at price selection/confirmation imposes
+a twenty-second retry delay. No submitted position or journal is discarded.
+
+CapitalManager now accepts separate total commitment and pending purchase values
+for partial book replenishment. Held inputs continue to count against the shared
+capital limit, while only remaining inputs count against liquid purse/pending
+spending. Existing four-argument resize calls retain their original semantics.
+Tests cover exhausted cash, proceeds arriving, partial-input cash accounting,
+other pending spending, reserve/total limits and completion while buys wait.

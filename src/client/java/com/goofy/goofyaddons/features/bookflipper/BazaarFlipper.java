@@ -257,6 +257,7 @@ public class BazaarFlipper implements Feature {
         inventoryIsFull = false;
         overFlowProt = false;
         usingSecondPage = false;
+        bookBuyRetryAt.clear();
         nextFetchMs = 0;recoveryAwaitQuotes=false;recoveryQuoteRetryAt=0;
         yieldAfterMs = 0;
         clock.stop();
@@ -365,7 +366,8 @@ public class BazaarFlipper implements Feature {
                 ? !automaticFlips().isEmpty() : !flipCalculator.isRunning() && !flipCalculator.getFlipItemsList().isEmpty();
         if (state == State.IDLE) return needToStoreExcessBook || System.currentTimeMillis() >= nextFetchMs
                 || taskList.stream().anyMatch(task -> com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule
-                        .actionable(task.getBookState()));
+                        .actionable(task.getBookState())
+                        && (task.getBookState()!=Task.BookState.SELECTED || mayOpenBookOrder(task)));
         return true;
     }
 
@@ -732,13 +734,13 @@ public class BazaarFlipper implements Feature {
                     if (!bookPriceAllowed(activeTask, unitPrice, false)) {
                         safetyHalt("Book buy price no longer meets the minimum net profit."); return;
                     }
-                    if (!Double.isFinite(requiredCoins) || unitPrice <= 0
-                            || requiredCoins > purse
-                            || !CapitalManager.INSTANCE.resize("books", activeTask.getBook().id(),
-                                    Math.max(fullCost, CapitalManager.INSTANCE.cost("books", activeTask.getBook().id())),
-                                    purse)) {
-                        safetyHalt("Book purchase exceeds the available capital/purse.");
-                        return;
+                    if (!Double.isFinite(requiredCoins) || requiredCoins <= 0 || unitPrice <= 0) {
+                        safetyHalt("Book purchase cost could not be verified.");return;
+                    }
+                    if (!CapitalManager.INSTANCE.resize("books", activeTask.getBook().id(),
+                            Math.max(fullCost, CapitalManager.INSTANCE.cost("books", activeTask.getBook().id())),
+                            requiredCoins, purse)) {
+                        deferBookPurchase(activeTask,"insufficient-spendable-capital");return;
                     }
                     activeTask.setReservedUnitCost(Math.max(unitPrice, activeTask.getReservedUnitCost()));
                     if (!checkpoint()) return;
@@ -2134,6 +2136,12 @@ public class BazaarFlipper implements Feature {
      */
     private boolean mayOpenBookOrder(Task task) {
         long now=System.currentTimeMillis();
+        if(now<bookBuyRetryAt.getOrDefault(task.getProfitTradeId(),0L)) return false;
+        double cost=task.getReservedUnitCost()*task.getAmountToOrder();
+        double hold=Math.max(CapitalManager.INSTANCE.cost("books",task.getBook().id()),
+                task.getReservedUnitCost()*task.getBook().getQtyAmount(task.getBook().level()));
+        if(cost>0 && CapitalManager.INSTANCE.refusal(task.getBook().id(),hold,cost,scoreboardUtils.getPurse())!=null)
+            return parkBook(task,"insufficient-spendable-capital",now);
         if(task.lastPlacedAt()>0) {
             if(task.reprices()>=GoofyConfig.INSTANCE.maxBookReprices) return parkBook(task,"reprice-budget-spent",now);
             if(now-task.lastPlacedAt()<GoofyConfig.INSTANCE.bookRepriceCooldownSeconds*1000L)
@@ -2144,6 +2152,20 @@ public class BazaarFlipper implements Feature {
         if(active>=GoofyConfig.INSTANCE.maxActiveBooks && !CapitalManager.INSTANCE.occupied(task.getBook().id()))
             return parkBook(task,"max-active-books",now);
         return true;
+    }
+
+    private final java.util.Map<String,Long> bookBuyRetryAt=new java.util.HashMap<>();
+
+    private void deferBookPurchase(Task task,String reason) {
+        long now=System.currentTimeMillis();
+        bookBuyRetryAt.put(task.getProfitTradeId(),now+20_000);
+        parkBook(task,reason,now);
+        confirmationTask=null;confirmationStability.reset();
+        if(minecraft.screen!=null)minecraft.player.closeContainer();
+        activeTask=null;state=State.IDLE;clock.stop();
+        // Keep ownership and journal; release the menu so claims/sales in either engine can run.
+        yieldAfterMs=now+1000;
+        checkpoint();
     }
 
     /** Reports a held-back route once per minute rather than on every tick. */
@@ -2265,8 +2287,8 @@ public class BazaarFlipper implements Feature {
             // message, so a field report could not say which of them fired. Each arm now
             // names itself, and the ledger numbers go into the event either way.
             String cause=quantity>empty?"inventory-capacity":cost>purse?"cost-exceeds-purse"
-                    :CapitalManager.INSTANCE.refusal(product,hold,purse);
-            if(cause==null && !CapitalManager.INSTANCE.resize("books",product,hold,purse)) cause="ledger-resize-refused";
+                    :CapitalManager.INSTANCE.refusal(product,hold,cost,purse);
+            if(cause==null && !CapitalManager.INSTANCE.resize("books",product,hold,cost,purse)) cause="ledger-resize-refused";
             if(cause!=null) {
                 java.util.Map<String,Object> detail=new java.util.LinkedHashMap<>();
                 detail.put("trade",task.getProfitTradeId());detail.put("cause",cause);
@@ -2277,7 +2299,10 @@ public class BazaarFlipper implements Feature {
                 detail.put("capitalLimit",CapitalManager.INSTANCE.limit());
                 detail.put("reserve",CapitalManager.INSTANCE.reserve());
                 Diagnostics.event("ERROR","books.capital_check_failed",detail);
-                safetyHalt("Book buy blocked before confirmation ("+cause+"); position retained.");return false;
+                if(java.util.Set.of("cost-exceeds-purse","purse-below-reserve","purse-minus-pending-too-low","capital-limit-reached").contains(cause))
+                    deferBookPurchase(task,cause);
+                else safetyHalt("Book buy blocked before confirmation ("+cause+"); position retained.");
+                return false;
             }
         }
         return true;
