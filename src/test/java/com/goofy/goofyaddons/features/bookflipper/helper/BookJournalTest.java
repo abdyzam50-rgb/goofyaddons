@@ -114,4 +114,18 @@ class BookJournalTest {
         var path=dir.resolve("books.json");Files.writeString(path,"[{\"book\":{\"id\":\"ENCHANTMENT_ULTIMATE_WISDOM\",\"level\":1,\"sellLevel\":5,\"name\":\"Wisdom\"},\"cost\":1600}]");
         assertNull(new BookJournal(path).read().getFirst().tradeId());
     }
+    @Test void retirementIntentAndProgressSurviveRestartWithLegacyDefaults() throws Exception {
+        var path=dir.resolve("retirement.json");var journal=new BookJournal(path);
+        var p=new BookJournal.Position(book,1000000,"old-trade",true,1000,true);
+        journal.write(List.of(p));assertEquals(List.of(p),new BookJournal(path).read());
+        Files.writeString(path,"[{\"book\":{\"id\":\"ENCHANTMENT_ULTIMATE_WISDOM\",\"level\":1,\"sellLevel\":5,\"name\":\"Wisdom\"},\"cost\":1000000,\"tradeId\":\"old-trade\"}]");
+        var old=new BookJournal(path).read().getFirst();assertFalse(old.retiring());assertFalse(old.orphanCleanup());assertEquals(0,old.progressAt());
+    }
+    @Test void repriceAndQuoteRefreshDoNotCountAsBookProgress() {
+        Task task=new Task(book,false,false);task.progress(1000);
+        task.recordPlacement(2000);task.recordPlacement(3000);task.markOrderObserved(4000);
+        assertFalse(task.stale(900999,900000));assertTrue(task.stale(901000,900000));
+        task.progress(901000);assertFalse(task.stale(901001,900000));
+        task.retire();assertTrue(task.retiring());
+    }
 }

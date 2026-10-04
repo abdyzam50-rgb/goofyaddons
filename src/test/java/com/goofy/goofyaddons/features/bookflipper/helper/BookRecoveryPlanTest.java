@@ -103,4 +103,12 @@ class BookRecoveryPlanTest {
         var pages=pages();pages.put(2,menu(1,physical(10,false,4)));
         assertThrows(IllegalStateException.class,()->plan(pages));
     }
+    @Test void restartingARetiringPositionPreservesItsExitIntentAndStaleClock() {
+        var position=new BookJournal.Position(book,1600,"saved-trade",true,1000,false);
+        var plan=BookRecoveryPlan.build(List.of(position),pages(physical(54,true,1)),"Tester");
+        var task=plan.routes().getFirst().task();assertTrue(task.retiring());assertEquals(1000,task.progressAt());
+        assertEquals("saved-trade",task.getProfitTradeId());assertEquals(1,task.bookList.size());
+        var orphan=new BookJournal.Position(book,1600,"saved-trade",true,1000,true);
+        assertTrue(BookRecoveryPlan.build(List.of(orphan),pages(physical(54,true,1)),"Tester").routes().getFirst().task().orphanCleanup());
+    }
 }

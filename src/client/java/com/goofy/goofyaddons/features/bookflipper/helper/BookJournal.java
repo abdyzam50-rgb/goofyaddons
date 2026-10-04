@@ -8,8 +8,10 @@ import java.util.List;
 
 /** Saved ownership and trade identity; live verification reconstructs supported cycles before resumption. */
 public final class BookJournal {
-    public record Position(Book book, double cost, String tradeId) {
-        public Position(Book book, double cost) {this(book,cost,null);}
+    public record Position(Book book, double cost, String tradeId, boolean retiring, long progressAt, boolean orphanCleanup) {
+        public Position(Book book,double cost,String tradeId,boolean retiring,long progressAt){this(book,cost,tradeId,retiring,progressAt,false);}
+        public Position(Book book,double cost,String tradeId){this(book,cost,tradeId,false,0,false);}
+        public Position(Book book, double cost) {this(book,cost,null,false,0,false);}
     }
     private static final Gson GSON = new Gson();
     private final Path path;
@@ -28,6 +30,7 @@ public final class BookJournal {
                     || position.book().sellLevel() > 10 || position.book().name() == null
                     || position.book().name().isBlank() || !Double.isFinite(position.cost()) || position.cost() <= 0
                     || position.tradeId()!=null && !position.tradeId().matches("[A-Za-z0-9_-]{1,100}")
+                    || position.progressAt()<0 || position.progressAt()>System.currentTimeMillis()+5000
                     || !ids.add(position.book().id())) throw new IllegalStateException("Invalid book journal");
         }
         return List.of(positions);

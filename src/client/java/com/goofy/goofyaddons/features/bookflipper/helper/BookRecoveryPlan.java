@@ -57,6 +57,9 @@ public record BookRecoveryPlan(List<Recovered> routes, List<BookList> extras) {
             if(holdings.isEmpty() && orders.isEmpty())continue;
             Task task=new Task(book,false,false,position.tradeId()==null?UUID.randomUUID().toString():position.tradeId());
             task.markRecovered();
+            if(position.retiring())task.retire();
+            if(position.orphanCleanup())task.markOrphanCleanup();
+
             task.setReservedUnitCost(position.cost()/book.getQtyAmount(book.level()));
             Order order=orders.isEmpty()?null:orders.getFirst();int acquired=0;
             if(order!=null && order.selling()) {
@@ -82,6 +85,7 @@ public record BookRecoveryPlan(List<Recovered> routes, List<BookList> extras) {
                     task.actionSchedule=task.isCombinable()?Task.ActionSchedule.SELECTED_COMBINE_STORE_BUYORDER:Task.ActionSchedule.SELECTED_STORE_BUYORDER;
                 }
             }
+            task.restoreProgress(position.progressAt());
             routes.add(new Recovered(task,acquired,order==null?null:order.price(),order!=null && order.selling()));
         }
         return new BookRecoveryPlan(List.copyOf(routes),List.copyOf(extras));

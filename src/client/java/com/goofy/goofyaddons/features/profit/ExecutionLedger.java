@@ -15,6 +15,7 @@ public final class ExecutionLedger {
         if(trade==null || !(engine.equals("books")||engine.equals("general")) || !input.matches("[A-Z0-9_]+") || !output.matches("[A-Z0-9_]+") || units<1 || batch<1 || startedAt<=0)return;
         open.putIfAbsent(trade,new Open(engine,input,output,units,batch,startedAt,false));
     }
+    public void interrupt(String id) {open.computeIfPresent(id,(key,o)->new Open(o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,o.startedAt,true));}
     public void interrupt() { open.replaceAll((id,o)->new Open(o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,o.startedAt,true)); }
     public void complete(String trade,String event,int baseUnits,Double proceeds,Double profit,long now,boolean lost) {
         if(samples.stream().anyMatch(s->s.eventId.equals(event)))return;

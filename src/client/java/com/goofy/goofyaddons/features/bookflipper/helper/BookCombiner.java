@@ -80,6 +80,7 @@ public final class BookCombiner {
                 return block("Book model changed during combination; ownership retained.");
             task.bookList.removeAll(List.of(first,second));
             task.bookList.add(new BookList(book,level+1,0));
+            task.progress(now);
             task.bookList.sort(Comparator.comparingInt(b->b.level));
             reset();
             return Result.MERGED;

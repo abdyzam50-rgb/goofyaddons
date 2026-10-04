@@ -46,6 +46,7 @@ public final class ProfitTracker {
         try {if(ledger.recoverHoldings(id,engine,item,observedUnits))save();}
         catch(RuntimeException bad){reportError(bad);}
     }
+    public void retire(String id){load();execution.interrupt(id);}
     public void sell(String id,String engine,String item,String event,int units,Double proceeds) {
         load(); if (error!=null) return;
         Double cost=ledger.knownCost(id,units);

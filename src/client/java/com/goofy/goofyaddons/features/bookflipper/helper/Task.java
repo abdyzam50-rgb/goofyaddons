@@ -37,6 +37,19 @@ public class Task {
     private int amountToOrder;
     private double reservedUnitCost;
     private final String profitTradeId;
+    private boolean retiring;
+    private boolean orphanCleanup;
+    public boolean orphanCleanup(){return orphanCleanup;}
+    public void markOrphanCleanup(){orphanCleanup=true;retiring=true;}
+    private long progressAt=System.currentTimeMillis();
+    public boolean retiring(){return retiring;}
+    public void retire(){retiring=true;}
+    public void cancelRetirement(){retiring=false;}
+    public long progressAt(){return progressAt;}
+    public void progress(long now){progressAt=now;}
+    public void restoreProgress(long now){if(now>0)progressAt=now;}
+    public boolean stale(long now,long age){return now-progressAt>=age;}
+
     private BookState bookState;
     private long orderWaitSince;
     private boolean awaitingSale;
@@ -126,6 +139,7 @@ public class Task {
         if (totalAmount > amountToOrder) return -1;
 
         amountToOrder -= totalAmount;
+        progress(System.currentTimeMillis());
 
         for (int i = 0; i < amountOfBook; i++) {
             bookList.add(new BookList(book, level, location));

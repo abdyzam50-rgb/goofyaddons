@@ -140,3 +140,27 @@ capital limit, while only remaining inputs count against liquid purse/pending
 spending. Existing four-argument resize calls retain their original semantics.
 Tests cover exhausted cash, proceeds arriving, partial-input cash accounting,
 other pending spending, reserve/total limits and completion while buys wait.
+
+
+## Verified book retirement (1.3.43)
+
+BookRetirement uses the MenuSnapshot/GameActions seam to cancel one owned order,
+collect filled inputs, retrieve held books and instant-sell each held level.
+Control slot 11 (Sell Instantly), product slot 13 and the Sold receipt format
+were checked against SkyHanni BazaarApi.kt at
+`0913ae5c96fc52d03aa41ad1a8369c8643e6dc63`; no implementation code was copied.
+The click needs an exact level/product and an inventory quantity matching all
+tracked holdings at that level. It is submitted once, behind a journal checkpoint.
+A matching receipt plus disappearance settles the sale; otherwise the flow
+retains ownership and has a bounded timeout. The existing BookTransfer verifies
+withdrawals. Complete sell offers are handed back to normal settlement.
+
+BookJournal.Position persists retirement/orphan intent and last-progress time;
+legacy records default to normal recovery. Orphans never authorize canceling
+an unrelated live order. Partial retired sales consume base-unit cost through
+ProfitTracker and invalidate only that route's throughput sample. Task progress
+changes after acquired inputs or a verified combination; market polls, order
+observations and reprices do not extend its stale clock. Tests exercise receipts,
+wrong products/counts, co-op ownership, no replay, partial claims, cancel
+acknowledgment, storage lag, persisted intent and calibration exclusion.
+No live Minecraft session was available for verification in this environment.

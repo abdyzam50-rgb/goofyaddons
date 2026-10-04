@@ -21,4 +21,11 @@ class ExecutionLedgerTest {
   }
   var l=new ExecutionLedger();l.complete("recovered","e",16,100.0,10.0,10000,false);assertTrue(l.samples().isEmpty());
  }
+ @Test void retirementExcludesOnlyItsOwnTimingEvidence() {
+  var l=new ExecutionLedger();l.begin("retired","books","A_1","A_2",2,1,1000);l.begin("normal","general","COAL","COAL",2,2,1000);
+  l.interrupt("retired");l.complete("retired","sale1",2,50.0,-20.0,61000,false);
+  l.complete("normal","sale2",2,100.0,10.0,61000,false);
+  assertFalse(l.samples().stream().filter(s->s.eventId().equals("sale1")).findFirst().orElseThrow().eligible());
+  assertTrue(l.samples().stream().filter(s->s.eventId().equals("sale2")).findFirst().orElseThrow().eligible());
+ }
 }

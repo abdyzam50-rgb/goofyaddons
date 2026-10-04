@@ -439,3 +439,34 @@ logic; it does not add those execution modes or change our dashboard's evidence
 labels into a confidence probability. Supported automatic routes remain ordinary
 buy-order/sell-offer flips and verified free book combines. The engine rebuild now
 regenerates the native book-route catalog from the same pinned combining rules.
+
+
+## Stalled-book cleanup (mod 1.3.43+)
+
+`liquidateStaleBooks` defaults to true and `bookStaleSeconds` defaults to 900. A
+tracked book flip retires after fifteen minutes without acquiring or combining
+books, or when its existing holding-age/drawdown limit is reached. Repricing and
+quote refreshes do not reset this clock; changing market rank alone does not
+retire a progressing flip. A cleaned-up product is excluded from new orders for
+thirty minutes in the current client session, so the planner considers other
+routes instead of immediately reopening the same stalled flip. Set `liquidateStaleBooks` to false to disable new
+automatic retirement and keep the previous hold-limit behavior.
+
+Unassigned, observed leftovers are queued immediately. The cleanup first reads a
+settled, complete order list, claims any filled inputs, cancels an unfilled order
+and verifies that it disappears. Filled sell offers return to normal proceeds
+collection. Books in the configured Ender Chest pages are retrieved with the
+existing observed-transfer checks. Each exact enchantment/level is then sold
+using its item GUI's Sell Instantly control. This uses the current bid and can
+realize a loss: entry minimum-profit thresholds do not block cleanup exits.
+
+A matching item/quantity Sold receipt and observed inventory disappearance are
+both required before updating ownership/profit. Cleanup never uses Sell
+Inventory, touches another co-op owner's order, or cancels a live order belonging
+to an unassigned-leftover record. Ambiguous quantities, pagination, unexpected
+GUI variants or missing acknowledgment preserve the position and pause for
+inspection; an uncertain sale is not replayed. Retirement intent and the
+no-progress clock survive restarts in the existing book journal. Unknown legacy
+acquisition costs remain unknown in profit reporting. Cleanup sales are excluded
+from ordinary route-throughput training. Keep the existing journals and
+companion; replacing the mod JAR is sufficient.

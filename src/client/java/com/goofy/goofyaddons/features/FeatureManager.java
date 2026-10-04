@@ -26,6 +26,7 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report marketReport() {
         return marketAnalysis.latestReport();
     }
+    public java.util.Set<String> retiredBookProducts(){return books.retirementExclusions();}
     public void invalidateMarketReport() { marketAnalysis.stop(); }
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
         return marketAnalysis.automaticHeadReport();

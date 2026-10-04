@@ -64,6 +64,8 @@ public class GoofyConfig {
      * immediately and forever.
      */
     public int maxActiveBooks = 2;
+    public boolean liquidateStaleBooks = true;
+    public int bookStaleSeconds = 900;
     public int bookRepriceCooldownSeconds = 120;
     public int maxBookReprices = 3;
     public boolean profitHudEnabled = true;
@@ -144,6 +146,7 @@ public class GoofyConfig {
         if (!Double.isFinite(bazaarTaxPercentage) || bazaarTaxPercentage < 0 || bazaarTaxPercentage >= 100
                 || !Double.isFinite(minNetProfit) || minNetProfit < 0 || maxBookHoldingSeconds < 60
                 || bookOrderRecheckSeconds < 30
+                || bookStaleSeconds<60 || bookStaleSeconds>86400
                 || maxActiveBooks < 1 || maxActiveBooks > 10
                 || bookRepriceCooldownSeconds < 30 || maxBookReprices < 0 || maxBookReprices > 10
                 || !Double.isFinite(maxBookDrawdownPercentage) || maxBookDrawdownPercentage <= 0 || maxBookDrawdownPercentage > 100) {

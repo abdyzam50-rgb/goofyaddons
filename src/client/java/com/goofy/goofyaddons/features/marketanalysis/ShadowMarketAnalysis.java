@@ -37,7 +37,11 @@ public final class ShadowMarketAnalysis {
             private final GameWorld world=new LiveWorld();
             private boolean refreshing;
             @Override public GoofyConfig config() { return GoofyConfig.INSTANCE; }
-            @Override public Set<String> excludedProducts() { return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded(); }
+            @Override public Set<String> excludedProducts() {
+                var excluded=new java.util.HashSet<>(com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded());
+                excluded.addAll(com.goofy.goofyaddons.features.FeatureManager.INSTANCE.retiredBookProducts());
+                return Set.copyOf(excluded);
+            }
             @Override public long now() { return world.now(); }
             @Override public JsonObject quotes() { return BazaarApi.latestFresh(); }
             @Override public void refreshQuotes() {
