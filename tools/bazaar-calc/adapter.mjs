@@ -13,7 +13,7 @@ const integer = (v, min, max, name) => {
 };
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-export function recommend(body, history, provenance, now = Date.now(), executions = null) {
+export function recommend(body, history, provenance, now = Date.now(), executions = null, allowedRoutes = null) {
   if (!object(body) || body.protocol !== PROTOCOL || typeof body.requestId !== 'string' || body.requestId.length > 100)
     throw new Error('Invalid protocol/request');
   const root = body.market, c = body.constraints;
@@ -78,6 +78,8 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const eligible = m => m && m.bid > 0 && m.ask > 0 && !excluded.has(m.id) && !excluded.has(parseBookId(m.id)?.enchant);
   const add = (kind, source, target, n, level = 0, sellLevel = 0) => {
     if (!eligible(source) || !eligible(target)) return;
+    const selectionKey=kind==='BOOK'?`${parseBookId(source.id).enchant}:${level}:${sellLevel}`:source.id;
+    if(allowedRoutes && !allowedRoutes.has(`${kind}:${selectionKey}`))return;
     if(c.automaticSelection && (kind==='GENERAL' ? !automaticCatalog.products[source.id] :
       !automaticCatalog.books[parseBookId(source.id)?.enchant]?.routes.some(([a,b])=>a===level&&b===sellLevel))) {
       counts.unsupported++;return;

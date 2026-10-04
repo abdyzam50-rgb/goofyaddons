@@ -77,11 +77,17 @@ function render() {
   put('confirmed',a?.profitError?'—':coins(a?.profit.profit));$('confirmed').classList.toggle('negative',a?.profit.profit<0);
   put('settlements',a?.profitError?`Profit ledger unavailable: ${a.profitError}`:a?a.profit.settlements===0?'No sale or loss settlements recorded yet':`${a.profit.settlements} settled · ${a.profit.incomplete} with unknown profit`:'From settled trade receipts');
   const predictions=state.predictions?.rows ?? [];
-  put('predicted',coins(predictions[0]?.coinsPerHour));
-  put('measured-rate',live?coins(state.measuredProfitPerHour):'—');
+  put('predicted',coins(state.portfolio?.coinsPerHour));
+  put('live-predicted',coins(state.live?.coinsPerHour));$('live-predicted').classList.toggle('negative',state.live?.coinsPerHour<0);
+  put('live-forecast-note',state.live?.known?`${state.live.known} predicted · ${state.live.unknown} unknown${state.live.unknown?' · partial estimate':''}. Recorded/planned costs, listed offers and overdue cycles; full-cycle run rate.`:state.live?.reason || 'Waiting for active trade forecasts');
+  const portfolioRows=$('portfolio-rows');portfolioRows.replaceChildren();
+  for(const p of state.portfolio?.rows??[])row(portfolioRows,[`${p.inputId} → ${p.outputId}`,p.inputUnits,coins(p.capitalUsed),coins(p.coinsPerHour)]);
+  if(!portfolioRows.children.length)empty(portfolioRows,4,state.portfolio?.reason||'Waiting for the full-budget forecast');
+  put('portfolio-budget',state.portfolio?.budget!==undefined?`Budget ${coins(state.portfolio.budget)} · allocated ${coins(state.portfolio.allocated)} · unallocated ${coins(state.portfolio.remaining)} · shared GUI factor ${coins(state.portfolio.guiFactor)}×. ${state.portfolio.scope}.`:'Waiting for budget and position limits');
+  put('measured-rate',live?coins(state.measuredProfitPerHour):'—');$('measured-rate').classList.toggle('negative',state.measuredProfitPerHour<0);
   put('measured-rate-note',live&&Number.isFinite(state.measuredProfitPerHour)?'Receipt-confirmed profit / tracked active time; paused time excluded':a?.profit?.incomplete?'Unavailable: some settlements have unknown profit':'Needs known-profit settlements and at least 60 seconds of active time');
   put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded outcomes · ${state.execution?.eligible ?? 0} completed timing samples · ${state.execution?.censored ?? 0} retired bounds · ${state.execution?.pending ?? 0} open. Downside learns after 3 completed cycles or an overdue trade; upside needs 10. Rankings share corrections across similar-volume routes, then refine per item using realized profit and timings.`);
-  put('forecast-status',state.predictionReason || 'Best ranked route; availability is shown in the pipeline');
+  put('forecast-status',state.portfolio?.rows?.length?`${state.portfolio.rows.length} routes · ${coins(state.portfolio.allocated)} allocated · ${coins(state.portfolio.remaining)} unallocated under your limits`:state.portfolio?.reason || state.predictionReason || 'Waiting for a portfolio forecast');
   const positionProfit=state.positionProfit;
   put('position-profit',coins(positionProfit?.total));$('position-profit').classList.toggle('negative',positionProfit?.total<0);
   put('position-profit-note',positionProfit?.known?`${positionProfit.known} priced · ${positionProfit.unknown} unknown. Book costs are planned full-cycle estimates; excludes listing fees, future price changes and fill timing.`:positionProfit?.reason || 'No fresh position estimate');
@@ -146,7 +152,7 @@ $('refresh').addEventListener('click',()=>{clearTimeout(pollTimer);void poll();}
 async function poll() {
   if(inFlight)return;inFlight=true;$('refresh').disabled=true;
   try {const response=await fetch('/v1/dashboard',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error(`HTTP ${response.status}`);state=await response.json();render();}
-  catch {if(state){state.fresh=false;state.predictions=null;state.positionProfit=null;state.measuredProfitPerHour=null;state.pipeline=null;state.predictionReason='Companion unavailable';render();}put('notice','Companion unavailable. Keep its terminal running; displayed values are last observed.');}
+  catch {if(state){state.fresh=false;state.predictions=null;state.positionProfit=null;state.measuredProfitPerHour=null;state.pipeline=null;state.portfolio=null;state.live=null;state.predictionReason='Companion unavailable';render();}put('notice','Companion unavailable. Keep its terminal running; displayed values are last observed.');}
   finally {inFlight=false;$('refresh').disabled=false;pollTimer=setTimeout(poll,2000);}
 }
 void poll();

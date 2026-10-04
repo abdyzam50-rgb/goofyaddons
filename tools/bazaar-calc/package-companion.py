@@ -9,7 +9,7 @@ if not version or any(c not in '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL
 output = root.parents[1] / 'dist' / f'goofyaddons-bazaar-calc-{version}.zip'
 output.parent.mkdir(exist_ok=True)
 files = ['automatic-products.json', 'mutation-products.json', 'data-paths.mjs', 'server.mjs', 'collector.mjs', 'collect-market.mjs', 'execution-history.mjs', 'adapter.mjs', 'engine.mjs',
-         'dashboard-state.mjs', 'dashboard-profit.mjs', 'history.json.gz', 'provenance.json', 'README.md', 'update-history.mjs']
+         'dashboard-forecast.mjs', 'dashboard-state.mjs', 'dashboard-profit.mjs', 'history.json.gz', 'provenance.json', 'README.md', 'update-history.mjs']
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for name in files:
         archive.write(root / name, f'bazaar-calc/{name}')

@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { DashboardForecast } from './dashboard-forecast.mjs';
 import { DashboardState } from './dashboard-state.mjs';
 import { MarketCollector } from './collector.mjs';
 import { ExecutionHistory } from './execution-history.mjs';
@@ -18,6 +19,7 @@ const assets = new Map([
   ['/dashboard/style.css',['dashboard/style.css','text/css; charset=utf-8']]
 ].map(([route,[file,type]])=>[route,{data:readFileSync(new URL(file,import.meta.url)),type}]));
 export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory() } = {}) {
+  const forecasts=new DashboardForecast({provenance});
   const server = createServer(async (req, res) => {
     const host = req.headers.host?.split(':')[0];
     if (!['127.0.0.1','localhost'].includes(host)) { res.writeHead(403);res.end();return; }
@@ -27,7 +29,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
     const send = (status, value) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
     if(req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) {send(403,{error:'Local origin required'});return;}
     if(req.method==='GET' && assets.has(req.url)) {const asset=assets.get(req.url);res.writeHead(200,{'Content-Type':asset.type,'Cache-Control':'no-store'});res.end(asset.data);return;}
-    if(req.method==='GET' && req.url==='/v1/dashboard') {send(200,{...dashboard.view(collector),execution:executions.status()});return;}
+    if(req.method==='GET' && req.url==='/v1/dashboard') {const view=dashboard.view(collector);send(200,{...view,...forecasts.view(view,collector?.history()??history,executions),execution:executions.status()});return;}
     if(req.method==='POST' && req.url==='/v1/account') {
       if(req.headers['x-goofy-dashboard']!=='local-v1' || req.headers['content-type']!=='application/json') {send(400,{error:'Invalid dashboard headers'});return;}
       try {
@@ -54,7 +56,9 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
         if (length > 10 * 1024 * 1024) { send(413, { error: 'Market snapshot too large' }); return; }
         chunks.push(chunk);
       }
-      send(200, recommend(JSON.parse(Buffer.concat(chunks).toString('utf8')), collector?.history() ?? history, provenance, Date.now(), executions));
+      const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const report=recommend(body,collector?.history()??history,provenance,Date.now(),executions);
+      forecasts.acceptRequest(body);send(200,report);
     } catch (error) { send(400, { error: error instanceof Error ? error.message : 'Invalid request' }); }
   });
   server.requestTimeout = 15000; server.headersTimeout = 10000;

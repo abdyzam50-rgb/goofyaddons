@@ -523,3 +523,38 @@ for new trades so the comparison survives changes in the market model. Legacy hi
 still refines its own routes and requires no reset. All candidates are adjusted before
 ranking; shared trades are labeled separately from the item's own completed cycles.
 See [continuous ranking details](../../docs/development/CONTINUOUS_FLIP_RANKINGS.md).
+
+## Portfolio and live-trade profit cards (companion 1.3.49)
+
+This is a **companion-only** update: keep mod 1.3.48, replace the companion files
+with `goofyaddons-bazaar-calc-1.3.49-BETA.zip`, and restart its Node terminal.
+Preserve configs, order journals and the external history directory.
+
+The overview now distinguishes three hourly figures:
+
+- **Full-budget portfolio:** a hypothetical allocation of total trading capital,
+  including funds currently committed to positions, after those funds are released.
+  Alternative batch sizes are evaluated using the calculator's real order curves.
+  A bounded search compares combinations within budget, per-item/order limits,
+  supported route/requirement rules, engine position limits and conservative input
+  capacity. It excludes duplicate markets/book families and caps combined workload
+  by a single shared GUI. The allocation table shows its selected batches and
+  unallocated money. This is the best allocation found among modeled candidates,
+  not a claim of an exact global optimum or a change to the bot's execution plan.
+- **Active trades:** a prediction for currently tracked running positions at their
+  observed quantities, recorded general costs/planned book costs and current offers
+  (or the actual listed general sell price). Overdue, continuously observed cycle
+  age reduces the rate; gameplay calibration and a shared GUI ceiling still apply.
+  The figure is a full-cycle equivalent run rate, not a precise remaining-time ETA.
+  Unknown costs, retiring/recovery positions and unavailable fill models are labeled
+  unknown; a displayed partial estimate states how many positions are missing.
+  Stopped/paused trading predicts zero, and stale account/market inputs show a dash.
+- **Actual profit:** receipt-confirmed session net profit divided by tracked active
+  trading time, with paused time excluded. At least 60 seconds and known-profit
+  settlements are needed; unknown settlements keep the hourly figure unavailable.
+  The separate confirmed session-profit counter remains visible.
+
+These forecasts use the most recent validated mod market request and opt-in account
+snapshot. They update with market requests, position changes and fresh gameplay
+feedback, without writing orders or altering configuration. All local calculations
+and request caches stay private to the companion process.
