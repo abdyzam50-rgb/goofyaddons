@@ -109,3 +109,16 @@ protocol expiry/limits/Host/Origin checks, real Java-to-Node account publishing,
 Chromium checks at 1440px and 390px for data rendering, filters, previous storage,
 expiry, safe item-name rendering and horizontal overflow. Live Minecraft capture
 has not been verified.
+
+
+## Consecutive outbid task handling (1.3.41)
+
+Diagnostics from 2026-10-04 showed a verified Green Thumb cancellation followed
+by a Last Stand task inheriting the previous task's cancellation-sent flag. The
+outer book engine remained OUTBID, so its state-transition reset never ran; the
+second task waited without clicking until the first cancellation's deadline.
+BookOutbidFlow now selects the task's persisted trade identity before navigation
+and timeout checks. Changing trades resets cancellation and navigation state;
+reselecting the same trade retains once-only clicks and the verification deadline.
+The regression tests cover both the task switch and a still-pending cancellation.
+Existing order journals and config do not need clearing or migration.

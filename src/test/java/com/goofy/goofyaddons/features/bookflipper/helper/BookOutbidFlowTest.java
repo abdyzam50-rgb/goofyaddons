@@ -81,4 +81,32 @@ class BookOutbidFlowTest {
         flow.reset();assertFalse(flow.cancellationSent());
         assertFalse(flow.freshAfterCancellation(20));
     }
+    @Test void consecutiveOutbidTradesCannotInheritCancellationOrNavigationState() {
+        var flow=new BookOutbidFlow();
+        flow.selectTrade("green-thumb-trade");
+        var item=menu(63,"Overload ➜ Overload I",72,SlotView.named(15,"Create Buy Order",List.of()));
+        assertTrue(flow.navigate(book,item).fallback());
+        flow.sentCancellation(64,1000);
+        assertTrue(flow.freshAfterCancellation(65));
+        // The first task becomes SELECTED; the engine remains OUTBID for its next task.
+        flow.selectTrade("last-stand-trade");
+        assertFalse(flow.cancellationSent());
+        assertFalse(flow.cancellationTimedOut(31000));
+        assertFalse(flow.freshAfterCancellation(65));
+        assertEquals("bz Overload",flow.navigate(book,null).command());
+        flow.sentCancellation(66,32000);
+        assertFalse(flow.freshAfterCancellation(66));
+        assertTrue(flow.freshAfterCancellation(67));
+        assertTrue(flow.cancellationTimedOut(62000));
+    }
+    @Test void reselectingSameTradePreservesPendingCancellationAndClickProtection() {
+        var flow=new BookOutbidFlow();flow.selectTrade("pending-trade");
+        var item=menu(63,"Overload ➜ Overload I",72,SlotView.named(28,"Manage Orders",List.of()));
+        assertEquals(28,flow.navigate(book,item).slot());
+        flow.sentCancellation(64,1000);
+        flow.selectTrade("pending-trade");
+        assertNull(flow.navigate(book,item));assertTrue(flow.cancellationSent());
+        assertFalse(flow.freshAfterCancellation(64));assertTrue(flow.cancellationTimedOut(31000));
+        flow.reset();flow.selectTrade("pending-trade");assertFalse(flow.cancellationSent());
+    }
 }

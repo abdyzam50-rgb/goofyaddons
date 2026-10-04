@@ -11,10 +11,20 @@ public final class BookOutbidFlow {
     private int clickedContainer = -1, cancellationContainer = -1;
     private boolean useOrdersFallback;
     private long cancellationAt;
+    private String tradeId;
 
     public void reset() {
         clickedContainer = -1; cancellationContainer = -1;
-        useOrdersFallback = false; cancellationAt = 0;
+        useOrdersFallback = false; cancellationAt = 0; tradeId = null;
+    }
+
+    /** The engine can handle several OUTBID tasks without changing its outer state.
+     * Keep duplicate-click protection for the same trade, never inherit it for the next one. */
+    public void selectTrade(String id) {
+        if (id == null || id.isBlank()) throw new IllegalArgumentException("Missing outbid trade identity");
+        if (id.equals(tradeId)) return;
+        reset();
+        tradeId = id;
     }
 
     public Navigation navigate(Book book, MenuSnapshot menu) {

@@ -785,6 +785,7 @@ public class BazaarFlipper implements Feature {
                     return;
                 }
 
+                outbidFlow.selectTrade(task.getProfitTradeId());
                 if (outbidFlow.cancellationTimedOut(System.currentTimeMillis())) {
                     safetyHalt("Outbid book cancellation was not verified; no replacement submitted."); return;
                 }
