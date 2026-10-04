@@ -1,4 +1,5 @@
 // Public market observations only. No account credentials or Minecraft actions.
+import { dataFile } from './data-paths.mjs';
 import { TopTracker, summarizeTop, bookFlow, toLevels, validateBazaar, degradedBazaar, competition, delists } from './engine.mjs';
 import { readFileSync } from 'node:fs';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
@@ -11,7 +12,7 @@ const validProduct = p => p && p.quick_status && ['buyMovingWeek','sellMovingWee
   && [p.sell_summary,p.buy_summary].every(a => Array.isArray(a) && a.every(x => Number.isFinite(x.pricePerUnit) && x.pricePerUnit > 0 && Number.isFinite(x.amount) && x.amount >= 0 && Number.isFinite(x.orders) && x.orders >= 0));
 
 export class MarketCollector {
-  constructor({ file = new URL('./data/live-history.json.gz', import.meta.url), fetcher = fetch, now = Date.now, intervalMs = 20000, bootstrap = {} } = {}) {
+  constructor({ file = dataFile('live-history.json.gz'), fetcher = fetch, now = Date.now, intervalMs = 20000, bootstrap = {} } = {}) {
     this.file = file; this.fetcher = fetcher; this.now = now; this.intervalMs = intervalMs; this.bootstrap = bootstrap;
     this.state = { version: 1, asOf: 0, products: 0, items: {} };
     this.tracker = new TopTracker(); this.previous = new Map(); this.timer = null; this.running = false; this.inFlight = null;

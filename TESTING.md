@@ -320,3 +320,9 @@ conservative timing floor, and bounded collection success/failure. Node HTTP,
 Java trading regressions, Java-to-calculator integration, and Chromium dashboard
 checks cover the updated distribution. Windows Scheduled Tasks and hosted Actions
 execution require their respective platforms and are not verified by Linux tests.
+
+1.3.33: companion data-path defaults and absolute overrides, legacy migration,
+original preservation, destination conflict handling, repeatable migration,
+installation removal with persistent history retained, same-folder portable mode,
+and migration failure preservation. Hosted collector keeps an explicit artifact
+workspace override. Windows Scheduled Tasks need verification on Windows.

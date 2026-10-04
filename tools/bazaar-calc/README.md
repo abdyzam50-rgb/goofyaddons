@@ -143,7 +143,7 @@ are rejected. It measures actual consecutive book changes using upstream
 150 seconds do not count as observed trading time.
 
 Live history is saved atomically every minute and on Ctrl+C/SIGTERM to
-`data/live-history.json.gz` beside `server.mjs`, and loaded automatically on the
+`live-history.json.gz` in the persistent user-data folder, and loaded automatically on the
 next launch. Keep that directory when upgrading the companion. It stores seven
 days of hourly price observations and approximately 24 hours of competition/flow,
 with the latest 128 completed time-on-top episodes per product side within that
@@ -229,7 +229,7 @@ for the original notices and the separately supplied rule source/attribution.
 ### Continuous collection on Windows
 
 Keep the companion running to collect current public Bazaar data every 20 seconds,
-including while Minecraft is closed. It stores rolling history in `data/`. Install
+including while Minecraft is closed. It stores rolling history outside the installation, in the persistent user-data folder described below. Install
 Node.js 24 LTS, extract the companion to a permanent folder, stop any manually
 running companion, then open PowerShell in its `bazaar-calc` folder and run:
 
@@ -240,7 +240,7 @@ running companion, then open PowerShell in its `bazaar-calc` folder and run:
 This installs and immediately starts the current user's **GoofyAddons Bazaar
 Companion** task, which starts again on Windows login and retries failures three
 times. It needs no administrator privileges. Keep the PC awake and connected;
-collection cannot run while it is asleep or powered off. Logs are in `data/`.
+collection cannot run while it is asleep or powered off. Logs are in that same persistent folder.
 Windows may block downloaded scripts: after reviewing these files, use
 `Unblock-File .\windows\*.ps1` if needed. No execution-policy change is required.
 Remove automatic startup with:
@@ -262,7 +262,7 @@ minutes per month, plus setup, are needed; availability depends on the repositor
 Actions plan. Manual runs are also available in Actions.
 
 Download the artifact and place `live-history.json.gz` in this companion's
-`data/` folder **while it is stopped** to seed a new PC installation. Do not replace
+persistent user-data folder **while it is stopped** to seed a new PC installation. Do not replace
 an established PC history with a less complete scheduled sample. Old observations
 keep their source timestamps; the collector needs fresh quotes before using them.
 No account data or gameplay history is uploaded by this workflow. The job fails
@@ -274,7 +274,7 @@ provides better coverage and does not consume Actions minutes.
 The mod records confirmed whole-position outcomes in
 `config/goofyaddons-execution.json`, separately from its profit ledger. With
 `marketAnalysis.enabled` and `marketAnalysis.dashboardEnabled` enabled, the local
-companion receives these samples and saves `data/execution-history.json`.
+companion receives these samples and saves `execution-history.json` in the persistent user-data folder.
 Records contain random trade/receipt identifiers, route IDs, quantities, observed
 elapsed time, and confirmed proceeds/profit; account names and inventory are not
 persisted in this history. Repeated snapshots deduplicate receipts.
@@ -295,5 +295,47 @@ prices, tax, capital limits or entry filters. No samples means ordinary market
 estimates. The dashboard shows collection counts and errors. Predictions remain
 advisory; this does not turn the planned-next preview into an execution queue.
 
-Back up both mod JSON files and the companion's `data/` folder to retain measured
+Back up both mod JSON files and the companion's persistent user-data folder to retain measured
 history. The distribution ZIP deliberately excludes all runtime data.
+
+
+### Update-safe data storage
+
+Market history, gameplay outcome history, collection status and Windows task logs
+now live outside the replaceable companion installation:
+
+| System | Default folder |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\GoofyAddons\bazaar-calc` |
+| macOS | `~/Library/Application Support/GoofyAddons/bazaar-calc` |
+| Linux | `$XDG_DATA_HOME/GoofyAddons/bazaar-calc`, or `~/.local/share/GoofyAddons/bazaar-calc` |
+
+Run `node data-paths.mjs` to print the actual folder. The server also prints it at
+startup and exposes it through its local `/health` response. All collectors and
+telemetry storage use this location regardless of the installation's directory.
+An absolute `GOOFY_BAZAAR_DATA_DIR` environment variable overrides it. Scheduled
+GitHub jobs explicitly use their runner workspace for artifact collection; your
+PC data stays local.
+
+**First upgrade:** keep the old installation's `data/` folder until migration has
+finished. If it is still beside the new `server.mjs`, startup automatically copies
+recognized files to the persistent folder. Alternatively, from the new companion
+folder, import the old folder before deleting it:
+
+```powershell
+node data-paths.mjs --migrate-from 'C:\path\to\old\bazaar-calc\data'
+```
+
+Stop the old companion first. Migration preserves originals, publishes complete
+copies, and never overwrites existing external files. Existing external history
+wins when both locations have the same filename; histories are not blindly merged.
+A migration failure stops startup with an error and preserves the originals.
+History already deleted before migration cannot be recovered by this change.
+
+After this first migration, updates may replace the whole companion installation
+without removing history. Stop the companion or scheduled task before updating;
+restart afterward. If you move its installation to a different path, rerun
+`windows/install-task.ps1` to update the task's program location. The persistent
+folder remains the same. The mod's configuration, order journals, profit and
+execution files remain in Minecraft's `config/` folder; replacing the mod JAR
+already preserves those files.

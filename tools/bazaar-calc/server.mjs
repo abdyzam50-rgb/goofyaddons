@@ -1,4 +1,5 @@
 // Loopback calculator, opt-in local account dashboard and public-market collector. No trade execution.
+import { dataDirectory } from './data-paths.mjs';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -38,7 +39,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       return;
     }
     if (req.method === 'GET' && req.url === '/health') {
-      send(200, { protocol: PROTOCOL, readOnly: true, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status() }); return;
+      send(200, { protocol: PROTOCOL, readOnly: true, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(), dataDirectory:dataDirectory() }); return;
     }
     if (req.method !== 'POST' || req.url !== '/v1/recommendations') { send(404, { error: 'Unknown endpoint' }); return; }
     if (req.headers['x-goofy-analysis'] !== 'shadow-v1' || req.headers['content-type'] !== 'application/json') { send(400, { error: 'Invalid request headers' }); return; }
@@ -62,6 +63,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const server = createCompanion({ collector });
   server.listen(port, '127.0.0.1', () => {
     console.log(`Read-only Bazaar Calc companion: http://127.0.0.1:${port}; continuous collection ${collector ? 'enabled (20s)' : 'disabled'}`);
+    console.log(`Persistent data: ${dataDirectory()}`);
     collector?.start();
   });
   for (const signal of ['SIGINT','SIGTERM']) process.once(signal, async () => {

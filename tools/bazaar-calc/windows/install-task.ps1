@@ -10,4 +10,4 @@ $Principal = New-ScheduledTaskPrincipal -UserId $UserName -LogonType Interactive
 $Settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 'GoofyAddons Bazaar Companion' -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
 Start-ScheduledTask -TaskName 'GoofyAddons Bazaar Companion'
-Write-Host 'Installed and started. Dashboard: http://127.0.0.1:8789. Logs and history: data folder.'
+Write-Host 'Installed and started. Dashboard: http://127.0.0.1:8789. Logs and history: persistent user-data folder (shown at startup).'

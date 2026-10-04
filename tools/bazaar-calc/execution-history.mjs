@@ -1,10 +1,11 @@
 // Local, pseudonymous confirmed outcomes. Never part of public market artifacts.
+import { dataFile } from './data-paths.mjs';
 import { readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const DAY=86400000;
 export class ExecutionHistory {
-  constructor({file=new URL('./data/execution-history.json',import.meta.url),now=Date.now}={}) {
+  constructor({file=dataFile('execution-history.json'),now=Date.now}={}) {
     this.file=file instanceof URL?fileURLToPath(file):file;this.now=now;this.rows=new Map();this.error=null;
     try { if(readFileSync(this.file).length>2*1024*1024)throw new Error('History too large');this.ingest(JSON.parse(readFileSync(this.file,'utf8')),false); }
     catch(e){if(e.code!=='ENOENT')this.error=`Execution history unreadable; preserved: ${e.message}`;}
