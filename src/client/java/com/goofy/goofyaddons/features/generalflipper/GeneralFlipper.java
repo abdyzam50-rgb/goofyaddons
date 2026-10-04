@@ -49,6 +49,7 @@ public class GeneralFlipper implements Feature {
         String tradeId;
         String saleEvent;
         boolean purchasePriceKnown;
+        Double confirmedCancelRefund;
         boolean settlementPending;
         double cost() { return quantity * unitCost; }
     }
@@ -60,6 +61,7 @@ public class GeneralFlipper implements Feature {
         default JsonObject latestQuotes() { return BazaarApi.latestFresh(); }
         default CompletableFuture<JsonObject> fetchQuotes() { return BazaarApi.fetch(); }
         default void placed(Position position) {}
+        default com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {return null;}
         default void acquire(Position position) {
             ProfitTracker.INSTANCE.acquire(position.tradeId, OWNER, position.item.name(), position.tradeId + ":buy",
                     position.quantity, position.purchasePriceKnown ? position.cost() : null);
@@ -115,6 +117,7 @@ public class GeneralFlipper implements Feature {
     private boolean reopenedCancelOptions;
     private Double claimedProceeds;
     private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
+    private String lastBlockedItem;
     private long stepSince;
     private long nextAction;
     private long lastCommand;
@@ -124,6 +127,9 @@ public class GeneralFlipper implements Feature {
         // unconstructable outside a running game, including in a test.
         this(new com.goofy.goofyaddons.menu.LiveWorld(), new com.goofy.goofyaddons.menu.LiveActions(),
                 () -> FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-general-orders.json"),new Services() {
+                    @Override public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {
+                        return FeatureManager.INSTANCE.marketReport();
+                    }
                     @Override public void placed(Position position) {
                         ProfitTracker.INSTANCE.beginExecution(position.tradeId,OWNER,position.item.id(),position.item.id(),position.quantity,position.quantity,position.placedAt);
                     }
@@ -163,6 +169,7 @@ public class GeneralFlipper implements Feature {
     public boolean hasStateError() { return blocked; }
     public java.util.Map<String,Object> diagnosticState() {
         var state=new java.util.LinkedHashMap<String,Object>();
+        state.put("activeTrade",active==null?"none":active.tradeId);state.put("activeItem",active==null?"none":active.item.id());
         state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:world.now()-stepSince);
         state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
         state.put("claimUnits",claimUnits);state.put("inventoryBefore",inventoryBefore);state.put("expectedClaim",expectedClaim);
@@ -180,7 +187,7 @@ public class GeneralFlipper implements Feature {
         state.put("positions",retained);return state;
     }
     public String retainedItem() {
-        return positions.isEmpty() ? "No retained general orders" : "Retained: "+positions.getFirst().quantity+"x "+positions.getFirst().item.name();
+        return lastBlockedItem!=null?lastBlockedItem:positions.isEmpty() ? "No retained general orders" : "Retained: "+positions.getFirst().quantity+"x "+positions.getFirst().item.name();
     }
     public boolean hasRetainedPositions() { return !positions.isEmpty(); }
     public String taskItem() {
@@ -206,6 +213,7 @@ public class GeneralFlipper implements Feature {
         if (blocked) { actions.message("General flipper is blocked; resolve the logged order-state error first."); return; }
         running = true;
         paused = false;
+        lastBlockedItem=null;
         nextPoll = 0;
         for (Position position : positions) {
             position.checkedAt = 0;
@@ -484,6 +492,11 @@ public class GeneralFlipper implements Feature {
         int inventory = itemCount(active.item.id());
         if(buy<0 && sell<0 && active.stage!=Stage.PLANNED && (active.stage!=Stage.INVENTORY || inventory==0)
                 && recheckOrders("tracked-order-absent")) return;
+        if(buy<0 && sell<0 && inventory==0 && active.stage==Stage.BUY_ORDER && active.cancelRequested
+                && active.confirmedCancelRefund!=null && Double.isFinite(active.confirmedCancelRefund)
+                && Math.abs(active.confirmedCancelRefund-active.cost())<=0.51) {
+            selling=false;receipt=true;inventoryBefore=0;expectedClaim=0;transition(Step.VERIFY_CANCEL);return;
+        }
         OrderLore.Fill saleFill = sell < 0 ? null : OrderLore.fill(lore(sell));
         boolean fullySold = saleFill != null && saleFill.filled() == active.quantity;
         if (active.stage != Stage.PLANNED && !fullySold) {
@@ -513,7 +526,7 @@ public class GeneralFlipper implements Feature {
             if (active.heldSince == 0) active.heldSince = active.placedAt;
             capital.purchased(OWNER, active.item.id());
             int claimable = OrderLore.claimable(lore(buy), inventory);
-            boolean cancel = claimable > 0 || inventory > 0 || shouldReprice(false)
+            boolean cancel = claimable + inventory >= active.quantity || inventory > 0 || shouldReprice(false)
                     || world.now() - active.placedAt >= settings().orderTimeoutSeconds * 1000L;
             if (!cancel) { finishWork(); return; }
             selling = false;
@@ -668,6 +681,7 @@ public class GeneralFlipper implements Feature {
                     active.stage = Stage.PLANNED;
                     active.submitted = false;
                     active.cancelRequested = false;
+                    active.confirmedCancelRefund=null;
                     finishWork();
                     return;
                 }
@@ -678,6 +692,7 @@ public class GeneralFlipper implements Feature {
         if (count > active.quantity) { fail("Inventory exceeds tracked quantity; manual reconciliation required."); return; }
         active.quantity = count;
         active.cancelRequested = false;
+        active.confirmedCancelRefund = null;
         active.stage = Stage.INVENTORY;
         if (!selling && !recordAcquisition()) return;
         if (selling) active.reprices++;
@@ -803,8 +818,8 @@ public class GeneralFlipper implements Feature {
 
     private List<GeneralCalculator.Candidate> candidates() {
         if (!world.inWorld() || products == null) return List.of();
-        return GeneralCalculator.calculate(products, settings(), GoofyConfig.INSTANCE.bazaarTaxPercentage,
-                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4));
+        return GeneralCalculator.rankByForecast(GeneralCalculator.calculate(products, settings(), GoofyConfig.INSTANCE.bazaarTaxPercentage,
+                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4)),services.recommendations(),world.now());
     }
 
     private double currentAsk() {
@@ -920,7 +935,17 @@ public class GeneralFlipper implements Feature {
     private int itemCount(String id) { return view.countInInventory(id); }
 
     void onNotice(String message) {
-        if (!running || paused || active == null || !message.contains(active.item.name())) return;
+        if (!running || paused || active == null) return;
+        if(!selling && active.stage==Stage.BUY_ORDER && active.purchasePriceKnown && active.cancelRequested
+                && (step==Step.CANCEL_DETAIL||step==Step.VERIFY_CANCEL) && expectedClaim==0 && inventoryBefore==0) {
+            Double refund=TradeReceipts.buyCancellationRefund(message,active.cost());
+            if(refund!=null) {
+                receipt=true;active.confirmedCancelRefund=refund;
+                if(!save())return;
+                Diagnostics.event("INFO","order.cancel_refund_verified",java.util.Map.of("trade",active.tradeId,"refund",refund));
+            }
+        }
+        if(!message.contains(active.item.name()))return;
         if (step == Step.VERIFY_SALE && claimPending) {
             Double coins = TradeReceipts.saleProceeds(message, active.item.name(), claimUnits);
             if (coins != null) { receipt = true; claimedProceeds = coins; }
@@ -961,6 +986,7 @@ public class GeneralFlipper implements Feature {
         Diagnostics.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",Diagnostics.detailedSnapshot()));
         actions.message(message);
         LOGGER.error(message);
+        if(active!=null)lastBlockedItem="Retained: "+active.quantity+"x "+active.item.name();
         paused = true;
         invalidateRequest();
         save();
@@ -983,6 +1009,9 @@ public class GeneralFlipper implements Feature {
                         || position.unitCost <= 0 || !Double.isFinite(position.cost())
                         || !position.item.id().matches("[A-Z0-9_]+") || position.item.id().startsWith("ENCHANTMENT_")
                         || position.item.name().isBlank()
+                        || position.confirmedCancelRefund!=null && (!position.cancelRequested || position.stage!=Stage.BUY_ORDER
+                            || !position.purchasePriceKnown || !Double.isFinite(position.confirmedCancelRefund)
+                            || Math.abs(position.confirmedCancelRefund-position.cost())>0.51)
                         || position.stage == null || !ids.add(position.item.id())) {
                     throw new IllegalArgumentException("Invalid saved order position");
                 }

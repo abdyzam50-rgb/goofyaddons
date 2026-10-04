@@ -33,3 +33,11 @@ test('full position limits explain an unevaluated report even when millions are 
  view.account.analysis.pipeline.account.mode='GENERAL';assert.match(predictionReason(view),/978 filtered/);
  view.account.analysis.pipeline.account.inventoryCapacity=0;assert.match(predictionReason(view),/inventory headroom/);
 });
+
+test('measured profit/hour uses confirmed active-time accounting and never guesses incomplete profit',async()=>{
+ const {measuredProfitRate}=await import('./dashboard-profit.mjs');
+ assert.equal(measuredProfitRate({profit:1000000,activeMillis:600000,settlements:3,incomplete:0}),6000000);
+ assert.equal(measuredProfitRate({profit:1000000,activeMillis:600000,settlements:3,incomplete:1}),null);
+ assert.equal(measuredProfitRate({profit:1000000,activeMillis:10000,settlements:3,incomplete:0}),null);
+ assert.equal(measuredProfitRate(undefined),null);
+});

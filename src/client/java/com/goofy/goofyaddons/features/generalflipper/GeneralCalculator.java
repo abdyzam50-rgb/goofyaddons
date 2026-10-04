@@ -30,6 +30,16 @@ public final class GeneralCalculator {
         return List.copyOf(result);
     }
 
+    /** Fresh observed rates can rank existing, independently validated execution candidates. */
+    public static List<Candidate> rankByForecast(List<Candidate> candidates,
+            com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report report,long now) {
+        if(report==null || !com.goofy.goofyaddons.features.TradingSafety.fresh(report.marketAt(),now))return candidates;
+        var rates=new java.util.HashMap<String,Double>();
+        for(var r:report.rows())if(r.kind().equals("GENERAL")&&r.configured()&&r.inputId().equals(r.outputId())
+                &&Double.isFinite(r.coinsPerHour())&&r.coinsPerHour()>0)rates.put(r.inputId()+":"+r.batch(),r.coinsPerHour());
+        return candidates.stream().sorted(Comparator.<Candidate>comparingDouble(c->rates.getOrDefault(c.item().id()+":"+c.quantity(),-1.0))
+                .reversed().thenComparing(Comparator.comparingDouble(Candidate::score).reversed())).toList();
+    }
     private static Candidate evaluate(JsonObject products, GeneralItem item, GeneralSettings settings,
                                       double taxPercentage, double available, int inventoryCapacity) {
         JsonObject product = products.getAsJsonObject(item.id());

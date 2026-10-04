@@ -20,6 +20,15 @@ public final class TradeReceipts {
             return units==expectedUnits && Double.isFinite(coins) && coins>=0 ? coins : null;
         } catch (NumberFormatException bad) { return null; }
     }
+    /** Generic refund is usable only when correlated with the entire pending buy's escrow. */
+    public static Double buyCancellationRefund(String message,double expectedCoins) {
+        if(message==null||!Double.isFinite(expectedCoins)||expectedCoins<=0)return null;
+        var match=Pattern.compile("^\\[Bazaar] Cancelled! Refunded ([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?) coins from cancelling Buy Order!$",Pattern.CASE_INSENSITIVE)
+                .matcher(com.goofy.goofyaddons.utils.Chat.strip(message));
+        if(!match.matches())return null;
+        try {double value=Double.parseDouble(match.group(1).replace(",",""));return Double.isFinite(value)&&Math.abs(value-expectedCoins)<=0.51?value:null;}
+        catch(NumberFormatException bad){return null;}
+    }
     public static Double unitPrice(String lore) {
         if(lore==null) return null;
         var match=Pattern.compile("(?:Unit price|Price per unit):\\s*([\\d,]+(?:\\.\\d+)?)",Pattern.CASE_INSENSITIVE)

@@ -67,4 +67,16 @@ class GeneralCalculatorTest {
         assertEquals(1, result.size());
         assertEquals("ENCHANTED_SUGAR", result.getFirst().item().id());
     }
+
+    @Test void forecastRankingRequiresFreshConfiguredMatchingBatchAndNeverAddsUnvalidatedRoutes() {
+        var a=new GeneralCalculator.Candidate(new GeneralItem("A","A"),16,100,200,1600,100);
+        var b=new GeneralCalculator.Candidate(new GeneralItem("B","B"),16,100,130,480,1);
+        var r=new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Recommendation("GENERAL","B","B","B",16,16,480,1600,1,6000000,10,"ESTIMATED",true,"fill","current offer");
+        var report=new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report(100000,100000,100000,true,"FRESH","a".repeat(40),1,java.util.Map.of(),List.of(r));
+        assertEquals(List.of(b,a),GeneralCalculator.rankByForecast(List.of(a,b),report,100001));
+        assertEquals(List.of(a,b),GeneralCalculator.rankByForecast(List.of(a,b),report,161001));
+        var different=new GeneralCalculator.Candidate(b.item(),8,100,130,240,1);
+        assertEquals(List.of(a,different),GeneralCalculator.rankByForecast(List.of(a,different),report,100001));
+        assertEquals(List.of(a),GeneralCalculator.rankByForecast(List.of(a),report,100001));
+    }
 }

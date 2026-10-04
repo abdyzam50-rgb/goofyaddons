@@ -69,6 +69,8 @@ function render() {
   put('settlements',a?.profitError?`Profit ledger unavailable: ${a.profitError}`:a?a.profit.settlements===0?'No sale or loss settlements recorded yet':`${a.profit.settlements} settled · ${a.profit.incomplete} with unknown profit`:'From settled trade receipts');
   const predictions=state.predictions?.rows ?? [];
   put('predicted',coins(predictions[0]?.coinsPerHour));
+  put('measured-rate',live?coins(state.measuredProfitPerHour):'—');
+  put('measured-rate-note',live&&Number.isFinite(state.measuredProfitPerHour)?'Receipt-confirmed profit / tracked active time; paused time excluded':a?.profit?.incomplete?'Unavailable: some settlements have unknown profit':'Needs known-profit settlements and at least 60 seconds of active time');
   put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded gameplay outcomes · ${state.execution?.eligible ?? 0} eligible. Timing adjusts after 10 uninterrupted, known-cost cycles of the same route and batch in 24 hours.`);
   put('forecast-status',state.predictionReason || 'One eligible route; not total earnings');
   const positionProfit=state.positionProfit;
@@ -135,7 +137,7 @@ $('refresh').addEventListener('click',()=>{clearTimeout(pollTimer);void poll();}
 async function poll() {
   if(inFlight)return;inFlight=true;$('refresh').disabled=true;
   try {const response=await fetch('/v1/dashboard',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error(`HTTP ${response.status}`);state=await response.json();render();}
-  catch {if(state){state.fresh=false;state.predictions=null;state.positionProfit=null;state.pipeline=null;state.predictionReason='Companion unavailable';render();}put('notice','Companion unavailable. Keep its terminal running; displayed values are last observed.');}
+  catch {if(state){state.fresh=false;state.predictions=null;state.positionProfit=null;state.measuredProfitPerHour=null;state.pipeline=null;state.predictionReason='Companion unavailable';render();}put('notice','Companion unavailable. Keep its terminal running; displayed values are last observed.');}
   finally {inFlight=false;$('refresh').disabled=false;pollTimer=setTimeout(poll,2000);}
 }
 void poll();

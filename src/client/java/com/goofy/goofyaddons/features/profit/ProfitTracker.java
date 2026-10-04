@@ -50,7 +50,7 @@ public final class ProfitTracker {
         load(); if (error!=null) return;
         Double cost=ledger.knownCost(id,units);
         try { if (ledger.sell(id,engine,item,event,units,proceeds)) {
-            completeExecution(id,event,units,proceeds,cost==null||proceeds==null?null:proceeds-cost,false); Diagnostics.event("INFO","trade.sold",java.util.Map.of("trade",id,"engine",engine,"item",item,"units",units,"proceeds",proceeds==null?"unknown":proceeds)); save(); } }
+            completeExecution(id,event,units,proceeds,cost==null||proceeds==null?null:proceeds-cost,false); Diagnostics.event("INFO","trade.sold",java.util.Map.of("trade",id,"engine",engine,"item",item,"units",units,"proceeds",proceeds==null?"unknown":proceeds,"cost",cost==null?"unknown":cost,"profit",cost==null||proceeds==null?"unknown":proceeds-cost)); save(); } }
         catch (RuntimeException bad) { reportError(bad); }
     }
     /** Zero recovery value consumes the old cost basis permanently, even if an item appears later. */

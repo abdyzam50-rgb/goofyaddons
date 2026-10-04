@@ -1,5 +1,5 @@
 // Account snapshots remain in memory and are never mixed into public market recordings.
-import { positionEstimates, predictionReason, entryBlockReason } from './dashboard-profit.mjs';
+import { positionEstimates, predictionReason, entryBlockReason, measuredProfitRate } from './dashboard-profit.mjs';
 export const DASHBOARD_PROTOCOL = 'goofy-dashboard/1';
 export class DashboardState {
   constructor(now = Date.now) { this.now=now;this.account=null;this.receivedAt=0; }
@@ -32,6 +32,7 @@ export class DashboardState {
       predictions:predictionsFresh?report:null,collector:collector?.status() ?? {enabled:false},
       coverage:'Observed inventory and storage; mod-tracked orders and positions. Uninspected storage and unrelated orders are not discovered.'};
     view.positionProfit=fresh && this.account?.account.connected ? positionEstimates(this.account,collector) : {rows:[],total:null,known:0,unknown:0,reason:'Waiting for a fresh account snapshot'};
+    view.measuredProfitPerHour=fresh && this.account?.account.connected && !this.account.profitError?measuredProfitRate(this.account.profit):null;
     view.predictionReason=predictionReason(view);
     const plan=this.account?.analysis?.pipeline;
     view.pipeline=fresh && this.account?.account.connected && plan && (plan.status!=='READY' ||

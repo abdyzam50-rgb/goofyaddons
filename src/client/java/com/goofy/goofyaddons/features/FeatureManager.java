@@ -23,6 +23,9 @@ public class FeatureManager {
 
     private FeatureManager() {}
 
+    public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report marketReport() {
+        return marketAnalysis.latestReport();
+    }
     private List<Feature> engines() {
         return switch (mode) {
             case BOOKS -> List.of(books);

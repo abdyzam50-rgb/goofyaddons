@@ -46,3 +46,8 @@ export function entryBlockReason(account) {
   if(planning?.available===0)return 'No capital available for a new position';
   return null;
 }
+
+export function measuredProfitRate(profit) {
+  return profit && Number.isFinite(profit.profit) && Number.isFinite(profit.activeMillis) && profit.activeMillis>=60000
+    &&profit.settlements>0 &&profit.incomplete===0?profit.profit*3600000/profit.activeMillis:null;
+}

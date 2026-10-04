@@ -342,3 +342,9 @@ positions, 11.3m available, and zero evaluated/filtered routes. Full enabled-eng
 slots and unreadable purse observations take precedence over cached forecasts;
 freeing a slot restores usable reports. Mode-specific headroom and inventory
 constraints retain distinct explanations. Pricing/execution limits are unchanged.
+
+1.3.36: real generic buy-cancellation refund parsing with rounded exact escrow,
+wrong-side/amount rejection, durable refund proof and restart verification; partial
+buys wait for complete batches while timed-out partial claims retain their prior
+coverage. Forecast ranking uses only fresh configured exact-batch candidates and
+never creates routes. Measured profit/hour rejects incomplete or insufficient timing.

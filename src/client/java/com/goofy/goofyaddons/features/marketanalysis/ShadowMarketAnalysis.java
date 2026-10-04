@@ -118,6 +118,10 @@ public final class ShadowMarketAnalysis {
     public void stop() {
         generation++;if(pending!=null) pending.cancel(true);pending=null;report=null;pipeline=null;comparison=Map.of();status="STOPPED";lastError=null;nextPoll=0;
     }
+    public MarketAnalysisProtocol.Report latestReport() {
+        return report!=null && env.config()==previousConfig && env.config().marketAnalysis.enabled
+                && TradingSafety.fresh(report.marketAt(),env.now())?report:null;
+    }
     public Map<String,Object> diagnosticState() {
         var result=new LinkedHashMap<String,Object>();
         boolean enabled=env.config()!=null && env.config().marketAnalysis.enabled;

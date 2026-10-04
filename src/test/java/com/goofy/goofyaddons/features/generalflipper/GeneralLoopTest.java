@@ -165,7 +165,7 @@ class GeneralLoopTest {
 
     @Test void completedBuyTransitionsToInventoryWithoutACancellationReceipt() throws Exception {
         FakeWorld world = new FakeWorld().showing(orders(false, 16, 8, 0));
-        seed(world, "BUY_ORDER", 16, 0);
+        seed(world, "BUY_ORDER", 16, 181000);
         RecordingActions actions = new RecordingActions();
         Market market = new Market(world);
         var engine = engine(world, actions, market);
@@ -295,7 +295,7 @@ class GeneralLoopTest {
     }
     @Test void partialBuyClaimCancelsRemainderAndSellsOnlyAcknowledgedUnits() throws Exception {
         FakeWorld world = new FakeWorld().showing(orders(false, 16, 4, 0));
-        seed(world, "BUY_ORDER", 16, 0);
+        seed(world, "BUY_ORDER", 16, 181000);
         RecordingActions actions = new RecordingActions();
         Market market = new Market(world);
         var engine = engine(world, actions, market);
@@ -459,5 +459,29 @@ class GeneralLoopTest {
         drive(engine,world,240);assertEquals(0,clicks(actions,15));
         world.showing(menu("Mining ➜ Enchanted Co",0,List.of(icon(ID,NAME),SlotView.named(15,"Create Buy Order",List.of(NAME)))));
         drive(engine,world,240);assertEquals(1,clicks(actions,15));assertEquals("QUANTITY",stage(engine));
+    }
+
+    @Test void partialTopBuyWaitsForItsBatchInsteadOfCancellingOnTheFirstFill() throws Exception {
+        FakeWorld world=new FakeWorld().showing(orders(false,16,1,0));seed(world,"BUY_ORDER",16,0);
+        var actions=new RecordingActions();var engine=engine(world,actions,new Market(world));drive(engine,world,1600);
+        assertEquals(0,clicks(actions,11));assertTrue(engine.hasRetainedPositions());
+        world.advance(20000);world.showing(orders(false,16,16,0));drive(engine,world,1800);
+        assertEquals(1,clicks(actions,11));assertEquals("CANCEL_DETAIL",stage(engine));
+    }
+    @Test void genericFullBuyRefundSurvivesRestartAndAllowsVerifiedRepricing() throws Exception {
+        FakeWorld world=new FakeWorld().showing(orders(false,16,0,0));seed(world,"BUY_ORDER",16,61000);
+        var market=new Market(world);market.bid=110;var actions=new RecordingActions();var engine=engine(world,actions,market);
+        drive(engine,world,1200);assertEquals("CANCEL_DETAIL",stage(engine));
+        world.showing(menu("Buy Order Options",0,List.of(SlotView.named(13,"Cancel Order",List.of()))));drive(engine,world,180);
+        assertEquals("VERIFY_CANCEL",stage(engine));
+        engine.onNotice("[Bazaar] Cancelled! Refunded 1,500 coins from cancelling Buy Order!");
+        assertFalse(Files.readString(dir.resolve("orders.json")).contains("confirmedCancelRefund"));
+        engine.onNotice("[Bazaar] Cancelled! Refunded 1,600 coins from cancelling Buy Order!");
+        assertTrue(Files.readString(dir.resolve("orders.json")).contains("confirmedCancelRefund"));
+        engine.stop();world.showing(orders(false,0,0,0));
+        var restarted=engine(world,new RecordingActions(),market);drive(restarted,world,15000);
+        assertTrue(Files.readString(dir.resolve("orders.json")).contains("\"stage\": \"PLANNED\""));
+        assertFalse(Files.readString(dir.resolve("orders.json")).contains("confirmedCancelRefund"));
+        assertEquals(1760,market.capital.committed());assertEquals(0,market.sales);
     }
 }

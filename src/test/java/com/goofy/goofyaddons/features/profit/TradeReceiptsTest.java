@@ -13,6 +13,13 @@ class TradeReceiptsTest {
         assertNull(TradeReceipts.saleProceeds("[Bazaar] Claimed 1000 coins from selling 16x Potato Extra!","Potato",16));
         assertNull(TradeReceipts.saleProceeds("[Bazaar] Cancelled buy order for 16x Potato!","Potato",16));
     }
+    @Test void genericBuyRefundRequiresExactSideAndMatchingRoundedEscrow() {
+        assertEquals(3103159.0,TradeReceipts.buyCancellationRefund("[Bazaar] Cancelled! Refunded 3,103,159 coins from cancelling Buy Order!",3103158.9));
+        assertNull(TradeReceipts.buyCancellationRefund("[Bazaar] Cancelled! Refunded 3,103,159 coins from cancelling Buy Order!",3103150));
+        assertNull(TradeReceipts.buyCancellationRefund("[Bazaar] Cancelled! Refunded 2x Potato from cancelling Sell Offer!",3103158.9));
+        assertNull(TradeReceipts.buyCancellationRefund("[Bazaar] Cancelled! Refunded 3,10,159 coins from cancelling Buy Order!",3103158.9));
+        assertNull(TradeReceipts.buyCancellationRefund("[Bazaar] Cancelling order...",3103158.9));
+    }
     @Test void bothKnownOrderPriceFormatsAreParsed() {
         assertEquals(1234.5,TradeReceipts.unitPrice("Price per unit: 1,234.5 coins"));
         assertEquals(100,TradeReceipts.unitPrice("Unit price: 100 coins"));
