@@ -25,15 +25,18 @@ public final class BookRetirement {
     private long started=-1,nextAction,stableAt;
     private int stableContainer=-1,cancelContainer=-1,clickedContainer=-1,level,quantity,beforeClaim;
     private List<SlotView> contents;
-    private boolean claiming;
+    private boolean claiming,warningConfirmed;
+    private int saleContainer=-1;
     private double claimPrice;
     private Double saleProceeds;
     private String saleEvent;
     private final BookTransfer transfer=new BookTransfer();
     private static final Pattern SOLD=Pattern.compile("^\\[Bazaar] Sold ([\\d,]+)x (.+) for ([\\d,.]+) coins!$");
+    public Map<String,Object> diagnosticState(){return Map.of("phase",phase.name(),"level",level,"quantity",quantity,
+            "warningConfirmed",warningConfirmed,"receiptSeen",saleProceeds!=null);}
     public String reason(){return reason;}
     public boolean pending(){return trade!=null;}
-    public void reset(){trade=null;reason="";started=-1;phase=Phase.ORDERS;nextAction=0;stableContainer=-1;contents=null;claiming=false;cancelContainer=-1;clickedContainer=-1;saleProceeds=null;transfer.reset();}
+    public void reset(){trade=null;reason="";started=-1;phase=Phase.ORDERS;nextAction=0;stableContainer=-1;contents=null;claiming=false;cancelContainer=-1;clickedContainer=-1;saleProceeds=null;warningConfirmed=false;saleContainer=-1;transfer.reset();}
     public void receipt(Task task,String raw) {
         if(phase!=Phase.SALE || !Objects.equals(trade,task.getProfitTradeId()))return;
         var m=SOLD.matcher(Chat.strip(raw));
@@ -43,6 +46,25 @@ public final class BookRetirement {
             double coins=Double.parseDouble(m.group(3).replace(",",""));
             if(Double.isFinite(coins)&&coins>0)saleProceeds=coins;
         } catch(NumberFormatException ignored){}
+    }
+    private boolean warningMatches(MenuSnapshot menu,Book book) {
+        var buttons=menu.namedInContainer("Confirm");
+        if(buttons.size()!=1 || buttons.getFirst()!=13 || inventory(menu,book,level)!=quantity)return false;
+        var lines=menu.slot(13).loreLines();if(lines==null)return false;
+        var clean=lines.stream().map(Chat::strip).map(String::strip).filter(l->!l.isEmpty()).toList();
+        if(clean.isEmpty() || !clean.getFirst().equals(book.getRomanLevel(level))
+                || !clean.contains("You are selling the following items")
+                || !clean.contains("for much lower than the average") || !clean.contains("insta-selling price!"))return false;
+        var amounts=clean.stream().filter(l->l.startsWith("Matched Amount:")).toList();
+        var prices=clean.stream().filter(l->l.startsWith("Price:")).toList();
+        if(amounts.size()!=1 || prices.size()!=1)return false;
+        var amount=Pattern.compile("^Matched Amount: ([\\d,]+)x$").matcher(amounts.getFirst());
+        var price=Pattern.compile("^Price: ([\\d,.]+) coins$",Pattern.CASE_INSENSITIVE).matcher(prices.getFirst());
+        if(!amount.matches() || !price.matches())return false;
+        try {
+            double coins=Double.parseDouble(price.group(1).replace(",",""));
+            return Integer.parseInt(amount.group(1).replace(",",""))==quantity && Double.isFinite(coins)&&coins>0;
+        } catch(NumberFormatException bad){return false;}
     }
     private Result block(String why){reason=why;return Result.BLOCKED;}
     private boolean settled(MenuSnapshot m,long now) {
@@ -161,6 +183,7 @@ public final class BookRetirement {
                 if(sell.size()!=1||sell.getFirst()!=11)return block("Verified instant-sale control is unavailable.");
                 if(!ledger.checkpoint())return block("Instant-sale intent could not be saved.");
                 saleProceeds=null;saleEvent=UUID.randomUUID().toString();phase=Phase.SALE;
+                warningConfirmed=false;saleContainer=menu.containerId();
                 actions.click(11,false);nextAction=now+1000;return Result.WAITING;
             }
             if(title.startsWith("Bazaar")&&menu.loaded(53)&&menu.containerId()!=clickedContainer) {
@@ -170,6 +193,12 @@ public final class BookRetirement {
             return Result.WAITING;
         }
         if(phase==Phase.SALE) {
+            if(saleProceeds==null && "Confirm".equals(Chat.strip(menu.title())) && !warningConfirmed) {
+                if(menu.containerId()==saleContainer || !menu.loaded(35) || !settled(menu,now))return Result.WAITING;
+                if(!warningMatches(menu,book))return block("Instant-sale warning does not match the owned book, quantity and readable price; no confirmation clicked.");
+                if(!ledger.checkpoint())return block("Instant-sale warning intent could not be saved.");
+                warningConfirmed=true;actions.click(13,false);nextAction=now+1000;return Result.WAITING;
+            }
             // A sale receipt alone is insufficient; all sold books must also disappear.
             if(saleProceeds==null||inventory(menu,book,level)!=0||!settled(menu,now))return Result.WAITING;
             ledger.sold(task,quantity*book.baseUnits(level),saleProceeds,saleEvent);

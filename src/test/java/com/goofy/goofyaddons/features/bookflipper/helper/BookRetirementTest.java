@@ -140,4 +140,73 @@ class BookRetirementTest {
         assertEquals(1,actions.serverEffects().stream().filter(s->s.equals("shiftclick:10")).count());
         assertTrue(receipts.isEmpty());
     }
+    MenuSnapshot warning(String item,String amount,String price,boolean present) {
+        return menu(5,"Confirm",72,SlotView.named(13,"Confirm",List.of(item,"",
+                "You are selling the following items","for much lower than the average","insta-selling price!","",
+                "Over the last 7 days, this item's","average price was 1,593,984.2 Coins.",
+                "You are selling for x0.28 this value.","",amount,price,"","Click to confirm")),
+                present?held(36,1,0):SlotView.empty(36,true,0));
+    }
+    @Test void lowHistoricalPriceWarningConfirmsExactOwnedProductOnceAndRequiresSaleSettlement() {
+        advanceToItem();tick(item(true),5000);tick(item(true),6600);
+        var warning=warning("Overload I","Matched Amount: 1x","Price: 464,374 coins",true);
+        tick(warning,8000);tick(warning,9600);tick(warning,12000);
+        assertEquals(1,actions.serverEffects().stream().filter(s->s.equals("click:13")).count());
+        assertTrue(receipts.isEmpty());assertEquals(1,task.bookList.size());
+        flow.receipt(task,"[Bazaar] Sold 1x Overload I for 464,374 coins!");
+        var absent=menu(6,null,46);tick(absent,13000);tick(absent,14600);
+        assertEquals(List.of("sold:1:464374.0"),receipts);assertTrue(task.bookList.isEmpty());
+        assertEquals(BookRetirement.Result.COMPLETE,tick(absent,16000));
+    }
+    @Test void wrongProductAmountMissingPriceOrUnownedDuplicateNeverConfirmsWarning() {
+        for(int invalid=0;invalid<4;invalid++) {
+            flow.reset();actions.clear();
+            if(invalid==0)assertEquals(0,task.assignBook(book,1,0,1));
+            task.retire();
+            var orders=menu(1,"Bazaar Orders",72,held(36,1,0));tick(orders,0);tick(orders,1600);tick(orders,1700);
+            tick(menu(2,null,46,held(10,1,0)),2800);
+            tick(menu(3,"Bazaar ➜ Overload",90,SlotView.named(10,"Overload I",List.of()),held(54,1,0)),3900);
+            tick(item(true),5000);tick(item(true),6600);
+            var w=warning(invalid==0?"Overload II":"Overload I",invalid==1?"Matched Amount: 2x":"Matched Amount: 1x",
+                    invalid==2?"Price: unreadable":"Price: 464,374 coins",true);
+            if(invalid==3){var slots=new ArrayList<>(w.slots());slots.set(37,held(37,1,1));w=new MenuSnapshot(5,"Confirm",true,slots);}
+            tick(w,8000);assertEquals(BookRetirement.Result.BLOCKED,tick(w,9600));
+            assertFalse(actions.serverEffects().contains("click:13"));assertEquals(1,task.bookList.size());assertTrue(receipts.isEmpty());
+        }
+    }
+    @Test void warningNeedsSavedIntentBeforeConfirming() {
+        advanceToItem();tick(item(true),5000);tick(item(true),6600);
+        var w=warning("Overload I","Matched Amount: 1x","Price: 464,374 coins",true);
+        tick(w,8000);saved=false;assertEquals(BookRetirement.Result.BLOCKED,tick(w,9600));
+        assertFalse(actions.serverEffects().contains("click:13"));
+    }
+    @Test void capturedKarmaIIIWarningSellsOnlyThatIntermediateHoldingAndKeepsOtherBooks() {
+        var karma=new Book("ENCHANTMENT_KARMA",1,5,"Karma",0,0);
+        var owner=new Task(karma,false,false);assertEquals(0,owner.assignBook(karma,3,0,1));owner.retire();
+        var cleanup=new BookRetirement();var observed=new InventoryMemory();
+        var held=SlotView.enchantedBook(43,true,7,"karma",3,List.of(),"Enchanted Book");
+        var other=SlotView.enchantedBook(36,true,0,"ultimate_last_stand",2,List.of(),"Enchanted Book");
+        var orders=menu(62,"Co-op Bazaar Orders",72,held,other);
+        cleanup.tick(owner,orders,actions,observed,"ec","ec 2","LocalTest",0,ledger);
+        cleanup.tick(owner,orders,actions,observed,"ec","ec 2","LocalTest",1600,ledger);
+        cleanup.tick(owner,orders,actions,observed,"ec","ec 2","LocalTest",1700,ledger);
+        var search=menu(64,"Bazaar ➜ Karma",90,SlotView.named(13,"Karma III",List.of()),
+                SlotView.enchantedBook(61,true,7,"karma",3,List.of(),"Enchanted Book"));
+        cleanup.tick(owner,search,actions,observed,"ec","ec 2","LocalTest",3000,ledger);
+        var product=menu(65,"Karma ➜ Karma III",72,held,other,SlotView.named(13,"Karma III",List.of()),SlotView.named(11,"Sell Instantly",List.of()));
+        cleanup.tick(owner,product,actions,observed,"ec","ec 2","LocalTest",4100,ledger);
+        cleanup.tick(owner,product,actions,observed,"ec","ec 2","LocalTest",5700,ledger);
+        var w=warning("Karma III","Matched Amount: 1x","Price: 464,374 coins",false);
+        var slots=new ArrayList<>(w.slots());slots.set(43,held);slots.set(36,other);
+        w=new MenuSnapshot(66,"Confirm",true,slots);
+        cleanup.tick(owner,w,actions,observed,"ec","ec 2","LocalTest",6800,ledger);
+        cleanup.tick(owner,w,actions,observed,"ec","ec 2","LocalTest",8400,ledger);
+        assertEquals(2,actions.serverEffects().stream().filter(s->s.equals("click:13")).count(),"One product selection and one warning confirmation");
+        cleanup.receipt(owner,"[Bazaar] Sold 1x Karma III for 464,374 coins!");
+        var after=menu(67,"Karma ➜ Karma III",72,other);
+        cleanup.tick(owner,after,actions,observed,"ec","ec 2","LocalTest",9500,ledger);
+        cleanup.tick(owner,after,actions,observed,"ec","ec 2","LocalTest",11100,ledger);
+        assertEquals(List.of("sold:4:464374.0"),receipts);assertTrue(owner.bookList.isEmpty());
+        assertFalse(actions.serverEffects().contains("click:36"));
+    }
 }

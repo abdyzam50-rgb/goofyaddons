@@ -193,6 +193,7 @@ public class BazaarFlipper implements Feature {
         state.put("recovery",java.util.Map.of("pending",recoveryPending(),"fileError",recoveryFileError,"records",recoveryPositions,"progress",recoveryCheck==null?"not checking":recoveryCheck.progress()));state.put("inventoryFull",inventoryIsFull);
         state.put("buyClaimPending",pendingBuyClaim!=null);state.put("buyClaimBefore",buyClaimBefore);state.put("buyClaimExpected",buyClaimExpected);
         state.put("navigationPending",navigationRetry.pending());
+        state.put("retirement",retirement.diagnosticState());
         state.put("sellCancelPending",sellCancellation.pending());
         state.put("saleClaimPending",pendingSaleClaim!=null);state.put("saleReceipt",saleClaimReceipt);
         state.put("ordersContainer",ordersSettle.container());state.put("storagePage",usingSecondPage?2:1);
