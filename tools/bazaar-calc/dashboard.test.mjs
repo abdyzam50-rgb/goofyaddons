@@ -57,13 +57,16 @@ test('pipeline previews require a fresh account and forecast and expire independ
 });
 
 test('accepted opt-in account snapshots forward gameplay outcomes once and health reports collection',async()=>{
- const ingested=[];const executions={ingest(rows){ingested.push(rows);},status:()=>({samples:ingested.length,error:null})};
+ const ingested=[],active=[];const executions={ingestActive(rows){active.push(rows);},ingest(rows){ingested.push(rows);},status:()=>({samples:ingested.length,error:null})};
  const server=createCompanion({executions});await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const url=`http://127.0.0.1:${server.address().port}`,body={...snapshot(),executions:[{eventId:'confirmed-receipt'}]};
+ const url=`http://127.0.0.1:${server.address().port}`,body={...snapshot(),executions:[{eventId:'confirmed-receipt'}],activeExecutions:[{tradeId:'pending'}]};body.status.state='RUNNING';
  try{
   const options={method:'POST',headers:{'Content-Type':'application/json','X-Goofy-Dashboard':'local-v1'},body:JSON.stringify(body)};
   assert.equal((await fetch(`${url}/v1/account`,options)).status,200);assert.equal((await fetch(`${url}/v1/account`,options)).status,200);
   assert.equal(ingested.length,1);assert.equal((await(await fetch(`${url}/health`)).json()).execution.samples,1);
+  assert.deepEqual(active,[[{tradeId:'pending'}]]);
+  body.sentAt+=1;body.status.state='PAUSED';
+  assert.equal((await fetch(`${url}/v1/account`,{...options,body:JSON.stringify(body)})).status,200);assert.deepEqual(active.at(-1),[]);
  }finally{await new Promise(r=>server.close(r));}
 });
 

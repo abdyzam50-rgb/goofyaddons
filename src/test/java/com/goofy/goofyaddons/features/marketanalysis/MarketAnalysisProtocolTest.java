@@ -100,4 +100,39 @@ class MarketAnalysisProtocolTest {
             var c=new MarketAnalysisSettings();c.endpoint=url;assertThrows(IllegalArgumentException.class,c::validate);
         }
     }
+    @Test void downsideAndPendingEvidenceReachTheTraderWithoutInventingCompletedCycles() {
+        var c=config();var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
+        var e=new JsonObject();e.addProperty("samples",3);e.addProperty("pendingSamples",0);e.addProperty("censoredSamples",0);
+        e.addProperty("throughputFactor",0.75);e.addProperty("marketCycleSeconds",row.get("cycleSeconds").getAsDouble()*0.75);
+        e.addProperty("marketCoinsPerHour",row.get("coinsPerHour").getAsDouble()/0.75);
+        e.addProperty("p75ObservedSeconds",6000);e.addProperty("observedCoinsPerHour",70);e.addProperty("latestAt",NOW);
+        row.add("executionEvidence",e);
+        assertEquals(3,MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst().executionEvidence().get("samples"));
+        e.addProperty("samples",0);e.addProperty("pendingSamples",1);e.addProperty("observedCoinsPerHour",0);
+        assertEquals(1,MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst().executionEvidence().get("pendingSamples"));
+        e.addProperty("pendingSamples",0);
+        assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+    }
+    @Test void dailyVolumeEvidenceSurvivesTheBridgeAndRejectsImpossibleCoverage() {
+        var c=config();var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
+        var volume=new JsonObject();
+        for(String key:java.util.List.of("inputWeeklyAveragePerDay","outputWeeklyAveragePerDay","inputRecentPerDay","outputRecentPerDay",
+                "inputEffectivePerDay","outputEffectivePerDay"))volume.addProperty(key,100);
+        volume.addProperty("inputObservationHours",12);volume.addProperty("outputObservationHours",10);row.add("volumeEvidence",volume);
+        assertEquals(12.0,MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst().volumeEvidence().get("inputObservationHours"));
+        volume.addProperty("inputObservationHours",25);
+        assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+    }
+    @Test void knownProfitRealizationLowersRankingWithoutChangingLivePricesOrDuration() {
+        var c=config();var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
+        double original=row.get("coinsPerHour").getAsDouble();var e=new JsonObject();
+        e.addProperty("samples",10);e.addProperty("expectedProfitSamples",10);e.addProperty("throughputFactor",1);
+        e.addProperty("profitRealizationFactor",0.5);e.addProperty("marketCycleSeconds",row.get("cycleSeconds").getAsDouble());
+        e.addProperty("marketCoinsPerHour",original);e.addProperty("p75ObservedSeconds",row.get("cycleSeconds").getAsDouble());
+        e.addProperty("observedCoinsPerHour",original*0.5);e.addProperty("latestAt",NOW);
+        row.addProperty("coinsPerHour",original*0.5);row.add("executionEvidence",e);
+        assertEquals(0.5,MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst().executionEvidence().get("profitRealizationFactor"));
+        e.addProperty("expectedProfitSamples",2);
+        assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+    }
 }

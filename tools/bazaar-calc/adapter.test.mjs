@@ -114,3 +114,19 @@ test('personal calibration is applied before ranking and preserves forecast arit
   assert.equal(calls,r.total);
   for(const row of r.rows){const base=ordinary.rows.find(x=>x.routeKey===row.routeKey);assert.equal(row.buyPrice,base.buyPrice);assert.equal(row.profitPerOutput,base.profitPerOutput);assert.ok(Math.abs(row.coinsPerHour-base.coinsPerHour/2)<1e-6);}
 });
+
+test('recent daily trade flow lowers rankings while weekly averages, coverage and stale fallbacks stay explicit',()=>{
+ const b=packet();b.market.products.ENCHANTED_REDSTONE=product(100,128);
+ const baseline=run(b),coal=baseline.rows.find(r=>r.inputId==='ENCHANTED_COAL');
+ assert.equal(baseline.rows[0].inputId,'ENCHANTED_COAL');
+ const quiet={...history,stats:{ENCHANTED_COAL:{observedAt:now,recentTradeHours:12,recentBuyFlowH:20,recentSellFlowH:10}}};
+ const r=run(b,quiet),adjusted=r.rows.find(r=>r.inputId==='ENCHANTED_COAL');
+ assert.ok(adjusted.coinsPerHour<coal.coinsPerHour);assert.notEqual(r.rows[0].inputId,'ENCHANTED_COAL');
+ assert.ok(Math.abs(adjusted.volumeEvidence.inputWeeklyAveragePerDay-100000/7)<1e-8);
+ assert.equal(adjusted.volumeEvidence.inputRecentPerDay,480);assert.equal(adjusted.volumeEvidence.outputRecentPerDay,240);
+ assert.equal(adjusted.volumeEvidence.inputObservationHours,12);
+ const stale=run(b,{...quiet,stats:{ENCHANTED_COAL:{...quiet.stats.ENCHANTED_COAL,observedAt:now-60001}}});
+ assert.equal(stale.rows.find(r=>r.inputId==='ENCHANTED_COAL').coinsPerHour,coal.coinsPerHour);
+ const short=run(b,{...quiet,stats:{ENCHANTED_COAL:{...quiet.stats.ENCHANTED_COAL,recentTradeHours:0.5}}});
+ assert.equal(short.rows.find(r=>r.inputId==='ENCHANTED_COAL').coinsPerHour,coal.coinsPerHour);
+});

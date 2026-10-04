@@ -112,6 +112,7 @@ test('real trade counters override removals after an hour and survive legacy-row
   }
   const s=c.history().stats.TEST_0;
   assert.equal(s.liveHours,3);assert.equal(s.delists.exact,true);
+  assert.equal(s.recentTradeHours,3);assert.equal(s.recentBuyFlowH,60);assert.equal(s.recentSellFlowH,90);assert.equal(s.observedAt,f.now);
   assert.equal(s.delists.bidTrades,180);assert.equal(s.delists.askTrades,270);
   assert.equal(s.delists.bidRemoved,90);assert.equal(s.delists.askRemoved,90);
   await c.save();const recovered=new MarketCollector(f.options);assert.deepEqual(recovered.history(),c.history());
@@ -119,7 +120,7 @@ test('real trade counters override removals after an hour and survive legacy-row
   for(const item of Object.values(c.state.items))item.flows=item.flows.map(row=>row.slice(0,7));
   await c.save();const legacy=new MarketCollector(f.options);
   assert.equal(legacy.status().storageError,null);assert.equal(legacy.history().stats.TEST_0.flowBasis,'book');
-  assert.equal(legacy.history().stats.TEST_0.observedBuyFlowH,30);
+  assert.equal(legacy.history().stats.TEST_0.observedBuyFlowH,30);assert.equal(legacy.history().stats.TEST_0.recentTradeHours,0);
 });
 
 test('counter rollover, disconnected gaps and restart never invent trades',async t => {

@@ -3,6 +3,7 @@ import {routeId,routeName,visibleRoutes,routeDisposition,workStages,storageCells
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat(undefined,{maximumFractionDigits:1});
 const coins = v => Number.isFinite(v) ? number.format(v) : '—';
+const batchProfit = p => p.profitPerBatch*(p.executionEvidence?.profitRealizationFactor??1);
 const age = ts => ts ? `${Math.max(0,Math.floor((Date.now()-ts)/1000))}s ago` : 'not observed';
 const put = (id,value) => { $(id).textContent=value; };
 let state=null,selectedRoute=null,favorites=[],preferences={};
@@ -28,7 +29,7 @@ function renderRoutes(predictions) {
   const title=document.createElement('h3');title.append(button(`${favorites.includes(routeId(p))?'★ ':''}${routeName(p)}`,()=>inspect(p)));
   const rate=document.createElement('p');rate.className='value coin';rate.textContent=coins(p.coinsPerHour);
   const units=document.createElement('p');units.className='muted';units.textContent='Estimated coins/hour';
-  const cost=document.createElement('p');cost.textContent=`Capital ${coins(p.capitalUsed)} · profit/batch ${coins(p.profitPerBatch)}`;
+  const cost=document.createElement('p');cost.textContent=`Capital ${coins(p.capitalUsed)} · profit/batch ${coins(batchProfit(p))}`;
   const status=document.createElement('p');status.className='muted';status.textContent=routeDisposition(p,state.pipeline,automatic);
   card.append(rank,title,rate,units,cost,status);cards.append(card);
  }
@@ -36,7 +37,7 @@ function renderRoutes(predictions) {
  const routes=$('prediction-rows');routes.replaceChildren();
  for(const p of shown){
   const tr=document.createElement('tr'),name=document.createElement('td');name.append(button(`${favorites.includes(routeId(p))?'★ ':''}${routeName(p)}`,()=>inspect(p)));tr.append(name);
-  for(const value of [p.kind??'—',`${p.batch} / ${p.inputUnits??'—'}`,coins(p.capitalUsed),coins(p.profitPerBatch),p.capitalUsed>0?`${coins(p.profitPerBatch/p.capitalUsed*100)}%`:'—',coins(p.coinsPerHour),`${coins(p.cycleSeconds/60)} min`,p.confidence,routeDisposition(p,state.pipeline,automatic)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}routes.append(tr);
+  for(const value of [p.kind??'—',`${p.batch} / ${p.inputUnits??'—'}`,coins(p.capitalUsed),coins(batchProfit(p)),p.capitalUsed>0?`${coins(batchProfit(p)/p.capitalUsed*100)}%`:'—',coins(p.coinsPerHour),`${coins(p.cycleSeconds/60)} min`,p.confidence,routeDisposition(p,state.pipeline,automatic)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}routes.append(tr);
  }
  if(!shown.length)empty(routes,10,predictions.length?'No matches. Clear filters to see all reported routes.':state.predictionReason||'Waiting for a fresh calculator forecast.');
  const selected=predictions.find(p=>routeId(p)===selectedRoute),details=$('detail-values');details.replaceChildren();
@@ -45,11 +46,15 @@ function renderRoutes(predictions) {
  put('favorite-route',selected&&favorites.includes(routeId(selected))?'Remove favorite':'Favorite');
  if(selected)for(const [label,value]of [
   ['Input product',selected.inputId??'Not supplied'],['Output product',selected.outputId??'Not supplied'],['Batch / input units',`${selected.batch} / ${selected.inputUnits??'—'}`],
-  ['Capital required',coins(selected.capitalUsed)],['Estimated batch profit',coins(selected.profitPerBatch)],['Estimated cycle',`${coins(selected.cycleSeconds/60)} min`],
+  ['Capital required',coins(selected.capitalUsed)],['Market batch profit',coins(selected.profitPerBatch)],['Gameplay-adjusted batch profit',coins(selected.profitPerBatch*(selected.executionEvidence?.profitRealizationFactor??1))],['Estimated cycle',`${coins(selected.cycleSeconds/60)} min`],
   ['Book combine operations',selected.kind==='BOOK'?Math.max(0,selected.inputUnits-selected.batch):'None'],['Limited by',selected.limitedBy??'Not supplied'],['Price basis',selected.priceBasis??'Current market forecast'],
   ['Market evidence',selected.confidence==='MEASURED'?'Observed market samples · personal fills may differ':'Estimated fill model'],['Quote age',age(state.predictions?.marketAt)],['Execution scope',selected.configured?(automatic?'Automatic selection':'Configured'):'Research only'],
   ['Market-only coins/hour',coins(selected.executionEvidence?.marketCoinsPerHour??selected.coinsPerHour)],
-  ['Gameplay adjustment',selected.executionEvidence?.samples?`${selected.executionEvidence.samples} cycles · ${coins(selected.executionEvidence.throughputFactor)}× throughput`:'Waiting for 10 matching completed cycles'],
+  ['Gameplay adjustment',Number.isFinite(selected.executionEvidence?.throughputFactor)?`${selected.executionEvidence.samples} completed · ${selected.executionEvidence.pendingSamples??0} open · ${selected.executionEvidence.censoredSamples??0} retired · ${coins(selected.executionEvidence.throughputFactor)}× throughput · ${coins(selected.executionEvidence.profitRealizationFactor??1)}× profit realization`:'Waiting for 3 completed cycles or an overdue open trade'],
+  ['Input daily volume · weekly average',selected.volumeEvidence?coins(selected.volumeEvidence.inputWeeklyAveragePerDay):'—'],
+  ['Output daily volume · weekly average',selected.volumeEvidence?coins(selected.volumeEvidence.outputWeeklyAveragePerDay):'—'],
+  ['Input recent daily rate',selected.volumeEvidence?.inputObservationHours?`${coins(selected.volumeEvidence.inputRecentPerDay)} · ${coins(selected.volumeEvidence.inputObservationHours)} h observed`:'Not enough recent counter observations'],
+  ['Output recent daily rate',selected.volumeEvidence?.outputObservationHours?`${coins(selected.volumeEvidence.outputRecentPerDay)} · ${coins(selected.volumeEvidence.outputObservationHours)} h observed`:'Not enough recent counter observations'],
   ['Observed gameplay coins/hour',selected.executionEvidence?.samples?coins(selected.executionEvidence.observedCoinsPerHour):'—']]){
    const group=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;group.append(dt,dd);details.append(group);
  }
@@ -75,7 +80,7 @@ function render() {
   put('predicted',coins(predictions[0]?.coinsPerHour));
   put('measured-rate',live?coins(state.measuredProfitPerHour):'—');
   put('measured-rate-note',live&&Number.isFinite(state.measuredProfitPerHour)?'Receipt-confirmed profit / tracked active time; paused time excluded':a?.profit?.incomplete?'Unavailable: some settlements have unknown profit':'Needs known-profit settlements and at least 60 seconds of active time');
-  put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded gameplay outcomes · ${state.execution?.eligible ?? 0} eligible. Hourly forecasts adjust up or down after 10 uninterrupted, known-cost cycles of the same route and batch in 24 hours; evidence weight grows through 30 cycles.`);
+  put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded outcomes · ${state.execution?.eligible ?? 0} completed timing samples · ${state.execution?.censored ?? 0} retired bounds · ${state.execution?.pending ?? 0} open. Downside learns after 3 completed cycles or an overdue trade; upside needs 10. Rankings also account for realized profit and recent market volume.`);
   put('forecast-status',state.predictionReason || 'One eligible route; not total earnings');
   const positionProfit=state.positionProfit;
   put('position-profit',coins(positionProfit?.total));$('position-profit').classList.toggle('negative',positionProfit?.total<0);
@@ -116,7 +121,7 @@ function render() {
   }
   put('work-note',live?'Observed positions grouped by their current stage; counts are not fill progress.':'Waiting for fresh account data.');
   const plan=state.pipeline,queue=$('pipeline-rows');queue.replaceChildren();
-  for(const proposal of plan?.next ?? []){const p=proposal.route;row(queue,[proposal.priority,`${p.inputId} → ${p.outputId}`,p.kind,p.inputUnits,coins(p.capitalUsed),coins(p.profitPerBatch),`${coins(p.cycleSeconds/60)} min`,p.confidence]);}
+  for(const proposal of plan?.next ?? []){const p=proposal.route;row(queue,[proposal.priority,`${p.inputId} → ${p.outputId}`,p.kind,p.inputUnits,coins(p.capitalUsed),coins(batchProfit(p)),`${coins(p.cycleSeconds/60)} min`,p.confidence]);}
   if(!queue.children.length)empty(queue,8,plan?.reason || state.predictionReason || 'Waiting for account and forecast data');
   put('pipeline-budget',plan?.account?`Spendable ${coins(plan.account.available)} · pending purse deduction ${coins(plan.account.pending)} · preview allocation ${coins(plan.plannedCapital)} · left ${coins(plan.capitalLeft)} · headroom ${plan.account.bookSlots} book / ${plan.account.generalSlots} general positions · ${plan.account.inventoryCapacity} input slots${Number.isFinite(plan.inventoryLeft)?` · ${plan.inventoryLeft} slots left in preview`:''}`:'Waiting for a shared account snapshot from mod 1.3.31+');
   put('pipeline-note',plan?`${plan.reason}. Preview only; no real capital is reserved. Conservative inventory capacity; reported candidates only. Rates are ranked individually and are not added together.`:state.predictionReason || 'Waiting for planner data');

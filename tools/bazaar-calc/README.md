@@ -287,15 +287,42 @@ costs and holdings recovered from a previous session do not produce eligible tim
 samples. Existing holdings still trade normally. Samples survive restart, but open
 timers do not: offline time cannot masquerade as measured execution.
 
-After ten eligible cycles with the **same input/output IDs and exact batch size**
-in the preceding 24 hours, the calculator uses their 75th-percentile duration as
-a timing adjustment for its current market cycle estimate. Throughput can increase
-or decrease, bounded to 0.5–1.5 times the market rate; weight grows from 10 through
-30 cycles. Current prices, tax, capital limits and entry filters remain authoritative.
-No samples means ordinary market estimates. The dashboard separates market-only
-rate, calibrated rate and observed gameplay net rate. These are individual route
-rates, not additive portfolio earnings. Automatic selection uses calibrated ranking
-when explicitly enabled; the trader still verifies the live transaction.
+From 1.3.46, downside timing evidence starts after **three** eligible cycles in
+24 hours. Matching input/output routes share timings across batches with the same
+input/output ratio, normalized by output quantity. The 75th-percentile duration
+adjusts current throughput; weight grows to full strength at ten slow cycles.
+The timing factor can fall to 0.1; increases still need ten cycles, reach full
+weight at thirty, and stay capped at 1.5 and the current market-volume ceiling.
+
+New verified buys also record their original expected net batch profit. Once three
+completed cycles have both forecast and known realized profit, repeated shortfalls
+apply a separate profit-realization factor. It never boosts current margins and
+grows to full strength at ten samples. Older records lack the original forecast;
+they still contribute timing but do not get an invented profit comparison.
+Current buy/sell quotes, tax, capital and entry checks remain authoritative.
+
+Fresh open trades watched for at least three minutes can supply a duration lower
+bound when overdue versus the forecast. They cannot increase a rate or create
+confirmed profit. These snapshots expire after fifteen seconds and are not stored.
+Explicit book retirement preserves a separate lower-bound timing sample when its
+session was continuously observed; cleanup sales remain excluded from successful
+cycle calibration. Pauses/offline sessions do not supply these bounds.
+
+The collector reports trade-counter observations from sampled intervals in the
+last 24 hours. After at least one observed hour, each buy/sell side uses a two-hour
+weekly prior blended with that recent rate, capped by its weekly baseline. Quieter
+markets therefore lower throughput earlier. Gaps, rollover and order cancellation
+are not invented trades. The dashboard distinguishes weekly-average daily volume
+from recent **daily-equivalent rates**, with observed-hour coverage; these are not
+claims of an exact complete day's traded volume. Insufficient or stale evidence
+falls back to the weekly baseline.
+
+The dashboard separates market-only rate, adjusted rate, observed gameplay net
+rate, timing evidence, profit realization, and daily volume. Cards, tables and
+pipeline batch profits include the realization factor; inspection also shows the
+raw market batch profit. Individual route rates are not additive portfolio
+earnings. Automatic selection uses the adjusted ranking for subsequent purchases;
+existing trades retain their transaction checks and retirement policy.
 
 Back up both mod JSON files and the companion's persistent user-data folder to retain measured
 history. The distribution ZIP deliberately excludes all runtime data.
@@ -470,3 +497,12 @@ no-progress clock survive restarts in the existing book journal. Unknown legacy
 acquisition costs remain unknown in profit reporting. Cleanup sales are excluded
 from ordinary route-throughput training. Keep the existing journals and
 companion; replacing the mod JAR is sufficient.
+
+## Adaptive gameplay ranking update (1.3.46)
+
+Replace the mod with `goofyaddons-1.3.46-BETA.jar` and update the local companion
+using the matching `goofyaddons-bazaar-calc-1.3.46-BETA.zip`, then restart both.
+Keep existing Minecraft configs/journals and the external companion data directory.
+Keep `marketAnalysis.dashboardEnabled` enabled so the opt-in local telemetry sends
+completed and currently observed executions. No config reset is required. The
+upstream engine pin and existing public/bootstrap history remain unchanged.

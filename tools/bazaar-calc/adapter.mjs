@@ -59,6 +59,20 @@ export function recommend(body, history, provenance, now = Date.now(), execution
     stats: new Map(Object.entries(historyUsed ? history.stats ?? {} : {})),
     hold: new Map(Object.entries(historyUsed ? history.hold ?? {} : {})),
     names: new Map(Object.entries(history?.names ?? {})), ah: new Map(), now });
+  const volumes=new Map();
+  for(const m of market.values()) {
+    const stat=historyUsed?history.stats?.[m.id]:null;
+    const valid=stat && Number.isFinite(stat.observedAt) && stat.observedAt>=now-60000 && stat.observedAt<=now+5000
+      && Number.isFinite(stat.recentTradeHours) && stat.recentTradeHours>=1 && stat.recentTradeHours<=24
+      && [stat.recentBuyFlowH,stat.recentSellFlowH].every(v=>Number.isFinite(v)&&v>=0);
+    const hours=valid?stat.recentTradeHours:0;
+    const buyWeek=m.isellWeek/168,sellWeek=m.ibuyWeek/168;
+    // A two-hour weekly prior smooths sparse observations but reacts to today's quieter market.
+    const buy=valid?Math.min(buyWeek,(stat.recentBuyFlowH*hours+buyWeek*2)/(hours+2)):buyWeek;
+    const sell=valid?Math.min(sellWeek,(stat.recentSellFlowH*hours+sellWeek*2)/(hours+2)):sellWeek;
+    volumes.set(m.id,{buyWeek,sellWeek,buy,sell,hours,recentBuy:valid?stat.recentBuyFlowH:0,recentSell:valid?stat.recentSellFlowH:0});
+    m.isellWeek=buy*168;m.ibuyWeek=sell*168;
+  }
   const baseSettings = { ...DEFAULT_SETTINGS, coins, clickDelayMs: click, includeFlagged: false };
   const rows = [];
   const eligible = m => m && m.bid > 0 && m.ask > 0 && !excluded.has(m.id) && !excluded.has(parseBookId(m.id)?.enchant);
@@ -101,7 +115,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
     // Current traders complete each position before starting its next buy. Cap the upstream
     // pipelined rate by the sum of the two sequential fill times and anvil work.
     const cycleHours = n * batch / buyRate + batch / sellRate + operations * batch * actionSeconds('anvil_combine', settings) / 3600;
-    const outputsPerHour = Math.min(o.unitsH, batch / cycleHours);
+    const outputsPerHour = Math.min(o.unitsH, batch / cycleHours, source.isellWeek/n/168, target.ibuyWeek/168);
     if (!(outputsPerHour > 0) || !Number.isFinite(outputsPerHour)) { counts.filtered++; return; }
     const measured = historyUsed && buy.fill.basis === 'measured' && sell.fill.basis === 'measured';
     const routeKey = kind === 'BOOK' ? `${parseBookId(source.id).enchant}:${level}:${sellLevel}` : source.id;
@@ -112,6 +126,11 @@ export function recommend(body, history, provenance, now = Date.now(), execution
       outputsPerHour, coinsPerHour: outputsPerHour * profitPerOutput, cycleSeconds: batch / outputsPerHour * 3600,
       confidence: measured ? 'MEASURED' : 'ESTIMATED', buyBasis: buy.fill.basis, sellBasis: sell.fill.basis,
       configured: c.automaticSelection===true || (kind === 'BOOK' ? configuredBooks.has(routeKey) : configuredGeneral.has(routeKey)),
+      volumeEvidence:{inputWeeklyAveragePerDay:volumes.get(source.id).buyWeek*24,outputWeeklyAveragePerDay:volumes.get(target.id).sellWeek*24,
+        inputRecentPerDay:volumes.get(source.id).recentBuy*24,outputRecentPerDay:volumes.get(target.id).recentSell*24,
+        inputObservationHours:volumes.get(source.id).hours,outputObservationHours:volumes.get(target.id).hours,
+        inputEffectivePerDay:volumes.get(source.id).buy*24,outputEffectivePerDay:volumes.get(target.id).sell*24},
+      maxOutputsPerHour:Math.min(volumes.get(source.id).buy/n,volumes.get(target.id).sell),
       limitedBy: o.limitedBy, priceBasis: sell.priceBasis ?? 'current offer',
       assumptions: ['market-wide observations, not guaranteed personal fills', 'sequential position cycle', 'GUI overhead/lag estimates'] });
   };

@@ -2240,7 +2240,8 @@ public class BazaarFlipper implements Feature {
             CapitalManager.INSTANCE.purchased("books",task.getBook().id());
             var book=task.getBook();
             if(submittedBookUnits==book.getQtyAmount(book.level())) ProfitTracker.INSTANCE.beginExecution(task.getProfitTradeId(),"books",
-                    book.getLevel(book.level()),book.getLevel(book.sellLevel()),submittedBookUnits,1,submittedBookAt);
+                    book.getLevel(book.level()),book.getLevel(book.sellLevel()),submittedBookUnits,1,submittedBookAt,
+                    expectedBookProfit(book,submittedBookUnits,submittedBookPrice));
         }
         task.setBookState(submittedNextState);
         submittedBookTask=null;submittedNextState=null;
@@ -2473,6 +2474,14 @@ public class BazaarFlipper implements Feature {
         confirmationTask=task;confirmationPrice=price;confirmationSelling=true;
         confirmationSelectedAt=System.currentTimeMillis();confirmationStability.reset();
         navigationClick(12);
+    }
+
+    private Double expectedBookProfit(Book book,int units,double price) {
+        var latest=BazaarApi.latestFresh();var products=latest==null?null:latest.getAsJsonObject("products");
+        var output=products==null?null:products.getAsJsonObject(book.getLevel(book.sellLevel()));
+        double ask=output==null?-1:com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(output,"buy_summary");
+        double expected=ask*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-units*price;
+        return ask>0 && Double.isFinite(expected) && expected>0?expected:null;
     }
 
     private boolean bookPriceAllowed(Task task, double price, boolean sale) {

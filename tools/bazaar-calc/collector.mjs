@@ -95,11 +95,17 @@ export class MarketCollector {
       if (!latest || latest[0] < now-60000) continue;
       const pts = item.closes, w24 = pts.filter(r => r[0] >= now-DAY);
       const aggregate = item.flows.reduce((a,r) => ({ n:a.n+r[1],secs:a.secs+r[2],ob:a.ob+r[3],uc:a.uc+r[4],br:a.br+r[5],ar:a.ar+r[6],tsecs:a.tsecs+(r[7]??0),bt:a.bt+(r[8]??0),at:a.at+(r[9]??0) }),{n:0,secs:0,ob:0,uc:0,br:0,ar:0,tsecs:0,bt:0,at:0});
+      // Complete sampled intervals within the last day; neither cancellations nor missing polls are trades.
+      const recent=item.flows.filter(r=>r[0]>=now-DAY && r[0]<=now && r.length>=10
+        && r.slice(7,10).every(v=>Number.isFinite(v)&&v>=0)).reduce((a,r)=>({secs:a.secs+r[7],buy:a.buy+r[8],sell:a.sell+r[9]}),{secs:0,buy:0,sell:0});
       const first = w24[0], last = w24.at(-1);
       const counters = first && last ? {span:(last[0]-first[0])/HOUR,b1:first[5],b2:last[5],s1:first[6],s2:last[6]} : undefined;
       const ago = pts.findLast(r => r[0] <= now-HOUR && r[0] >= now-3*HOUR);
       const observed = competition(aggregate);
       stats[id] = { askMed:median(pts.map(r=>r[2])),bidMed:median(pts.map(r=>r[1])),spreadMed:median(pts.map(r=>(r[2]-r[1])/r[1])),days:7,
+        observedAt:latest[0],recentTradeHours:Math.min(24,recent.secs/3600),
+        recentBuyFlowH:recent.secs>0?recent.buy/recent.secs*3600:null,
+        recentSellFlowH:recent.secs>0?recent.sell/recent.secs*3600:null,
         ...observed,liveHours:observed.flowBasis ? observed.liveHours : aggregate.secs/3600,delists:delists(aggregate,counters),
         hourAgo:ago ? {bid:ago[1],ask:ago[2]} : null,
         ask24:median(w24.map(r=>r[2])),bid24:median(w24.map(r=>r[1])),n24:w24.length,

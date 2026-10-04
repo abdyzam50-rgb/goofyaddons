@@ -46,7 +46,10 @@ public final class ProfitTracker {
         try {if(ledger.recoverHoldings(id,engine,item,observedUnits))save();}
         catch(RuntimeException bad){reportError(bad);}
     }
-    public void retire(String id){load();execution.interrupt(id);}
+    public void retire(String id){load();if(executionError!=null)return;
+        try {if(execution.retire(id,System.currentTimeMillis()))execution.write(executionPath);}
+        catch(Exception bad){executionError="Execution history save failed; reporting only";Diagnostics.failure("execution.save_failed",bad);}
+    }
     public void sell(String id,String engine,String item,String event,int units,Double proceeds) {
         load(); if (error!=null) return;
         Double cost=ledger.knownCost(id,units);
@@ -68,7 +71,12 @@ public final class ProfitTracker {
         load();if(executionError!=null)return;
         execution.begin(id,engine,input,output,units,batch,startedAt);
     }
+    public void beginExecution(String id,String engine,String input,String output,int units,int batch,long startedAt,Double expectedProfit) {
+        load();if(executionError!=null)return;
+        execution.begin(id,engine,input,output,units,batch,startedAt,expectedProfit);
+    }
     public java.util.List<ExecutionLedger.Sample> executionSamples() {load();return execution.samples();}
+    public java.util.List<ExecutionLedger.Active> activeExecutions() {load();return execution.active(System.currentTimeMillis());}
     public String executionError() {load();return executionError;}
     private void completeExecution(String id,String event,int units,Double proceeds,Double profit,boolean lost) {
         if(executionError!=null)return;

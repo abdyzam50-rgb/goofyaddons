@@ -46,6 +46,7 @@ public final class LocalDashboard {
         body.add("analysis",GSON.toJsonTree(engines.get("marketAnalysis")));body.add("profit",GSON.toJsonTree(ProfitTracker.INSTANCE.summary()));
         body.addProperty("profitError",ProfitTracker.INSTANCE.error());
         body.add("executions",GSON.toJsonTree(ProfitTracker.INSTANCE.executionSamples()));
+        body.add("activeExecutions",GSON.toJsonTree(ProfitTracker.INSTANCE.activeExecutions()));
         body.addProperty("executionError",ProfitTracker.INSTANCE.executionError());
         return body;
     }

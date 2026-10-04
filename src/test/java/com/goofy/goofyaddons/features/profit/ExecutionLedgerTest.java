@@ -28,4 +28,23 @@ class ExecutionLedgerTest {
   assertFalse(l.samples().stream().filter(s->s.eventId().equals("sale1")).findFirst().orElseThrow().eligible());
   assertTrue(l.samples().stream().filter(s->s.eventId().equals("sale2")).findFirst().orElseThrow().eligible());
  }
+ @Test void activeTimingIsSessionLocalAndInterruptionsCannotPenalizeMarkets() {
+  var l=new ExecutionLedger();l.begin("t","general","COAL","COAL",16,16,1000);
+  var a=l.active(201000).getFirst();assertEquals(200000,a.observedMillis());assertEquals("t",a.tradeId());
+  l.interrupt();assertTrue(l.active(301000).isEmpty());l.retire("t",301000);assertTrue(l.samples().isEmpty());
+ }
+ @Test void retirementPersistsALowerBoundWithoutClaimingSuccessfulTimingOrProfit() throws Exception {
+  var l=new ExecutionLedger();l.begin("t","books","A_1","A_2",2,1,1000);l.retire("t",601000);
+  assertTrue(l.active(601000).isEmpty());assertEquals(1,l.samples().size());var s=l.samples().getFirst();
+  assertTrue(s.censored());assertFalse(s.eligible());assertNull(s.profit());assertNull(s.proceeds());
+  l.retire("t",602000);l.complete("t","sale",2,100.0,10.0,603000,false);assertEquals(1,l.samples().size());
+  l.write(dir.resolve("execution.json"));assertEquals(l.samples(),ExecutionLedger.read(dir.resolve("execution.json")).samples());
+ }
+ @Test void verifiedPurchaseForecastSurvivesCompletionForRealizedProfitComparison() throws Exception {
+  var l=new ExecutionLedger();l.begin("t","general","COAL","COAL",16,16,1000,100.0);
+  l.begin("t","general","COAL","COAL",16,16,2000,999.0);
+  l.complete("t","e",16,150.0,50.0,61000,false);
+  assertEquals(100.0,l.samples().getFirst().expectedProfit());assertEquals(50.0,l.samples().getFirst().profit());
+  l.write(dir.resolve("execution.json"));assertEquals(l.samples(),ExecutionLedger.read(dir.resolve("execution.json")).samples());
+ }
 }

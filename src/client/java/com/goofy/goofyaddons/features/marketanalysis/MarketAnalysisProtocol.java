@@ -15,7 +15,13 @@ public final class MarketAnalysisProtocol {
     public record Recommendation(String kind, String routeKey, String inputId, String outputId,
                                  int inputUnits, int batch, double profitPerBatch, double capitalUsed,
                                  double outputsPerHour, double coinsPerHour, double cycleSeconds,
-                                 String confidence, boolean configured, String limitedBy, String priceBasis, Map<String,Object> executionEvidence) {
+                                 String confidence, boolean configured, String limitedBy, String priceBasis, Map<String,Object> executionEvidence, Map<String,Object> volumeEvidence) {
+        public Recommendation(String kind,String routeKey,String inputId,String outputId,int inputUnits,int batch,
+                double profitPerBatch,double capitalUsed,double outputsPerHour,double coinsPerHour,double cycleSeconds,
+                String confidence,boolean configured,String limitedBy,String priceBasis,Map<String,Object> executionEvidence) {
+            this(kind,routeKey,inputId,outputId,inputUnits,batch,profitPerBatch,capitalUsed,outputsPerHour,coinsPerHour,cycleSeconds,
+                    confidence,configured,limitedBy,priceBasis,executionEvidence,Map.of());
+        }
         public Recommendation(String kind,String routeKey,String inputId,String outputId,int inputUnits,int batch,
                 double profitPerBatch,double capitalUsed,double outputsPerHour,double coinsPerHour,double cycleSeconds,
                 String confidence,boolean configured,String limitedBy,String priceBasis) {
@@ -116,23 +122,45 @@ public final class MarketAnalysisProtocol {
                     || !confidence.equals(measured ? "MEASURED" : "ESTIMATED") || bool(r,"configured") != configured)
                 throw new IllegalArgumentException("Calculator confidence/configured marker is inconsistent");
             double rate = positive(r,"outputsPerHour"), coins = positive(r,"coinsPerHour"), seconds = positive(r,"cycleSeconds");
-            if (!same(coins,rate*profit) || !same(seconds,batch/rate*3600) || coins > previous + 1e-6)
+            double realization=r.has("executionEvidence") && r.getAsJsonObject("executionEvidence").has("profitRealizationFactor")
+                    ? positive(r.getAsJsonObject("executionEvidence"),"profitRealizationFactor") : 1;
+            if(realization<0.1 || realization>1)throw new IllegalArgumentException("Invalid realized profit adjustment");
+            if (!same(coins,rate*profit*realization) || !same(seconds,batch/rate*3600) || coins > previous + 1e-6)
                 throw new IllegalArgumentException("Calculator ranking/throughput is inconsistent");
             previous = coins;
             Map<String,Object> evidence=Map.of();
             if(r.has("executionEvidence")) {
                 var e=r.getAsJsonObject("executionEvidence");
-                int samples=integer(e,"samples",10,2000);double factor=positive(e,"throughputFactor");
+                int samples=integer(e,"samples",0,2000);double factor=positive(e,"throughputFactor");
                 double baseline=positive(e,"marketCycleSeconds"),baselineCoins=positive(e,"marketCoinsPerHour");
                 long latest=timestamp(e,"latestAt");
-                if(factor<0.5 || factor>1.5 || !same(seconds,baseline/factor) || !same(coins,baselineCoins*factor)
+                if(factor<0.1 || factor>1.5 || !same(seconds,baseline/factor) || !same(coins,baselineCoins*factor*realization)
                         || latest>now+5000 || now-latest>86400000)throw new IllegalArgumentException("Invalid personal execution calibration");
-                evidence=Map.of("samples",samples,"throughputFactor",factor,"marketCycleSeconds",baseline,
+                int pending=e.has("pendingSamples")?integer(e,"pendingSamples",0,100):0;
+                int censored=e.has("censoredSamples")?integer(e,"censoredSamples",0,2000):0;
+                if(samples<3 && pending+censored==0 || samples<10 && factor>1)
+                    throw new IllegalArgumentException("Insufficient personal execution evidence");
+                int expectedSamples=e.has("expectedProfitSamples")?integer(e,"expectedProfitSamples",0,2000):0;
+                if(expectedSamples>samples || realization<1 && expectedSamples<3)throw new IllegalArgumentException("Insufficient realized profit evidence");
+                var values=new LinkedHashMap<String,Object>(Map.of("pendingSamples",pending,"censoredSamples",censored,"samples",samples,"throughputFactor",factor,"marketCycleSeconds",baseline,
                         "marketCoinsPerHour",baselineCoins,"p75ObservedSeconds",positive(e,"p75ObservedSeconds"),
-                        "observedCoinsPerHour",number(e,"observedCoinsPerHour"),"latestAt",latest);
+                        "observedCoinsPerHour",number(e,"observedCoinsPerHour"),"latestAt",latest));
+                values.put("profitRealizationFactor",realization);values.put("expectedProfitSamples",expectedSamples);
+                evidence=Map.copyOf(values);
+            }
+            Map<String,Object> volume=Map.of();
+            if(r.has("volumeEvidence")) {
+                var v=r.getAsJsonObject("volumeEvidence");var values=new LinkedHashMap<String,Object>();
+                for(String field:List.of("inputWeeklyAveragePerDay","outputWeeklyAveragePerDay","inputRecentPerDay","outputRecentPerDay",
+                        "inputObservationHours","outputObservationHours","inputEffectivePerDay","outputEffectivePerDay")) {
+                    double value=number(v,field);
+                    if(value<0 || field.endsWith("Hours") && value>24)throw new IllegalArgumentException("Invalid daily volume evidence");
+                    values.put(field,value);
+                }
+                volume=Map.copyOf(values);
             }
             rows.add(new Recommendation(kind,key,input,output,units,batch,batchProfit,capital,rate,coins,seconds,confidence,configured,
-                    string(r,"limitedBy"),string(r,"priceBasis"),evidence));
+                    string(r,"limitedBy"),string(r,"priceBasis"),evidence,volume));
         }
         Map<String,Integer> counts = new LinkedHashMap<>();
         if (response.has("counts")) {

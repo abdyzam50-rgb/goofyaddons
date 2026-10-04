@@ -34,7 +34,10 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
         let length=0;const chunks=[];
         for await(const chunk of req) {length+=chunk.length;if(length>1024*1024){send(413,{error:'Account snapshot too large'});return;}chunks.push(chunk);}
         const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        if(dashboard.accept(body) && body.executions)executions.ingest(body.executions);
+        if(dashboard.accept(body)) {
+          if(body.executions)executions.ingest(body.executions);
+          executions.ingestActive(body.account.connected && body.status.state==='RUNNING' ? body.activeExecutions??[] : []);
+        }
         send(200,{ok:true,execution:executions.status()});
       } catch(error) {send(400,{error:error.message});}
       return;
