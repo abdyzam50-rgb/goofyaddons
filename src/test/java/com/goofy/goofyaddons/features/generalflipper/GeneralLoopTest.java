@@ -153,14 +153,18 @@ class GeneralLoopTest {
         assertFalse((Boolean)engine.diagnosticState().get("paused"));
     }
 
-    @Test void repeatsCompleteBuyClaimSellAndSettlementCycles() throws Exception {
+    @Test void repeatsCompleteBuyClaimSellAndSettlementCycles() throws Exception { runCompleteCycles(false,false); }
+    @Test void ignoredNavigationClicksAreRetriedAndCompleteWithoutDuplicateOrders() throws Exception { runCompleteCycles(true,false); }
+    @Test void lostQuantitySubmissionRestartsNavigationAndCompletesWithoutDuplicateOrders() throws Exception { runCompleteCycles(false,true); }
+    private void runCompleteCycles(boolean dropNavigation,boolean dropSign) throws Exception {
         FakeWorld world = new FakeWorld().showing(menu(null, 0, List.of()));
         Market market = new Market(world);
         List<String> effects = new ArrayList<>();
         GeneralFlipper[] ref = new GeneralFlipper[1];
         GameActions server = new GameActions() {
             int inventory, buy, sell;
-            boolean selling;
+            boolean selling,signDropped;
+            final Set<String> dropped=new HashSet<>();
             void show(String title, SlotView... buttons) { world.showing(menu(title, inventory, List.of(buttons))); }
             @Override public void command(String text) {
                 effects.add("command:" + text);
@@ -170,6 +174,9 @@ class GeneralLoopTest {
             @Override public void click(int slot, boolean shift) {
                 effects.add("click:" + slot);
                 String title = world.menu().title();
+                boolean reversible=title.startsWith("Bazaar") || title.startsWith("How many")
+                        || title.startsWith("At what price") || title.startsWith("How much");
+                if(dropNavigation && reversible && dropped.add(title+":"+slot))return;
                 if (title.equals("Your Bazaar Orders")) {
                     if (buy > 0) { inventory = buy; buy = 0; world.showing(orders(false, 0, 0, inventory)); }
                     else if (sell > 0) {
@@ -197,6 +204,7 @@ class GeneralLoopTest {
             @Override public boolean writeSign(String text) {
                 assertEquals("16", text);
                 world.signOpen(false);
+                if(dropSign && !signDropped) {signDropped=true;world.showing(menu(null,inventory,List.of()));return true;}
                 show("How much do you want to pay?", SlotView.named(12, "Top order", List.of("Unit price: 100 coins")));
                 return true;
             }

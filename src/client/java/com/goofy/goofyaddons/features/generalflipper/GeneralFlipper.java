@@ -73,6 +73,8 @@ public class GeneralFlipper implements Feature {
         }
     }
     private final Services services;
+    private final com.goofy.goofyaddons.menu.NavigationRetry navigationRetry = new com.goofy.goofyaddons.menu.NavigationRetry();
+    private int inputRestarts;
     private final com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry claimRetry =
             new com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry();
     private final com.goofy.goofyaddons.features.bookflipper.helper.PurseObservation purseObservation =
@@ -175,6 +177,7 @@ public class GeneralFlipper implements Feature {
     public boolean hasStateError() { return blocked; }
     public java.util.Map<String,Object> diagnosticState() {
         var state=new java.util.LinkedHashMap<String,Object>();
+        state.put("navigationPending",navigationRetry.pending());
         state.put("activeTrade",active==null?"none":active.tradeId);state.put("activeItem",active==null?"none":active.item.id());
         state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:world.now()-stepSince);
         state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
@@ -240,7 +243,7 @@ public class GeneralFlipper implements Feature {
             position.checkedAt = 0;
             return false;
         });
-        active = null;
+        active = null;navigationRetry.reset();inputRestarts=0;
         clearSnapshot();
         save();
     }
@@ -248,7 +251,7 @@ public class GeneralFlipper implements Feature {
     @Override public void pause() {
         paused = true;
         invalidateRequest();
-        active = null;
+        active = null;navigationRetry.reset();inputRestarts=0;
         clearSnapshot();
         save();
     }
@@ -308,6 +311,21 @@ public class GeneralFlipper implements Feature {
         if (active == null) selectWork();
         if (active == null || paused || blocked) return;
         long now = world.now();
+        var navigation = navigationRetry.observe(view,world.signEditorOpen(),actions,now);
+        if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.EXHAUSTED) {
+            fail("Menu navigation was not acknowledged after three retries; position retained.");return;
+        }
+        if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.RETRIED)
+            Diagnostics.event("WARN","general.navigation_retry",java.util.Map.of("trade",active.tradeId,"step",step.name()));
+        if(navigation!=com.goofy.goofyaddons.menu.NavigationRetry.Result.READY)return;
+        boolean inputStuck = step==Step.SIGN && !world.signEditorOpen() && !priceMenu()
+                || step==Step.PRICE && !priceMenu()
+                || step==Step.CONFIRM && !menu("Confirm");
+        if(inputStuck && now-stepSince>=8000 && inputRestarts<2) {
+            inputRestarts++;actions.closeMenu();transition(Step.OPEN_PRODUCT);
+            Diagnostics.event("WARN","general.input_navigation_restart",java.util.Map.of("trade",active.tradeId,"attempt",inputRestarts));
+            return;
+        }
         if (now - stepSince > 30000) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
         if (now < nextAction || claimRetry.coolingDown(now)) return;
         nextAction = now + com.goofy.goofyaddons.utils.ActionDelay.next();
@@ -846,7 +864,7 @@ public class GeneralFlipper implements Feature {
     void onSlowdown(String message) {
         if (!running || paused || active == null
                 || !com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry.slowdownMessage(message)) return;
-        claimRetry.slowdown(world.now());
+        claimRetry.slowdown(world.now());navigationRetry.slowdown(world.now());
         Diagnostics.event("WARN", "general.slowdown", java.util.Map.of("trade", active.tradeId, "step", step.name()));
     }
 
@@ -913,7 +931,12 @@ public class GeneralFlipper implements Feature {
         return com.goofy.goofyaddons.utils.MenuText.titleContains(view.title(), title);
     }
     private boolean loadedSlot(int slot) { return view.loaded(slot); }
-    private void click(int slot) { if (loadedSlot(slot)) actions.click(slot, false); }
+    private void click(int slot) {
+        if (!loadedSlot(slot)) return;
+        if(step==Step.PRODUCT || step==Step.QUANTITY || step==Step.PRICE)
+            navigationRetry.sent(view,slot,world.now());
+        actions.click(slot,false);
+    }
     private void transition(Step next) {
         Diagnostics.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
         confirmationStability.reset();menuRecheck.reset();reopeningOrders=false;
@@ -1026,7 +1049,7 @@ public class GeneralFlipper implements Feature {
     private void finishWork() {
         if (active != null && positions.contains(active)) active.checkedAt = world.now();
         save();
-        active = null;
+        active = null;navigationRetry.reset();inputRestarts=0;
         actions.closeMenu();
     }
     private void completePosition() {
@@ -1045,7 +1068,7 @@ public class GeneralFlipper implements Feature {
         paused = true;
         invalidateRequest();
         save();
-        active = null;
+        active = null;navigationRetry.reset();inputRestarts=0;
         actions.closeMenu();
         FeatureManager.INSTANCE.safetyPause(message);
     }
