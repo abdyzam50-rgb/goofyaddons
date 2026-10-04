@@ -31,6 +31,10 @@ public final class LocalDashboard {
         status.addProperty("taxPercentage",cfg.bazaarTaxPercentage);
         status.addProperty("pending",CapitalManager.INSTANCE.pending());status.addProperty("available",CapitalManager.INSTANCE.available(purse));
         status.addProperty("committed",CapitalManager.INSTANCE.committed());status.addProperty("capitalLimit",cfg.maxTradingCapital);status.addProperty("reserve",cfg.purseReserve);
+        boolean fundingFresh=manager.isTradingActive() && !CapitalManager.INSTANCE.purchaseSettling();
+        Double funded=fundingFresh?CapitalManager.INSTANCE.funded():null;
+        status.add("funded",funded==null?JsonNull.INSTANCE:new JsonPrimitive(funded));
+        status.addProperty("fundingUnknown",CapitalManager.INSTANCE.fundingUnknown());
         body.add("status",status);
         var inventory=new JsonArray();
         if(connected) for(int i=0;i<mc.player.getInventory().getContainerSize();i++) {

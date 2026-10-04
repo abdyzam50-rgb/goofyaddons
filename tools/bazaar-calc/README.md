@@ -558,3 +558,27 @@ These forecasts use the most recent validated mod market request and opt-in acco
 snapshot. They update with market requests, position changes and fresh gameplay
 feedback, without writing orders or altering configuration. All local calculations
 and request caches stay private to the companion process.
+
+### Capital reporting (mod and companion 1.3.50)
+
+The overview's funded-position figure is owned input cost plus confirmed live buy
+escrow. A book route's full reserved budget also includes inputs not bought yet;
+that reservation is a spending constraint, not account wealth. Verified partial
+order cancellation reduces funded exposure to the acquired lots, while retaining
+the full reservation for capital-limit checks. Pending purchases still belong to
+the purse until placement is verified. The portfolio uses purse minus reserve plus
+funded positions, capped by the capital limit; it excludes future input reservations
+and unrealized profit. Unknown book costs, unverified recovered orders, stopped
+trading and the purchase settle window leave the full-budget forecast unavailable
+rather than treating planned expenses as assets. Rankings can use a lower bound
+of known funded positions while recovery is pending.
+
+Confirmed session profit counts sale proceeds minus acquired cost. Cancel refunds,
+open orders, and estimated future sales are not realized profit. For example, a 1,600-coin book budget with only one 100-coin input acquired
+retains a 1,600-coin reservation after cancellation, but just 100 coins of funded
+position cost. Adding the full reservation to the refunded purse double counts
+1,500 coins. The reserved figure must not be added to the purse to infer earnings.
+
+Update both the JAR and companion ZIP, restart Minecraft and the Node server,
+and use the existing saved-position recheck before resuming. Keep configs, order
+journals, profit/execution history and external market recordings.

@@ -9,6 +9,34 @@ import static org.junit.jupiter.api.Assertions.*;
  * that the diagnosis agrees with the decision {@link CapitalManager#resize} actually makes.
  */
 class CapitalRefusalTest {
+    @Test void cancelledPartialBooksReleaseFundedEscrowButKeepFutureBudgetSafety() {
+        CapitalManager c=new CapitalManager();c.configure(10000,0);
+        assertTrue(c.reserve("books","GREEN_THUMB",6000,10000));
+        assertEquals(0.0,c.funded());
+        c.purchased("books","GREEN_THUMB");assertEquals(6000.0,c.funded());
+        c.purchased("books","GREEN_THUMB");assertEquals(6000.0,c.funded(),"verification is idempotent");
+        c.funding("books","GREEN_THUMB",600.0); // One claimed book; unfilled inputs refunded.
+        assertEquals(6000,c.committed());assertEquals(4000,c.available(9400));
+        assertEquals(10000,c.funded()+9400,"purse plus funded inputs is conserved after refund");
+        assertFalse(c.reserve("general","OTHER",5000,9400),"future inputs still count against spending limits");
+        assertTrue(c.resize("books","GREEN_THUMB",6000,5400,9400));
+        assertEquals(600.0,c.funded(),"pending debits have not spent anything yet");
+        c.purchased("books","GREEN_THUMB");assertEquals(6000.0,c.funded());
+        c.release("books","GREEN_THUMB");assertEquals(0.0,c.funded());
+    }
+    @Test void savedBookFundingIsUnknownUntilVerifiedRatherThanItsFullPlan() {
+        CapitalManager c=new CapitalManager();c.restore("books","A",6000,false);
+        assertNull(c.funded());assertEquals(1,c.fundingUnknown());assertEquals(0,c.knownFunded());
+        c.funding("books","A",600.0);assertEquals(600.0,c.funded());
+        assertThrows(IllegalArgumentException.class,()->c.funding("books","A",Double.NaN));
+    }
+    @Test void generalRepricingDoesNotAddTheOldRefundedOrderTwice() {
+        CapitalManager c=new CapitalManager();c.configure(10000,0);
+        assertTrue(c.reserve("general","A",1000,10000));c.purchased("general","A");
+        c.funding("general","A",0.0);
+        assertTrue(c.resize("general","A",1100,10000));c.purchased("general","A");
+        assertEquals(1100.0,c.funded());
+    }
     private CapitalManager ledger(double limit, double reserve) {
         CapitalManager c = new CapitalManager();
         c.configure(limit, reserve);

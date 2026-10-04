@@ -7,6 +7,14 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProfitLedgerTest {
+    @Test void fundedHoldingsUseRemainingAcquisitionsAndNeverInventRecoveredCost() {
+        var l=new ProfitLedger();assertEquals(0.0,l.openCost("t"));
+        l.acquire("t","books","Wisdom","buy",10,1000.0);
+        l.sell("t","books","Wisdom","sale",4,480.0);
+        assertEquals(600.0,l.openCost("t"));assertEquals(80,l.summary().profit());
+        l.resetSession();assertEquals(600.0,l.openCost("t"));
+        l.recoverHoldings("t","books","Wisdom",7);assertNull(l.openCost("t"));
+    }
     @TempDir Path dir;
     @Test void profitUsesConfirmedClaimMinusAcquiredCostWithoutDoubleTax() {
         ProfitLedger l=new ProfitLedger();

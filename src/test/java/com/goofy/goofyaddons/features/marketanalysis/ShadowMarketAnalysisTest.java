@@ -10,6 +10,16 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShadowMarketAnalysisTest {
+    @Test void rankingsExcludeUnboughtInputsWhileExecutionRetainsFullReservation() {
+        var env=new Env();env.balance=9400;
+        env.capital.restore("books","GREEN_THUMB",6000,false);
+        env.capital.funding("books","GREEN_THUMB",600.0);
+        env.capital.configure(20000,0);
+        var bridge=new Bridge();var observer=new ShadowMarketAnalysis(env,bridge,(type,data)->{});
+        observer.poll(TradingMode.BOTH);
+        assertEquals(10000,bridge.packet.getAsJsonObject("rankingConstraints").get("availableCapital").getAsDouble());
+        assertEquals(6000,env.capital.committed());
+    }
     private static final class Env implements ShadowMarketAnalysis.Environment {
         GoofyConfig cfg=MarketAnalysisProtocolTest.config();long clock=MarketAnalysisProtocolTest.NOW;
         JsonObject quotes=MarketAnalysisProtocolTest.market(clock);

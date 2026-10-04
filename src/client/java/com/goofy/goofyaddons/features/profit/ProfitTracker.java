@@ -88,6 +88,7 @@ public final class ProfitTracker {
     }
     public ProfitLedger.Summary summary() { load(); return ledger.summary(); }
     public Double knownCost(String id,int units) {load();return error==null?ledger.knownCost(id,units):null;}
+    public Double openCost(String id) {load();return error==null?ledger.openCost(id):null;}
     public String error() { load(); return error; }
     public boolean resetSession() {
         load(); if (error!=null) return false;

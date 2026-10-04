@@ -142,7 +142,7 @@ public final class ProfitHud {
                     {"General",ledgerError==null ? ProfitDisplay.coins(summary.general()) : "--"},
                     {"Claims / incomplete",summary.settlements()+" / "+summary.incomplete()},
                     {"Spendable",spendable()},
-                    {"Committed",ProfitDisplay.coins(CapitalManager.INSTANCE.committed())},
+                    {"Reserved budget",ProfitDisplay.coins(CapitalManager.INSTANCE.committed())},
                     {"Tracked positions",Integer.toString(CapitalManager.INSTANCE.positionCount())},
                     {"Active time",ProfitDisplay.duration(summary.activeMillis())}};
             for (int i=0;i<layout.detailRows() && i<details.length;i++) {

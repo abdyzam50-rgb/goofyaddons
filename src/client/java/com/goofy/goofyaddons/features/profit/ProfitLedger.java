@@ -63,6 +63,13 @@ public final class ProfitLedger {
         return null;
     }
 
+    /** Remaining acquired lots, including books combined or placed in a sell offer. */
+    public Double openCost(String id) {
+        Trade trade=trades.get(id);if(trade==null)return 0.0;
+        if(trade.lots.stream().anyMatch(lot->lot.cost==null))return null;
+        return trade.lots.stream().mapToDouble(lot->lot.cost).sum();
+    }
+
     public boolean sell(String id, String engine, String item, String event, int units, Double proceeds) {
         validateIdentity(id, engine, item, event, units);
         validateMoney(proceeds);

@@ -213,10 +213,14 @@ public class GeneralFlipper implements Feature {
         return snapshotCandidates.isEmpty() ? "No flips meet the configured filters" : "Selecting eligible flips";
     }
 
+    private void restoreFunding(Position position) {
+        capital.restore(OWNER,position.item.id(),position.cost(),position.stage==Stage.PLANNED);
+        if(!position.purchasePriceKnown)capital.funding(OWNER,position.item.id(),null);
+    }
+
     public void restoreBudget() {
         if (!loaded) load();
-        for (Position position : positions) capital.restore(OWNER, position.item.id(), position.cost(),
-                position.stage == Stage.PLANNED);
+        for (Position position : positions) restoreFunding(position);
     }
 
     @Override public void start() {
@@ -228,7 +232,7 @@ public class GeneralFlipper implements Feature {
         nextPoll = 0;
         for (Position position : positions) {
             position.checkedAt = 0;
-            capital.restore(OWNER, position.item.id(), position.cost(), position.stage == Stage.PLANNED);
+            restoreFunding(position);
         }
     }
 
@@ -625,7 +629,7 @@ public class GeneralFlipper implements Feature {
             active.stage = Stage.INVENTORY;
             active.cancelRequested=false;
             if(!recordAcquisition()) return;
-            capital.restore(OWNER, active.item.id(), active.cost(), false);
+            restoreFunding(active);
             selling = true;
             actions.closeMenu();
             transition(Step.OPEN_PRODUCT);
@@ -646,6 +650,7 @@ public class GeneralFlipper implements Feature {
             if (cancel >= 0) {
                 active.cancelRequested = true;
                 if (!save()) return;
+                capital.funding(OWNER, active.item.id(), null);
                 click(cancel);
                 actions.closeMenu();
                 transition(Step.VERIFY_CANCEL);
@@ -704,6 +709,7 @@ public class GeneralFlipper implements Feature {
             active.settlementPending=false;
         }
         if (count == 0) {
+            capital.funding(OWNER, active.item.id(), 0.0);
             if (!selling && active.reprices < settings().maxReprices && freshQuotes()) {
                 JsonObject product = products.getAsJsonObject(active.item.id());
                 double bid = product == null ? -1 : GeneralCalculator.topPrice(product, "sell_summary");
@@ -732,7 +738,7 @@ public class GeneralFlipper implements Feature {
         active.stage = Stage.INVENTORY;
         if (!selling && !recordAcquisition()) return;
         if (selling) active.reprices++;
-        capital.restore(OWNER, active.item.id(), active.cost(), false);
+        restoreFunding(active);
         finishWork();
     }
 

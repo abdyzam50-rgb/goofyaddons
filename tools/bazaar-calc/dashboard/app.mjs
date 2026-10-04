@@ -72,8 +72,8 @@ function render() {
   put('activity',a?.status.action || 'A live view of your inventory, positions and market opportunities.');
   put('spendable',live?coins(a?.status.available??state.pipeline?.account?.available):'—');
   put('pending-capital',live?`Pending purchases ${coins(a.status.pending??state.pipeline?.account?.pending)} · reserve ${coins(a.status.reserve)}`:'Waiting for a fresh account snapshot');
-  put('purse',coins(a?.status.purse));put('committed',coins(a?.status.committed));
-  put('budget',a?`Limit ${coins(a.status.capitalLimit)} · reserve ${coins(a.status.reserve)}`:'Waiting for account limits');
+  put('purse',coins(a?.status.purse));put('committed',coins(a?.status.funded));
+  put('budget',a?`Reserved trading budget ${coins(a.status.committed)}${Number.isFinite(a.status.funded)?` · future inputs ${coins(Math.max(0,a.status.committed-a.status.funded))}`:' · funding unverified'}. Reservations include unbought inputs; refunds are not profit.`:'Waiting for account limits');
   put('confirmed',a?.profitError?'—':coins(a?.profit.profit));$('confirmed').classList.toggle('negative',a?.profit.profit<0);
   put('settlements',a?.profitError?`Profit ledger unavailable: ${a.profitError}`:a?a.profit.settlements===0?'No sale or loss settlements recorded yet':`${a.profit.settlements} settled · ${a.profit.incomplete} with unknown profit`:'From settled trade receipts');
   const predictions=state.predictions?.rows ?? [];
@@ -139,7 +139,7 @@ function render() {
   for(const item of plan?.deferred ?? []){const li=document.createElement('li');li.textContent=`${item.routeKey}: ${item.reason}`;deferred.append(li);}
   if(!deferred.children.length){const li=document.createElement('li');li.textContent='No deferred candidates reported';deferred.append(li);}
   renderRoutes(predictions);
-  put('prediction-note',predictions.length?`Quote ${age(state.predictions.marketAt)} · individually ranked routes, not a combined portfolio. ${Number.isFinite(a?.analysis?.comparison?.rankingCapital)?`Ranking budget ${coins(a.analysis.comparison.rankingCapital)} · standard input capacity ${a.analysis.comparison.rankingInventoryCapacity}. `:''}${state.predictions.historyUsed?'Historical observations used.':'Fill rates are estimated.'}`:state.predictionReason || 'Waiting for a fresh calculator forecast.');
+  put('prediction-note',predictions.length?`Quote ${age(state.predictions.marketAt)} · individually ranked routes, not a combined portfolio. ${Number.isFinite(a?.analysis?.comparison?.rankingCapital)?`Ranking budget ${coins(a.analysis.comparison.rankingCapital)} · standard input capacity ${a.analysis.comparison.rankingInventoryCapacity}${a.analysis.comparison.rankingFundingUnknown?` · lower bound; ${a.analysis.comparison.rankingFundingUnknown} positions have unverified funding`:""}. `:''}${state.predictions.historyUsed?'Historical observations used.':'Fill rates are estimated.'}`:state.predictionReason || 'Waiting for a fresh calculator forecast.');
 }
 for(const id of ['inventory-search','storage-view','order-filter'])$(id).addEventListener('input',render);
 for(const id of ['route-search','route-engine','route-scope','route-sort'])$(id).addEventListener('input',()=>{savePreferences();render();});

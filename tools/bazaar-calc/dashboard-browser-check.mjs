@@ -9,7 +9,7 @@ import { createCompanion } from './server.mjs';
 import { DashboardState } from './dashboard-state.mjs';
 let clock=Date.now();const dashboard=new DashboardState(()=>clock);
 const account={protocol:'goofy-dashboard/1',sessionId:'browser-check',sentAt:clock,
-  account:{connected:true,name:'Local preview'},status:{state:'RUNNING',mode:'BOTH',action:'Monitoring orders and eligible flips',purse:12400000,committed:950000,capitalLimit:2000000,reserve:10000000,taxPercentage:1.25},
+  account:{connected:true,name:'Local preview'},status:{state:'RUNNING',mode:'BOTH',action:'Monitoring orders and eligible flips',purse:12400000,committed:950000,funded:950000,capitalLimit:2000000,reserve:10000000,taxPercentage:1.25},
   inventory:[{slot:0,name:'Enchanted Coal',id:'ENCHANTED_COAL',count:16},{slot:9,name:'Overload IV',id:'ENCHANTMENT_OVERLOAD_4',count:1},{slot:10,name:'<img src=x onerror=alert(1)>',count:1}],
   books:{tasks:[{item:'ENCHANTMENT_OVERLOAD',state:'IN_BUY_ORDER',remaining:1,inputLevel:4,outputLevel:5,plannedCost:10000,holdings:[]}],slotMemory:{regions:[{region:1,observedAt:clock-20000,currentSlots:Array.from({length:54},(_,i)=>i),previousSlots:Array.from({length:54},(_,i)=>i),current:[{slot:3,item:{name:'Overload IV',count:1}}],previous:[{slot:4,item:{name:'Previous book',count:1}}]}]}},
   general:{positions:[{item:'ENCHANTED_COAL',stage:'SELL_ORDER',units:16,purchasePriceKnown:true,cost:32000,sellPrice:2500}]},
@@ -70,6 +70,8 @@ try {
     await evaluate(`document.getElementById('inventory-search').value='';document.getElementById('inventory-search').dispatchEvent(new Event('input'));`);
     assert.equal(await evaluate(`document.querySelectorAll('.flip-card').length`),2);
     assert.notEqual(await evaluate(`document.getElementById('predicted').textContent`),'—');
+    assert.equal(await evaluate(`document.getElementById('committed').textContent`),'950,000');
+    assert.match(await evaluate(`document.getElementById('budget').textContent`),/future inputs 0/);
     assert.notEqual(await evaluate(`document.getElementById('live-predicted').textContent`),'—');
     assert.notEqual(await evaluate(`document.getElementById('measured-rate').textContent`),'—');
     assert.ok(await evaluate(`document.getElementById('portfolio-rows').children.length>=1`));

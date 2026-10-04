@@ -85,7 +85,7 @@ public final class ShadowMarketAnalysis {
         // independent of occupied positions. Execution keeps its own narrower request.
         double purse=env.purse();
         if(Double.isFinite(purse) && purse>=0 && !env.capital().purchaseSettling())
-            rankingBudget=Math.max(0,Math.min(env.capital().limit(),env.capital().committed()+Math.max(0,purse-env.capital().reserve()-env.capital().pending())));
+            rankingBudget=Math.max(0,Math.min(env.capital().limit(),env.capital().knownFunded()+Math.max(0,purse-env.capital().reserve())));
         if(rankingBudget<=0){status="WAITING_ACCOUNT";refreshPipeline();return;}
         int capacity=account.inventoryCapacity();Set<String> excluded=account.excludedProducts();double available=account.available();
         JsonObject request=MarketAnalysisProtocol.request(UUID.randomUUID().toString(),market,cfg,mode,available,capacity,
@@ -102,6 +102,7 @@ public final class ShadowMarketAnalysis {
                 .stream().limit(3).map(f->f.item().id()).toList());
         context.put("excludedProducts",new TreeSet<>(excluded));
         context.put("rankingCapital",rankingBudget);context.put("rankingInventoryCapacity",32);
+        context.put("rankingFundingUnknown",env.capital().fundingUnknown());
         comparison=Collections.unmodifiableMap(context);
         int run=generation;
         status="REQUESTING";

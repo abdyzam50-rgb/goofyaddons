@@ -26,7 +26,7 @@ export class DashboardForecast {
   if(!view.predictions||!b||!finite(b.market?.lastUpdated)||now-b.market.lastUpdated>60000||b.market.lastUpdated>now+5000)
    return {portfolio:unavailable('Waiting for fresh calculator inputs'),live:unavailable('Waiting for fresh calculator inputs')};
   const limits=a.analysis.pipeline?.account,comparison=a.analysis.comparison??{};
-  const fingerprint=JSON.stringify([b.requestId,[a.status.state,a.status.purse,a.status.reserve,a.status.pending,a.status.committed,a.status.capitalLimit],
+  const fingerprint=JSON.stringify([b.requestId,[a.status.state,a.status.purse,a.status.reserve,a.status.pending,a.status.committed,a.status.funded,a.status.capitalLimit],
     [comparison.rankingCapital,comparison.rankingInventoryCapacity,comparison.bookSlots,comparison.generalSlots],
     [limits?.bookSlots,limits?.generalSlots,limits?.mode],a.books.tasks,a.general.positions,
     executions?.status?.(),Math.floor(now/10000)]);
@@ -47,10 +47,11 @@ export class DashboardForecast {
   const base=b.rankingConstraints??b.constraints,c=structuredClone(base);
   c.mode=b.constraints.mode;
   c.bookSlots=Math.min(10,freeBooks+counts.books);c.generalSlots=Math.min(10,freeGeneral+counts.general);
-  let budget=comparison.rankingCapital??base.availableCapital;
-  if([a.status.purse,a.status.reserve,a.status.pending,a.status.committed,a.status.capitalLimit].every(finite)&&a.status.purse>=0)
-   budget=Math.max(0,Math.min(a.status.capitalLimit,a.status.committed+Math.max(0,a.status.purse-a.status.reserve-a.status.pending)));
-  if(!finite(budget)||budget<0)return unavailable('Trading budget is unknown');
+  if(![a.status.purse,a.status.reserve,a.status.funded,a.status.capitalLimit].every(finite)||a.status.purse<0)
+   return unavailable('Waiting for verified funded positions; update the mod and recheck saved orders if needed');
+  // Pending purchases still belong to the purse. Future book reservations are not
+  // assets, so neither reserved commitments nor pending debits enter this sum.
+  const budget=Math.max(0,Math.min(a.status.capitalLimit,a.status.funded+Math.max(0,a.status.purse-a.status.reserve)));
   c.availableCapital=budget;c.inventoryCapacity=comparison.rankingInventoryCapacity??base.inventoryCapacity;
   if(!budget)return {...combine([],c),budget:0,allocated:0,remaining:0,inventoryUsed:0,reason:'No trading capital is available'};
   const capacity=c.inventoryCapacity,variants=new Map();
@@ -80,7 +81,7 @@ export class DashboardForecast {
   }
   beam.sort((a,b)=>score(b)-score(a)||b.capital-a.capital);const best=beam[0];
   return {...combine(best.rows,c),budget,allocated:best.capital,remaining:Math.max(0,budget-best.capital),inventoryUsed:best.units,
-   reason:best.rows.length?null:'No supported portfolio fits your budget and limits',scope:'Best-found modeled allocation after redeploying total trading capital; committed funds become usable after positions close'};
+   reason:best.rows.length?null:'No supported portfolio fits your budget and limits',scope:'Best-found allocation of purse plus funded position costs after positions close; future reservations and unrealized profit excluded'};
 
  }
  live(a,b,history,executions,now) {

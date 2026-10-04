@@ -18,6 +18,8 @@ public final class BookRetirement {
         void acquired(Task task,int count,double price,String event);
         void sold(Task task,int baseUnits,double proceeds,String event);
         boolean checkpoint();
+        default void ordersCleared(Task task) {}
+        default void cancellationSent(Task task) {}
     }
     private enum Phase { ORDERS, OPTIONS, CANCEL, HOLDINGS, SEARCH, SALE }
     private Phase phase=Phase.ORDERS;
@@ -121,9 +123,9 @@ public final class BookRetirement {
             }
             if(phase==Phase.CANCEL) {
                 if(menu.containerId()==cancelContainer||!orders.isEmpty())return Result.WAITING;
-                phase=Phase.HOLDINGS;return Result.WAITING;
+                ledger.ordersCleared(task);phase=Phase.HOLDINGS;return Result.WAITING;
             }
-            if(orders.isEmpty()){phase=Phase.HOLDINGS;return Result.WAITING;}
+            if(orders.isEmpty()){ledger.ordersCleared(task);phase=Phase.HOLDINGS;return Result.WAITING;}
             var order=orders.getFirst();var fill=OrderLore.fill(order.lore());
             if(fill==null)return block("Cleanup order fill is unreadable.");
             boolean selling=Chat.strip(order.hoverName()).startsWith("SELL ");
@@ -149,6 +151,7 @@ public final class BookRetirement {
             if(cancel.size()!=1)return block("Cleanup cancellation control is missing or ambiguous.");
             if(!ledger.checkpoint())return block("Cleanup cancellation intent could not be saved.");
             cancelContainer=menu.containerId();phase=Phase.CANCEL;
+            ledger.cancellationSent(task);
             actions.click(cancel.getFirst(),false);nextAction=now+1000;return Result.WAITING;
         }
         if(phase==Phase.HOLDINGS) {

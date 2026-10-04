@@ -652,6 +652,7 @@ public class BazaarFlipper implements Feature {
 
                     if (startupMissing == null) return;
                     for (var missing : startupMissing) {
+                        fundedHoldings(missing);
                         BookStartupOrders.scheduleMissingBuy(missing);
                         Diagnostics.event("INFO","books.startup_order_accounted",java.util.Map.of(
                                 "item",missing.getBook().id(),"buyOrderPresent",false,
@@ -692,6 +693,7 @@ public class BazaarFlipper implements Feature {
                 if (containerNameCheck("Order") && inventoryScanner.isMenuLoaded(35) && clock.shouldFire()) {
                     List<Integer> slot = inventoryScanner.findContainer("Cancel Order");
                     if (slot.isEmpty()) return;
+                    CapitalManager.INSTANCE.funding("books",task.getBook().id(),null);
                     InventoryUtils.clickSlot(slot.getFirst(), false);
                 }
             }
@@ -885,6 +887,7 @@ public class BazaarFlipper implements Feature {
                     if (slot.isEmpty()) {
                         if(!outbidFlow.freshAfterCancellation(minecraft.player.containerMenu.containerId)
                                 && recheckBookOrders(task,"missing-buy-order")) return;
+                        fundedHoldings(task);
                         // first we check if we have all the required books
                         if (task.getAmountToOrder() == 0) {
                             debug("[BazaarFlipper] OUTBID: no BUY order and amount requirement already met, going to ANVIL for " + task.getBook());
@@ -936,6 +939,7 @@ public class BazaarFlipper implements Feature {
                     List<Integer> slot = inventoryScanner.findContainer("Cancel Order");
                     if (slot.isEmpty()) return;
                     outbidFlow.sentCancellation(minecraft.player.containerMenu.containerId,System.currentTimeMillis());
+                    CapitalManager.INSTANCE.funding("books",task.getBook().id(),null);
                     InventoryUtils.clickSlot(slot.getFirst(), false);
                 }
             }
@@ -1979,6 +1983,7 @@ public class BazaarFlipper implements Feature {
                 ProfitTracker.INSTANCE.recoverHoldings(task.getProfitTradeId(),"books",task.getBook().name(),recovered.acquiredUnits());
                 CapitalManager.INSTANCE.restore("books",task.getBook().id(),
                         task.getReservedUnitCost()*task.getBook().getQtyAmount(task.getBook().level()),false);
+                if(recovered.orderPrice()==null || recovered.selling())fundedHoldings(task);
                 if(recovered.orderPrice()!=null)bazaarMonitor.add(task.getBook(),recovered.orderPrice(),recovered.selling());
             }
             bookLists.addAll(plan.extras());
@@ -2064,12 +2069,15 @@ public class BazaarFlipper implements Feature {
         var result=retirement.tick(retiringTask,observedMenu,new com.goofy.goofyaddons.menu.LiveActions(),inventoryMemory,
                 GoofyConfig.INSTANCE.firstPage,GoofyConfig.INSTANCE.secondPage,minecraft.getUser().getName(),System.currentTimeMillis(),
                 new BookRetirement.Receipts(){
+                    public void ordersCleared(Task task){fundedHoldings(task);}
+                    public void cancellationSent(Task task){CapitalManager.INSTANCE.funding("books",task.getBook().id(),null);}
                     public boolean checkpoint(){return BazaarFlipper.this.checkpoint();}
                     public void acquired(Task task,int units,double price,String event){
                         ProfitTracker.INSTANCE.acquire(task.getProfitTradeId(),"books",task.getBook().name(),event,units,price*units);
                     }
                     public void sold(Task task,int units,double proceeds,String event){
                         ProfitTracker.INSTANCE.sell(task.getProfitTradeId(),"books",task.getBook().name(),event,units,proceeds);
+                        fundedHoldings(task);
                         Diagnostics.event("INFO","books.retirement_sale",java.util.Map.of("trade",task.getProfitTradeId(),"baseUnits",units,"proceeds",proceeds));
                     }
                 });
@@ -2142,6 +2150,15 @@ public class BazaarFlipper implements Feature {
         Diagnostics.event("INFO", "books.extra_exposure_resized", java.util.Map.of(
                 "item", book.id(), "retainedValue", value));
         debug("[BazaarFlipper] resizeRetainedExtras: " + book + " allocation reduced to " + value + " for retained extras");
+    }
+
+    private void fundedHoldings(Task task) {
+        var profit=ProfitTracker.INSTANCE;
+        int observed=task.awaitingSale()?task.getBook().getQtyAmount(task.getBook().level())
+                :task.bookList.stream().mapToInt(book->task.getBook().baseUnits(book.level)).sum();
+        Double cost=profit.openCost(task.getProfitTradeId());
+        if(observed>0 && profit.knownCost(task.getProfitTradeId(),observed)==null)cost=null;
+        CapitalManager.INSTANCE.funding("books",task.getBook().id(),cost);
     }
 
     private void rememberObservedBooks() {

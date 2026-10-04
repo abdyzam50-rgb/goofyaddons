@@ -9,7 +9,7 @@ const request=()=>({protocol:'goofy-bazaar-shadow/1',requestId:'portfolio-test',
  constraints:{mode:'BOTH',automaticSelection:true,availableCapital:1000,inventoryCapacity:8,maxRecommendations:50,maxHistoryAgeHours:48,taxPercentage:1.25,bookMinProfit:0,
  checkSeconds:20,bookCheckSeconds:180,clickDelayMs:350,bookSlots:2,generalSlots:2,
  general:{maxCoinsPerItem:1000,maxItemsPerOrder:16,minProfitPerBatch:0,minMarginPercentage:0,minWeeklyVolume:0},excludedProducts:[],configuredBookRoutes:[],configuredGeneralItems:[]}});
-const account=()=>({account:{connected:true,name:'Test'},status:{state:'RUNNING',mode:'BOTH',purse:1000,reserve:0,pending:0,committed:0,capitalLimit:1000},
+const account=()=>({account:{connected:true,name:'Test'},status:{state:'RUNNING',mode:'BOTH',purse:1000,reserve:0,pending:0,committed:0,funded:0,capitalLimit:1000},
  books:{tasks:[]},general:{positions:[]},analysis:{comparison:{rankingCapital:1000,rankingInventoryCapacity:8},pipeline:{account:{bookSlots:2,generalSlots:2}}}});
 const view=a=>({fresh:true,account:a,predictions:{marketAt:now,rows:[{}]}});
 const history={asOf:now,stats:{},hold:{},names:{}};
@@ -24,9 +24,9 @@ test('full-budget search selects compatible routes within capital, inventory and
  assert.equal(new Set(families).size,families.length);assert.ok(result.portfolio.rows.filter(r=>r.kind==='GENERAL').length<=2);
  assert.equal(JSON.stringify(b),before);assert.equal(result.live.coinsPerHour,0);
  // All cash committed is counted once, and active positions restore the hypothetical slot limit.
- a.status.purse=0;a.status.committed=1000;a.general.positions=[{item:'ENCHANTED_COAL',units:1,purchasePriceKnown:true,cost:100,stage:'BUY_ORDER'}];
+ a.status.purse=0;a.status.committed=1000;a.status.funded=1000;a.general.positions=[{item:'ENCHANTED_COAL',units:1,purchasePriceKnown:true,cost:100,stage:'BUY_ORDER'}];
  a.analysis.pipeline.account.generalSlots=1;const full=f.view(view(a),history,executions());assert.equal(full.portfolio.budget,1000);assert.ok(full.portfolio.rows.length>=2);
- a.status.purse=300;a.status.committed=500;a.status.pending=100;a.status.reserve=100;
+ a.status.purse=300;a.status.committed=500;a.status.funded=400;a.status.pending=100;a.status.reserve=100;
  assert.equal(f.view(view(a),history,executions()).portfolio.budget,600);
  a.analysis.pipeline.account.bookSlots=0;a.analysis.pipeline.account.generalSlots=0;a.general.positions=[];
  const blocked=f.view(view(a),history,executions());assert.equal(blocked.portfolio.rows.length,0);assert.equal(blocked.portfolio.coinsPerHour,0);
@@ -71,4 +71,16 @@ test('real HTTP dashboard combines full-budget, active-trade and measured rates 
   assert.equal(sent.status,200);const state=await(await fetch(`${url}/v1/dashboard`)).json();
   assert.ok(state.portfolio.rows.length>=2);assert.ok(state.live.coinsPerHour>0);assert.equal(state.measuredProfitPerHour,60000);
  }finally{await new Promise(r=>{server.close(r);server.closeAllConnections();});}
+});
+
+test('partial book refunds do not inflate the portfolio budget or become profit',()=>{
+ const f=new DashboardForecast({provenance,now:()=>now}),b=request(),a=account();f.acceptRequest(b);
+ a.status.capitalLimit=1e10;a.status.purse=2260807;a.status.committed=154131435.3;
+ a.status.funded=154131435.3-32960871.8;
+ const result=f.view(view(a),history,executions());
+ assert.ok(Math.abs(result.portfolio.budget-123431370.5)<1e-6);
+ a.status.pending=500000;
+ assert.ok(Math.abs(f.view(view(a),history,executions()).portfolio.budget-123431370.5)<1e-6,'pending inputs remain in the purse');
+ a.status.funded=null;assert.equal(f.view(view(a),history,executions()).portfolio.coinsPerHour,null);
+ delete a.status.funded;assert.equal(f.view(view(a),history,executions()).portfolio.coinsPerHour,null,'old reserved-only telemetry cannot prove wealth');
 });

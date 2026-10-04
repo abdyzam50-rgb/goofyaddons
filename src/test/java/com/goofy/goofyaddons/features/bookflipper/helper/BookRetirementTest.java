@@ -12,11 +12,14 @@ class BookRetirementTest {
     final RecordingActions actions=new RecordingActions();
     final InventoryMemory memory=new InventoryMemory();
     final List<String> receipts=new ArrayList<>();
+    final List<String> funding=new ArrayList<>();
     boolean saved=true;
     final BookRetirement.Receipts ledger=new BookRetirement.Receipts(){
         public void acquired(Task t,int n,double price,String event){receipts.add("acquired:"+n+":"+price);}
         public void sold(Task t,int n,double proceeds,String event){receipts.add("sold:"+n+":"+proceeds);}
         public boolean checkpoint(){return saved;}
+        public void cancellationSent(Task t){funding.add("uncertain");}
+        public void ordersCleared(Task t){funding.add("holdings");}
     };
     MenuSnapshot menu(int id,String title,int size,SlotView... content) {
         var slots=new ArrayList<SlotView>();int end=size-36;
@@ -69,8 +72,11 @@ class BookRetirementTest {
         tick(orders,0);tick(orders,1600);assertTrue(actions.serverEffects().contains("click:19"));
         var options=menu(2,"Order options",72,SlotView.named(11,"Cancel Order",List.of()));
         tick(options,2700);tick(options,4300);assertTrue(actions.serverEffects().contains("click:11"));
+        assertEquals(List.of("uncertain"),funding);
         tick(orders,5400);tick(orders,7000);assertEquals(BookRetirement.Result.WAITING,tick(orders,8000));
+        assertEquals(List.of("uncertain"),funding,"stale orders cannot release funded escrow");
         var absent=menu(3,"Bazaar Orders",72);tick(absent,9000);tick(absent,10600);
+        assertEquals(List.of("uncertain","holdings"),funding);
         assertEquals(BookRetirement.Result.COMPLETE,tick(absent,10700));
         assertEquals(1,actions.serverEffects().stream().filter(s->s.equals("click:11")).count());
     }

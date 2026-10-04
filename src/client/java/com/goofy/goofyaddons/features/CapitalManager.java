@@ -8,7 +8,7 @@ import java.util.function.LongSupplier;
 /** Client-thread ledger shared by both engines. Keys are actual Bazaar product IDs. */
 public class CapitalManager {
     public static final CapitalManager INSTANCE = new CapitalManager();
-    private record Allocation(String owner, double cost, double pending) {}
+    private record Allocation(String owner, double cost, double pending, Double funded) {}
     private final Map<String, Allocation> allocations = new HashMap<>();
     private final LongSupplier clock;
     private double limit = 300_000_000;
@@ -31,6 +31,18 @@ public class CapitalManager {
     }
     public double committed() { return allocations.values().stream().mapToDouble(Allocation::cost).sum(); }
     public double pending() { return allocations.values().stream().mapToDouble(Allocation::pending).sum(); }
+    /** Reporting only: owned input cost plus live buy escrow, excluding future inputs. */
+    public Double funded() {
+        if (allocations.values().stream().anyMatch(a -> a.funded == null)) return null;
+        return allocations.values().stream().mapToDouble(Allocation::funded).sum();
+    }
+    public int fundingUnknown() { return (int) allocations.values().stream().filter(a -> a.funded == null).count(); }
+    public double knownFunded() { return allocations.values().stream().filter(a -> a.funded != null).mapToDouble(Allocation::funded).sum(); }
+    public void funding(String owner, String product, Double cost) {
+        if (cost != null && (!Double.isFinite(cost) || cost < 0)) throw new IllegalArgumentException("Invalid funded cost");
+        Allocation old = allocations.get(product);
+        if (old != null && old.owner.equals(owner)) allocations.put(product, new Allocation(owner, old.cost, old.pending, cost));
+    }
     public double limit() { return limit; }
     public double reserve() { return reserve; }
 
@@ -68,7 +80,7 @@ public class CapitalManager {
     public boolean reserve(String owner, String product, double cost, double purse) {
         if (!Double.isFinite(cost) || cost <= 0 || allocations.containsKey(product)
                 || cost > available(purse)) return false;
-        allocations.put(product, new Allocation(owner, cost, cost));
+        allocations.put(product, new Allocation(owner, cost, cost, 0.0));
         return true;
     }
 
@@ -90,7 +102,8 @@ public class CapitalManager {
         if (!Double.isFinite(cost) || cost <= 0) return;
         Allocation existing = allocations.get(product);
         if (existing != null && !existing.owner.equals(owner)) return;
-        allocations.put(product, new Allocation(owner, cost, pending ? cost : 0));
+        allocations.put(product, new Allocation(owner, cost, pending ? cost : 0,
+                owner.equals("books") || pending ? null : cost));
     }
 
     public boolean resize(String owner, String product, double cost, double purse) {
@@ -100,7 +113,7 @@ public class CapitalManager {
     public boolean resize(String owner, String product, double cost, double purchaseCost, double purse) {
         Allocation old = allocations.get(product);
         if (old == null || !old.owner.equals(owner) || refusal(product, cost, purchaseCost, purse) != null) return false;
-        allocations.put(product, new Allocation(owner, cost, purchaseCost));
+        allocations.put(product, new Allocation(owner, cost, purchaseCost, old.funded));
         return true;
     }
 
@@ -108,7 +121,10 @@ public class CapitalManager {
         Allocation value = allocations.get(product);
         // Re-checking an order that was already placed must not restart the settle window.
         if (value != null && value.owner.equals(owner) && value.pending > 0) {
-            allocations.put(product, new Allocation(owner, value.cost, 0));
+            Double funded=value.funded;
+            if(!owner.equals("books"))funded=value.cost;
+            else if(funded!=null)funded+=value.pending;
+            allocations.put(product, new Allocation(owner, value.cost, 0, funded));
             lastPurchaseMs = clock.getAsLong();
         }
     }
