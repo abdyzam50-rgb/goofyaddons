@@ -1,6 +1,5 @@
 package com.goofy.goofyaddons.menu;
 
-import java.util.List;
 import java.util.Objects;
 
 /** Acknowledges reversible navigation; never use for claims, cancellations or submissions. */
@@ -9,7 +8,18 @@ public final class NavigationRetry {
     private MenuSnapshot source;
     private int slot,retries;
     private long sentAt,started,stableAt,blockedUntil;
-    private List<SlotView> stable;
+    private SlotView stable;
+    private boolean sameTarget(SlotView a,SlotView b) {
+        if(a==null || b==null)return false;
+        if(a.customId()==null || a.customId().isBlank())return a.equals(b);
+        // Product prices update in place. Keep identity checks, while allowing
+        // live lore changes for a reversible product-navigation click only.
+        return !a.empty()&&!b.empty()&&!a.inPlayerInventory()&&!b.inPlayerInventory()
+                &&a.index()==b.index()&&a.containerSlot()==b.containerSlot()
+                &&Objects.equals(a.customId(),b.customId())&&Objects.equals(a.customName(),b.customName())
+                &&Objects.equals(a.hoverName(),b.hoverName())&&Objects.equals(a.enchantments(),b.enchantments())
+                &&a.count()==b.count()&&a.maxStackSize()==b.maxStackSize();
+    }
     public boolean pending(){return source!=null;}
     public void reset(){source=null;stable=null;retries=0;blockedUntil=0;}
     public void sent(MenuSnapshot menu,int clicked,long now){
@@ -25,8 +35,8 @@ public final class NavigationRetry {
         }
         if(now-started>=15_000)return Result.EXHAUSTED;
         if(menu==null || menu.title()==null || !menu.cursorEmpty() || !menu.loaded(slot)
-                || !Objects.equals(menu.slot(slot),source.slot(slot))){stable=null;return Result.WAITING;}
-        if(!menu.slots().equals(stable)){stable=List.copyOf(menu.slots());stableAt=now;return Result.WAITING;}
+                || !sameTarget(menu.slot(slot),source.slot(slot))){stable=null;return Result.WAITING;}
+        if(!sameTarget(menu.slot(slot),stable)){stable=menu.slot(slot);stableAt=now;return Result.WAITING;}
         if(now-sentAt<3000 || now-stableAt<750 || now<blockedUntil || retries>=3)return Result.WAITING;
         actions.click(slot,false);retries++;sentAt=now;stable=null;return Result.RETRIED;
     }

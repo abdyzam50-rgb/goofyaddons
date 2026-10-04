@@ -162,6 +162,13 @@ public final class Diagnostics {
             .executes(context->{context.getSource().sendFeedback(Component.literal("Diagnostics: logs/goofyaddons | dropped: "+WORKER.totalDropped()+" | error: "+(error==null?"none":error)+" | /goofydebug export"));return 1;})
             .then(ClientCommands.literal("export").executes(context->{
                 var state=snapshot(true);var source=context.getSource();var mc=Minecraft.getInstance();
+                var profit=com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE;
+                state.put("versions",Map.copyOf(versions));
+                state.put("profit",profit.summary());state.put("profitError",profit.error());
+                state.put("executions",profit.executionSamples());state.put("activeExecutions",profit.activeExecutions());
+                state.put("executionError",profit.executionError());
+                state.put("funded",CapitalManager.INSTANCE.funded());
+                state.put("fundingUnknown",CapitalManager.INSTANCE.fundingUnknown());
                 source.sendFeedback(Component.literal("Creating diagnostic bundle..."));
                 boolean accepted=WORKER.submit(false,()->{
                     try { var file=LOG.export(state);mc.execute(()->source.sendFeedback(Component.literal("Saved diagnostics: "+file))); }

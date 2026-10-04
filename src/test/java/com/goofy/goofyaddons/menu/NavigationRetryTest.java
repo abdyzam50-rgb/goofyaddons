@@ -6,6 +6,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.goofy.goofyaddons.menu.NavigationRetry.Result.*;
 
 class NavigationRetryTest {
+    MenuSnapshot product(String id,int price) {
+        var m=menu(1,"Bazaar search","Product",true);var slots=new ArrayList<>(m.slots());
+        slots.set(16,new SlotView(16,false,16,false,"Recombobulator 3000","Recombobulator 3000",
+                List.of("Buy price: "+price,"Click to view details!"),id,null,1,64));
+        slots.set(10,SlotView.named(10,"Another product",List.of("Price: "+price)));
+        return new MenuSnapshot(1,m.title(),true,slots);
+    }
+    @Test void livePricesAndOtherSlotsDoNotPreventRetryingTheSameProduct() {
+        flow.sent(product("RECOMBOBULATOR_3000",100),16,0);
+        assertEquals(WAITING,flow.observe(product("RECOMBOBULATOR_3000",101),false,actions,2000));
+        assertEquals(WAITING,flow.observe(product("RECOMBOBULATOR_3000",102),false,actions,2500));
+        assertEquals(RETRIED,flow.observe(product("RECOMBOBULATOR_3000",103),false,actions,3000));
+        assertEquals(List.of("click:16"),actions.serverEffects());
+    }
+    @Test void sameNameWithDifferentProductIdentityNeverAuthorizesRetry() {
+        flow.sent(product("RECOMBOBULATOR_3000",100),16,0);
+        for(long now:new long[]{2000,3000,4000})
+            assertEquals(WAITING,flow.observe(product("OTHER_PRODUCT",101),false,actions,now));
+        assertTrue(actions.serverEffects().isEmpty());
+    }
     final NavigationRetry flow=new NavigationRetry();
     final RecordingActions actions=new RecordingActions();
     MenuSnapshot menu(int id,String title,String button,boolean cursor) {

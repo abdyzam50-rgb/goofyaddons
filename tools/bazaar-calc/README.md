@@ -608,3 +608,20 @@ missing historical forecasts cannot be reconstructed by this update.
 Finish any comparison run before installing the paired update: restarting during
 a timed run interrupts its timing evidence. Update both components, retain all
 configs and histories, then start a new measurement run.
+
+### Live product-navigation retry (mod 1.3.52)
+
+Reversible navigation retries now compare the selected product's ID, name,
+enchantment identity, quantity and slot rather than its changing price lore.
+Other updating menu entries no longer reset the selected product's quiet window.
+Controls without a product ID still require exact identity; changed products,
+occupied cursors and unloaded/closed menus cannot authorize a retry. The retry
+count and timeout remain bounded. Claims, cancellations and submissions do not
+use this retry helper. Keep companion 1.3.51; only the mod changes in this release.
+
+Diagnostic exports in mod 1.3.52 also include version metadata, session profit and
+active trading time, completed gameplay outcomes, and current timing records.
+These are captured only when exporting, so they do not enlarge routine heartbeat
+logs or change trading. Full-session totals remain available even after older
+events rotate out. Exported account/trade information stays in the local private
+bundle and is never part of packaged public market data.
