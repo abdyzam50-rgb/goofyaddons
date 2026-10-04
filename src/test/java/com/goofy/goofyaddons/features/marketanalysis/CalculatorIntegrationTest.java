@@ -54,6 +54,26 @@ class CalculatorIntegrationTest {
                 assertTrue(state.get("fresh").getAsBoolean());assertEquals("LocalTest",state.getAsJsonObject("account").getAsJsonObject("account").get("name").getAsString());
                 assertEquals(123,state.getAsJsonObject("account").getAsJsonObject("profit").get("profit").getAsInt());
             }
+            // Real Java ledger -> local history -> similar-volume prior -> strict Java parser.
+            long learnedAt=System.currentTimeMillis();var ledger=new com.goofy.goofyaddons.features.profit.ExecutionLedger();
+            for(int i=0;i<10;i++) {
+                String trade="peer-"+learnedAt+"-"+i;
+                ledger.begin(trade,"general","COAL","COAL",16,16,learnedAt-120000,100.0,
+                        new com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast(60,100000.0/7,100000.0/7));
+                ledger.complete(trade,trade+":receipt",16,200.0,50.0,learnedAt,false);
+            }
+            account.addProperty("sentAt",learnedAt);account.add("executions",new com.google.gson.Gson().toJsonTree(ledger.samples()));
+            assertTrue(new MarketAnalysisClient().publishDashboard("http://127.0.0.1:"+port+"/v1/recommendations",account).get(5,TimeUnit.SECONDS).get("ok").getAsBoolean());
+            automaticMarket.addProperty("lastUpdated",learnedAt);
+            var blocked=MarketAnalysisProtocol.request("integration-ranking",automaticMarket,c,TradingMode.BOTH,0,0,0,0,Set.of("AATROX_BATPHONE"));
+            var catalog=MarketAnalysisProtocol.request("integration-ranking",automaticMarket,c,TradingMode.BOTH,10000,32,1,1,Set.of());
+            blocked.add("rankingConstraints",catalog.get("constraints"));
+            var combined=new MarketAnalysisClient().request("http://127.0.0.1:"+port+"/v1/recommendations",blocked).get(10,TimeUnit.SECONDS);
+            assertTrue(MarketAnalysisProtocol.parse(combined,blocked,System.currentTimeMillis()).rows().isEmpty());
+            var ranked=MarketAnalysisProtocol.parse(combined.getAsJsonObject("rankingReport"),catalog,System.currentTimeMillis()).rows().getFirst();
+            assertEquals(0,ranked.executionEvidence().get("samples"));assertEquals(10,ranked.executionEvidence().get("sharedSamples"));
+            assertTrue(((Number)ranked.executionEvidence().get("throughputFactor")).doubleValue()<1);
+            assertTrue(((Number)ranked.executionEvidence().get("profitRealizationFactor")).doubleValue()<1);
         } finally {process.destroy();if(!process.waitFor(3,TimeUnit.SECONDS))process.destroyForcibly();}
     }
 }

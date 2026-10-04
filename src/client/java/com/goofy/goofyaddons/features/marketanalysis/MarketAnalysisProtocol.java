@@ -32,6 +32,17 @@ public final class MarketAnalysisProtocol {
     public record Report(long marketAt, long dataAt, long generatedAt, boolean historyUsed,
                          String historyStatus, String upstreamCommit, int total, Map<String,Integer> counts, List<Recommendation> rows) {}
 
+    /** Freeze the uncalibrated cycle forecast and observed volumes for a verified purchase. */
+    public static com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(Report report,String input,String output,int batch,long now) {
+        if(report==null || batch<1 || !TradingSafety.fresh(report.marketAt(),now))return null;
+        return report.rows().stream().filter(r->r.inputId().equals(input)&&r.outputId().equals(output)).findFirst().map(r->{
+            var v=r.volumeEvidence();
+            if(!(v.get("inputEffectivePerDay") instanceof Number a) || !(v.get("outputEffectivePerDay") instanceof Number b))return null;
+            double seconds=r.executionEvidence().get("marketCycleSeconds") instanceof Number raw?raw.doubleValue():r.cycleSeconds();
+            return new com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast(seconds*batch/r.batch(),a.doubleValue(),b.doubleValue());
+        }).orElse(null);
+    }
+
     public static JsonObject request(String id, JsonObject market, GoofyConfig config, TradingMode mode,
                                      double available, int capacity, int bookSlots, int generalSlots, Set<String> excluded) {
         var root = new JsonObject(); root.addProperty("protocol", VERSION); root.addProperty("requestId", id);
@@ -138,14 +149,21 @@ public final class MarketAnalysisProtocol {
                         || latest>now+5000 || now-latest>86400000)throw new IllegalArgumentException("Invalid personal execution calibration");
                 int pending=e.has("pendingSamples")?integer(e,"pendingSamples",0,100):0;
                 int censored=e.has("censoredSamples")?integer(e,"censoredSamples",0,2000):0;
-                if(samples<3 && pending+censored==0 || samples<10 && factor>1)
+                int shared=e.has("sharedSamples")?integer(e,"sharedSamples",0,2000):0;
+                int sharedProfit=e.has("sharedProfitSamples")?integer(e,"sharedProfitSamples",0,2000):0;
+                if(shared>0 && shared<3 || sharedProfit>shared || samples<3 && pending+censored==0 && shared<3 || samples+shared<10 && factor>1)
                     throw new IllegalArgumentException("Insufficient personal execution evidence");
                 int expectedSamples=e.has("expectedProfitSamples")?integer(e,"expectedProfitSamples",0,2000):0;
-                if(expectedSamples>samples || realization<1 && expectedSamples<3)throw new IllegalArgumentException("Insufficient realized profit evidence");
+                if(expectedSamples>samples || realization<1 && expectedSamples<3 && sharedProfit<3)throw new IllegalArgumentException("Insufficient realized profit evidence");
                 var values=new LinkedHashMap<String,Object>(Map.of("pendingSamples",pending,"censoredSamples",censored,"samples",samples,"throughputFactor",factor,"marketCycleSeconds",baseline,
                         "marketCoinsPerHour",baselineCoins,"p75ObservedSeconds",positive(e,"p75ObservedSeconds"),
                         "observedCoinsPerHour",number(e,"observedCoinsPerHour"),"latestAt",latest));
                 values.put("profitRealizationFactor",realization);values.put("expectedProfitSamples",expectedSamples);
+                values.put("sharedSamples",shared);values.put("sharedProfitSamples",sharedProfit);
+                for(String field:List.of("sharedThroughputFactor","sharedProfitRealizationFactor"))if(e.has(field)) {
+                    double value=positive(e,field);if(value<0.1 || value>(field.equals("sharedThroughputFactor")?1.5:1))throw new IllegalArgumentException("Invalid shared correction");
+                    values.put(field,value);
+                }
                 evidence=Map.copyOf(values);
             }
             Map<String,Object> volume=Map.of();

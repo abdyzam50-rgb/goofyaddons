@@ -140,7 +140,8 @@ public class GeneralFlipper implements Feature {
                     }
                     @Override public void placed(Position position) {
                         ProfitTracker.INSTANCE.beginExecution(position.tradeId,OWNER,position.item.id(),position.item.id(),position.quantity,position.quantity,position.placedAt,
-                                position.sellPrice*position.quantity*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-position.cost());
+                                position.sellPrice*position.quantity*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-position.cost(),
+                                FeatureManager.INSTANCE.executionForecast(position.item.id(),position.item.id(),position.quantity));
                     }
                 });
     }

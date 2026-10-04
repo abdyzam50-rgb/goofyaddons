@@ -50,7 +50,7 @@ function renderRoutes(predictions) {
   ['Book combine operations',selected.kind==='BOOK'?Math.max(0,selected.inputUnits-selected.batch):'None'],['Limited by',selected.limitedBy??'Not supplied'],['Price basis',selected.priceBasis??'Current market forecast'],
   ['Market evidence',selected.confidence==='MEASURED'?'Observed market samples · personal fills may differ':'Estimated fill model'],['Quote age',age(state.predictions?.marketAt)],['Execution scope',selected.configured?(automatic?'Automatic selection':'Configured'):'Research only'],
   ['Market-only coins/hour',coins(selected.executionEvidence?.marketCoinsPerHour??selected.coinsPerHour)],
-  ['Gameplay adjustment',Number.isFinite(selected.executionEvidence?.throughputFactor)?`${selected.executionEvidence.samples} completed · ${selected.executionEvidence.pendingSamples??0} open · ${selected.executionEvidence.censoredSamples??0} retired · ${coins(selected.executionEvidence.throughputFactor)}× throughput · ${coins(selected.executionEvidence.profitRealizationFactor??1)}× profit realization`:'Waiting for 3 completed cycles or an overdue open trade'],
+  ['Gameplay adjustment',Number.isFinite(selected.executionEvidence?.throughputFactor)?`${selected.executionEvidence.samples} own completed · ${selected.executionEvidence.sharedSamples??0} similar-volume trades · ${selected.executionEvidence.pendingSamples??0} open · ${selected.executionEvidence.censoredSamples??0} retired · ${coins(selected.executionEvidence.throughputFactor)}× throughput · ${coins(selected.executionEvidence.profitRealizationFactor??1)}× profit realization`:'Market estimate; waiting for similar-volume or own gameplay evidence'],
   ['Input daily volume · weekly average',selected.volumeEvidence?coins(selected.volumeEvidence.inputWeeklyAveragePerDay):'—'],
   ['Output daily volume · weekly average',selected.volumeEvidence?coins(selected.volumeEvidence.outputWeeklyAveragePerDay):'—'],
   ['Input recent daily rate',selected.volumeEvidence?.inputObservationHours?`${coins(selected.volumeEvidence.inputRecentPerDay)} · ${coins(selected.volumeEvidence.inputObservationHours)} h observed`:'Not enough recent counter observations'],
@@ -80,8 +80,8 @@ function render() {
   put('predicted',coins(predictions[0]?.coinsPerHour));
   put('measured-rate',live?coins(state.measuredProfitPerHour):'—');
   put('measured-rate-note',live&&Number.isFinite(state.measuredProfitPerHour)?'Receipt-confirmed profit / tracked active time; paused time excluded':a?.profit?.incomplete?'Unavailable: some settlements have unknown profit':'Needs known-profit settlements and at least 60 seconds of active time');
-  put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded outcomes · ${state.execution?.eligible ?? 0} completed timing samples · ${state.execution?.censored ?? 0} retired bounds · ${state.execution?.pending ?? 0} open. Downside learns after 3 completed cycles or an overdue trade; upside needs 10. Rankings also account for realized profit and recent market volume.`);
-  put('forecast-status',state.predictionReason || 'One eligible route; not total earnings');
+  put('execution-note',state.execution?.error || a?.executionError || `${state.execution?.samples ?? 0} recorded outcomes · ${state.execution?.eligible ?? 0} completed timing samples · ${state.execution?.censored ?? 0} retired bounds · ${state.execution?.pending ?? 0} open. Downside learns after 3 completed cycles or an overdue trade; upside needs 10. Rankings share corrections across similar-volume routes, then refine per item using realized profit and timings.`);
+  put('forecast-status',state.predictionReason || 'Best ranked route; availability is shown in the pipeline');
   const positionProfit=state.positionProfit;
   put('position-profit',coins(positionProfit?.total));$('position-profit').classList.toggle('negative',positionProfit?.total<0);
   put('position-profit-note',positionProfit?.known?`${positionProfit.known} priced · ${positionProfit.unknown} unknown. Book costs are planned full-cycle estimates; excludes listing fees, future price changes and fill timing.`:positionProfit?.reason || 'No fresh position estimate');
@@ -133,7 +133,7 @@ function render() {
   for(const item of plan?.deferred ?? []){const li=document.createElement('li');li.textContent=`${item.routeKey}: ${item.reason}`;deferred.append(li);}
   if(!deferred.children.length){const li=document.createElement('li');li.textContent='No deferred candidates reported';deferred.append(li);}
   renderRoutes(predictions);
-  put('prediction-note',predictions.length?`Quote ${age(state.predictions.marketAt)} · individually ranked routes, not a combined portfolio. ${state.predictions.historyUsed?'Historical observations used.':'Fill rates are estimated.'}`:state.predictionReason || 'Waiting for a fresh calculator forecast.');
+  put('prediction-note',predictions.length?`Quote ${age(state.predictions.marketAt)} · individually ranked routes, not a combined portfolio. ${Number.isFinite(a?.analysis?.comparison?.rankingCapital)?`Ranking budget ${coins(a.analysis.comparison.rankingCapital)} · standard input capacity ${a.analysis.comparison.rankingInventoryCapacity}. `:''}${state.predictions.historyUsed?'Historical observations used.':'Fill rates are estimated.'}`:state.predictionReason || 'Waiting for a fresh calculator forecast.');
 }
 for(const id of ['inventory-search','storage-view','order-filter'])$(id).addEventListener('input',render);
 for(const id of ['route-search','route-engine','route-scope','route-sort'])$(id).addEventListener('input',()=>{savePreferences();render();});

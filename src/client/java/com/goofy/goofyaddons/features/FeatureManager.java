@@ -26,6 +26,9 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report marketReport() {
         return marketAnalysis.latestReport();
     }
+    public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast executionForecast(String input,String output,int batch) {
+        return marketAnalysis.executionForecast(input,output,batch);
+    }
     public java.util.Set<String> retiredBookProducts(){return books.retirementExclusions();}
     public void invalidateMarketReport() { marketAnalysis.stop(); }
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
@@ -40,6 +43,8 @@ public class FeatureManager {
     }
 
     public void onTick() {
+        CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);
+        marketAnalysis.poll(started?mode:GoofyConfig.INSTANCE.tradingMode);
         if (!started || paused) return;
         try {
         if(books.recoveryPending()) {
@@ -49,7 +54,6 @@ public class FeatureManager {
         }
         if (requested != null && scheduler.canSwitch()) applyMode(requested);
         for (Feature engine : engines()) { engine.poll(); if(paused || !started) return; }
-        marketAnalysis.poll(mode);
         Feature owner = scheduler.select(engines());
         if (owner != previousOwner && previousOwner != null) previousOwner.yieldMenu();
         previousOwner = owner;

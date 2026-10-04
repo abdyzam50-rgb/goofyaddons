@@ -149,6 +149,10 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   }
   for(const row of rows)executions?.calibrate(row);
   rows.sort((a, b) => b.coinsPerHour - a.coinsPerHour || a.capitalUsed - b.capitalUsed || a.routeKey.localeCompare(b.routeKey));
-  return { protocol: PROTOCOL, requestId: body.requestId, marketAt, dataAt, generatedAt: now,
+  const report={ protocol: PROTOCOL, requestId: body.requestId, marketAt, dataAt, generatedAt: now,
     historyUsed, historyStatus, upstreamCommit: provenance.commit, counts, total: rows.length, rows: rows.slice(0, limit) };
+  if(body.rankingConstraints!==undefined) {
+    report.rankingReport=recommend({...body,constraints:body.rankingConstraints,rankingConstraints:undefined},history,provenance,now,executions);
+  }
+  return report;
 }

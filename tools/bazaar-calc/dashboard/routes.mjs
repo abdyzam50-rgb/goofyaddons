@@ -6,13 +6,23 @@ export function visibleRoutes(routes,{search='',engine='all',scope='all',sort='r
  const saved=new Set(favorites),query=search.trim().toLowerCase();
  const filtered=routes.filter(p=>(engine==='all'||p.kind===engine)&&(scope!=='configured'||p.configured)&&(scope!=='favorites'||saved.has(routeId(p)))
    &&`${routeName(p)} ${p.inputId??''} ${p.outputId??''}`.toLowerCase().includes(query));
- const score=p=>sort==='profit'?p.profitPerBatch:sort==='capital'?-p.capitalUsed:sort==='cycle'?-p.cycleSeconds:p.coinsPerHour;
+ const score=p=>sort==='profit'?p.profitPerBatch*(p.executionEvidence?.profitRealizationFactor??1):sort==='capital'?-p.capitalUsed:sort==='cycle'?-p.cycleSeconds:p.coinsPerHour;
  return filtered.toSorted((a,b)=>(Number.isFinite(score(b))?score(b):-Infinity)-(Number.isFinite(score(a))?score(a):-Infinity)||routeId(a).localeCompare(routeId(b)));
 }
 export function routeDisposition(p,plan,automatic=false) {
  if(plan?.next?.some(x=>routeId(x.route)===routeId(p)))return 'In allocation preview';
  const deferred=plan?.deferred?.find(x=>x.routeKey===p.routeKey);
- return deferred?.reason ?? (p.configured?(automatic?'Automatically eligible':'Configured route'):'Research only · not configured for execution');
+ if(deferred)return deferred.reason;
+ const a=plan?.account;
+ if(p.configured && a) {
+  if(a.excludedProducts?.some(id=>id===p.inputId||id===p.outputId||(p.kind==='BOOK'&&id===p.inputId?.replace(/_\d+$/,''))))return 'Product already held, reserved or temporarily excluded';
+  if((p.kind==='BOOK'&&a.mode==='GENERAL')||(p.kind==='GENERAL'&&a.mode==='BOOKS'))return 'Engine disabled by trading mode';
+  if((p.kind==='BOOK'?a.bookSlots:a.generalSlots)===0)return 'Active position limit';
+  if(Number.isFinite(a.available)&&p.capitalUsed>a.available)return 'Ranking batch exceeds currently spendable capital';
+  if(Number.isFinite(a.inventoryCapacity)&&p.inputUnits>a.inventoryCapacity)return 'Ranking batch exceeds current inventory capacity';
+ }
+ if(p.configured && plan?.status==='WAITING')return `Supported route · ${plan.reason ?? 'waiting for execution capacity'}`;
+ return p.configured?(automatic?'Automatically eligible':'Configured route'):'Research only · not configured for execution';
 }
 export function workStages(account) {
  const counts={buy:0,combine:0,sell:0,review:0};

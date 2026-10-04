@@ -2242,7 +2242,8 @@ public class BazaarFlipper implements Feature {
             var book=task.getBook();
             if(submittedBookUnits==book.getQtyAmount(book.level())) ProfitTracker.INSTANCE.beginExecution(task.getProfitTradeId(),"books",
                     book.getLevel(book.level()),book.getLevel(book.sellLevel()),submittedBookUnits,1,submittedBookAt,
-                    expectedBookProfit(book,submittedBookUnits,submittedBookPrice));
+                    expectedBookProfit(book,submittedBookUnits,submittedBookPrice),
+                    com.goofy.goofyaddons.features.FeatureManager.INSTANCE.executionForecast(book.getLevel(book.level()),book.getLevel(book.sellLevel()),1));
         }
         task.setBookState(submittedNextState);
         submittedBookTask=null;submittedNextState=null;

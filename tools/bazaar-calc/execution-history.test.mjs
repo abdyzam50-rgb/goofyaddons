@@ -86,3 +86,46 @@ test('realized profit is compared to each original purchase forecast, without ch
   const old=row();old.cycleSeconds=120;legacy.calibrate(old);assert.equal(old.executionEvidence.profitRealizationFactor,1);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test('untested routes learn bounded corrections from similar-volume peers and own outcomes replace the prior',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'goofy-similar-volume-'));
+ try {
+  const h=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now});
+  const peer=i=>({...sample(i),forecast:{cycleSeconds:60,inputPerDay:2400,outputPerDay:2400},expectedProfit:100});
+  h.ingest(Array.from({length:10},(_,i)=>peer(i)));
+  const fresh=()=>({...row(),inputId:'QUARTZ',outputId:'QUARTZ',volumeEvidence:{inputEffectivePerDay:2400,outputEffectivePerDay:2400}});
+  const a=fresh();h.calibrate(a);
+  assert.equal(a.executionEvidence.samples,0);assert.equal(a.executionEvidence.sharedSamples,10);
+  assert.ok(a.executionEvidence.throughputFactor<0.51);assert.ok(a.executionEvidence.profitRealizationFactor<0.51);
+  assert.equal(a.executionEvidence.observedCoinsPerHour,0);assert.ok(a.coinsPerHour<2880/3);
+  const near=fresh();near.volumeEvidence={inputEffectivePerDay:4800,outputEffectivePerDay:4800};h.calibrate(near);
+  assert.ok(near.coinsPerHour>a.coinsPerHour);assert.equal(near.executionEvidence.sharedSamples,10);
+  for(const field of ['inputEffectivePerDay','outputEffectivePerDay']) {
+   const far=fresh();far.volumeEvidence[field]=20000;h.calibrate(far);assert.equal(far.cycleSeconds,60);assert.equal(far.executionEvidence,undefined);
+  }
+  const book=fresh();book.kind='BOOK';h.calibrate(book);assert.equal(book.executionEvidence,undefined);
+  // Original forecast ratios survive today's changing prices and fill model.
+  const slowerMarket=fresh();slowerMarket.cycleSeconds=240;h.calibrate(slowerMarket);
+  assert.equal(slowerMarket.executionEvidence.throughputFactor,a.executionEvidence.throughputFactor);
+  h.ingest(Array.from({length:10},(_,i)=>({...peer(i+100),inputId:'QUARTZ',outputId:'QUARTZ',observedMillis:60000,profit:100})));
+  const learned=fresh();h.calibrate(learned);assert.equal(learned.executionEvidence.samples,10);
+  assert.equal(learned.executionEvidence.throughputFactor,1);assert.equal(learned.executionEvidence.profitRealizationFactor,1);
+  const restored=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now});const again=fresh();restored.calibrate(again);assert.equal(again.coinsPerHour,learned.coinsPerHour);
+  assert.throws(()=>h.ingest([{...peer(500),forecast:{cycleSeconds:NaN,inputPerDay:1,outputPerDay:1}}]),/Invalid execution/);
+  assert.throws(()=>h.ingest([{...peer(500),forecast:{cycleSeconds:60,inputPerDay:0,outputPerDay:1}}]),/Invalid execution/);
+  const stale=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now+86400001});const expired=fresh();stale.calibrate(expired);assert.equal(expired.executionEvidence,undefined);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('book peer similarity compares daily inputs per output and does not transfer interrupted or retired outcomes',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'goofy-book-peer-'));
+ try {
+  const h=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now});
+  h.ingest(Array.from({length:10},(_,i)=>({...sample(i),engine:'books',inputId:'ENCHANTMENT_A_1',outputId:'ENCHANTMENT_A_5',inputUnits:16,batch:1,
+    forecast:{cycleSeconds:60,inputPerDay:16000,outputPerDay:1000}})));
+  const r={...row(),kind:'BOOK',inputId:'ENCHANTMENT_B_1',outputId:'ENCHANTMENT_B_4',inputUnits:8,batch:1,
+    volumeEvidence:{inputEffectivePerDay:8000,outputEffectivePerDay:1000}};
+  h.calibrate(r);assert.equal(r.executionEvidence.sharedSamples,10);assert.ok(r.executionEvidence.throughputFactor<0.51);
+  const invalid=new ExecutionHistory({file:join(dir,'interrupted.json'),now:()=>now});
+  invalid.ingest([...h.rows.values()].map(s=>({...s,eligible:false})));const other={...r,cycleSeconds:60,executionEvidence:undefined};invalid.calibrate(other);assert.equal(other.executionEvidence,undefined);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});

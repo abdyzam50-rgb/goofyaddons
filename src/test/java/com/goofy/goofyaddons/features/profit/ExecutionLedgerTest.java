@@ -47,4 +47,15 @@ class ExecutionLedgerTest {
   assertEquals(100.0,l.samples().getFirst().expectedProfit());assertEquals(50.0,l.samples().getFirst().profit());
   l.write(dir.resolve("execution.json"));assertEquals(l.samples(),ExecutionLedger.read(dir.resolve("execution.json")).samples());
  }
+ @Test void originalTimingAndVolumeForecastSurvivesRestartAndRepeatedBegin() throws Exception {
+  var l=new ExecutionLedger();var forecast=new ExecutionLedger.Forecast(60,2400,1200);
+  l.begin("t","books","A_1","A_2",2,1,1000,100.0,forecast);
+  l.begin("t","books","A_1","A_2",2,1,2000,999.0,new ExecutionLedger.Forecast(600,10,10));
+  l.complete("t","e",2,300.0,50.0,121000,false);
+  assertEquals(forecast,l.samples().getFirst().forecast());
+  l.write(dir.resolve("execution.json"));assertEquals(forecast,ExecutionLedger.read(dir.resolve("execution.json")).samples().getFirst().forecast());
+  var invalid=new ExecutionLedger();invalid.begin("bad","general","COAL","COAL",1,1,1000,100.0,new ExecutionLedger.Forecast(60,Double.NaN,1));
+  invalid.complete("bad","e",1,200.0,100.0,61000,false);assertNull(invalid.samples().getFirst().forecast());
+ }
+
 }

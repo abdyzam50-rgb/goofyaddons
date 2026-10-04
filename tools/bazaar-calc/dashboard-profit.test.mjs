@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { positionEstimates,predictionReason } from './dashboard-profit.mjs';
+import { positionEstimates,predictionReason,entryBlockReason } from './dashboard-profit.mjs';
 const account=()=>({status:{taxPercentage:1.25},books:{tasks:[{item:'ENCHANTMENT_OVERLOAD',outputLevel:5,plannedCost:10000}]},general:{positions:[{item:'COAL',units:16,purchasePriceKnown:true,cost:1000}]}});
 const collector={quote:id=>({ask:id==='COAL'?100:20000,sourceAt:Date.now()})};
 test('active-cycle estimates use fresh current offers, exact tax and declared cost bases',()=>{
@@ -24,14 +24,14 @@ test('forecast status distinguishes disabled, connection failures, occupied capi
   view.predictions.rows=[{}];assert.equal(predictionReason(view),null);
 });
 
-test('full position limits explain an unevaluated report even when millions are spendable',()=>{
+test('entry blockers stay separate from the ranking explanation',()=>{
  const view={fresh:true,account:{account:{connected:true},status:{mode:'BOTH'},books:{tasks:[{},{}]},general:{positions:[{},{},{}]},analysis:{enabled:true,status:'READY',comparison:{availableCapital:11304129},pipeline:{account:{ready:true,mode:'BOTH',bookSlots:0,generalSlots:0,available:11304129,inventoryCapacity:24}}}},predictions:{rows:[],counts:{evaluated:0,filtered:0,warnings:0,malformedProducts:10}}};
- assert.match(predictionReason(view),/Active-position limits reached \(2 book, 3 general/);
- view.account.analysis.pipeline.account.ready=false;view.account.analysis.pipeline.account.reason='Purse is unreadable';assert.equal(predictionReason(view),'Purse is unreadable');
+ assert.match(entryBlockReason(view.account),/Active-position limits reached \(2 book, 3 general/);
+ view.account.analysis.pipeline.account.ready=false;view.account.analysis.pipeline.account.reason='Purse is unreadable';assert.equal(entryBlockReason(view.account),'Purse is unreadable');
  view.account.analysis.pipeline.account.ready=true;view.account.analysis.pipeline.account.generalSlots=1;view.predictions.counts.evaluated=1025;view.predictions.counts.filtered=978;assert.match(predictionReason(view),/978 filtered/);
- view.account.analysis.pipeline.account.mode='BOOKS';assert.match(predictionReason(view),/Active-position limits/);
- view.account.analysis.pipeline.account.mode='GENERAL';assert.match(predictionReason(view),/978 filtered/);
- view.account.analysis.pipeline.account.inventoryCapacity=0;assert.match(predictionReason(view),/inventory headroom/);
+ view.account.analysis.pipeline.account.mode='BOOKS';assert.match(entryBlockReason(view.account),/Active-position limits/);
+ view.account.analysis.pipeline.account.mode='GENERAL';assert.equal(entryBlockReason(view.account),null);assert.match(predictionReason(view),/978 filtered/);
+ view.account.analysis.pipeline.account.inventoryCapacity=0;assert.match(entryBlockReason(view.account),/inventory headroom/);
 });
 
 test('measured profit/hour uses confirmed active-time accounting and never guesses incomplete profit',async()=>{

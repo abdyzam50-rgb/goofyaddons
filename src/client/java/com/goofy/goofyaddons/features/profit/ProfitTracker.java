@@ -72,8 +72,11 @@ public final class ProfitTracker {
         execution.begin(id,engine,input,output,units,batch,startedAt);
     }
     public void beginExecution(String id,String engine,String input,String output,int units,int batch,long startedAt,Double expectedProfit) {
+        beginExecution(id,engine,input,output,units,batch,startedAt,expectedProfit,null);
+    }
+    public void beginExecution(String id,String engine,String input,String output,int units,int batch,long startedAt,Double expectedProfit,ExecutionLedger.Forecast forecast) {
         load();if(executionError!=null)return;
-        execution.begin(id,engine,input,output,units,batch,startedAt,expectedProfit);
+        execution.begin(id,engine,input,output,units,batch,startedAt,expectedProfit,forecast);
     }
     public java.util.List<ExecutionLedger.Sample> executionSamples() {load();return execution.samples();}
     public java.util.List<ExecutionLedger.Active> activeExecutions() {load();return execution.active(System.currentTimeMillis());}

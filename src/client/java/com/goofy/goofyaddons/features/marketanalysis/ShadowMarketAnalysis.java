@@ -18,12 +18,14 @@ public final class ShadowMarketAnalysis {
         CapitalManager capital(); void onClientThread(Runnable work);
         default void refreshQuotes() {}
         default Set<String> excludedProducts() { return Set.of(); }
+        default Set<String> rankingExclusions() { return excludedProducts(); }
     }
     private final Environment env;
     private final MarketAnalysisClient.Transport transport;
     private final BiConsumer<String,Map<String,?>> events;
     private CompletableFuture<JsonObject> pending;
-    private MarketAnalysisProtocol.Report report;
+    private MarketAnalysisProtocol.Report report, executionReport;
+    private double rankingBudget;
     private Map<String,Object> comparison=Map.of();
     private PipelinePlanner.Plan pipeline;
     private long nextPoll;
@@ -37,6 +39,7 @@ public final class ShadowMarketAnalysis {
             private final GameWorld world=new LiveWorld();
             private boolean refreshing;
             @Override public GoofyConfig config() { return GoofyConfig.INSTANCE; }
+            @Override public Set<String> rankingExclusions() { return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded(); }
             @Override public Set<String> excludedProducts() {
                 var excluded=new java.util.HashSet<>(com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded());
                 excluded.addAll(com.goofy.goofyaddons.features.FeatureManager.INSTANCE.retiredBookProducts());
@@ -78,10 +81,18 @@ public final class ShadowMarketAnalysis {
         JsonObject market=env.quotes();
         if(market==null || !TradingSafety.fresh(market.get("lastUpdated").getAsLong(),env.now())) {status="WAITING_QUOTES";report=null;refreshPipeline();env.refreshQuotes();return;}
         PipelineAccount account=pipeline.account();
-        if(!account.ready()){status="WAITING_ACCOUNT";report=null;refreshPipeline();return;}
+        // Rankings use total trading capital and standard empty-inventory capacity,
+        // independent of occupied positions. Execution keeps its own narrower request.
+        double purse=env.purse();
+        if(Double.isFinite(purse) && purse>=0 && !env.capital().purchaseSettling())
+            rankingBudget=Math.max(0,Math.min(env.capital().limit(),env.capital().committed()+Math.max(0,purse-env.capital().reserve()-env.capital().pending())));
+        if(rankingBudget<=0){status="WAITING_ACCOUNT";refreshPipeline();return;}
         int capacity=account.inventoryCapacity();Set<String> excluded=account.excludedProducts();double available=account.available();
         JsonObject request=MarketAnalysisProtocol.request(UUID.randomUUID().toString(),market,cfg,mode,available,capacity,
                 account.bookSlots(),account.generalSlots(),excluded);
+        JsonObject rankingRequest=MarketAnalysisProtocol.request(request.get("requestId").getAsString(),market,cfg,TradingMode.BOTH,
+                rankingBudget,32,1,1,env.rankingExclusions());
+        request.add("rankingConstraints",rankingRequest.get("constraints"));
         var context=new LinkedHashMap<String,Object>();
         context.put("mode",mode.name());context.put("availableCapital",available);context.put("inventoryCapacity",capacity);
         context.put("bookSlots",account.bookSlots());context.put("generalSlots",account.generalSlots());
@@ -90,6 +101,7 @@ public final class ShadowMarketAnalysis {
         context.put("legacyTopGeneral",mode==TradingMode.BOOKS?List.of():GeneralCalculator.calculate(market.getAsJsonObject("products"),cfg.general,cfg.bazaarTaxPercentage,available,capacity)
                 .stream().limit(3).map(f->f.item().id()).toList());
         context.put("excludedProducts",new TreeSet<>(excluded));
+        context.put("rankingCapital",rankingBudget);context.put("rankingInventoryCapacity",32);
         comparison=Collections.unmodifiableMap(context);
         int run=generation;
         status="REQUESTING";
@@ -100,7 +112,9 @@ public final class ShadowMarketAnalysis {
             if(env.config()!=cfg || !cfg.marketAnalysis.enabled) {report=null;status="DISCARDED";return;}
             try {
                 if(error!=null) throw new IllegalStateException("Local calculator unavailable",error);
-                report=MarketAnalysisProtocol.parse(response,request,env.now());status="READY";lastError=null;refreshPipeline();
+                executionReport=MarketAnalysisProtocol.parse(response,request,env.now());
+                report=response.has("rankingReport")?MarketAnalysisProtocol.parse(response.getAsJsonObject("rankingReport"),rankingRequest,env.now()):executionReport;
+                status="READY";lastError=null;refreshPipeline();
                 var event=new LinkedHashMap<String,Object>(); event.put("mode","SHADOW");event.put("report",report);event.put("comparison",comparison);event.put("pipeline",pipeline);
                 events.accept("market.shadow_recommendations",event);
             } catch(RuntimeException failure) {unavailable(failure);}
@@ -109,10 +123,10 @@ public final class ShadowMarketAnalysis {
     private void refreshPipeline() {
         var cfg=env.config();
         var account=PipelineAccount.capture(env.now(),mode,env.capital(),env.purse(),env.inventory(),cfg.maxActiveBooks,cfg.general.maxActiveItems,env.excludedProducts());
-        pipeline=PipelinePlanner.build(account,report,env.now());
+        pipeline=PipelinePlanner.build(account,executionReport,env.now());
     }
     private void unavailable(RuntimeException failure) {
-        report=null;pending=null;pipeline=null;status="UNAVAILABLE";
+        report=null;executionReport=null;pending=null;pipeline=null;status="UNAVAILABLE";
         Throwable detail=failure;
         while(detail.getCause()!=null && detail.getCause()!=detail)detail=detail.getCause();
         String message = detail.getMessage() == null ? detail.getClass().getSimpleName() : detail.getMessage();
@@ -122,15 +136,20 @@ public final class ShadowMarketAnalysis {
         catch(RuntimeException ignored) { /* Diagnostic reporting must never affect trading. */ }
     }
     public void stop() {
-        generation++;if(pending!=null) pending.cancel(true);pending=null;report=null;pipeline=null;comparison=Map.of();status="STOPPED";lastError=null;nextPoll=0;
+        generation++;if(pending!=null) pending.cancel(true);pending=null;report=null;executionReport=null;pipeline=null;comparison=Map.of();status="STOPPED";lastError=null;nextPoll=0;
     }
     public MarketAnalysisProtocol.Report latestReport() {
         return report!=null && env.config()==previousConfig && env.config().marketAnalysis.enabled
                 && TradingSafety.fresh(report.marketAt(),env.now())?report:null;
     }
+    public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast executionForecast(String input,String output,int batch) {
+        if(latestReport()==null)return null;
+        var forecast=MarketAnalysisProtocol.forecast(executionReport,input,output,batch,env.now());
+        return forecast!=null?forecast:MarketAnalysisProtocol.forecast(report,input,output,batch,env.now());
+    }
     public MarketAnalysisProtocol.Report automaticHeadReport() {
         if(!env.config().marketAnalysis.automaticSelection)return null;
-        var fresh=latestReport();if(fresh==null)return null;
+        var fresh=executionReport;if(fresh==null || latestReport()==null || !TradingSafety.fresh(fresh.marketAt(),env.now()))return null;
         refreshPipeline();
         if(pipeline.next().isEmpty())return null;
         return new MarketAnalysisProtocol.Report(fresh.marketAt(),fresh.dataAt(),fresh.generatedAt(),fresh.historyUsed(),

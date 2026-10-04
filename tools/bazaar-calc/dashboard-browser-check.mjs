@@ -65,7 +65,7 @@ try {
     assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/ENCHANTMENT_OVERLOAD_4/);
     assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Book combine operations1/);
     assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Automatic selection/);
-    assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/30 completed · 1 open · 2 retired/);
+    assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/30 own completed · 0 similar-volume trades · 1 open · 2 retired/);
     assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Input recent daily rate12,000 · 12 h observed/);
     assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Observed gameplay coins\/hour/);
     await evaluate(`document.getElementById('favorite-route').click();document.getElementById('route-engine').value='all';document.getElementById('route-scope').value='favorites';document.getElementById('route-scope').dispatchEvent(new Event('input'));`);
@@ -87,6 +87,15 @@ try {
     const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(join(output,`dashboard-${width}.png`),Buffer.from(shot.result.data,'base64'));
     console.log(`PASS ${width}px: best-flip filters, inspection, favorites/theme persistence, allocation, refresh and no overflow/XSS`);
   }
+  clock+=1;account.sentAt=clock;account.analysis.pipeline={status:'WAITING',reason:'Active-position limits reached; waiting for a position to finish',next:[],deferred:[],
+    account:{mode:'BOTH',ready:true,bookSlots:0,generalSlots:0,available:0,inventoryCapacity:0}};
+  account.analysis.report.rows[0].executionEvidence.sharedSamples=12;dashboard.accept(account);
+  await evaluate(`document.getElementById('refresh').click();`);await new Promise(r=>setTimeout(r,100));
+  assert.equal(await evaluate(`document.querySelectorAll('.flip-card').length`),2);
+  assert.match(await evaluate(`document.getElementById('pipeline-rows').textContent`),/Active-position limits/);
+  await evaluate(`document.getElementById('route-engine').value='BOOK';document.getElementById('route-engine').dispatchEvent(new Event('input'));document.querySelector('#prediction-rows button').click();`);
+  assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/12 similar-volume trades/);
+  console.log('PASS full capacity preserves live rankings and peer evidence while pipeline waits');
   clock+=11000;await new Promise(r=>setTimeout(r,2200));
   assert.match(await evaluate(`document.getElementById('notice').textContent`),/offline or stale/);
   assert.equal(await evaluate(`document.getElementById('predicted').textContent`),'—');assert.doesNotMatch(await evaluate(`document.getElementById('pipeline-rows').textContent`),/ENCHANTED_QUARTZ/);

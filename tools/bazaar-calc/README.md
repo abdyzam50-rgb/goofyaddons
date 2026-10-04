@@ -506,3 +506,20 @@ Keep existing Minecraft configs/journals and the external companion data directo
 Keep `marketAnalysis.dashboardEnabled` enabled so the opt-in local telemetry sends
 completed and currently observed executions. No config reset is required. The
 upstream engine pin and existing public/bootstrap history remain unchanged.
+
+## Continuous Best flips and similar-volume learning (1.3.48)
+
+Update both the mod and companion to 1.3.48 and restart them; retain your configs,
+order journals and external market/execution history. Best flips now updates even
+when position slots, inventory or liquid capital are full, and while trading is
+stopped or paused. The ranking budget includes committed trading capital; the
+execution pipeline still uses currently available cash and slots. Fresh market and
+connected account data remain necessary.
+
+Untested routes inherit a correction from recent completed trades in the same engine
+with similar input/output daily volumes, with closer volumes weighted more heavily.
+Own results gradually replace this shared correction. Original forecasts are recorded
+for new trades so the comparison survives changes in the market model. Legacy history
+still refines its own routes and requires no reset. All candidates are adjusted before
+ranking; shared trades are labeled separately from the item's own completed cycles.
+See [continuous ranking details](../../docs/development/CONTINUOUS_FLIP_RANKINGS.md).

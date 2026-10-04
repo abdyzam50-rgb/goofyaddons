@@ -22,3 +22,12 @@ test('storage grids retain exact slot positions and distinguish known empty slot
  const previous=storageCells(region,'previous');assert.equal(previous.length,2);assert.equal(previous[1].item.name,'Old book');
  const legacy=storageCells({current:[{slot:4,item:{name:'Book',count:1}}]});assert.equal(legacy[4].observed,true);assert.equal(legacy[3].observed,false);
 });
+
+
+test('ranking routes show actual execution blockers and profit sorting uses the adjusted amount',()=>{
+ const plan={status:'WAITING',reason:'Slots full',account:{mode:'BOTH',bookSlots:0,generalSlots:0,available:0,inventoryCapacity:0,excludedProducts:['ENCHANTMENT_OVERLOAD']}};
+ assert.match(routeDisposition(book,plan,true),/already held/);
+ plan.account.excludedProducts=[];assert.match(routeDisposition(book,plan,true),/position limit/);
+ const reduced={...book,executionEvidence:{profitRealizationFactor:0.1}};
+ assert.equal(visibleRoutes([reduced,general],{sort:'profit'})[0],general);
+});

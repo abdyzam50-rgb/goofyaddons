@@ -135,4 +135,29 @@ class MarketAnalysisProtocolTest {
         e.addProperty("expectedProfitSamples",2);
         assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
     }
+    @Test void volumePeerEvidenceCanCalibrateUntestedRoutesWithoutPretendingTheyCompletedTrades() {
+        var c=config();var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
+        double original=row.get("coinsPerHour").getAsDouble();var e=new JsonObject();
+        e.addProperty("samples",0);e.addProperty("expectedProfitSamples",0);e.addProperty("sharedSamples",10);e.addProperty("sharedProfitSamples",10);
+        e.addProperty("throughputFactor",1);e.addProperty("profitRealizationFactor",0.5);
+        e.addProperty("marketCycleSeconds",row.get("cycleSeconds").getAsDouble());e.addProperty("marketCoinsPerHour",original);
+        e.addProperty("p75ObservedSeconds",row.get("cycleSeconds").getAsDouble());e.addProperty("observedCoinsPerHour",0);e.addProperty("latestAt",NOW);
+        row.addProperty("coinsPerHour",original*0.5);row.add("executionEvidence",e);
+        var parsed=MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst();
+        assertEquals(0,parsed.executionEvidence().get("samples"));assertEquals(10,parsed.executionEvidence().get("sharedSamples"));
+        e.addProperty("sharedProfitSamples",2);assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+        e.addProperty("sharedProfitSamples",11);assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+    }
+
+    @Test void executionForecastUsesTheMarketBaselineAndScalesToTheActualPurchasedBatch() {
+        var r=new MarketAnalysisProtocol.Recommendation("GENERAL","COAL","COAL","COAL",16,16,100,1000,480,2000,120,
+                "ESTIMATED",true,"sell fill","current offer",java.util.Map.of("marketCycleSeconds",60.0),
+                java.util.Map.of("inputEffectivePerDay",2400.0,"outputEffectivePerDay",1200.0));
+        var report=new MarketAnalysisProtocol.Report(NOW,NOW,NOW,false,"MISSING","a".repeat(40),1,java.util.Map.of(),java.util.List.of(r));
+        var f=MarketAnalysisProtocol.forecast(report,"COAL","COAL",8,NOW);
+        assertEquals(30,f.cycleSeconds());assertEquals(2400,f.inputPerDay());assertEquals(1200,f.outputPerDay());
+        assertNull(MarketAnalysisProtocol.forecast(report,"COAL","COAL",8,NOW+61000));
+        assertNull(MarketAnalysisProtocol.forecast(report,"QUARTZ","QUARTZ",8,NOW));
+    }
+
 }

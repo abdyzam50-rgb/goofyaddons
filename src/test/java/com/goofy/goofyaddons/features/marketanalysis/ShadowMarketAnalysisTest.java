@@ -15,10 +15,11 @@ class ShadowMarketAnalysisTest {
         JsonObject quotes=MarketAnalysisProtocolTest.market(clock);
         int quoteRefreshes;
         public void refreshQuotes(){quoteRefreshes++;}
+        double balance=10000;
         CapitalManager capital=new CapitalManager();
         Env() {capital.configure(10000,0);}
         public GoofyConfig config(){return cfg;}public long now(){return clock;}public JsonObject quotes(){return quotes;}
-        public double purse(){return 10000;}public CapitalManager capital(){return capital;}
+        public double purse(){return balance;}public CapitalManager capital(){return capital;}
         public void onClientThread(Runnable work){work.run();}
         public MenuSnapshot inventory(){return new MenuSnapshot(0,null,true,java.util.stream.IntStream.range(0,36).mapToObj(i->SlotView.empty(i,true,i)).toList());}
     }
@@ -94,4 +95,26 @@ class ShadowMarketAnalysisTest {
         observer.poll(TradingMode.BOTH);plan=(PipelinePlanner.Plan)observer.diagnosticState().get("pipeline");
         assertTrue(plan.next().isEmpty());assertEquals(1,bridge.requests);assertEquals(100,env.capital.committed());
     }
+    @Test void rankingsStayBroadWhileEveryExecutionSlotIsOccupiedAndPurseTemporarilyUnreadable() {
+        var env=new Env();env.cfg.marketAnalysis.automaticSelection=true;
+        env.capital.restore("general","ENCHANTED_COAL",1000,false);
+        env.cfg.general.maxActiveItems=1;env.cfg.maxActiveBooks=0;
+        var bridge=new Bridge();var observer=new ShadowMarketAnalysis(env,bridge,(type,data)->{});
+        observer.poll(TradingMode.GENERAL);
+        var actual=bridge.packet.getAsJsonObject("constraints");var ranking=bridge.packet.getAsJsonObject("rankingConstraints");
+        assertEquals(0,actual.get("generalSlots").getAsInt());
+        assertTrue(actual.getAsJsonArray("excludedProducts").toString().contains("ENCHANTED_COAL"));
+        assertEquals("BOTH",ranking.get("mode").getAsString());assertEquals(32,ranking.get("inventoryCapacity").getAsInt());
+        assertEquals(10000,ranking.get("availableCapital").getAsDouble());
+        assertFalse(ranking.getAsJsonArray("excludedProducts").toString().contains("ENCHANTED_COAL"));
+        var response=MarketAnalysisProtocolTest.response(env.clock);response.addProperty("requestId",bridge.packet.get("requestId").getAsString());
+        var catalog=response.deepCopy();response.add("rows",new com.google.gson.JsonArray());response.addProperty("total",0);response.add("rankingReport",catalog);
+        bridge.reply.complete(response);
+        assertEquals(1,observer.latestReport().rows().size());assertNull(observer.automaticHeadReport());
+        env.clock+=20000;env.balance=-1;env.quotes=MarketAnalysisProtocolTest.market(env.clock);bridge.reply=new CompletableFuture<>();
+        observer.poll(TradingMode.GENERAL);
+        assertEquals(2,bridge.requests);assertEquals(10000,bridge.packet.getAsJsonObject("rankingConstraints").get("availableCapital").getAsDouble());
+        assertEquals(0,bridge.packet.getAsJsonObject("constraints").get("availableCapital").getAsDouble());
+    }
+
 }

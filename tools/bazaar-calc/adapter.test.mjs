@@ -130,3 +130,15 @@ test('recent daily trade flow lowers rankings while weekly averages, coverage an
  const short=run(b,{...quiet,stats:{ENCHANTED_COAL:{...quiet.stats.ENCHANTED_COAL,recentTradeHours:0.5}}});
  assert.equal(short.rows.find(r=>r.inputId==='ENCHANTED_COAL').coinsPerHour,coal.coinsPerHour);
 });
+
+test('live ranking catalog stays broad while execution has no slots, no cash or occupied products',()=>{
+ const body=packet();body.rankingConstraints=structuredClone(body.constraints);
+ body.constraints.bookSlots=0;body.constraints.generalSlots=0;body.constraints.availableCapital=0;
+ body.constraints.inventoryCapacity=0;body.constraints.excludedProducts=['ENCHANTED_COAL','ENCHANTMENT_OVERLOAD'];
+ const result=run(body);assert.equal(result.rows.length,0);assert.ok(result.rankingReport.rows.length>0);
+ assert.ok(result.rankingReport.rows.some(r=>r.inputId==='ENCHANTED_COAL'));
+ assert.ok(result.rankingReport.rows.some(r=>r.kind==='BOOK'));
+ assert.equal(result.rankingReport.requestId,result.requestId);assert.equal(result.rankingReport.marketAt,result.marketAt);
+ assert.equal(result.rankingReport.rankingReport,undefined);
+ body.rankingConstraints.availableCapital=Infinity;assert.throws(()=>run(body),/capital/);
+});
