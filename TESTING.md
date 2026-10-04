@@ -363,3 +363,8 @@ automatic cycles. Java/Node integration covers automatic responses. Gameplay tim
 calibration can raise or lower forecasts with bounded evidence weighting; bridge
 validation preserves calibration details and rejects invalid factors. Browser
 checks verify automatic scope and observed/market/gameplay forecast details.
+
+1.3.39: sequential capital is the actual input-batch commitment, rather than
+upstream combined buy/sell lots. Regression verifies a profitable three-to-four-unit order
+fitting 500 coins is admitted, while an actually unaffordable/profit-inadequate
+batch is excluded. Java-to-companion integration and all entry limits remain.

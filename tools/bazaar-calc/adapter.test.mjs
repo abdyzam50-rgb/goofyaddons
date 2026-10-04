@@ -16,6 +16,16 @@ export const packet = () => ({ protocol: PROTOCOL, requestId: 'test-1', market: 
 const history = { asOf: now, stats: {}, hold: {}, names: {} };
 const run = (body = packet(), h = history) => recommend(body, h, { commit }, now);
 
+test('sequential trader commits only input capital and admits profitable batches without a second escrow',()=>{
+ const b=packet();b.constraints.mode='GENERAL';b.constraints.availableCapital=500;b.constraints.general.maxCoinsPerItem=500;
+ b.constraints.general.minProfitPerBatch=75;
+ const r=run(b);assert.equal(r.rows.length,1);
+ const x=r.rows[0];assert.ok(x.batch>=3&&x.batch<=4);assert.ok(x.profitPerBatch>=75);
+ assert.equal(x.capitalUsed,x.costPerOutput*x.batch);assert.ok(x.capitalUsed<=500);
+ for(const row of run().rows)assert.equal(row.capitalUsed,row.costPerOutput*row.batch);
+ b.constraints.availableCapital=200;assert.equal(run(b).rows.length,0);
+});
+
 test('automatic selection makes supported routes executable with empty manual lists and keeps exclusions',()=>{
  const b=packet();b.constraints.automaticSelection=true;b.constraints.configuredGeneralItems=[];b.constraints.configuredBookRoutes=[];
  b.market.products.REFINED_MINERAL=product(100,140);b.market.products.CHORUS_FRUIT=product(100,150);b.market.products.SYNTHETIC_UNKNOWN=product(100,200);

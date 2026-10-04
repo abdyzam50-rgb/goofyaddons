@@ -405,3 +405,14 @@ Automatic traders wait when the companion/report is unavailable or stale; existi
 positions keep their ordinary recovery and exit logic. Eligibility on the dashboard
 means a route can be considered, not that it will immediately get a slot or capital.
 No position-limit or pricing restrictions are removed.
+
+
+Sequential trader capital (1.3.39+): a route reserves the input batch's acquisition
+cost. The upstream optimizer can model simultaneous buy and sell lots; its
+combined capital estimate is not used as the commitment for our sequential
+buy/claim/process/sell position. The optimizer receives space for both modeled
+legs, then the adapter independently enforces input batch cost against available
+capital and the general per-item cap. Live trader confirmation checks still apply.
+This removes double counting, without increasing configured spending limits.
+Inventory capacity still treats unknown products as potentially unstackable;
+large stacked orders require a separate verified stack-capacity implementation.

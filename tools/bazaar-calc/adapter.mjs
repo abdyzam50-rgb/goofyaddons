@@ -85,10 +85,14 @@ export function recommend(body, history, provenance, now = Date.now(), execution
       outputId: target.id, buys: [buy], sell,
       steps: kind === 'BOOK' ? [{ type: 'combine', label: `Combine ${n} books`, opsPerUnit: operations, outputPerOp: 1, requirements: [] }] : [],
       requirements: [], flags: [], notes: [] };
-    const o = evaluate(route, settings, ctx.profile, budget);
+    // Upstream can reserve buy and sell lots together. This trader completes one
+    // buy -> sell cycle; its peak commitment is the input batch, not both lots.
+    // Give the optimizer room for both modeled legs, then enforce actual input cash.
+    const o = evaluate(route, settings, ctx.profile, budget * 2);
     const profitPerOutput = sell.netPrice - o.costPerUnit;
     const batch = o.batch;
-    if (!(profitPerOutput > 0) || o.unmet.length || o.ordersUsed > 2 || batch > maxBatch || o.capitalUsed > budget + 1e-6
+    const sequentialCapital=o.costPerUnit*batch;
+    if (!(profitPerOutput > 0) || o.unmet.length || o.ordersUsed > 2 || batch > maxBatch || sequentialCapital > budget + 1e-6
       || (kind === 'BOOK' ? profitPerOutput < bookMinProfit : profitPerOutput * batch < g.minProfitPerBatch || profitPerOutput / o.costPerUnit * 100 < g.minMarginPercentage)) {
       counts.filtered++; return;
     }
@@ -104,7 +108,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
     rows.push({ kind, routeKey, inputId: source.id, outputId: target.id, inputName: source.name, outputName: target.name,
       level, sellLevel, inputsPerOutput: n, batch, inputUnits: n * batch,
       buyPrice: buy.price, sellPrice: sell.grossPrice, costPerOutput: o.costPerUnit, profitPerOutput,
-      profitPerBatch: profitPerOutput * batch, capitalUsed: o.capitalUsed,
+      profitPerBatch: profitPerOutput * batch, capitalUsed: sequentialCapital,
       outputsPerHour, coinsPerHour: outputsPerHour * profitPerOutput, cycleSeconds: batch / outputsPerHour * 3600,
       confidence: measured ? 'MEASURED' : 'ESTIMATED', buyBasis: buy.fill.basis, sellBasis: sell.fill.basis,
       configured: c.automaticSelection===true || (kind === 'BOOK' ? configuredBooks.has(routeKey) : configuredGeneral.has(routeKey)),
