@@ -371,3 +371,16 @@ search dims nonmatching storage items. Storage remains a last-inspected snapshot
 not a live scan. Observed menu controls are included. Mod 1.3.34 supplies empty-slot
 positions; with older mods, slots absent from the occupied-only report are dashed
 and labelled unavailable instead of being asserted empty.
+
+
+Garden Mutations are excluded from recommendations and new automated purchases
+(1.3.37+), even when allowlisted. `mutation-products.json` identifies the 40 catalogued
+crops, using item identifiers and mutation classifications from the attributed NEU
+catalog revision. This does not exclude ordinary Farming/Garden products such as
+Fine Flour or Designer Coffee Beans. Newly encountered mutation item labels and
+explicit unmet unlock requirements in a verified product GUI are skipped before
+submission; learned denials persist in Minecraft's config directory as
+`goofyaddons-bazaar-access.json`. After fulfilling another item's requirement, close
+Minecraft, remove that item's entry and restart. The mutation category remains
+excluded. Existing holdings/orders still use recovery and exit checks. Public Bazaar
+quotes cannot establish which account requirements have been fulfilled.

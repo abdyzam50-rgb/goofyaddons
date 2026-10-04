@@ -11,7 +11,12 @@ public record PipelineAccount(long observedAt, TradingMode mode, Double purse, d
                               boolean ready, String reason) {
     public static PipelineAccount capture(long now,TradingMode mode,CapitalManager capital,double purse,
                                            MenuSnapshot inventory,int maxBooks,int maxGeneral) {
+        return capture(now,mode,capital,purse,inventory,maxBooks,maxGeneral,Set.of());
+    }
+    public static PipelineAccount capture(long now,TradingMode mode,CapitalManager capital,double purse,
+                                           MenuSnapshot inventory,int maxBooks,int maxGeneral,Set<String> unavailable) {
         var excluded=new TreeSet<>(capital.occupiedProducts());
+        excluded.addAll(unavailable);
         boolean complete=inventory!=null && inventory.slots().stream().filter(SlotView::inPlayerInventory)
                 .map(SlotView::containerSlot).filter(s->s>=0 && s<36).distinct().count()==36;
         if(inventory!=null)for(var slot:inventory.slots())if(slot.inPlayerInventory() && !slot.empty()) {

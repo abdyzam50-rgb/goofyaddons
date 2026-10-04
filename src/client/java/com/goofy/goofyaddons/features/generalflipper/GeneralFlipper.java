@@ -61,6 +61,8 @@ public class GeneralFlipper implements Feature {
         default JsonObject latestQuotes() { return BazaarApi.latestFresh(); }
         default CompletableFuture<JsonObject> fetchQuotes() { return BazaarApi.fetch(); }
         default void placed(Position position) {}
+        default java.util.Set<String> excludedProducts() { return BazaarAccess.MUTATIONS; }
+        default void excludeProduct(String id,String reason) {}
         default com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {return null;}
         default void acquire(Position position) {
             ProfitTracker.INSTANCE.acquire(position.tradeId, OWNER, position.item.name(), position.tradeId + ":buy",
@@ -127,6 +129,10 @@ public class GeneralFlipper implements Feature {
         // unconstructable outside a running game, including in a test.
         this(new com.goofy.goofyaddons.menu.LiveWorld(), new com.goofy.goofyaddons.menu.LiveActions(),
                 () -> FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-general-orders.json"),new Services() {
+                    @Override public java.util.Set<String> excludedProducts() {return BazaarAccess.instance().excluded();}
+                    @Override public void excludeProduct(String id,String reason) {
+                        BazaarAccess.instance().deny(id,reason);FeatureManager.INSTANCE.invalidateMarketReport();
+                    }
                     @Override public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {
                         return FeatureManager.INSTANCE.marketReport();
                     }
@@ -171,7 +177,7 @@ public class GeneralFlipper implements Feature {
         var state=new java.util.LinkedHashMap<String,Object>();
         state.put("activeTrade",active==null?"none":active.tradeId);state.put("activeItem",active==null?"none":active.item.id());
         state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:world.now()-stepSince);
-        state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
+        state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
         state.put("claimUnits",claimUnits);state.put("inventoryBefore",inventoryBefore);state.put("expectedClaim",expectedClaim);
         state.put("ordersContainer",ordersSettle.container());state.put("selling",selling);
         var retained=new java.util.ArrayList<java.util.Map<String,Object>>();
@@ -332,6 +338,7 @@ public class GeneralFlipper implements Feature {
                 case VERIFY_CANCEL -> verifyCancellation();
                 case OPEN_PRODUCT -> {
                     command("bz " + active.item.name());
+                    if(skipUnmetProduct())return;
                     int create=find(selling?"Create Sell Offer":"Create Buy Order",false);
                     if (menu("Bazaar") || productMenuMatches(create)) transition(Step.PRODUCT);
                 }
@@ -513,6 +520,9 @@ public class GeneralFlipper implements Feature {
                 positions.remove(active);
                 fail("Pre-existing order/inventory for " + active.item.name() + "; remove it or remove this item from the allowlist.");
                 return;
+            }
+            if(services.excludedProducts().contains(active.item.id())) {
+                skipUnavailable("Excluded by account/category access filter");return;
             }
             selling = false;
             actions.closeMenu();
@@ -702,6 +712,7 @@ public class GeneralFlipper implements Feature {
 
     private void openProduct() {
         int create = find(selling ? "Create Sell Offer" : "Create Buy Order", false);
+        if(skipUnmetProduct())return;
         if (productMenuMatches(create)) {
             if (selling) {
                 int quantity = itemCount(active.item.id());
@@ -716,6 +727,32 @@ public class GeneralFlipper implements Feature {
             int item = find(active.item.name(), true);
             if (item >= 0) click(item);
         }
+    }
+
+    private boolean skipUnmetProduct() {
+        int create=find("Create Buy Order",false);
+        if (!selling && active.stage==Stage.PLANNED && !active.submitted && !active.cancelRequested) {
+            // Only inspect controls on a verified product, or its exact search-result entry.
+            String reason=null;
+            if(productMenuMatches(create)) {
+                reason=BazaarAccess.unmet(view.slot(create).hoverName()+"\n"+lore(create));
+                var icon=view.slot(13);
+                if(reason==null && icon!=null)reason=BazaarAccess.unmet(icon.lore());
+            } else {
+                var icon=view.slot(13);
+                if(icon!=null && !icon.inPlayerInventory() && !icon.empty() && (active.item.id().equals(icon.customId())
+                        || active.item.name().equals(com.goofy.goofyaddons.utils.Chat.strip(icon.hoverName()))))
+                    reason=BazaarAccess.unmet(icon.lore());
+            }
+            if(reason==null && menu("Bazaar")) {
+                int item=find(active.item.name(),true);
+                if(item>=0)reason=BazaarAccess.unmet(lore(item));
+            }
+            if(reason!=null) {
+                services.excludeProduct(active.item.id(),reason);skipUnavailable(reason);return true;
+            }
+        }
+        return false;
     }
 
     /** Hypixel truncates product breadcrumb titles; verify the actual product and control. */
@@ -819,7 +856,15 @@ public class GeneralFlipper implements Feature {
     private List<GeneralCalculator.Candidate> candidates() {
         if (!world.inWorld() || products == null) return List.of();
         return GeneralCalculator.rankByForecast(GeneralCalculator.calculate(products, settings(), GoofyConfig.INSTANCE.bazaarTaxPercentage,
-                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4)),services.recommendations(),world.now());
+                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4))
+                .stream().filter(c->!services.excludedProducts().contains(c.item().id())).toList(),services.recommendations(),world.now());
+    }
+
+    private void skipUnavailable(String reason) {
+        Diagnostics.event("INFO","general.requirement_skipped",java.util.Map.of("item",active.item.id(),"reason",reason));
+        actions.message("Skipping "+active.item.name()+": "+reason);
+        completePosition();
+        snapshotCandidates=List.of();
     }
 
     private double currentAsk() {

@@ -8,7 +8,7 @@ if not version or any(c not in '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL
     raise ValueError('Invalid version')
 output = root.parents[1] / 'dist' / f'goofyaddons-bazaar-calc-{version}.zip'
 output.parent.mkdir(exist_ok=True)
-files = ['data-paths.mjs', 'server.mjs', 'collector.mjs', 'collect-market.mjs', 'execution-history.mjs', 'adapter.mjs', 'engine.mjs',
+files = ['mutation-products.json', 'data-paths.mjs', 'server.mjs', 'collector.mjs', 'collect-market.mjs', 'execution-history.mjs', 'adapter.mjs', 'engine.mjs',
          'dashboard-state.mjs', 'dashboard-profit.mjs', 'history.json.gz', 'provenance.json', 'README.md', 'update-history.mjs']
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for name in files:

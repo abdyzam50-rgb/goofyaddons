@@ -19,6 +19,7 @@ public final class GeneralCalculator {
                 || !Double.isFinite(taxPercentage) || taxPercentage < 0 || taxPercentage >= 100) return List.of();
         List<Candidate> result = new ArrayList<>();
         for (GeneralItem item : settings.items) {
+            if(BazaarAccess.MUTATIONS.contains(item.id()))continue;
             try {
                 Candidate candidate = evaluate(products, item, settings, taxPercentage, available, inventoryCapacity);
                 if (candidate != null) result.add(candidate);

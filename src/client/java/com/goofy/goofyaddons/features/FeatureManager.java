@@ -26,6 +26,7 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report marketReport() {
         return marketAnalysis.latestReport();
     }
+    public void invalidateMarketReport() { marketAnalysis.stop(); }
     private List<Feature> engines() {
         return switch (mode) {
             case BOOKS -> List.of(books);

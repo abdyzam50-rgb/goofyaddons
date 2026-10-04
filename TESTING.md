@@ -348,3 +348,10 @@ wrong-side/amount rejection, durable refund proof and restart verification; part
 buys wait for complete batches while timed-out partial claims retain their prior
 coverage. Forecast ranking uses only fresh configured exact-batch candidates and
 never creates routes. Measured profit/hour rejects incomplete or insufficient timing.
+
+1.3.37: full Garden Mutations category exclusion using a shared 40-product catalog
+for Java execution and Node recommendations, including explicit allowlists. GUI
+requirement detection skips unsubmitted buys without pausing or clicking purchase,
+with instance-local denial persistence and restart coverage. Descriptive requirement
+lore and unrelated Garden products remain eligible. Existing submitted orders and
+held stock retain recovery/exit handling.

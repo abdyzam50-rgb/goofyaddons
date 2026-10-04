@@ -1,6 +1,7 @@
 // Supported order-only route adapter. Predictions never authorize a Minecraft action.
 import { assembleMarket, quotesFromBazaar, buyLeg, sellLeg, evaluate, DEFAULT_SETTINGS, DEFAULT_PROFILE,
   enchantRules, booksNeeded, combineXpCost, parseBookId, actionSeconds, curve, at, seriousFlags } from './engine.mjs';
+import mutationCatalog from './mutation-products.json' with { type: 'json' };
 export const PROTOCOL = 'goofy-bazaar-shadow/1';
 const finite = (v, min, max, name) => {
   if (!Number.isFinite(v) || v < min || v > max) throw new Error(`Invalid ${name}`);
@@ -36,7 +37,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   for (const key of ['excludedProducts', 'configuredBookRoutes', 'configuredGeneralItems'])
     if (!Array.isArray(c[key]) || c[key].length > 4096 || c[key].some(x => typeof x !== 'string' || x.length > 160))
       throw new Error(`Invalid ${key}`);
-  const excluded = new Set(c.excludedProducts), configuredBooks = new Set(c.configuredBookRoutes), configuredGeneral = new Set(c.configuredGeneralItems);
+  const excluded = new Set([...c.excludedProducts,...mutationCatalog.products]), configuredBooks = new Set(c.configuredBookRoutes), configuredGeneral = new Set(c.configuredGeneralItems);
   const dataAt = Number.isFinite(history?.asOf) ? history.asOf : 0;
   const historyUsed = dataAt > 0 && dataAt <= now + 5000 && now - dataAt <= maxHistoryAgeHours * 3600000;
   const historyStatus = historyUsed ? 'FRESH' : dataAt > 0 ? 'STALE' : 'MISSING';

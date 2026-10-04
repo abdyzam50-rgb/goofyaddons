@@ -53,6 +53,7 @@ tasks.register('calculatorIntegrationTest', Test) {
 }
 
 processResources {
+	from('tools/bazaar-calc/mutation-products.json') { into 'goofyaddons' }
 	def version = project.version
 	inputs.property "version", version
 	filesMatching("fabric.mod.json") {

@@ -17,6 +17,7 @@ public final class ShadowMarketAnalysis {
         GoofyConfig config(); long now(); JsonObject quotes(); MenuSnapshot inventory(); double purse();
         CapitalManager capital(); void onClientThread(Runnable work);
         default void refreshQuotes() {}
+        default Set<String> excludedProducts() { return Set.of(); }
     }
     private final Environment env;
     private final MarketAnalysisClient.Transport transport;
@@ -36,6 +37,7 @@ public final class ShadowMarketAnalysis {
             private final GameWorld world=new LiveWorld();
             private boolean refreshing;
             @Override public GoofyConfig config() { return GoofyConfig.INSTANCE; }
+            @Override public Set<String> excludedProducts() { return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded(); }
             @Override public long now() { return world.now(); }
             @Override public JsonObject quotes() { return BazaarApi.latestFresh(); }
             @Override public void refreshQuotes() {
@@ -102,7 +104,7 @@ public final class ShadowMarketAnalysis {
     }
     private void refreshPipeline() {
         var cfg=env.config();
-        var account=PipelineAccount.capture(env.now(),mode,env.capital(),env.purse(),env.inventory(),cfg.maxActiveBooks,cfg.general.maxActiveItems);
+        var account=PipelineAccount.capture(env.now(),mode,env.capital(),env.purse(),env.inventory(),cfg.maxActiveBooks,cfg.general.maxActiveItems,env.excludedProducts());
         pipeline=PipelinePlanner.build(account,report,env.now());
     }
     private void unavailable(RuntimeException failure) {

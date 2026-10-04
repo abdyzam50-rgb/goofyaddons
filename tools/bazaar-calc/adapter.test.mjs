@@ -16,6 +16,16 @@ export const packet = () => ({ protocol: PROTOCOL, requestId: 'test-1', market: 
 const history = { asOf: now, stats: {}, hold: {}, names: {} };
 const run = (body = packet(), h = history) => recommend(body, h, { commit }, now);
 
+test('excludes every Garden mutation even when explicitly configured, retaining other Garden routes', async () => {
+  const { default: catalog } = await import('./mutation-products.json', { with: { type: 'json' } });
+  const b=packet();b.constraints.mode='GENERAL';b.market.products={};
+  for(const id of [...catalog.products,'FINE_FLOUR','DESIGNER_COFFEE_BEANS'])b.market.products[id]=product(100,130);
+  b.constraints.configuredGeneralItems=Object.keys(b.market.products);
+  const r=run(b);
+  assert.equal(catalog.products.length,40);
+  assert.deepEqual(r.rows.map(x=>x.inputId).sort(),['DESIGNER_COFFEE_BEANS','FINE_FLOUR']);
+});
+
 test('discovers supported ordinary and free-combine routes outside manual lists', () => {
   const body = packet(); body.constraints.configuredBookRoutes = []; body.constraints.configuredGeneralItems = [];
   const r = run(body);

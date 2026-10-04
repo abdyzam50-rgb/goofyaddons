@@ -44,6 +44,11 @@ class GeneralLoopTest {
         boolean quotes = true;
         int sales;
         String productId=ID;
+        final Map<String,String> excluded=new HashMap<>();
+        @Override public Set<String> excludedProducts() {
+            var ids=new HashSet<>(BazaarAccess.MUTATIONS);ids.addAll(excluded.keySet());return ids;
+        }
+        @Override public void excludeProduct(String id,String reason) {excluded.put(id,reason);}
         Market(FakeWorld world) { this.world = world; capital.configure(100000, 0); }
         @Override public CapitalManager capital() { return capital; }
         @Override public double purse() { return purse; }
@@ -102,6 +107,45 @@ class GeneralLoopTest {
     }
     private static long clicks(RecordingActions actions, int slot) {
         return actions.serverEffects().stream().filter(a -> a.equals("click:" + slot)).count();
+    }
+
+    @Test void missingRequirementOnVerifiedProductSkipsWithoutPurchaseAndKeepsLoopRunning() throws Exception {
+        FakeWorld world=new FakeWorld().showing(orders(false,0,0,0));
+        Market market=new Market(world);
+        seed(world,"PLANNED",16,0);
+        RecordingActions actions=new RecordingActions();
+        var engine=engine(world,actions,market);
+        drive(engine,world,3000);
+        world.showing(menu("Farming ➜ Garden ➜ Ench...",0,List.of(
+                new SlotView(13,false,13,false,NAME,NAME,List.of("You have not unlocked this item!"),ID,null,1,64))));
+        drive(engine,world,1000);
+        assertFalse((Boolean)engine.diagnosticState().get("paused"));
+        assertFalse(engine.hasRetainedPositions());
+        assertTrue(market.excluded.containsKey(ID));
+        assertEquals(0,market.capital.committed());
+        assertEquals(0,clicks(actions,13));
+        drive(engine,world,35000);
+        assertFalse((Boolean)engine.diagnosticState().get("paused"));
+        assertFalse(engine.hasRetainedPositions());
+    }
+
+    @Test void anExcludedItemCanStillSettleItsExistingSellOrder() throws Exception {
+        FakeWorld world=new FakeWorld().showing(orders(true,16,16,0));
+        seed(world,"SELL_ORDER",16,0);
+        Market market=new Market(world);
+        market.excluded.put(ID,"Excluded for new purchases");
+        market.ledger.acquire("trade-1","general",NAME,"trade-1:buy",16,1600.0);
+        RecordingActions actions=new RecordingActions();
+        var engine=engine(world,actions,market);
+        drive(engine,world,1200);
+        assertEquals(1,clicks(actions,11));
+        engine.onNotice("[Bazaar] Claimed 2,054 coins from selling 16x Enchanted Coal at 130 each!");
+        world.showing(orders(false,0,0,0));
+        drive(engine,world,4000);
+        assertEquals(1,market.sales);
+        assertFalse(engine.hasRetainedPositions());
+        assertEquals(454,market.ledger.summary().profit());
+        assertFalse((Boolean)engine.diagnosticState().get("paused"));
     }
 
     @Test void repeatsCompleteBuyClaimSellAndSettlementCycles() throws Exception {
