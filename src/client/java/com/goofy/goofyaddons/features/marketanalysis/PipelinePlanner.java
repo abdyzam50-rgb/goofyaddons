@@ -12,7 +12,10 @@ public final class PipelinePlanner {
                        List<Deferred> deferred,double plannedCapital,double capitalLeft,int inventoryLeft,
                        String reason,long generatedAt,long expiresAt) {}
     public static Plan build(PipelineAccount account,MarketAnalysisProtocol.Report report,long now) {
-        String blocked=account==null?"Waiting for account observations":!account.ready()?account.reason():
+        boolean noSlots=account!=null && (account.mode()==TradingMode.BOOKS?account.bookSlots()<=0:
+                account.mode()==TradingMode.GENERAL?account.generalSlots()<=0:account.bookSlots()<=0&&account.generalSlots()<=0);
+        String blocked=account==null?"Waiting for account observations":!account.ready()?account.reason():noSlots?"Active-position limits reached; waiting for a position to finish":
+                account.available()<=0?"No spendable capital for a new position":account.inventoryCapacity()<=0?"No inventory headroom for a new position":
                 report==null?"Waiting for a fresh calculator forecast":!TradingSafety.fresh(report.marketAt(),now)?"Calculator forecast expired":null;
         if(blocked!=null)return new Plan("WAITING",false,account,List.of(),List.of(),0,account==null?0:account.available(),
                 account==null?0:account.inventoryCapacity(),blocked,now,now);

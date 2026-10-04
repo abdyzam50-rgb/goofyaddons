@@ -336,3 +336,9 @@ overflow, storage and position-profit assertions remain enabled.
 Ender Chest grids additionally verify exact current/previous item coordinates,
 confirmed-empty slot metadata from Java, legacy unknown-slot handling, and desktop/
 mobile layout. The browser exercises both snapshot choices and storage search.
+
+1.3.35: regression for the observed empty report with two book and three general
+positions, 11.3m available, and zero evaluated/filtered routes. Full enabled-engine
+slots and unreadable purse observations take precedence over cached forecasts;
+freeing a slot restores usable reports. Mode-specific headroom and inventory
+constraints retain distinct explanations. Pricing/execution limits are unchanged.

@@ -78,6 +78,7 @@ public final class ShadowMarketAnalysis {
                 account.bookSlots(),account.generalSlots(),excluded);
         var context=new LinkedHashMap<String,Object>();
         context.put("mode",mode.name());context.put("availableCapital",available);context.put("inventoryCapacity",capacity);
+        context.put("bookSlots",account.bookSlots());context.put("generalSlots",account.generalSlots());
         context.put("legacyTopBooks",mode==TradingMode.GENERAL?List.of():FlipCalculator.calculate(market.getAsJsonObject("products"),cfg.books,cfg.bazaarTaxPercentage,cfg.minNetProfit)
                 .stream().limit(3).map(f->f.book().id()+":"+f.book().level()+":"+f.book().sellLevel()).toList());
         context.put("legacyTopGeneral",mode==TradingMode.BOOKS?List.of():GeneralCalculator.calculate(market.getAsJsonObject("products"),cfg.general,cfg.bazaarTaxPercentage,available,capacity)

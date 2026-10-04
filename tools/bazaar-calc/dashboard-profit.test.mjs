@@ -23,3 +23,13 @@ test('forecast status distinguishes disabled, connection failures, occupied capi
   view.account.analysis.comparison.availableCapital=100;assert.match(predictionReason(view),/2 filtered/);
   view.predictions.rows=[{}];assert.equal(predictionReason(view),null);
 });
+
+test('full position limits explain an unevaluated report even when millions are spendable',()=>{
+ const view={fresh:true,account:{account:{connected:true},status:{mode:'BOTH'},books:{tasks:[{},{}]},general:{positions:[{},{},{}]},analysis:{enabled:true,status:'READY',comparison:{availableCapital:11304129},pipeline:{account:{ready:true,mode:'BOTH',bookSlots:0,generalSlots:0,available:11304129,inventoryCapacity:24}}}},predictions:{rows:[],counts:{evaluated:0,filtered:0,warnings:0,malformedProducts:10}}};
+ assert.match(predictionReason(view),/Active-position limits reached \(2 book, 3 general/);
+ view.account.analysis.pipeline.account.ready=false;view.account.analysis.pipeline.account.reason='Purse is unreadable';assert.equal(predictionReason(view),'Purse is unreadable');
+ view.account.analysis.pipeline.account.ready=true;view.account.analysis.pipeline.account.generalSlots=1;view.predictions.counts.evaluated=1025;view.predictions.counts.filtered=978;assert.match(predictionReason(view),/978 filtered/);
+ view.account.analysis.pipeline.account.mode='BOOKS';assert.match(predictionReason(view),/Active-position limits/);
+ view.account.analysis.pipeline.account.mode='GENERAL';assert.match(predictionReason(view),/978 filtered/);
+ view.account.analysis.pipeline.account.inventoryCapacity=0;assert.match(predictionReason(view),/inventory headroom/);
+});

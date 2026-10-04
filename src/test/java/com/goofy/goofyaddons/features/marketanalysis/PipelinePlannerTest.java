@@ -17,6 +17,16 @@ class PipelinePlannerTest {
     private MarketAnalysisProtocol.Report report(MarketAnalysisProtocol.Recommendation... rows) {
         return new MarketAnalysisProtocol.Report(now,now,now,true,"FRESH","a".repeat(40),rows.length,Map.of(),List.of(rows));
     }
+    @Test void fullPositionSlotsAreReportedEvenWithUnusedCapitalAndNoEvaluatedRoutes() {
+        var plan=PipelinePlanner.build(account(11_304_129,24,0,0,Set.of()),report(),now);
+        assertEquals("WAITING",plan.status());assertTrue(plan.reason().contains("Active-position limits"));
+        assertEquals(11_304_129,plan.capitalLeft());assertTrue(plan.next().isEmpty());
+        var bookOnly=new PipelineAccount(now,TradingMode.BOOKS,1000.0,0,0,1000,24,0,3,Set.of(),true,null);
+        assertTrue(PipelinePlanner.build(bookOnly,report(),now).reason().contains("Active-position limits"));
+        assertTrue(PipelinePlanner.build(account(1000,24,0,1,Set.of()),report(),now).reason().contains("No qualifying"));
+        var unreadable=new PipelineAccount(now,TradingMode.BOTH,null,0,0,0,24,0,0,Set.of(),false,"Purse is unreadable");
+        assertEquals("Purse is unreadable",PipelinePlanner.build(unreadable,report(),now).reason());
+    }
     @Test void comparesBothEnginesAndSkipsUnaffordableLeaderWithoutSpendingItsBudget() {
         var p=PipelinePlanner.build(account(700,30,2,2,Set.of()),report(
                 route("GENERAL","EXPENSIVE","EXPENSIVE",1000,300,1,true),

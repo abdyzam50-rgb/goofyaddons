@@ -19,12 +19,30 @@ export function predictionReason(view) {
   if(!view.fresh || !view.account.account.connected)return 'Account disconnected or stale';
   const analysis=view.account.analysis;
   if(analysis.enabled===false || analysis.status==='DISABLED')return 'Market analysis is disabled in your config';
+  const block=entryBlockReason(view.account);if(block)return block;
   if(view.predictions) {
     if(view.predictions.rows.length)return null;
     const c=analysis.comparison ?? {},counts=view.predictions.counts ?? {};
     if(c.availableCapital===0)return 'No capital available for a new position';
+    if(counts.evaluated===0 && counts.malformedProducts>0 && counts.filtered===0 && counts.warnings===0)return 'No routes evaluated; check market coverage and enabled-engine headroom';
     return `No eligible new routes under your limits (${counts.filtered ?? 0} filtered, ${counts.warnings ?? 0} market warnings, ${counts.unsupported ?? 0} unsupported)`;
   }
   const messages={WAITING_ACCOUNT:analysis.pipeline?.account?.reason ?? 'Waiting for usable account observations',STOPPED:'Analysis stopped; start trading to request opportunities',WAITING_QUOTES:'Waiting for fresh Bazaar quotes',WAITING_INVENTORY:'Waiting for an empty cursor and readable inventory',REQUESTING:'Calculator request in progress',UNAVAILABLE:`Calculator unavailable: ${analysis.error ?? 'check the companion connection'}`,STALE:'Previous calculator forecast expired',DISCARDED:'Configuration changed; waiting for the next request'};
   return messages[analysis.status] ?? 'Waiting for a fresh calculator forecast';
+}
+
+export function entryBlockReason(account) {
+  const planning=account.analysis?.pipeline?.account;
+  if(planning?.ready===false)return planning.reason ?? 'Waiting for usable account observations';
+  const mode=planning?.mode ?? account.analysis?.comparison?.mode ?? account.status?.mode;
+  const bookSlots=planning?.bookSlots ?? account.analysis?.comparison?.bookSlots;
+  const generalSlots=planning?.generalSlots ?? account.analysis?.comparison?.generalSlots;
+  const noSlots=mode==='BOOKS'?bookSlots===0:mode==='GENERAL'?generalSlots===0:mode==='BOTH'&&bookSlots===0&&generalSlots===0;
+  if(noSlots) {
+    const books=account.books?.tasks?.length ?? 0,general=account.general?.positions?.length ?? 0;
+    return `Active-position limits reached (${books} book, ${general} general positions). Waiting for a position to finish; unused coins do not free an order slot.`;
+  }
+  if(planning?.inventoryCapacity===0)return 'No inventory headroom for a new position';
+  if(planning?.available===0)return 'No capital available for a new position';
+  return null;
 }

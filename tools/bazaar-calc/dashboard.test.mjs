@@ -66,3 +66,12 @@ test('accepted opt-in account snapshots forward gameplay outcomes once and healt
   assert.equal(ingested.length,1);assert.equal((await(await fetch(`${url}/health`)).json()).execution.samples,1);
  }finally{await new Promise(r=>server.close(r));}
 });
+
+test('current full slots or an unreadable purse invalidate a cached eligible forecast',()=>{
+ const now=Date.now(),state=new DashboardState(()=>now),body=snapshot(now);
+ body.status.mode='BOTH';body.analysis.enabled=true;body.analysis.status='READY';body.analysis.report={marketAt:now,rows:[{coinsPerHour:123}]};
+ body.analysis.pipeline={account:{mode:'BOTH',ready:true,bookSlots:0,generalSlots:0,available:11304129,inventoryCapacity:24}};
+ state.accept(body);assert.equal(state.view().predictions,null);assert.match(state.view().predictionReason,/Active-position limits/);
+ const next=structuredClone(body);next.sentAt++;next.analysis.pipeline.account.ready=false;next.analysis.pipeline.account.reason='Purse is unreadable';state.accept(next);assert.equal(state.view().predictionReason,'Purse is unreadable');
+ next.sentAt++;next.analysis.pipeline.account.ready=true;next.analysis.pipeline.account.generalSlots=1;state.accept(next);assert.ok(state.view().predictions);
+});
