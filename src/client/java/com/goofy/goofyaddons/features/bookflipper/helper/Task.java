@@ -36,6 +36,9 @@ public class Task {
     private Book book;
     private int amountToOrder;
     private double reservedUnitCost;
+    private com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast;
+    public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(){return forecast;}
+    public void forecast(com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast value){forecast=value;}
     private final String profitTradeId;
     private boolean retiring;
     private boolean orphanCleanup;

@@ -14,6 +14,11 @@ public final class ExecutionLedger {
     private record Open(String engine,String inputId,String outputId,int inputUnits,int batch,long startedAt,boolean interrupted,Double expectedProfit,Forecast forecast) {}
     private final Map<String,Open> open=new HashMap<>();
     private final List<Sample> samples=new ArrayList<>();
+    private static final class Partial {
+        int units;double proceeds,profit;boolean known=true;
+        final Set<String> events=new HashSet<>();
+    }
+    private final Map<String,Partial> partials=new HashMap<>();
     public void begin(String trade,String engine,String input,String output,int units,int batch,long startedAt) {
         begin(trade,engine,input,output,units,batch,startedAt,null);
     }
@@ -30,15 +35,22 @@ public final class ExecutionLedger {
     public void interrupt() { open.replaceAll((id,o)->new Open(o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,o.startedAt,true,o.expectedProfit,o.forecast)); }
     public void complete(String trade,String event,int baseUnits,Double proceeds,Double profit,long now,boolean lost) {
         if(samples.stream().anyMatch(s->s.eventId.equals(event)))return;
-        Open o=open.remove(trade);if(o==null)return; // Resumed holdings have no measured start.
+        Open o=open.get(trade);if(o==null)return; // Resumed holdings have no measured start.
+        Partial p=partials.computeIfAbsent(trade,ignored->new Partial());
+        if(!p.events.add(event))return;
+        p.units+=baseUnits;p.known&=proceeds!=null&&profit!=null;
+        if(proceeds!=null)p.proceeds+=proceeds;if(profit!=null)p.profit+=profit;
+        if(!lost && p.units<o.inputUnits)return; // Partial claims are not completed cycles.
+        open.remove(trade);partials.remove(trade);
         long elapsed=now-o.startedAt;
-        samples.add(new Sample(event,o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,now,Math.max(0,elapsed),proceeds,profit,
-                !lost&&!o.interrupted&&baseUnits==o.inputUnits&&proceeds!=null&&profit!=null&&elapsed>0&&elapsed<=86400000,false,o.expectedProfit,o.forecast));
+        samples.add(new Sample(event,o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,now,Math.max(0,elapsed),p.known?p.proceeds:null,p.known?p.profit:null,
+                !lost&&!o.interrupted&&p.units==o.inputUnits&&p.known&&elapsed>0&&elapsed<=86400000,false,o.expectedProfit,o.forecast));
         samples.removeIf(s->s.completedAt<now-7*86400000L);
         while(samples.size()>2000)samples.removeFirst();
     }
     /** A deliberately retired route gives a lower bound on normal-cycle duration, not a successful cycle. */
     public boolean retire(String trade,long now) {
+        partials.remove(trade);
         Open o=open.remove(trade);if(o==null || o.interrupted)return false;
         long elapsed=now-o.startedAt;
         if(elapsed<180_000 || elapsed>86400000)return false;

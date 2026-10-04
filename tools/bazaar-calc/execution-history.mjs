@@ -103,7 +103,8 @@ export class ExecutionHistory {
     const overdue=lower.length?Math.max(...lower):0;
     if(overdue) {
       const lowerFactor=Math.max(0.1,row.marketCycleSeconds/overdue);
-      factor=Math.min(factor,1+(lowerFactor-1)*Math.min(0.8,0.5+0.1*(lower.length-1)));
+      // Unfinished, continuously observed cycles supply duration lower bounds.
+      factor=Math.min(factor,lowerFactor);
     }
     factor=Math.max(0.1,Math.min(1.5,factor));
     if(Number.isFinite(row.maxOutputsPerHour))factor=Math.min(factor,row.maxOutputsPerHour/(row.batch/row.marketCycleSeconds*3600));
@@ -122,5 +123,5 @@ export class ExecutionHistory {
       observedCoinsPerHour:recent.length?recent.reduce((sum,s)=>sum+s.profit,0)/recent.reduce((sum,s)=>sum+s.observedMillis,0)*3600000:0};
     row.assumptions.push('shared forecast corrections from same-engine routes within 4× input and output daily volumes; per-route evidence gradually replaces the prior; overdue routes supply lower bounds only');
   }
-  status(){return {censored:[...this.rows.values()].filter(s=>s.censored).length,pending:this.active.filter(s=>s.observedAt>=this.now()-15000).length,samples:this.rows.size,eligible:[...this.rows.values()].filter(s=>s.eligible).length,error:this.error};}
+  status(){return {forecastBacked:[...this.rows.values()].filter(s=>s.eligible&&validForecast(s.forecast)).length,censored:[...this.rows.values()].filter(s=>s.censored).length,pending:this.active.filter(s=>s.observedAt>=this.now()-15000).length,samples:this.rows.size,eligible:[...this.rows.values()].filter(s=>s.eligible).length,error:this.error};}
 }

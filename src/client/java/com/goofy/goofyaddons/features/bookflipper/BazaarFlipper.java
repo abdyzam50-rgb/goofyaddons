@@ -1693,6 +1693,8 @@ public class BazaarFlipper implements Feature {
                     && !CapitalManager.INSTANCE.reserve("books", flipItem.book().id(), flipItem.totalCost(), purse)) continue;
             debug("[BazaarFlipper] PROCESSDATA: creating task for " + flipItem.book().getRomanLevel(flipItem.book().level()) + " (cost=" + flipItem.totalCost() + ", instaBuy=" + flipItem.instaBuy() + ", instaSell=" + flipItem.instaSell() + ")");
             Task task = new Task(flipItem.book(), flipItem.instaBuy(), flipItem.instaSell());
+            task.forecast(com.goofy.goofyaddons.features.FeatureManager.INSTANCE.executionForecast(
+                    task.getBook().getLevel(task.getBook().level()),task.getBook().getLevel(task.getBook().sellLevel()),1));
             task.setReservedUnitCost(flipItem.totalCost() / flipItem.book().getQtyAmount(flipItem.book().level()));
             taskList.add(task);
 
@@ -2260,7 +2262,7 @@ public class BazaarFlipper implements Feature {
             if(submittedBookUnits==book.getQtyAmount(book.level())) ProfitTracker.INSTANCE.beginExecution(task.getProfitTradeId(),"books",
                     book.getLevel(book.level()),book.getLevel(book.sellLevel()),submittedBookUnits,1,submittedBookAt,
                     expectedBookProfit(book,submittedBookUnits,submittedBookPrice),
-                    com.goofy.goofyaddons.features.FeatureManager.INSTANCE.executionForecast(book.getLevel(book.level()),book.getLevel(book.sellLevel()),1));
+                    task.forecast());
         }
         task.setBookState(submittedNextState);
         submittedBookTask=null;submittedNextState=null;

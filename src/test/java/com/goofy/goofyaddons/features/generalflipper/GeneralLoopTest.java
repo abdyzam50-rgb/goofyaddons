@@ -42,7 +42,15 @@ class GeneralLoopTest {
         };
         double bid = 100, ask = 130, purse = 100000;
         boolean quotes = true;
-        int sales;
+        int sales, forecastedPlacements;
+        final com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast originalForecast=
+                new com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast(60,2400,2400);
+        @Override public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {
+            return originalForecast;
+        }
+        @Override public void placed(GeneralFlipper.Position position) {
+            if(position.forecast!=null){assertEquals(originalForecast,position.forecast);forecastedPlacements++;}
+        }
         String productId=ID;
         final Map<String,String> excluded=new HashMap<>();
         @Override public Set<String> excludedProducts() {
@@ -212,6 +220,7 @@ class GeneralLoopTest {
         ref[0] = engine(world, server, market);
         for (int i = 0; i < 3000 && market.sales < 2; i++) drive(ref[0], world, 60);
         assertEquals(2, market.sales, "the engine should automatically start and finish a second flip");
+        assertEquals(2,market.forecastedPlacements,"new cycles retain selection forecasts through placement");
         assertFalse(ref[0].hasRetainedPositions());
         assertEquals(0, market.capital.committed());
         assertEquals(908, market.ledger.summary().profit(), 0.000001);

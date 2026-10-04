@@ -17,9 +17,30 @@ class ExecutionLedgerTest {
    var l=new ExecutionLedger();l.begin("t","general","COAL","COAL",16,16,1000);
    if(i==0)l.interrupt();
    l.complete("t","e",i==1?8:16,100.0,i==2?null:10.0,10000,i==3);
-   assertFalse(l.samples().getFirst().eligible());
+   if(i==1){assertTrue(l.samples().isEmpty());assertEquals(1,l.active(10000).size());}
+   else assertFalse(l.samples().getFirst().eligible());
   }
   var l=new ExecutionLedger();l.complete("recovered","e",16,100.0,10.0,10000,false);assertTrue(l.samples().isEmpty());
+ }
+ @Test void partialSalesAggregateIntoOneWholeCycleAndKeepTheOriginalForecast() {
+  var l=new ExecutionLedger();var f=new ExecutionLedger.Forecast(60,2400,2400);
+  l.begin("t","general","COAL","COAL",16,16,1000,100.0,f);
+  l.complete("t","first",4,100.0,10.0,61000,false);
+  l.complete("t","first",4,100.0,10.0,62000,false);
+  assertTrue(l.samples().isEmpty());assertEquals(1,l.active(121000).size());
+  l.complete("t","last",12,300.0,30.0,121000,false);
+  var s=l.samples().getFirst();assertTrue(s.eligible());assertEquals(120000,s.observedMillis());
+  assertEquals(400.0,s.proceeds());assertEquals(40.0,s.profit());assertEquals(f,s.forecast());
+  assertEquals(100.0,s.expectedProfit());assertTrue(l.active(122000).isEmpty());
+ }
+ @Test void partialUnknownCostAndInterruptedTimingNeverBecomeEligibleAfterAggregation() {
+  for(boolean pause:new boolean[]{false,true}) {
+   var l=new ExecutionLedger();l.begin("t","general","COAL","COAL",16,16,1000);
+   l.complete("t","first",4,100.0,pause?10.0:null,61000,false);
+   if(pause)l.interrupt();
+   l.complete("t","last",12,300.0,30.0,121000,false);
+   assertFalse(l.samples().getFirst().eligible());
+  }
  }
  @Test void retirementExcludesOnlyItsOwnTimingEvidence() {
   var l=new ExecutionLedger();l.begin("retired","books","A_1","A_2",2,1,1000);l.begin("normal","general","COAL","COAL",2,2,1000);

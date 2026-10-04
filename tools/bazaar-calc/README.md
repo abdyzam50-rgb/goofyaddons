@@ -582,3 +582,29 @@ position cost. Adding the full reservation to the refunded purse double counts
 Update both the JAR and companion ZIP, restart Minecraft and the Node server,
 and use the existing saved-position recheck before resuming. Keep configs, order
 journals, profit/execution history and external market recordings.
+
+### Gameplay learning fixes (mod and companion 1.3.51)
+
+Newly selected routes capture their original uncalibrated timing and two-sided
+volume forecast before GUI navigation. Order verification uses that captured
+forecast even if the route is later occupied, filtered out of the report, or the
+report expires. This preserves the evidence needed to transfer corrections to
+other routes with similar volumes.
+
+Partial sell receipts remain part of the same timing record until all original
+inputs have settled. One final eligible cycle contains total proceeds/profit and
+time from first placement to last claim; duplicate partial receipts do not add
+units twice. Unknown-cost or interrupted cycles remain ineligible. Closing a
+partially filled/cancelled general position retires any unfinished original cycle
+as a duration lower bound, rather than leaving a phantom active cycle.
+
+Fresh overdue cycles now reduce the ranking timing estimate directly to their
+observed-age bound, within the existing 0.1–1.5 correction range. Previously one
+very late trade could still retain about half of its optimistic predicted rate.
+The dashboard reports how many eligible outcomes retain original forecasts and
+volumes, making shared-learning coverage visible. Existing history is preserved;
+missing historical forecasts cannot be reconstructed by this update.
+
+Finish any comparison run before installing the paired update: restarting during
+a timed run interrupts its timing evidence. Update both components, retain all
+configs and histories, then start a new measurement run.

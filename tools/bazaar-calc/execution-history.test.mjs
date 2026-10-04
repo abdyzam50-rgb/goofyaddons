@@ -129,3 +129,13 @@ test('book peer similarity compares daily inputs per output and does not transfe
   invalid.ingest([...h.rows.values()].map(s=>({...s,eligible:false})));const other={...r,cycleSeconds:60,executionEvidence:undefined};invalid.calibrate(other);assert.equal(other.executionEvidence,undefined);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test('one overdue cycle supplies its observed duration directly instead of blending toward an optimistic model',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'goofy-overdue-bound-'));
+ try {
+  const h=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now});
+  h.ingestActive([{tradeId:'slow',engine:'general',inputId:'COAL',outputId:'COAL',inputUnits:16,batch:16,startedAt:now-300000,observedAt:now,observedMillis:300000}]);
+  const r=row();h.calibrate(r);assert.equal(r.cycleSeconds,300);assert.equal(r.executionEvidence.throughputFactor,0.2);
+  assert.equal(r.executionEvidence.pendingSamples,1);assert.equal(r.executionEvidence.samples,0);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});

@@ -49,6 +49,7 @@ public class GeneralFlipper implements Feature {
         String tradeId;
         String saleEvent;
         boolean purchasePriceKnown;
+        com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast;
         Double confirmedCancelRefund;
         boolean settlementPending;
         double cost() { return quantity * unitCost; }
@@ -61,6 +62,8 @@ public class GeneralFlipper implements Feature {
         default JsonObject latestQuotes() { return BazaarApi.latestFresh(); }
         default CompletableFuture<JsonObject> fetchQuotes() { return BazaarApi.fetch(); }
         default void placed(Position position) {}
+        default com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {return null;}
+        default void finished(Position position) {}
         default java.util.Set<String> excludedProducts() { return BazaarAccess.MUTATIONS; }
         default void excludeProduct(String id,String reason) {}
         default com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {return null;}
@@ -141,8 +144,12 @@ public class GeneralFlipper implements Feature {
                     @Override public void placed(Position position) {
                         ProfitTracker.INSTANCE.beginExecution(position.tradeId,OWNER,position.item.id(),position.item.id(),position.quantity,position.quantity,position.placedAt,
                                 position.sellPrice*position.quantity*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-position.cost(),
-                                FeatureManager.INSTANCE.executionForecast(position.item.id(),position.item.id(),position.quantity));
+                                position.forecast);
                     }
+                    @Override public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {
+                        return FeatureManager.INSTANCE.executionForecast(item,item,batch);
+                    }
+                    @Override public void finished(Position position) {ProfitTracker.INSTANCE.retire(position.tradeId);}
                 });
     }
 
@@ -506,6 +513,7 @@ public class GeneralFlipper implements Feature {
             position.item = candidate.item();
             position.tradeId = java.util.UUID.randomUUID().toString();
             position.quantity = candidate.quantity();
+            position.forecast = services.forecast(candidate.item().id(),candidate.quantity());
             position.unitCost = candidate.bid();
             position.sellPrice = candidate.ask();
             position.stage = Stage.PLANNED;
@@ -1061,6 +1069,7 @@ public class GeneralFlipper implements Feature {
         actions.closeMenu();
     }
     private void completePosition() {
+        services.finished(active);
         if (active.stage == Stage.BUY_ORDER || active.stage == Stage.PLANNED) {
             cooldownUntil.put(active.item.id(), world.now() + settings().orderTimeoutSeconds * 1000L);
         }
