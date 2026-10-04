@@ -105,7 +105,8 @@ public final class InventoryMemory {
         for (var e : layouts.entrySet()) {
             var l = e.getValue();
             regions.add(Map.of("region",e.getKey(),"fresh",fresh(e.getKey()),"observedAt",l.observedAt(),
-                    "changedAt",l.changedAt(),"previous",occupied(l.previous()),"current",occupied(l.current())));
+                    "changedAt",l.changedAt(),"previous",occupied(l.previous()),"current",occupied(l.current()),
+                    "previousSlots",List.copyOf(l.previous().keySet()),"currentSlots",List.copyOf(l.current().keySet())));
         }
         return Map.of("regions",regions,"pendingMove",move == null ? "none" : Map.of(
                 "fromRegion",move.source().region(),"fromSlot",move.source().slot(),"toRegion",move.destinationRegion(),

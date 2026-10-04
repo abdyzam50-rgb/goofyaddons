@@ -326,3 +326,13 @@ original preservation, destination conflict handling, repeatable migration,
 installation removal with persistent history retained, same-folder portable mode,
 and migration failure preservation. Hosted collector keeps an explicit artifact
 workspace override. Windows Scheduled Tasks need verification on Windows.
+
+1.3.34: display-only search/engine/scope/favorite filtering, immutable sorting,
+plan membership and deferred explanations, exact work-stage grouping. Chromium
+at 1440px and 390px exercises route inspection, filters, persistent favorites and
+theme across reloads, empty results, allocation progress and manual refresh. Stale
+account data removes top cards, selected details and allocations. Existing XSS,
+overflow, storage and position-profit assertions remain enabled.
+Ender Chest grids additionally verify exact current/previous item coordinates,
+confirmed-empty slot metadata from Java, legacy unknown-slot handling, and desktop/
+mobile layout. The browser exercises both snapshot choices and storage search.

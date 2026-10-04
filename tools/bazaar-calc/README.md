@@ -339,3 +339,35 @@ restart afterward. If you move its installation to a different path, rerun
 folder remains the same. The mod's configuration, order journals, profit and
 execution files remain in Minecraft's `config/` folder; replacing the mod JAR
 already preserves those files.
+
+### Best flips and pipeline desk
+
+The dashboard's **Best flips** section shows the top three routes for the selected
+sort, plus a searchable report table. Filter books/general, configured routes or
+favorites; sort by coins/hour, batch profit, required capital or cycle duration.
+Inspect a route for native product IDs, input/output quantities, capital, estimated
+profit, combine operations, limiting factor, quote age and market evidence. The
+copy button copies its input product ID. Favorites, filters and theme are saved
+only in this browser and do not grant execution permission.
+
+The **Trading pipeline** shows observed buy/claim, storage/combine, sell/settlement
+and verification/recovery positions. These counts represent work stages, not exact
+fill percentages. The next-allocation preview shows spendable and pending capital,
+allocated capital, remaining coins and inventory headroom, and deferred reasons.
+It remains a preview: the traders still select their own work.
+
+The report is the mod's current eligible, bounded calculator result, not a browser
+scan of every market. Increasing `marketAnalysis.maxRecommendations` can expose more
+reported candidates (up to 50). Research-only routes remain outside execution scope
+until configured. Rates describe individual routes and must not be added into a
+portfolio earnings promise. Stale or disconnected account data hides forecast
+cards, route details and allocations. Refresh now requests a fresh dashboard view;
+it does not force a Hypixel poll or change the mod's market request cadence.
+
+Ender Chest pages use the same slot-grid presentation as the inventory, preserving
+exact positions, item names and quantities. Switch current/previous to compare the
+observations. Hover a slot for its index and native item ID; the shared inventory
+search dims nonmatching storage items. Storage remains a last-inspected snapshot,
+not a live scan. Observed menu controls are included. Mod 1.3.34 supplies empty-slot
+positions; with older mods, slots absent from the occupied-only report are dashed
+and labelled unavailable instead of being asserted empty.

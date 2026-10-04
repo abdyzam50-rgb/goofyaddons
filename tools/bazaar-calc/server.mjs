@@ -12,6 +12,7 @@ const history = JSON.parse(gunzipSync(readFileSync(new URL('./history.json.gz', 
 const provenance = JSON.parse(readFileSync(new URL('./provenance.json', import.meta.url), 'utf8'));
 const assets = new Map([
   ['/', ['dashboard/index.html','text/html; charset=utf-8']],
+  ['/dashboard/routes.mjs',['dashboard/routes.mjs','text/javascript; charset=utf-8']],
   ['/dashboard/app.mjs',['dashboard/app.mjs','text/javascript; charset=utf-8']],
   ['/dashboard/upstream.css',['dashboard/upstream.css','text/css; charset=utf-8']],
   ['/dashboard/style.css',['dashboard/style.css','text/css; charset=utf-8']]

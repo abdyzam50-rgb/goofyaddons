@@ -11,11 +11,11 @@ let clock=Date.now();const dashboard=new DashboardState(()=>clock);
 const account={protocol:'goofy-dashboard/1',sessionId:'browser-check',sentAt:clock,
   account:{connected:true,name:'Local preview'},status:{state:'RUNNING',mode:'BOTH',action:'Monitoring orders and eligible flips',purse:12400000,committed:950000,capitalLimit:2000000,reserve:10000000,taxPercentage:1.25},
   inventory:[{slot:0,name:'Enchanted Coal',id:'ENCHANTED_COAL',count:16},{slot:9,name:'Overload IV',id:'ENCHANTMENT_OVERLOAD_4',count:1},{slot:10,name:'<img src=x onerror=alert(1)>',count:1}],
-  books:{tasks:[{item:'ENCHANTMENT_OVERLOAD',state:'IN_BUY_ORDER',remaining:1,outputLevel:5,plannedCost:10000,holdings:[]}],slotMemory:{regions:[{region:1,observedAt:clock-20000,current:[{slot:3,item:{name:'Overload IV',count:1}}],previous:[{slot:4,item:{name:'Previous book',count:1}}]}]}},
+  books:{tasks:[{item:'ENCHANTMENT_OVERLOAD',state:'IN_BUY_ORDER',remaining:1,outputLevel:5,plannedCost:10000,holdings:[]}],slotMemory:{regions:[{region:1,observedAt:clock-20000,currentSlots:Array.from({length:54},(_,i)=>i),previousSlots:Array.from({length:54},(_,i)=>i),current:[{slot:3,item:{name:'Overload IV',count:1}}],previous:[{slot:4,item:{name:'Previous book',count:1}}]}]}},
   general:{positions:[{item:'ENCHANTED_COAL',stage:'SELL_ORDER',units:16,purchasePriceKnown:true,cost:32000,sellPrice:2500}]},
   profit:{profit:83500,settlements:6,incomplete:1},analysis:{report:{marketAt:clock,historyUsed:true,rows:[
-    {inputName:'Overload IV',outputName:'Overload V',batch:1,profitPerBatch:12000,coinsPerHour:48000,cycleSeconds:900,confidence:'MEASURED',configured:true},
-    {inputName:'Enchanted Coal',outputName:'Enchanted Coal',batch:16,profitPerBatch:7500,coinsPerHour:30000,cycleSeconds:900,confidence:'ESTIMATED',configured:true}]}}};
+    {kind:'BOOK',routeKey:'ENCHANTMENT_OVERLOAD:4:5',inputId:'ENCHANTMENT_OVERLOAD_4',outputId:'ENCHANTMENT_OVERLOAD_5',inputUnits:2,capitalUsed:20000,limitedBy:'buy fill',priceBasis:'current offer',inputName:'Overload IV',outputName:'Overload V',batch:1,profitPerBatch:12000,coinsPerHour:48000,cycleSeconds:900,confidence:'MEASURED',configured:true},
+    {kind:'GENERAL',routeKey:'ENCHANTED_COAL',inputId:'ENCHANTED_COAL',outputId:'ENCHANTED_COAL',inputUnits:16,capitalUsed:32000,limitedBy:'sell fill',priceBasis:'current offer',inputName:'Enchanted Coal',outputName:'Enchanted Coal',batch:16,profitPerBatch:7500,coinsPerHour:30000,cycleSeconds:900,confidence:'ESTIMATED',configured:true}]}}};
 account.analysis.pipeline={status:'READY',executionAuthority:false,expiresAt:clock+60000,reason:'Remaining coins do not fit another reported eligible batch',
   account:{available:1050000,pending:20000,inventoryCapacity:29,bookSlots:1,generalSlots:2},plannedCapital:400000,capitalLeft:650000,
   next:[{priority:1,route:{kind:'GENERAL',inputId:'ENCHANTED_QUARTZ',outputId:'ENCHANTED_QUARTZ',inputUnits:16,capitalUsed:400000,profitPerBatch:7500,cycleSeconds:900,confidence:'ESTIMATED'}}],
@@ -42,22 +42,48 @@ try {
     clock=Date.now();account.sentAt=clock;account.analysis.report.marketAt=clock;account.analysis.pipeline.expiresAt=clock+60000;dashboard.accept(account);
     await send('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:width<600});
     await send('Page.navigate',{url:base});await new Promise(r=>setTimeout(r,700));
-    const result=await evaluate(`({overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,slots:document.querySelectorAll('.inventory-slot').length,images:document.querySelectorAll('img').length,name:document.getElementById('account-name').textContent,rows:document.getElementById('prediction-rows').children.length,profit:document.getElementById('confirmed').textContent})`);
+    const result=await evaluate(`({overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,slots:document.querySelectorAll('#inventory-grid .inventory-slot').length,images:document.querySelectorAll('img').length,name:document.getElementById('account-name').textContent,rows:document.getElementById('prediction-rows').children.length,profit:document.getElementById('confirmed').textContent})`);
     assert.equal(result.overflow,0);assert.equal(result.slots,36);assert.equal(result.images,0);assert.equal(result.name,'Local preview');assert.equal(result.rows,2);assert.match(result.profit,/83/);assert.match(await evaluate(`document.getElementById('pipeline-rows').textContent`),/ENCHANTED_QUARTZ/);assert.match(await evaluate(`document.getElementById('pipeline-deferred').textContent`),/Insufficient spendable capital/);assert.notEqual(await evaluate(`document.getElementById('position-profit').textContent`),'—');assert.match(await evaluate(`document.getElementById('position-profit-note').textContent`),/2 priced/);
     await evaluate(`document.getElementById('storage-view').value='previous';document.getElementById('storage-view').dispatchEvent(new Event('input'));`);
     assert.match(await evaluate(`document.getElementById('storage').textContent`),/Previous book/);
+    assert.equal(await evaluate(`document.querySelectorAll('.storage-slot').length`),54);
+    assert.match(await evaluate(`document.querySelectorAll('.storage-slot')[4].textContent`),/Previous book/);
+    assert.match(await evaluate(`document.querySelectorAll('.storage-slot')[3].title`),/empty in this snapshot/);
     await evaluate(`document.getElementById('storage-view').value='current';document.getElementById('storage-view').dispatchEvent(new Event('input'));document.getElementById('order-filter').value='books';document.getElementById('order-filter').dispatchEvent(new Event('input'));`);
     assert.equal(await evaluate(`document.getElementById('order-rows').children.length`),1);
     await evaluate(`document.getElementById('order-filter').value='all';document.getElementById('order-filter').dispatchEvent(new Event('input'));document.getElementById('inventory-search').value='Coal';document.getElementById('inventory-search').dispatchEvent(new Event('input'));`);
-    assert.equal(await evaluate(`document.querySelectorAll('.inventory-slot.faded').length`),2);
+    assert.equal(await evaluate(`document.querySelectorAll('#inventory-grid .inventory-slot.faded').length`),2);
+    assert.equal(await evaluate(`document.querySelectorAll('.storage-slot.faded').length`),1);
     await evaluate(`document.getElementById('inventory-search').value='';document.getElementById('inventory-search').dispatchEvent(new Event('input'));`);
+    assert.equal(await evaluate(`document.querySelectorAll('.flip-card').length`),2);
+    await evaluate(`document.getElementById('route-engine').value='BOOK';document.getElementById('route-engine').dispatchEvent(new Event('input'));`);
+    assert.equal(await evaluate(`document.getElementById('prediction-rows').children.length`),1);
+    await evaluate(`document.querySelector('#prediction-rows button').click();`);
+    assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/ENCHANTMENT_OVERLOAD_4/);
+    assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/Book combine operations1/);
+    await evaluate(`document.getElementById('favorite-route').click();document.getElementById('route-engine').value='all';document.getElementById('route-scope').value='favorites';document.getElementById('route-scope').dispatchEvent(new Event('input'));`);
+    assert.equal(await evaluate(`document.getElementById('prediction-rows').children.length`),1);
+    assert.match(await evaluate(`document.getElementById('favorite-route').textContent`),/Remove favorite/);
+    await evaluate(`document.getElementById('theme').click();`);
+    const selectedTheme=await evaluate(`document.documentElement.dataset.theme`);
+    await send('Page.reload');await new Promise(r=>setTimeout(r,700));
+    assert.equal(await evaluate(`document.documentElement.dataset.theme`),selectedTheme);
+    assert.equal(await evaluate(`document.getElementById('route-scope').value`),'favorites');
+    assert.equal(await evaluate(`document.getElementById('prediction-rows').children.length`),1);
+    await evaluate(`document.querySelector('#prediction-rows button').click();document.getElementById('favorite-route').click();document.getElementById('clear-filters').click();document.getElementById('route-sort').value='capital';document.getElementById('route-sort').dispatchEvent(new Event('input'));`);
+    assert.match(await evaluate(`document.getElementById('prediction-rows').firstChild.textContent`),/Overload/);
+    await evaluate(`document.getElementById('route-search').value='no-such-item';document.getElementById('route-search').dispatchEvent(new Event('input'));`);
+    assert.match(await evaluate(`document.getElementById('prediction-rows').textContent`),/No matches/);
+    assert.match(await evaluate(`document.getElementById('pipeline-rows').textContent`),/ENCHANTED_QUARTZ/);
+    await evaluate(`document.getElementById('clear-filters').click();document.getElementById('refresh').click();`);await new Promise(r=>setTimeout(r,100));
+    assert.equal(await evaluate(`document.getElementById('allocation-bar').getAttribute('aria-valuenow')`),'38');
     const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(join(output,`dashboard-${width}.png`),Buffer.from(shot.result.data,'base64'));
-    console.log(`PASS ${width}px: observed account, inventory, positions, predictions, filters and no overflow/XSS`);
+    console.log(`PASS ${width}px: best-flip filters, inspection, favorites/theme persistence, allocation, refresh and no overflow/XSS`);
   }
   clock+=11000;await new Promise(r=>setTimeout(r,2200));
   assert.match(await evaluate(`document.getElementById('notice').textContent`),/offline or stale/);
   assert.equal(await evaluate(`document.getElementById('predicted').textContent`),'—');assert.doesNotMatch(await evaluate(`document.getElementById('pipeline-rows').textContent`),/ENCHANTED_QUARTZ/);
-  assert.equal(await evaluate(`document.getElementById('position-profit').textContent`),'—');assert.deepEqual(errors,[]);console.log('PASS stale account hides predicted profit; no browser exceptions');
+  assert.equal(await evaluate(`document.getElementById('position-profit').textContent`),'—');assert.deepEqual(errors,[]);assert.equal(await evaluate(`document.querySelectorAll('.flip-card').length`),0);assert.equal(await evaluate(`document.getElementById('favorite-route').disabled`),true);console.log('PASS stale account hides cards, details, forecasts and plan; no browser exceptions');
 } finally {
   ws?.close();const exited=once(chrome,'exit');chrome.kill();await exited;
   await new Promise(r=>{server.close(r);server.closeAllConnections();});await rm(profile,{recursive:true,force:true});

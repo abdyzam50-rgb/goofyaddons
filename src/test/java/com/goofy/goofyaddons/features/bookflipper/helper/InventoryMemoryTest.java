@@ -20,6 +20,18 @@ class InventoryMemoryTest {
     private void stable(InventoryMemory memory,MenuSnapshot menu,int page,long now) {
         memory.observe(menu,page,now); memory.observe(menu,page,now+200);
     }
+    @Test void dashboardProjectionRetainsEmptyStorageSlotPositionsAcrossSnapshots() {
+        var memory=new InventoryMemory();stable(memory,menu(1,book(12,1,false)),1,1000);
+        stable(memory,menu(1,book(13,1,false)),1,2000);
+        @SuppressWarnings("unchecked") var regions=(List<Map<String,Object>>)memory.diagnosticState().get("regions");
+        var storage=regions.stream().filter(r->r.get("region").equals(1)).findFirst().orElseThrow();
+        assertEquals(java.util.stream.IntStream.range(0,54).boxed().toList(),storage.get("currentSlots"));
+        assertEquals(storage.get("currentSlots"),storage.get("previousSlots"));
+        @SuppressWarnings("unchecked") var previous=(List<Map<String,Object>>)storage.get("previous");
+        @SuppressWarnings("unchecked") var current=(List<Map<String,Object>>)storage.get("current");
+        assertTrue(previous.stream().anyMatch(e->e.get("slot").equals(12)));
+        assertTrue(current.stream().noneMatch(e->e.get("slot").equals(12)));
+    }
     @Test void anvilPreviewAndActionButtonAreRecordedSeparatelyFromOwnedInputs() {
         var memory=new InventoryMemory();
         var content=menu(74,book(29,1,false),book(33,1,false),book(13,2,false),

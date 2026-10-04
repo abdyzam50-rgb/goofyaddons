@@ -26,3 +26,23 @@ td:first-child { white-space:normal; min-width:160px; max-width:300px; overflow-
 @media(max-width:640px) { .inventory-slot { min-height:52px; padding:2px; } .inventory-slot .slot-name { font-size:8px; } .rail-foot { display:none; } .logo { font-size:20px; } }
 
 .position-profit { margin-top:12px; }
+.money-headroom { margin-top:12px; }
+.money-headroom .position-profit { margin-top:0; }
+.route-filters { display:flex; flex-wrap:wrap; align-items:end; gap:14px; margin-bottom:16px; }
+.route-filters label { align-items:start; flex-direction:column; }
+.best-flips { margin:16px 0; }
+.flip-card h3 { overflow-wrap:anywhere; font-size:16px; }
+.flip-card p { margin:8px 0; }
+.route-link { padding:0; border:0; background:none; color:var(--accent); text-align:left; white-space:normal; overflow-wrap:anywhere; font:inherit; cursor:pointer; }
+.route-link:hover { text-decoration:underline; }
+.route-link:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
+.route-detail { margin-top:16px; }
+.detail-values { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:20px 0; }
+.detail-values dt { color:var(--muted); font-size:12px; }
+.detail-values dd { margin:4px 0 0; overflow-wrap:anywhere; }
+.allocation-track { height:10px; background:var(--sunken); border-radius:6px; overflow:hidden; margin:16px 0; }
+#allocation-fill { height:100%; background:var(--accent); width:0; transition:width .2s; }
+.stage-count { font-size:26px; font-weight:600; margin-top:8px; }
+@media(max-width:640px) { .detail-values { grid-template-columns:repeat(2,minmax(0,1fr)); } .route-filters label:first-child { width:100%; } .route-filters input { width:100%; } }
+
+.storage-slot.unobserved { border-style:dashed; opacity:.5; }
