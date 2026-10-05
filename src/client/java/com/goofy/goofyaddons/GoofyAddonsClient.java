@@ -23,6 +23,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
         com.goofy.goofyaddons.features.CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
         ChatHook.register();
         com.goofy.goofyaddons.features.access.BazaarNpcAccess.register();
+        com.goofy.goofyaddons.features.production.ProductionCommands.register();
         GoofyKeybinds.register();
         com.goofy.goofyaddons.config.ConfigReload.register();
         com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.register();
@@ -75,6 +76,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
         });
 
         ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register((client, world) -> {
+            com.goofy.goofyaddons.menu.ServerMenuMirror.clear();
             if (FeatureManager.INSTANCE.isMacroRunning()) FeatureManager.INSTANCE.pause();
         });
     }

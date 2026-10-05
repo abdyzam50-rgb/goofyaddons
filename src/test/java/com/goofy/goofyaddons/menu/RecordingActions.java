@@ -21,6 +21,8 @@ public final class RecordingActions implements GameActions {
         performed.add((shift ? "shiftclick:" : "click:") + slot);
     }
 
+    @Override public void rightClick(int slot){performed.add("rightclick:"+slot);}
+
     @Override public void closeMenu() { performed.add("close"); }
     @Override public void command(String text) { performed.add("command:" + text); }
     @Override public void message(String text) { performed.add("message:" + text); }
@@ -36,7 +38,7 @@ public final class RecordingActions implements GameActions {
     /** Only the actions that change server state; messages and closes are not those. */
     public List<String> serverEffects() {
         return performed.stream()
-                .filter(action -> action.startsWith("click:") || action.startsWith("shiftclick:")
+                .filter(action -> action.startsWith("rightclick:") || action.startsWith("click:") || action.startsWith("shiftclick:")
                         || action.startsWith("command:") || action.startsWith("sign:"))
                 .toList();
     }

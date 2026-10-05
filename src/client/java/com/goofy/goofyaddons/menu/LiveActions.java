@@ -14,6 +14,8 @@ public final class LiveActions implements GameActions {
         InventoryUtils.clickSlot(slot, shift);
     }
 
+    @Override public void rightClick(int slot){InventoryUtils.clickSlot(slot,false,1);}
+
     /** Guards internally, so callers need no null checks of their own. */
     @Override public void closeMenu() {
         Minecraft minecraft = Minecraft.getInstance();

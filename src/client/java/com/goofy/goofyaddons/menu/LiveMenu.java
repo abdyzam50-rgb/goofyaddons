@@ -43,7 +43,7 @@ public final class LiveMenu {
         return view(slot.index,inPlayerInventory,slot.getContainerSlot(),slot.getItem());
     }
 
-    private static SlotView view(int index, boolean inPlayerInventory, int containerSlot, ItemStack item) {
+    static SlotView view(int index, boolean inPlayerInventory, int containerSlot, ItemStack item) {
         if (item.isEmpty()) return SlotView.empty(index, inPlayerInventory, containerSlot);
         ItemLore lore = item.get(DataComponents.LORE);
         CustomData data = item.get(DataComponents.CUSTOM_DATA);
@@ -54,7 +54,25 @@ public final class LiveMenu {
                 lore == null ? null : lore.lines().stream().map(Component::getString).toList(),
                 tag == null ? null : tag.getStringOr("id", ""),
                 enchantments(tag),
-                item.getCount(), item.getMaxStackSize());
+                item.getCount(), item.getMaxStackSize(), metadata(tag,item));
+    }
+
+    private static ItemMetadata metadata(CompoundTag tag,ItemStack item) {
+        String vanilla=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item.getItem()).toString();
+        String uuid=tag==null?null:tag.getStringOr("uuid","");
+        if(uuid!=null && uuid.isBlank())uuid=null;
+        if(tag==null || !"PET".equals(tag.getStringOr("id","")))return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla);
+        try {
+            var pet=com.google.gson.JsonParser.parseString(tag.getStringOr("petInfo","")).getAsJsonObject();
+            if(pet.has("uuid") && !pet.get("uuid").isJsonNull() && !pet.get("uuid").getAsString().isBlank())uuid=pet.get("uuid").getAsString();
+            String type=pet.get("type").getAsString(),tier=pet.get("tier").getAsString();
+            double xp=pet.get("exp").getAsDouble();
+            if(!type.matches("[A-Z0-9_]+") || !Double.isFinite(xp) || xp<0)return ItemMetadata.EMPTY;
+            return new ItemMetadata(uuid,type,tier,xp,
+                pet.has("heldItem") && !pet.get("heldItem").isJsonNull()?pet.get("heldItem").getAsString():null,
+                pet.has("skin") && !pet.get("skin").isJsonNull()?pet.get("skin").getAsString():null,
+                pet.has("candyUsed")?pet.get("candyUsed").getAsInt():null,vanilla);
+        } catch(RuntimeException invalid){return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla);}
     }
 
     /**

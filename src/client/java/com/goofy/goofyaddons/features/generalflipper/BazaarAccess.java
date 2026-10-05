@@ -48,7 +48,7 @@ public final class BazaarAccess {
     /** Unknown readings can be retried next session; confirmed numeric locks clear after levelling. */
     public void reevaluateSkills(Map<String,Integer> skills) {
         boolean changed=denied.entrySet().removeIf(e->e.getValue().contains("account skill level is unobserved")
-                || (e.getValue().matches("(?:BUY|COMBINE|CRAFT|FORGE) requires .+; observed level [0-9]+")
+                || (e.getValue().matches("(?:BUY|COMBINE|CRAFT|FORGE|KAT) requires .+; observed level [0-9]+")
                 && com.goofy.goofyaddons.features.access.ActionRequirements.blocked(e.getValue(),skills,
                     com.goofy.goofyaddons.features.access.ActionRequirements.Action.BUY)==null));
         if(changed)save();

@@ -12,6 +12,9 @@ public interface GameActions {
     /** Click a menu slot. {@code shift} is the quick-move that transfers a stack. */
     void click(int slot, boolean shift);
 
+    /** Right-button pickup: split a source stack or deposit one cursor item. */
+    default void rightClick(int slot){throw new UnsupportedOperationException("Right-button inventory clicks unavailable");}
+
     /** Close whatever menu is open. A no-op when nothing is open. */
     void closeMenu();
 

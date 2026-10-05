@@ -4,6 +4,7 @@
 
 | | |
 |---|---|
+| [PRODUCTION-FLIPS.md](PRODUCTION-FLIPS.md) | Inventory auto-crafting and Forge/Kat/BIN implementation status |
 | [BAZAAR-ACCESS.md](BAZAAR-ACCESS.md) | Bazaar NPC access, skill checks and pathfinder integration |
 | [SESSION-SCHEDULE.md](SESSION-SCHEDULE.md) | Daily local-time rest windows and reconnect controls |
 | [guides/GENERAL_FLIPPER.md](guides/GENERAL_FLIPPER.md) | Trading modes, keys and configuration |

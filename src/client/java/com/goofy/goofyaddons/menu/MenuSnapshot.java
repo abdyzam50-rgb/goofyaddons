@@ -27,7 +27,11 @@ import java.util.Locale;
  *       that bound is counted differently from {@link #namedInContainer}'s view.</li>
  * </ul>
  */
-public record MenuSnapshot(int containerId, String title, boolean cursorEmpty, List<SlotView> slots, SlotView carried) {
+public record MenuSnapshot(int containerId, String title, boolean cursorEmpty, List<SlotView> slots, SlotView carried,long serverObservation) {
+
+    public MenuSnapshot(int containerId,String title,boolean cursorEmpty,List<SlotView> slots,SlotView carried){
+        this(containerId,title,cursorEmpty,slots,carried,-1);
+    }
 
     public MenuSnapshot(int containerId, String title, boolean cursorEmpty, List<SlotView> slots) {
         this(containerId,title,cursorEmpty,slots,cursorEmpty ? SlotView.empty(-1,false,-1) : null);

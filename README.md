@@ -64,3 +64,10 @@ Mod 1.3.55 adds physical Bazaar NPC access and observed Skills/action-control
 checks. See [configuration, scope and pathfinder adapter](docs/BAZAAR-ACCESS.md).
 Automatic walking requires the custom pathfinder; book anvil/storage access still
 uses its existing commands. Keep companion 1.3.53.
+
+## Production flipping groundwork
+
+Mod 1.3.56 adds catalog-based auto-crafting from existing inventory, with server
+packet acknowledgements and a durable job journal. Forge/Kat/BIN transaction
+foundations are tested but their automatic acquisition and sale pipelines remain
+pending. [Controls, implementation scope and remaining work](docs/PRODUCTION-FLIPS.md).

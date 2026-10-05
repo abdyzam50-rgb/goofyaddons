@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 
 /** Requirements from an action control, never a generic equipment-use tooltip. */
 public final class ActionRequirements {
-    public enum Action {BUY,COMBINE,CRAFT,FORGE}
+    public enum Action {BUY,COMBINE,CRAFT,FORGE,KAT}
     private static final String SKILLS="Farming|Mining|Combat|Foraging|Fishing|Enchanting|Alchemy|Carpentry|Taming|Runecrafting|Social";
     private static final Pattern THRESHOLD=Pattern.compile("(?i)(?:requires?|you need|you must have)\\s+(?:an?\\s+)?("+SKILLS+")\\s+(?:skill\\s+)?(?:level\\s*)?[: ]*([0-9]{1,2}|[IVXLCDM]+)\\b");
     private static final Pattern NAME=Pattern.compile("(?i)^("+SKILLS+")\\s+([0-9]{1,2}|[IVXLCDM]+)$");

@@ -37,7 +37,15 @@ public record SlotView(
         String customId,
         Map<String, Integer> enchantments,
         int count,
-        int maxStackSize) {
+        int maxStackSize,
+        ItemMetadata metadata) {
+
+    public SlotView(int index,boolean inPlayerInventory,int containerSlot,boolean empty,String customName,String hoverName,
+            List<String> loreLines,String customId,Map<String,Integer> enchantments,int count,int maxStackSize) {
+        this(index,inPlayerInventory,containerSlot,empty,customName,hoverName,loreLines,customId,enchantments,count,maxStackSize,ItemMetadata.EMPTY);
+    }
+
+    public SlotView {metadata=metadata==null?ItemMetadata.EMPTY:metadata;}
 
     public static final String ENCHANTED_BOOK = "ENCHANTED_BOOK";
 
