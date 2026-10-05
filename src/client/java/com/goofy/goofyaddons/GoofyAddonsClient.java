@@ -24,11 +24,20 @@ public class GoofyAddonsClient implements ClientModInitializer {
         ChatHook.register();
         GoofyKeybinds.register();
         com.goofy.goofyaddons.config.ConfigReload.register();
+        com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.register();
         ProfitHud.register();
         com.goofy.goofyaddons.features.marketanalysis.LocalDashboard.register();
         final Minecraft minecraft = Minecraft.getInstance();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             try {
+            boolean stopRequested = false;
+            while (GoofyKeybinds.stopKey.consumeClick()) stopRequested = true;
+            if(stopRequested)com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStop();
+            if(!stopRequested && com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.tick()) {
+                while(GoofyKeybinds.startKey.consumeClick()) {}
+                while(GoofyKeybinds.modeKey.consumeClick()) {}
+                ProfitTracker.INSTANCE.tick(false);Diagnostics.tick();return;
+            }
             if (client.player == null || client.level == null) {
                 FeatureManager.INSTANCE.stop();
                 ProfitTracker.INSTANCE.tick(false);
@@ -37,8 +46,6 @@ public class GoofyAddonsClient implements ClientModInitializer {
             }
             boolean reloadRequested=false;
             while(GoofyKeybinds.reloadKey.consumeClick())reloadRequested=true;
-            boolean stopRequested = false;
-            while (GoofyKeybinds.stopKey.consumeClick()) stopRequested = true;
             if (com.goofy.goofyaddons.features.SafetyActions.tradingTick(stopRequested, FeatureManager.INSTANCE::stop,
                     FailsafeManager.INSTANCE::onTick, FeatureManager.INSTANCE::onTick)) {
                 if(reloadRequested)com.goofy.goofyaddons.config.ConfigReload.reload();
@@ -54,7 +61,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
             if(reloadRequested)com.goofy.goofyaddons.config.ConfigReload.reload();
 
             while (GoofyKeybinds.startKey.consumeClick()) {
-                FeatureManager.INSTANCE.startConfigured();
+                com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStart();
             }
             while (GoofyKeybinds.modeKey.consumeClick()) {
                 FeatureManager.INSTANCE.cycleMode();

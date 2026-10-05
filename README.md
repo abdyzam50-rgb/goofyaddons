@@ -51,3 +51,9 @@ archives; at most five exported bundles are retained. Queue drops and write erro
 are surfaced by `/goofydebug`. Book progress no longer floods in-game chat.
 Diagnostics help reconstruct observed failures; they cannot guarantee capture of
 an abrupt process termination, JVM crash, or events lost to disk/queue failure.
+
+## Scheduled sessions
+
+Mod 1.3.54 adds daily local-time rest and reconnect windows, with daylight-saving
+support and bounded recovery. The feature is disabled by default. See
+[configuration and controls](docs/SESSION-SCHEDULE.md). Keep companion 1.3.53.

@@ -42,6 +42,7 @@ public class GoofyConfig {
     private static String lastLoadProblem;
 
 
+    public com.goofy.goofyaddons.features.sessions.RestScheduleSettings restSchedule = new com.goofy.goofyaddons.features.sessions.RestScheduleSettings();
     public TradingMode tradingMode = TradingMode.BOOKS;
     public int modeKey = GLFW.GLFW_KEY_M;
     public double maxTradingCapital = 300_000_000;
@@ -136,6 +137,8 @@ public class GoofyConfig {
             throw new IllegalArgumentException("Invalid mode or shared capital settings");
         }
         general.validate();
+        if(restSchedule==null)throw new IllegalArgumentException("restSchedule must be an object");
+        restSchedule.validate();
         if (marketAnalysis == null) throw new IllegalArgumentException("marketAnalysis must be an object");
         marketAnalysis.validate();
         if (!Double.isFinite(profitHudScale) || profitHudScale<0.75 || profitHudScale>3.0) throw new IllegalArgumentException("HUD scale must be between 0.75 and 3.0");

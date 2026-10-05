@@ -46,6 +46,13 @@ public class FeatureManager {
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);
         marketAnalysis.poll(started?mode:GoofyConfig.INSTANCE.tradingMode);
         if (!started || paused) return;
+        if(com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.finishing()) {
+            // Observe acknowledgements, but never select another menu transaction during wind-down.
+            for(Feature engine:engines()){engine.poll();if(paused || !started)return;}
+            if(books.recoveryPending() && !books.canYield())books.onTick();
+            else if(previousOwner!=null && !previousOwner.canYield())previousOwner.onTick();
+            return;
+        }
         try {
         if(books.recoveryPending()) {
             books.onTick();
@@ -169,6 +176,8 @@ public class FeatureManager {
     public boolean isMacroRunning() {
         return started && (books.recoveryPending() || engines().stream().anyMatch(Feature::isRunning));
     }
+    public boolean hasSafetyBlock(){return !statusReason.isBlank();}
+    public boolean canRest(){return started && !paused && !CapitalManager.INSTANCE.purchaseSettling() && scheduler.canSwitch() && engines().stream().allMatch(Feature::canYield);}
     public boolean canReloadConfig() { return !started; }
     public boolean isTradingActive() { return started && !paused && !books.recoveryPending(); }
     public String status() {
