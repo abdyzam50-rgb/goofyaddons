@@ -22,6 +22,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
         GoofyConfig.load();
         com.goofy.goofyaddons.features.CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
         ChatHook.register();
+        com.goofy.goofyaddons.features.access.BazaarNpcAccess.register();
         GoofyKeybinds.register();
         com.goofy.goofyaddons.config.ConfigReload.register();
         com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.register();

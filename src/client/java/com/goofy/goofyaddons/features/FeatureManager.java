@@ -14,6 +14,9 @@ public class FeatureManager {
     private final GeneralFlipper general = new GeneralFlipper();
     private final com.goofy.goofyaddons.features.marketanalysis.ShadowMarketAnalysis marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.ShadowMarketAnalysis();
     private final MenuScheduler scheduler = new MenuScheduler();
+    private final com.goofy.goofyaddons.features.access.SkillPreflight skillPreflight = new com.goofy.goofyaddons.features.access.SkillPreflight();
+    public java.util.Map<String,Integer> observedSkills(){return skillPreflight.skills();}
+    public void navigationResumed(long elapsed){books.navigationResumed(elapsed);general.navigationResumed(elapsed);}
     private TradingMode mode = TradingMode.BOOKS;
     private TradingMode requested;
     private boolean started;
@@ -46,6 +49,13 @@ public class FeatureManager {
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);
         marketAnalysis.poll(started?mode:GoofyConfig.INSTANCE.tradingMode);
         if (!started || paused) return;
+        if(com.goofy.goofyaddons.features.access.BazaarNpcAccess.tick())return;
+        if(skillPreflight.pending()) {
+            try {skillPreflight.tick(new com.goofy.goofyaddons.menu.LiveWorld().menu(),new com.goofy.goofyaddons.menu.LiveActions(),System.currentTimeMillis());
+                if(!skillPreflight.pending())com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(observedSkills());}
+            catch(RuntimeException failure){safetyPause("Account prerequisite check failed; close the current menu and review inventory");}
+            return;
+        }
         if(com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.finishing()) {
             // Observe acknowledgements, but never select another menu transaction during wind-down.
             for(Feature engine:engines()){engine.poll();if(paused || !started)return;}
@@ -92,6 +102,9 @@ public class FeatureManager {
         if(started && paused && books.recoveryPending()) {paused=false;statusReason="";books.restartRecovery();return;}
         if (started && paused) { resume(); return; }
         if (started) return;
+        skillPreflight.clear();
+        if(GoofyConfig.INSTANCE.access.checkSkills)skillPreflight.begin();
+        else com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(java.util.Map.of());
         started = true;
         paused = false;
         statusReason = "";
@@ -125,7 +138,9 @@ public class FeatureManager {
     }
 
     public void stop() {
+        com.goofy.goofyaddons.features.access.BazaarNpcAccess.cancel();
         if (!started) return;
+        skillPreflight.cancel();
         marketAnalysis.stop();
         books.stop();
         general.stop();
@@ -139,6 +154,7 @@ public class FeatureManager {
     }
 
     public void pause() {
+        com.goofy.goofyaddons.features.access.BazaarNpcAccess.cancel();
         if (!started || paused) return;
         paused = true;
         marketAnalysis.stop();
@@ -156,7 +172,7 @@ public class FeatureManager {
             previousOwner = null;
         }, failure -> org.slf4j.LoggerFactory.getLogger(FeatureManager.class)
                 .error("Safety cleanup failed; trading remains paused", failure),
-                marketAnalysis::stop, books::pause, general::pause,
+                com.goofy.goofyaddons.features.access.BazaarNpcAccess::cancel, marketAnalysis::stop, books::pause, general::pause,
                 () -> Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot())),
                 () -> ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting."));
     }
@@ -177,12 +193,12 @@ public class FeatureManager {
         return started && (books.recoveryPending() || engines().stream().anyMatch(Feature::isRunning));
     }
     public boolean hasSafetyBlock(){return !statusReason.isBlank();}
-    public boolean canRest(){return started && !paused && !CapitalManager.INSTANCE.purchaseSettling() && scheduler.canSwitch() && engines().stream().allMatch(Feature::canYield);}
+    public boolean canRest(){return !com.goofy.goofyaddons.features.access.BazaarNpcAccess.busy() && started && !paused && !CapitalManager.INSTANCE.purchaseSettling() && scheduler.canSwitch() && engines().stream().allMatch(Feature::canYield);}
     public boolean canReloadConfig() { return !started; }
-    public boolean isTradingActive() { return started && !paused && !books.recoveryPending(); }
+    public boolean isTradingActive() { return started && !skillPreflight.pending() && !paused && !books.recoveryPending(); }
     public String status() {
         if (!started) return statusReason.isBlank() ? "STOPPED" : "BLOCKED";
-        return paused ? "PAUSED" : books.recoveryPending()?"RECOVERING":"RUNNING";
+        return paused ? "PAUSED" : skillPreflight.pending()?"RECOVERING":books.recoveryPending()?"RECOVERING":"RUNNING";
     }
     public String modeLabel() { return (started ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
     public java.util.Map<String,Object> diagnosticState() {
@@ -198,6 +214,7 @@ public class FeatureManager {
         if (!statusReason.isBlank()) return statusReason;
         if (paused) return "Paused for travel or review";
         if (!started) return "Press J to start";
+        if(skillPreflight.pending())return "Checking account skill requirements";
         if(books.recoveryPending())return books.activity();
         if (previousOwner == books) return books.activity();
         if (previousOwner == general) return general.activity();

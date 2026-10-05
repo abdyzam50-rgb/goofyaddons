@@ -4,6 +4,8 @@
 
 | | |
 |---|---|
+| [BAZAAR-ACCESS.md](BAZAAR-ACCESS.md) | Bazaar NPC access, skill checks and pathfinder integration |
+| [SESSION-SCHEDULE.md](SESSION-SCHEDULE.md) | Daily local-time rest windows and reconnect controls |
 | [guides/GENERAL_FLIPPER.md](guides/GENERAL_FLIPPER.md) | Trading modes, keys and configuration |
 | [../tools/bazaar-calc/README.md](../tools/bazaar-calc/README.md) | Starting the read-only Bazaar Calc companion |
 | [guides/PROFIT_TRACKER.md](guides/PROFIT_TRACKER.md) | The profit HUD, its commands and how it accounts |

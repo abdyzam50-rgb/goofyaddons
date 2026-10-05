@@ -17,6 +17,8 @@ public final class BookCombiner {
     private int container, beforeInput, beforeOutput;
     private long started;
     private String failure;
+    private java.util.Map<String,Integer> skillLevels=java.util.Map.of();
+    public void observedSkills(java.util.Map<String,Integer> levels){skillLevels=java.util.Map.copyOf(levels);}
     private final BookActionRetry retry = new BookActionRetry();
 
     public void slowdown(long now) { if (pending()) retry.slowdown(now); }
@@ -119,6 +121,11 @@ public final class BookCombiner {
             }
             // The result preview is above the action button, not the button itself.
             var button = menu.slot(22);
+            if(button!=null && "Combine Items".equals(Chat.strip(button.customName()))) {
+                String reason=com.goofy.goofyaddons.features.access.ActionRequirements.blocked(button.lore(),
+                        skillLevels,com.goofy.goofyaddons.features.access.ActionRequirements.Action.COMBINE);
+                if(reason!=null){failure="Cannot combine: "+reason+"; input books retained for review";return Result.BLOCKED;}
+            }
             if (!matches(menu.slot(13),book,level+1) || button == null || button.empty()
                     || !"Combine Items".equals(Chat.strip(button.customName()))
                     || !button.hasLoreLine("Click to combine!")) return Result.WAITING;

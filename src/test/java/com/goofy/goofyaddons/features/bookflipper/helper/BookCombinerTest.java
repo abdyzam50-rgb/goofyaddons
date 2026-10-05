@@ -28,6 +28,23 @@ class BookCombinerTest {
         task.setBookState(Task.BookState.COMBINE);
         return task;
     }
+    @Test void combineSkillControlBlocksSubmissionWithoutLosingInputsAndAllowsKnownLevel() {
+        for(int skill:new int[]{20,30}) {
+            var task=task(2);var combine=new BookCombiner();var actions=new RecordingActions();
+            combine.observedSkills(Map.of("enchanting",skill));
+            combine.tick(task,menu(true,book(81,1,true),book(82,1,true)),actions,1000);
+            combine.tick(task,menu(true,book(29,1,false),book(82,1,true)),actions,1500);
+            var preview=menu(true,book(29,1,false),book(33,1,false),book(13,2,false));
+            var slots=new ArrayList<>(preview.slots());
+            slots.set(22,SlotView.named(22,"Combine Items",List.of("Requires Enchanting Level XXX","Click to combine!")));
+            actions.clear();
+            var result=combine.tick(task,new MenuSnapshot(77,"Anvil",true,slots),actions,2000);
+            assertEquals(2,task.bookList.size());
+            if(skill<30){assertEquals(BookCombiner.Result.BLOCKED,result);assertTrue(actions.serverEffects().isEmpty());}
+            else {assertEquals(BookCombiner.Result.WAITING,result);assertEquals(List.of("click:22"),actions.serverEffects());}
+        }
+    }
+
     @Test void outputArrivalBeforeCursorClearsDoesNotLoseTheCompletedMerge() {
         var task=task(3);var combine=new BookCombiner();var actions=new RecordingActions();
         combine.tick(task,menu(true,book(81,1,true),book(82,1,true),book(83,1,true)),actions,1000);

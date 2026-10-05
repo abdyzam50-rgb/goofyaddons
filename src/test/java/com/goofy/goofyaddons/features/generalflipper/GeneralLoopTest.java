@@ -51,6 +51,8 @@ class GeneralLoopTest {
         @Override public void placed(GeneralFlipper.Position position) {
             if(position.forecast!=null){assertEquals(originalForecast,position.forecast);forecastedPlacements++;}
         }
+        Map<String,Integer> skills=Map.of();
+        @Override public Map<String,Integer> skillLevels(){return skills;}
         String productId=ID;
         final Map<String,String> excluded=new HashMap<>();
         @Override public Set<String> excludedProducts() {
@@ -120,6 +122,25 @@ class GeneralLoopTest {
     }
     private static long clicks(RecordingActions actions, int slot) {
         return actions.serverEffects().stream().filter(a -> a.equals("click:" + slot)).count();
+    }
+
+    @Test void skillGatedBuyControlIsSkippedBeforePurchase() throws Exception {
+        FakeWorld world=new FakeWorld().showing(orders(false,0,0,0));
+        var actions=new RecordingActions();var market=new Market(world);market.skills=Map.of("mining",20);
+        var engine=engine(world,actions,market);drive(engine,world,1200);
+        world.showing(menu("Bazaar ➜ "+NAME,0,List.of(icon(ID,NAME),
+            SlotView.named(15,"Create Buy Order",List.of(NAME,"Requires Mining Level XXV")))));
+        drive(engine,world,360);assertEquals(0,clicks(actions,15));assertTrue(market.excluded.containsKey(ID));
+        assertFalse((Boolean)engine.diagnosticState().get("paused"));
+    }
+    @Test void applyingEnchantRequirementOnItemIconDoesNotRestrictBuyingIt() throws Exception {
+        FakeWorld world=new FakeWorld().showing(orders(false,0,0,0));
+        var actions=new RecordingActions();var market=new Market(world);market.skills=Map.of("enchanting",1);
+        var engine=engine(world,actions,market);drive(engine,world,1200);
+        world.showing(menu("Bazaar ➜ "+NAME,0,List.of(
+            new SlotView(13,false,13,false,NAME,NAME,List.of("Requires Enchanting Level XXX to apply!"),ID,null,1,64),
+            SlotView.named(15,"Create Buy Order",List.of(NAME)))));
+        drive(engine,world,360);assertEquals(1,clicks(actions,15));assertTrue(market.excluded.isEmpty());
     }
 
     @Test void missingRequirementOnVerifiedProductSkipsWithoutPurchaseAndKeepsLoopRunning() throws Exception {

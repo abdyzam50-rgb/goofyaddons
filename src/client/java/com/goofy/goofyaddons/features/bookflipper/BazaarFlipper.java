@@ -89,6 +89,7 @@ public class BazaarFlipper implements Feature {
     private com.goofy.goofyaddons.features.bookflipper.helper.BookRecoveryCheck recoveryCheck;
     private boolean modePaused;
     private BookJournal bookJournal;
+    @Override public void navigationResumed(long elapsed){watchdog.reset();clock.stop();navigationRetry.reset();}
     private final TransactionWatchdog watchdog = new TransactionWatchdog();
     private final Map<String, Long> heldSince = new HashMap<>();
     private Task pendingSaleClaim;
@@ -777,6 +778,12 @@ public class BazaarFlipper implements Feature {
                     if (activeTask.instaBuy) {
                         safetyHalt("Instant book purchases need manual confirmation; order retained."); return;
                     }
+                    var button=new com.goofy.goofyaddons.menu.LiveWorld().menu().slot(15);
+                    if(button!=null) {
+                        String reason=com.goofy.goofyaddons.features.access.ActionRequirements.blocked(button.hoverName()+"\n"+button.lore(),
+                                com.goofy.goofyaddons.features.FeatureManager.INSTANCE.observedSkills(),com.goofy.goofyaddons.features.access.ActionRequirements.Action.BUY);
+                        if(reason!=null){skipBookRequirement(activeTask,reason);return;}
+                    }
                     navigationClick(activeTask.instaBuy ? 10 : 15);return;
                 }
 
@@ -1170,6 +1177,7 @@ public class BazaarFlipper implements Feature {
                 clock.start(randomizer());
                 if (!inventoryScanner.isMenuLoaded(8) || !clock.shouldFire()) return;
                 int previousRetries = bookCombiner.actionRetries();
+                bookCombiner.observedSkills(com.goofy.goofyaddons.features.FeatureManager.INSTANCE.observedSkills());
                 var result = bookCombiner.tick(task, observedMenu,
                         new LiveActions(), System.currentTimeMillis());
                 if (bookCombiner.actionRetries() > previousRetries) Diagnostics.event("WARN","books.anvil_action_retried",
@@ -1201,6 +1209,11 @@ public class BazaarFlipper implements Feature {
                         }
                     }
                     case BLOCKED -> {
+                        if(bookCombiner.failure()!=null && bookCombiner.failure().startsWith("Cannot combine: ")) {
+                            String reason=bookCombiner.failure().substring("Cannot combine: ".length()).replace("; input books retained for review", "");
+                            com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().deny(task.getBook().getLevel(task.getBook().sellLevel()),reason);
+                            com.goofy.goofyaddons.features.FeatureManager.INSTANCE.invalidateMarketReport();
+                        }
                         if (bookCombiner.canReconcilePhysicalTimeout(observedMenu)) {
                             Diagnostics.event("WARN","books.combine_reconciliation",java.util.Map.of(
                                     "combine",bookCombiner.diagnosticState(),"memory",inventoryMemory.diagnosticState()));
@@ -1685,7 +1698,9 @@ public class BazaarFlipper implements Feature {
             return;
         }
         if (CapitalManager.INSTANCE.purchaseSettling()) { state = State.IDLE; return; }
-        var eligible=flipItemList.stream().filter(f->!retirementExclusions().contains(f.book().id())).toList();
+        var denied=com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded();
+        var eligible=flipItemList.stream().filter(f->!retirementExclusions().contains(f.book().id())
+                && !denied.contains(f.book().getLevel(f.book().level())) && !denied.contains(f.book().getLevel(f.book().sellLevel()))).toList();
         for (FlipItem flipItem : TradeBudget.select(eligible, taskList,
                 CapitalManager.INSTANCE.available(purse), CapitalManager.INSTANCE.occupiedProducts())) {
             if (taskList.size() >= GoofyConfig.INSTANCE.maxActiveBooks) break;
@@ -2296,9 +2311,19 @@ public class BazaarFlipper implements Feature {
      * A route re-placed immediately and without limit just churns cancel/re-place laps against
      * whoever outbid it, for a fraction of a coin more each time.
      */
+    private void skipBookRequirement(Task task,String reason) {
+        com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().deny(task.getBook().getLevel(task.getBook().level()),reason);
+        com.goofy.goofyaddons.features.FeatureManager.INSTANCE.invalidateMarketReport();
+        task.retire();ProfitTracker.INSTANCE.retire(task.getProfitTradeId());
+        minecraft.player.closeContainer();navigationRetry.reset();clock.stop();state=State.IDLE;
+        checkpoint();ChatUtils.clientMessage("Skipping "+task.getBook().name()+": "+reason);
+        Diagnostics.event("INFO","books.requirement_skipped",java.util.Map.of("item",task.getBook().getLevel(task.getBook().level()),"reason",reason));
+    }
+
     private boolean mayOpenBookOrder(Task task) {
         long now=System.currentTimeMillis();
         if(task.retiring())return false;
+        if(com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded().contains(task.getBook().getLevel(task.getBook().level())))return false;
         if(now<bookBuyRetryAt.getOrDefault(task.getProfitTradeId(),0L)) return false;
         double cost=task.getReservedUnitCost()*task.getAmountToOrder();
         double hold=Math.max(CapitalManager.INSTANCE.cost("books",task.getBook().id()),

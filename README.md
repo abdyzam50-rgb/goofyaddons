@@ -57,3 +57,10 @@ an abrupt process termination, JVM crash, or events lost to disk/queue failure.
 Mod 1.3.54 adds daily local-time rest and reconnect windows, with daylight-saving
 support and bounded recovery. The feature is disabled by default. See
 [configuration and controls](docs/SESSION-SCHEDULE.md). Keep companion 1.3.53.
+
+## Bazaar NPC access and requirements
+
+Mod 1.3.55 adds physical Bazaar NPC access and observed Skills/action-control
+checks. See [configuration, scope and pathfinder adapter](docs/BAZAAR-ACCESS.md).
+Automatic walking requires the custom pathfinder; book anvil/storage access still
+uses its existing commands. Keep companion 1.3.53.

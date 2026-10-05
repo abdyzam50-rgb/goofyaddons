@@ -66,6 +66,7 @@ public class GeneralFlipper implements Feature {
         default void finished(Position position) {}
         default java.util.Set<String> excludedProducts() { return BazaarAccess.MUTATIONS; }
         default void excludeProduct(String id,String reason) {}
+        default java.util.Map<String,Integer> skillLevels(){return java.util.Map.of();}
         default com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report recommendations() {return null;}
         default void acquire(Position position) {
             ProfitTracker.INSTANCE.acquire(position.tradeId, OWNER, position.item.name(), position.tradeId + ":buy",
@@ -125,6 +126,7 @@ public class GeneralFlipper implements Feature {
     private Double claimedProceeds;
     private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
     private String lastBlockedItem;
+    @Override public void navigationResumed(long elapsed){stepSince+=elapsed;nextAction+=elapsed;navigationRetry.reset();}
     private long stepSince;
     private long nextAction;
     private long lastCommand;
@@ -135,6 +137,7 @@ public class GeneralFlipper implements Feature {
         this(new com.goofy.goofyaddons.menu.LiveWorld(), new com.goofy.goofyaddons.menu.LiveActions(),
                 () -> FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-general-orders.json"),new Services() {
                     @Override public java.util.Set<String> excludedProducts() {return BazaarAccess.instance().excluded();}
+                    @Override public java.util.Map<String,Integer> skillLevels(){return FeatureManager.INSTANCE.observedSkills();}
                     @Override public void excludeProduct(String id,String reason) {
                         BazaarAccess.instance().deny(id,reason);FeatureManager.INSTANCE.invalidateMarketReport();
                     }
@@ -775,7 +778,7 @@ public class GeneralFlipper implements Feature {
             // Only inspect controls on a verified product, or its exact search-result entry.
             String reason=null;
             if(productMenuMatches(create)) {
-                reason=BazaarAccess.unmet(view.slot(create).hoverName()+"\n"+lore(create));
+                reason=com.goofy.goofyaddons.features.access.ActionRequirements.blocked(view.slot(create).hoverName()+"\n"+lore(create),services.skillLevels(),com.goofy.goofyaddons.features.access.ActionRequirements.Action.BUY);
                 var icon=view.slot(13);
                 if(reason==null && icon!=null)reason=BazaarAccess.unmet(icon.lore());
             } else {

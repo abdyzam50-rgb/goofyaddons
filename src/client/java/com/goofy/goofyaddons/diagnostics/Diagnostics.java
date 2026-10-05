@@ -148,6 +148,7 @@ public final class Diagnostics {
         } catch(RuntimeException failure) { failure("diagnostics.snapshot_failed",failure); }
     }
     public static void command(String command) {
+        if(com.goofy.goofyaddons.features.access.BazaarNpcAccess.route(command))return;
         // Only record recognised game commands, never arbitrary configured text.
         String safe=command.matches("(?i)(bz .*|managebazaarorders|anvil|ec( 2)?|hub|is)")?command:"<custom command>";
         event("INFO","command.sent",Map.of("command",safe));

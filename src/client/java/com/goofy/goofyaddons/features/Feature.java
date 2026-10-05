@@ -17,6 +17,8 @@ public interface Feature {
 
     default void poll() {}
 
+    default void navigationResumed(long elapsed) {}
+
     default boolean needsMenu() { return isRunning(); }
 
     default boolean canYield() { return true; }
