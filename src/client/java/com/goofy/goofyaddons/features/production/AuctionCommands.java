@@ -9,8 +9,16 @@ import java.nio.file.*;
 import java.util.*;
 
 public final class AuctionCommands {
+    private static MenuSnapshot lastAuctionMenu;
     private AuctionCommands(){}
     public static void register() {
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client->{
+            var menu=new LiveWorld().menu();
+            if(menu!=null && Set.of("Auction House","Manage Auctions","Auctions Browser","Auction Browser","Create Auction",
+                "Create BIN Auction","Confirm BIN Auction","Confirm Auction","BIN Auction View","Confirm Purchase","Auction Duration")
+                .contains(com.goofy.goofyaddons.utils.Chat.strip(menu.title())))lastAuctionMenu=menu;
+            if(client.player==null)lastAuctionMenu=null;
+        });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher,registry)->dispatcher.register(
             ClientCommands.literal("goofyauction")
                 .then(ClientCommands.literal("inspect").executes(c->inspect()))
@@ -29,12 +37,18 @@ public final class AuctionCommands {
     /** Export only GUI facts, with no credentials, raw NBT, player identity or pet UUIDs. */
     private static int inspect() {
         var menu=new LiveWorld().menu();var actions=new LiveActions();
+        // Opening chat to type a command can close a container. Preserve the latest auction screen.
+        if(lastAuctionMenu!=null)menu=lastAuctionMenu;
         if(menu==null || menu.title()==null){actions.message("Open the auction menu you want to inspect first.");return 0;}
         try {
-            Path path=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-auction-menu.json");
-            Files.writeString(path,describe(menu),StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING);
+            capture(menu);
             actions.message("Saved GUI title, controls and descriptions to config/goofyaddons-auction-menu.json.");return 1;
         }catch(java.io.IOException failed){actions.message("Auction menu capture could not be saved.");return 0;}
+    }
+    public static void capture(MenuSnapshot menu)throws java.io.IOException {
+        lastAuctionMenu=menu;
+        Path path=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-auction-menu.json");
+        Files.writeString(path,describe(menu),StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING);
     }
     static String describe(MenuSnapshot menu) {
         var root=new JsonObject();root.addProperty("title",menu.title());var slots=new JsonArray();

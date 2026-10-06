@@ -71,7 +71,10 @@ public final class AuctionFeature implements Feature {
             }
             double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse();
             var result=executor.tick(observed,world.signEditorOpen(),new LiveActions(),world.username(),purse,CapitalManager.INSTANCE.available(purse),now);
-            if(result==BinListingExecutor.Result.BLOCKED)FeatureManager.INSTANCE.safetyPause(executor.failure());
+            if(result==BinListingExecutor.Result.BLOCKED) {
+                if(observed!=null)try{AuctionCommands.capture(observed);}catch(java.io.IOException failure){Diagnostics.failure("auction.capture_failed",failure);}
+                FeatureManager.INSTANCE.safetyPause(executor.failure());
+            }
             else if(result==BinListingExecutor.Result.LISTED) {
                 new LiveActions().message("BIN listing and creation fee verified. Listing retained for sale monitoring; proceeds/profit not assumed.");
                 executor=null;product=null;new LiveActions().closeMenu();FeatureManager.INSTANCE.invalidateMarketReport();

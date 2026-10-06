@@ -59,7 +59,10 @@ replayed on the next session.
 
 ## Capturing a menu that pauses
 
-While the relevant auction screen is open, run `/goofyauction inspect`.
+The latest auction screen is kept in memory so opening chat to type a command
+does not lose the menu. After viewing the relevant screen, run `/goofyauction inspect`.
+An unrecognized transaction screen is also captured automatically when the listing
+executor stops for review.
 It writes `config/goofyaddons-auction-menu.json` with the title, slot numbers,
 button/item names, quantities and descriptions. It excludes player inventory,
 raw NBT and item/pet UUIDs. Capturing another screen replaces this inspection file;

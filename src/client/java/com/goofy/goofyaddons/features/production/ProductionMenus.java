@@ -126,7 +126,7 @@ public final class ProductionMenus {
         while(matcher.find()) {
             try {long seconds=Math.multiplyExact(Long.parseLong(matcher.group(1)),matcher.group(2).toLowerCase(Locale.ROOT).startsWith("day")?86400:3600);
                 if(seconds<3600 || seconds>336*3600L || found!=null && found!=seconds)return null;found=seconds;
-            }catch(ArithmeticException invalid){return null;}
+            }catch(ArithmeticException | NumberFormatException invalid){return null;}
         }
         return found;
     }
