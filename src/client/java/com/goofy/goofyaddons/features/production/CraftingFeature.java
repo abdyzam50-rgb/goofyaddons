@@ -27,7 +27,7 @@ public final class CraftingFeature implements Feature {
         return jobs;
     }
     public boolean queue(String output,int batches) {
-        if(recipe!=null || batches<1 || batches>16){new LiveActions().message("Finish the queued craft first; batch count must be 1–16.");return false;}
+        if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>16){new LiveActions().message("Finish the queued craft first; batch count must be 1–16.");return false;}
         var menu=new LiveWorld().menu();
         if(menu==null || !menu.cursorEmpty()){new LiveActions().message("Clear the cursor before queueing crafting.");return false;}
         var counts=new HashMap<String,Integer>();
@@ -48,6 +48,7 @@ public final class CraftingFeature implements Feature {
             .filter(r->!occupied.contains(r.outputId()) && r.ingredients().keySet().stream().noneMatch(occupied::contains))
             .filter(r->r.ingredients().entrySet().stream().allMatch(e->inventory.getOrDefault(e.getKey(),0)>=(long)e.getValue()*batches)).findFirst();
     }
+    public ProductionJobs productionJobs()throws java.io.IOException{return jobs();}
     public List<ProductionJobs.Job> journal()throws java.io.IOException{return jobs().all();}
     public void start(){running=true;paused=false;}
     public void pause(){paused=true;markInterrupted();}

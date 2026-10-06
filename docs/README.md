@@ -103,3 +103,5 @@ src/main, src/client   the mod itself; src/test the suite
 - [Truncated product menu navigation (1.3.30)](development/TRUNCATED_PRODUCT_MENU_FIX.md)
 
 - [Shared trading pipeline preview (1.3.31)](development/TRADING_PIPELINE.md)
+
+- [Auction House navigation and BIN listings](AUCTION-HOUSE.md): existing-auction creation paths, explicit listing commands and menu capture.

@@ -13,6 +13,8 @@ public class FeatureManager {
     private final BazaarFlipper books = new BazaarFlipper();
     private final GeneralFlipper general = new GeneralFlipper();
     private final com.goofy.goofyaddons.features.production.CraftingFeature crafting=new com.goofy.goofyaddons.features.production.CraftingFeature();
+    private final com.goofy.goofyaddons.features.production.AuctionFeature auction=new com.goofy.goofyaddons.features.production.AuctionFeature();
+    public com.goofy.goofyaddons.features.production.AuctionFeature auction(){return auction;}
     public com.goofy.goofyaddons.features.production.CraftingFeature crafting(){return crafting;}
     public boolean prepareCrafting(){
         if(started || GoofyConfig.loadError()!=null)return false;
@@ -38,7 +40,7 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast executionForecast(String input,String output,int batch) {
         return marketAnalysis.executionForecast(input,output,batch);
     }
-    public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());return java.util.Set.copyOf(excluded);}
+    public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());excluded.addAll(auction.lockedProducts());return java.util.Set.copyOf(excluded);}
     public void invalidateMarketReport() { marketAnalysis.stop(); }
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
         return marketAnalysis.automaticHeadReport();
@@ -50,6 +52,7 @@ public class FeatureManager {
             case BOTH -> List.of(books, general);
         });
         if(crafting.queued())enabled.addFirst(crafting);
+        if(auction.queued())enabled.addFirst(auction);
         return enabled;
     }
 
@@ -114,6 +117,7 @@ public class FeatureManager {
         if(GoofyConfig.INSTANCE.access.checkSkills)skillPreflight.begin();
         else com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(java.util.Map.of());
         crafting.start();
+        auction.start();
         started = true;
         paused = false;
         statusReason = "";
@@ -148,12 +152,13 @@ public class FeatureManager {
 
     public void stop() {
         com.goofy.goofyaddons.features.access.BazaarNpcAccess.cancel();
-        if (!started){crafting.stop();return;}
+        if (!started){crafting.stop();auction.stop();return;}
         skillPreflight.cancel();
         marketAnalysis.stop();
         books.stop();
         general.stop();
         crafting.stop();
+        auction.stop();
         started = false;
         paused = false;
         requested = null;
@@ -171,6 +176,7 @@ public class FeatureManager {
         books.pause();
         general.pause();
         crafting.pause();
+        auction.pause();
         scheduler.reset();
         previousOwner = null;
     }
@@ -183,7 +189,7 @@ public class FeatureManager {
             previousOwner = null;
         }, failure -> org.slf4j.LoggerFactory.getLogger(FeatureManager.class)
                 .error("Safety cleanup failed; trading remains paused", failure),
-                com.goofy.goofyaddons.features.access.BazaarNpcAccess::cancel, marketAnalysis::stop, books::pause, general::pause, crafting::pause,
+                com.goofy.goofyaddons.features.access.BazaarNpcAccess::cancel, marketAnalysis::stop, books::pause, general::pause, crafting::pause, auction::pause,
                 () -> Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot())),
                 () -> ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting."));
     }
@@ -218,6 +224,7 @@ public class FeatureManager {
     public String taskItem() {
         if (!started || paused) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";
         if(previousOwner==crafting)return crafting.activity();
+        if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.taskItem();
         if (previousOwner == general) return general.taskItem();
         return "Monitoring both configured engines";
@@ -229,6 +236,7 @@ public class FeatureManager {
         if(skillPreflight.pending())return "Checking account skill requirements";
         if(books.recoveryPending())return books.activity();
         if(previousOwner==crafting)return crafting.activity();
+        if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.activity();
         if (previousOwner == general) return general.activity();
         return "Waiting for orders or eligible flips";

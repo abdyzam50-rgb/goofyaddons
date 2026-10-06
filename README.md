@@ -71,3 +71,6 @@ Mod 1.3.56 adds catalog-based auto-crafting from existing inventory, with server
 packet acknowledgements and a durable job journal. Forge/Kat/BIN transaction
 foundations are tested but their automatic acquisition and sale pipelines remain
 pending. [Controls, implementation scope and remaining work](docs/PRODUCTION-FLIPS.md).
+
+Mod 1.3.57 adds opt-in BIN listing navigation through Auction House and Manage Auctions.
+See [Auction House instructions](docs/AUCTION-HOUSE.md) for commands and the remaining automatic flipping integration.

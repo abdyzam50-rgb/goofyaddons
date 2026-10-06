@@ -93,4 +93,41 @@ public final class ProductionMenus {
                 && Objects.equals(actual.customId(),expected.customId()) && Objects.equals(actual.metadata(),expected.metadata())
                 && Objects.equals(actual.enchantments(),expected.enchantments());
     }
+
+    /** Exact quote labels only: an unrelated price must not be mistaken for a listing fee. */
+    public static Double listingFee(String text) {
+        var pattern=Pattern.compile("(?im)^(?:Creation fee|Listing fee|Auction creation fee|Cost):\\s*([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?) coins[!.]?$" );
+        var matches=pattern.matcher(Chat.strip(text));Double found=null;
+        while(matches.find()) {
+            double value;
+            try{value=Double.parseDouble(matches.group(1).replace(",",""));}catch(NumberFormatException invalid){return null;}
+            if(!Double.isFinite(value) || value<0 || value>1e12 || found!=null && Math.abs(found-value)>0.01)return null;
+            found=value;
+        }
+        return found;
+    }
+    /** The final BIN screen is separate from the editable form and from bidding confirmations. */
+    public static boolean binPublication(MenuSnapshot menu,SlotView expected,long price) {
+        if(menu==null || !menu.cursorEmpty() || !"Confirm BIN Auction".equals(Chat.strip(menu.title())))return false;
+        var items=menu.slots().stream().filter(s->!s.inPlayerInventory() && BinListingExecutor.sameIdentity(expected,s) && s.count()==expected.count()).toList();
+        if(items.size()!=1)return false;
+        // Fee controls may also expose a Cost label. Read sale price from the item or the confirmation control,
+        // requiring an explicit sale-price label rather than a standalone fee.
+        var sale=Pattern.compile("(?im)^(?:Item price|Price|BIN Price|Buy it now):\\s*([0-9]+(?:,[0-9]{3})*) coins[!.]?$" );
+        Set<Long> prices=new HashSet<>();
+        for(var slot:menu.slots())if(!slot.inPlayerInventory() && !slot.empty()) {
+            var m=sale.matcher(Chat.strip(slot.hoverName()+"\n"+slot.lore()));
+            while(m.find())try{prices.add(Long.parseLong(m.group(1).replace(",","")));}catch(NumberFormatException invalid){return false;}
+        }
+        return prices.size()==1 && prices.contains(price);
+    }
+    public static Long auctionDuration(String text) {
+        var matcher=Pattern.compile("(?im)^Duration: ([0-9]+) (hours?|days?)[!.]?$").matcher(Chat.strip(text));Long found=null;
+        while(matcher.find()) {
+            try {long seconds=Math.multiplyExact(Long.parseLong(matcher.group(1)),matcher.group(2).toLowerCase(Locale.ROOT).startsWith("day")?86400:3600);
+                if(seconds<3600 || seconds>336*3600L || found!=null && found!=seconds)return null;found=seconds;
+            }catch(ArithmeticException invalid){return null;}
+        }
+        return found;
+    }
 }

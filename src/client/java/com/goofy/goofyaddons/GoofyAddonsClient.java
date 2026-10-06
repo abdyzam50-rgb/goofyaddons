@@ -24,6 +24,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
         ChatHook.register();
         com.goofy.goofyaddons.features.access.BazaarNpcAccess.register();
         com.goofy.goofyaddons.features.production.ProductionCommands.register();
+        com.goofy.goofyaddons.features.production.AuctionCommands.register();
         GoofyKeybinds.register();
         com.goofy.goofyaddons.config.ConfigReload.register();
         com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.register();

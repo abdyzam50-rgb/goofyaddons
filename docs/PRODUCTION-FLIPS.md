@@ -1,13 +1,15 @@
 # Production flipping: first implementation stage
 
 This stage adds **inventory-backed auto-crafting** and the transaction foundations
-for Forge, Kat and BIN-only Auction House trading. It does **not** yet enable an
+for Forge, Kat and BIN-only Auction House trading. Mod 1.3.57 also connects
+opt-in listings of existing inventory to the live menu scheduler; see
+[AUCTION-HOUSE.md](AUCTION-HOUSE.md). It does **not** yet enable an
 automatic buy-components → process → sell loop for those routes. Existing book
 and general trading modes keep their current selection behavior.
 
 ## Auto-crafting from existing inventory
 
-Use mod 1.3.56 with companion 1.3.53. Keep your config and saved trading files.
+Use mod 1.3.57 with companion 1.3.53. Keep your config and saved trading files.
 
 1. Stop trading with K and resolve any retained order/config recovery errors.
 2. Put the ingredients in ordinary inventory and keep at least one empty slot.
@@ -74,8 +76,9 @@ observations, but **are not connected to automatic live route selection yet**:
 - BIN purchase navigation targets an exact auction UUID. Ordinary bidding menus,
   stale quotes, changed identities/prices and budget overruns are rejected.
   Purchase proof needs the item in inventory and the matching purse debit.
-- BIN listing validation checks the actual item, amount and listing price. The
-  full listing publication/settlement flow remains pending.
+- BIN listing navigation/publication is now connected for explicit existing-inventory
+  jobs. It verifies a new seller listing and the quoted fee debit. Automatic route
+  selection and completed-sale settlement remain pending.
 - Production economics use real Bazaar depth for input purchases. Insufficient
   depth, insufficient inventory space, excluded products and stale markets are
   filtered. These proposals remain research-only, not executable recommendations.
