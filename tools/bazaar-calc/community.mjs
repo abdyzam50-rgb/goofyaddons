@@ -10,8 +10,9 @@ function endpointValid(endpoint) {
   &&(u.protocol==='https:'||u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname));}catch{return false;}
 }
 function write(file,value) {writeFileSync(`${file}.tmp`,JSON.stringify(value),{mode:0o600});renameSync(`${file}.tmp`,file);}
-export function configure(directory,{endpoint,token,repository=DEFAULT_REPOSITORY,sharingEnabled=true}) {
- if(!endpointValid(endpoint)||!/^[A-Za-z0-9_-]{32,128}$/.test(token)||!repositoryValid(repository))throw new Error('Valid collector URL, contributor token and repository required');
+export function configure(directory,{endpoint,token='',repository=DEFAULT_REPOSITORY,sharingEnabled=true}) {
+ if(!endpointValid(endpoint)||!repositoryValid(repository)||typeof sharingEnabled!=='boolean'
+  ||typeof token!=='string'||token!==''&&!/^[A-Za-z0-9_-]{32,128}$/.test(token)||sharingEnabled&&!token)throw new Error('Valid collector URL, contributor token and repository required');
  mkdirSync(directory,{recursive:true});const path=join(directory,'community-settings.json');
  write(path,{endpoint:new URL(endpoint).origin,token,repository,sharingEnabled});return path;
 }
@@ -21,7 +22,8 @@ export class CommunitySync {
   mkdirSync(directory,{recursive:true});this.settings={repository:DEFAULT_REPOSITORY,sharingEnabled:false};this.error=null;
   this.sent=new Map();this.imported=0;this.lastUpload=0;this.lastDownload=0;this.nextUpload=0;this.nextDownload=0;this.pending=0;this.running=null;this.timer=null;
   try{const raw=JSON.parse(readFileSync(join(directory,'community-settings.json'),'utf8'));
-   if(!repositoryValid(raw.repository)||!endpointValid(`${raw.endpoint}/`)||!/^[A-Za-z0-9_-]{32,128}$/.test(raw.token)||typeof raw.sharingEnabled!=='boolean')throw new Error('Invalid private community settings');
+   if(!repositoryValid(raw.repository)||!endpointValid(`${raw.endpoint}/`)||typeof raw.sharingEnabled!=='boolean'
+    ||typeof raw.token!=='string'||raw.token!==''&&!/^[A-Za-z0-9_-]{32,128}$/.test(raw.token)||raw.sharingEnabled&&!raw.token)throw new Error('Invalid private community settings');
    this.settings=raw;
   }catch(e){if(e.code!=='ENOENT')this.error='Community settings unreadable; sharing disabled';}
   const identity=join(directory,'community-identity.json');

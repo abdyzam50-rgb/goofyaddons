@@ -1,0 +1,111 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.21'
+}
+
+version = '0.2.16-BETA'
+group = 'astar'
+
+base {
+    archivesName = 'astar-client'
+}
+
+dependencies {
+    implementation project(':trading-core')
+    include project(':trading-core')
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+// The movement, pathing and mcworld modules (and the core they use) are plain Java with no
+// other dependencies; their sources are compiled into the mod directly, so the trace format,
+// scenario scripts, simulator, pathfinder and block mapping are shared, not copied.
+sourceSets {
+    main {
+        java.srcDir '../core/src/main/java'
+        java.srcDir '../pathing/src/main/java'
+        java.srcDir '../mcworld/src/main/java'
+        java.srcDir '../movement/src/main/java'
+        resources.srcDir '../movement/src/main/resources'
+        java.srcDir '../integrations/goofyaddons/src/main/java'
+        java.srcDir '../integrations/goofyaddons/src/client/java'
+
+
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+tasks.register('bundleCalculator', Zip) {
+    archiveFileName = 'calculator.zip'
+    destinationDirectory = layout.buildDirectory.dir('calculator')
+    reproducibleFileOrder = true
+    preserveFileTimestamps = false
+    from('../tools/bazaar-calc') {
+        include '*.mjs', 'automatic-products.json', 'mutation-products.json', 'provenance.json', 'history.json.gz', 'dashboard/**', 'calculator/**', 'licenses/**'
+        exclude '*.test.mjs', '*-browser-check.mjs', 'build-engine.mjs', 'build-website.mjs', 'build-requirements.mjs', 'update-history.mjs'
+    }
+}
+
+processResources {
+    dependsOn tasks.named('bundleCalculator')
+    from(tasks.named('bundleCalculator')) { into 'goofyaddons' }
+    from('../integrations/goofyaddons/src/main/resources') { exclude 'fabric.mod.json' }
+    from('../tools/bazaar-calc') { include 'mutation-products.json', 'automatic-products.json'; into 'goofyaddons' }
+    from('../integrations/goofyaddons/LICENSE') { rename { 'LICENSE_goofyaddons' } }
+    inputs.property 'version', project.version
+    // The Dwarven Mines map, so /goto can plan across the Mines past the render distance.
+    from('../maps/dwarven-mines.zip') {
+        into 'astar/maps'
+    }
+    // The license travels with the jar, so the copyright notice does too.
+    from('../LICENSE') {
+        rename { 'LICENSE_astar' }
+    }
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+// ./gradlew -p client runClient -Pastar.trace.autoplay=walk,sprint passes these settings on to
+// the game (see docs/TRACES.md); -Pastar.goto=x,y,z walks the player there once a world is
+// joined.
+loom {
+    runs {
+        client {
+            ['astar.trace.autoplay', 'astar.trace.autoquit', 'astar.trace.course', 'astar.trace.commands', 'astar.shapes.dump', 'astar.goto', 'astar.goto.commands', 'astar.goto.warp', 'astar.trace.casts'].each { key ->
+                if (project.hasProperty(key)) {
+                    property(key, project.property(key).toString())
+                }
+            }
+        }
+    }
+}
+
+// Both engines are compiled into one client artifact; retain their regression suites.
+sourceSets.test.java.srcDir '../integrations/goofyaddons/src/test/java'
+sourceSets.test.resources.srcDir '../integrations/goofyaddons/src/test/resources'
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation testFixtures(project(':trading-core'))
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test') {
+    dependsOn ':trading-core:check'
+    workingDir file('../integrations/goofyaddons')
+    useJUnitPlatform { excludeTags 'calculatorIntegration' }
+}
+tasks.register('calculatorIntegrationTest', Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    workingDir rootProject.projectDir.parentFile
+    useJUnitPlatform { includeTags 'calculatorIntegration' }
+}
+
+sourceSets.test.java.srcDirs '../core/src/test/java', '../pathing/src/test/java', '../movement/src/test/java'
+sourceSets.test.resources.srcDir '../movement/src/test/resources'

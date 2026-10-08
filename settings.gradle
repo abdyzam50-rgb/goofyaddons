@@ -1,13 +1,9 @@
-pluginManagement {
-	repositories {
-		maven {
-			name = 'Fabric'
-			url = 'https://maven.fabricmc.net/'
-		}
-		mavenCentral()
-		gradlePluginPortal()
-	}
+plugins {
+    // Downloads the Java 21 toolchain automatically when it isn't installed, so the build
+    // works whatever JDK runs Gradle itself (for example Java 25).
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 
-// Should match your modid
-rootProject.name = 'goofyaddons'
+rootProject.name = 'astar'
+
+include 'core', 'pathing', 'mcworld', 'viz', 'movement', 'trading-core'

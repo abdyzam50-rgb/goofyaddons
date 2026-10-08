@@ -8,12 +8,12 @@ if not version or any(c not in '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL
     raise ValueError('Invalid version')
 output = root.parents[1] / 'dist' / f'goofyaddons-bazaar-calc-{version}.zip'
 output.parent.mkdir(exist_ok=True)
-files = ['automatic-products.json', 'mutation-products.json', 'data-paths.mjs', 'server.mjs', 'collector.mjs', 'collect-market.mjs', 'execution-history.mjs', 'community.mjs', 'community-protocol.mjs', 'adapter.mjs', 'engine.mjs',
-         'dashboard-forecast.mjs', 'dashboard-state.mjs', 'dashboard-profit.mjs', 'history.json.gz', 'provenance.json', 'README.md', 'update-history.mjs']
+files = ['automatic-products.json', 'mutation-products.json', 'history.json.gz', 'provenance.json', 'README.md']
+files += [p.name for p in sorted(root.glob('*.mjs')) if not p.name.endswith('.test.mjs') and 'browser-check' not in p.name and p.name not in ['build-engine.mjs', 'build-website.mjs', 'update-history.mjs']]
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for name in files:
         archive.write(root / name, f'bazaar-calc/{name}')
-    for folder in ['dashboard', 'licenses', 'windows']:
+    for folder in ['dashboard', 'calculator', 'licenses', 'windows']:
         for path in sorted((root / folder).rglob('*')):
             if path.is_file():
                 archive.write(path, f'bazaar-calc/{path.relative_to(root).as_posix()}')

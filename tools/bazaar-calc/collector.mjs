@@ -43,6 +43,7 @@ export class MarketCollector {
     if (!Object.values(payload.products).every(validProduct)) throw new Error('Malformed market product');
     const degraded = degradedBazaar(payload,this.state.products);
     if (degraded) throw new Error(degraded);
+    if(payload.lastUpdated>=this.state.asOf)this.latestMarket=payload;
     if (payload.lastUpdated <= this.state.asOf) return false;
     const ts = payload.lastUpdated, hour = Math.floor(ts/HOUR)*HOUR;
     for (const [id,p] of Object.entries(payload.products)) {
@@ -82,6 +83,10 @@ export class MarketCollector {
     const book=this.previous.get(id);
     if(!book || this.now()-book.ts>60000 || book.ts>this.now()+5000 || !book.asks[0])return null;
     return {sourceAt:book.ts,ask:book.asks[0].price,bid:book.bids[0]?.price ?? null};
+  }
+  market() {
+    const p=this.latestMarket;
+    return p&&this.now()-p.lastUpdated<=60000&&p.lastUpdated<=this.now()+5000?p:null;
   }
   history() {
     if (!this.state.asOf) return this.bootstrap;

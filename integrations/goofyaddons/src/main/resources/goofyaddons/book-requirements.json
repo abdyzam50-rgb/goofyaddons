@@ -1,0 +1,786 @@
+{
+  "schema": 1,
+  "source": "Bundled bazaar-calc wiki-derived enchant rules; see tools/bazaar-calc/licenses",
+  "books": {
+    "ENCHANTMENT_ABSORB": {
+      "name": "Absorb",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Absorb"
+    },
+    "ENCHANTMENT_ANGLER": {
+      "name": "Angler",
+      "minimumEnchanting": 4,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Angler"
+    },
+    "ENCHANTMENT_AQUA_AFFINITY": {
+      "name": "Aqua Affinity",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Aqua_Affinity"
+    },
+    "ENCHANTMENT_BANE_OF_ARTHROPODS": {
+      "name": "Bane of Arthropods",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Bane_of_Arthropods"
+    },
+    "ENCHANTMENT_BIG_BRAIN": {
+      "name": "Big Brain",
+      "minimumEnchanting": 21,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Big_Brain"
+    },
+    "ENCHANTMENT_BLAST_PROTECTION": {
+      "name": "Blast Protection",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Blast_Protection"
+    },
+    "ENCHANTMENT_BLESSING": {
+      "name": "Blessing",
+      "minimumEnchanting": 9,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Blessing_(Enchantment)"
+    },
+    "ENCHANTMENT_ULTIMATE_BOBBIN_TIME": {
+      "name": "Bobbin' Time",
+      "minimumEnchanting": 24,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Bobbin'_Time"
+    },
+    "ENCHANTMENT_BUG_BLENDER": {
+      "name": "Bug Blender",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Bug_Blender"
+    },
+    "ENCHANTMENT_CASTER": {
+      "name": "Caster",
+      "minimumEnchanting": 15,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Caster"
+    },
+    "ENCHANTMENT_CAYENNE": {
+      "name": "Cayenne",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Cayenne"
+    },
+    "ENCHANTMENT_CHAMPION": {
+      "name": "Champion",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Champion"
+    },
+    "ENCHANTMENT_CHANCE": {
+      "name": "Chance",
+      "minimumEnchanting": 11,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Chance"
+    },
+    "ENCHANTMENT_CHARM": {
+      "name": "Charm",
+      "minimumEnchanting": 25,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Charm"
+    },
+    "ENCHANTMENT_ULTIMATE_CHIMERA": {
+      "name": "Chimera",
+      "minimumEnchanting": 31,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Chimera"
+    },
+    "ENCHANTMENT_CLEAVE": {
+      "name": "Cleave",
+      "minimumEnchanting": 4,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Cleave"
+    },
+    "ENCHANTMENT_ULTIMATE_COMBO": {
+      "name": "Combo",
+      "minimumEnchanting": 24,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Combo"
+    },
+    "ENCHANTMENT_COMPACT": {
+      "name": "Compact",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Compact"
+    },
+    "ENCHANTMENT_CORRUPTION": {
+      "name": "Corruption",
+      "minimumEnchanting": 25,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Corruption"
+    },
+    "ENCHANTMENT_COUNTER_STRIKE": {
+      "name": "Counter-Strike",
+      "minimumEnchanting": 22,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Counter-Strike"
+    },
+    "ENCHANTMENT_CRITICAL": {
+      "name": "Critical",
+      "minimumEnchanting": 9,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Critical"
+    },
+    "ENCHANTMENT_ULTIMATE_CROP_FEVER": {
+      "name": "Crop Fever",
+      "minimumEnchanting": 32,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Crop_Fever"
+    },
+    "ENCHANTMENT_CUBISM": {
+      "name": "Cubism",
+      "minimumEnchanting": 3,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Cubism"
+    },
+    "ENCHANTMENT_CULTIVATING": {
+      "name": "Cultivating",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Cultivating"
+    },
+    "ENCHANTMENT_DEDICATION": {
+      "name": "Dedication",
+      "minimumEnchanting": 12,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Dedication"
+    },
+    "ENCHANTMENT_DELICATE": {
+      "name": "Delicate",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Delicate"
+    },
+    "ENCHANTMENT_DIVINE_GIFT": {
+      "name": "Divine Gift",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Divine_Gift"
+    },
+    "ENCHANTMENT_AIMING": {
+      "name": "Dragon Tracer",
+      "minimumEnchanting": 8,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Dragon_Tracer"
+    },
+    "ENCHANTMENT_SYPHON": {
+      "name": "Drain",
+      "minimumEnchanting": 15,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Drain"
+    },
+    "ENCHANTMENT_ULTIMATE_REITERATE": {
+      "name": "Duplex",
+      "minimumEnchanting": 28,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Duplex"
+    },
+    "ENCHANTMENT_EFFICIENCY": {
+      "name": "Efficiency",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Efficiency"
+    },
+    "ENCHANTMENT_ENDER_SLAYER": {
+      "name": "Ender Slayer",
+      "minimumEnchanting": 11,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Ender_Slayer"
+    },
+    "ENCHANTMENT_EXECUTE": {
+      "name": "Execute",
+      "minimumEnchanting": 14,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Execute"
+    },
+    "ENCHANTMENT_EXPERIENCE": {
+      "name": "Experience",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Experience_(Enchantment)"
+    },
+    "ENCHANTMENT_EXPERTISE": {
+      "name": "Expertise",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Expertise"
+    },
+    "ENCHANTMENT_ULTIMATE_FATAL_TEMPO": {
+      "name": "Fatal Tempo",
+      "minimumEnchanting": 37,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Fatal_Tempo"
+    },
+    "ENCHANTMENT_FEAST": {
+      "name": "Feast",
+      "minimumEnchanting": 5,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Feast"
+    },
+    "ENCHANTMENT_FEATHER_FALLING": {
+      "name": "Feather Falling",
+      "minimumEnchanting": null,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Feather_Falling"
+    },
+    "ENCHANTMENT_FIRE_PROTECTION": {
+      "name": "Fire Protection",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Fire_Protection"
+    },
+    "ENCHANTMENT_ULTIMATE_FIRST_IMPRESSION": {
+      "name": "First Impression",
+      "minimumEnchanting": 14,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/First_Impression"
+    },
+    "ENCHANTMENT_FIRST_STRIKE": {
+      "name": "First Strike",
+      "minimumEnchanting": 10,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/First_Strike"
+    },
+    "ENCHANTMENT_ULTIMATE_FLASH": {
+      "name": "Flash",
+      "minimumEnchanting": 30,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Flash"
+    },
+    "ENCHANTMENT_ULTIMATE_FLOWSTATE": {
+      "name": "Flowstate",
+      "minimumEnchanting": 15,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Flowstate"
+    },
+    "ENCHANTMENT_FOREST_PLEDGE": {
+      "name": "Forest Pledge",
+      "minimumEnchanting": 12,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Forest_Pledge"
+    },
+    "ENCHANTMENT_FORTUNE": {
+      "name": "Fortune",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Fortune"
+    },
+    "ENCHANTMENT_FRAIL": {
+      "name": "Frail",
+      "minimumEnchanting": 14,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Frail"
+    },
+    "ENCHANTMENT_GIANT_KILLER": {
+      "name": "Giant Killer",
+      "minimumEnchanting": 8,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Giant_Killer"
+    },
+    "ENCHANTMENT_DRAGON_HUNTER": {
+      "name": "Gravity",
+      "minimumEnchanting": 16,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Gravity"
+    },
+    "ENCHANTMENT_GREAT_SPOOK": {
+      "name": "Great Spook",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Great_Spook_(Enchantment)"
+    },
+    "ENCHANTMENT_GREEN_THUMB": {
+      "name": "Green Thumb",
+      "minimumEnchanting": 24,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Green_Thumb_(Enchantment)"
+    },
+    "ENCHANTMENT_GROWTH": {
+      "name": "Growth",
+      "minimumEnchanting": 5,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Growth"
+    },
+    "ENCHANTMENT_ULTIMATE_HABANERO_TACTICS": {
+      "name": "Habanero Tactics",
+      "minimumEnchanting": 28,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Habanero_Tactics"
+    },
+    "ENCHANTMENT_HARDENED_MANA": {
+      "name": "Hardened Vitality",
+      "minimumEnchanting": 22,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Hardened_Vitality"
+    },
+    "ENCHANTMENT_HARVESTING": {
+      "name": "Harvesting",
+      "minimumEnchanting": 2,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Harvesting"
+    },
+    "ENCHANTMENT_HECATOMB": {
+      "name": "Hecatomb",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Hecatomb"
+    },
+    "ENCHANTMENT_ICE_COLD": {
+      "name": "Ice Cold",
+      "minimumEnchanting": 30,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Ice_Cold"
+    },
+    "ENCHANTMENT_IMPALING": {
+      "name": "Impaling",
+      "minimumEnchanting": 12,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Impaling"
+    },
+    "ENCHANTMENT_ULTIMATE_INFERNO": {
+      "name": "Inferno",
+      "minimumEnchanting": 37,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Inferno"
+    },
+    "ENCHANTMENT_INFINITE_QUIVER": {
+      "name": "Infinite Quiver",
+      "minimumEnchanting": 2,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Infinite_Quiver"
+    },
+    "ENCHANTMENT_KARMA": {
+      "name": "Karma",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Karma"
+    },
+    "ENCHANTMENT_KNOCKBACK": {
+      "name": "Knockback",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Knockback_(Enchantment)"
+    },
+    "ENCHANTMENT_LAPIDARY": {
+      "name": "Lapidary",
+      "minimumEnchanting": 22,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Lapidary"
+    },
+    "ENCHANTMENT_ULTIMATE_LAST_STAND": {
+      "name": "Last Stand",
+      "minimumEnchanting": 30,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Last_Stand"
+    },
+    "ENCHANTMENT_ULTIMATE_LEGION": {
+      "name": "Legion",
+      "minimumEnchanting": 34,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Legion"
+    },
+    "ENCHANTMENT_LETHALITY": {
+      "name": "Lethality",
+      "minimumEnchanting": 14,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Lethality"
+    },
+    "ENCHANTMENT_LIFE_STEAL": {
+      "name": "Life Steal",
+      "minimumEnchanting": 5,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Life_Steal"
+    },
+    "ENCHANTMENT_LOOTING": {
+      "name": "Looting",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Looting"
+    },
+    "ENCHANTMENT_LUCK": {
+      "name": "Luck",
+      "minimumEnchanting": 3,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Luck"
+    },
+    "ENCHANTMENT_LUCK_OF_THE_SEA": {
+      "name": "Luck of the Sea",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Luck_of_the_Sea"
+    },
+    "ENCHANTMENT_LURE": {
+      "name": "Lure",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Lure"
+    },
+    "ENCHANTMENT_MAGNET": {
+      "name": "Magnet",
+      "minimumEnchanting": 13,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Magnet"
+    },
+    "ENCHANTMENT_MANA_STEAL": {
+      "name": "Mana Steal",
+      "minimumEnchanting": 20,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Mana_Steal"
+    },
+    "ENCHANTMENT_ULTIMATE_MISSILE": {
+      "name": "Missile",
+      "minimumEnchanting": 14,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Missile"
+    },
+    "ENCHANTMENT_ULTIMATE_NO_PAIN_NO_GAIN": {
+      "name": "No Pain No Gain",
+      "minimumEnchanting": 29,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/No_Pain_No_Gain"
+    },
+    "ENCHANTMENT_ULTIMATE_ONE_FOR_ALL": {
+      "name": "One For All",
+      "minimumEnchanting": 38,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/One_For_All"
+    },
+    "ENCHANTMENT_OVERLOAD": {
+      "name": "Overload",
+      "minimumEnchanting": 33,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Overload"
+    },
+    "ENCHANTMENT_PALEONTOLOGIST": {
+      "name": "Paleontologist",
+      "minimumEnchanting": 27,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Paleontologist"
+    },
+    "ENCHANTMENT_PESTERMINATOR": {
+      "name": "Pesterminator",
+      "minimumEnchanting": 10,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Pesterminator"
+    },
+    "ENCHANTMENT_PETALFALL": {
+      "name": "Petalfall",
+      "minimumEnchanting": 12,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Petalfall"
+    },
+    "ENCHANTMENT_PIERCING": {
+      "name": "Piercing",
+      "minimumEnchanting": 17,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Piercing"
+    },
+    "ENCHANTMENT_PISCARY": {
+      "name": "Piscary",
+      "minimumEnchanting": 8,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Piscary"
+    },
+    "ENCHANTMENT_POWER": {
+      "name": "Power",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Power"
+    },
+    "ENCHANTMENT_PRISTINE": {
+      "name": "Prismatic",
+      "minimumEnchanting": 22,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Prismatic"
+    },
+    "ENCHANTMENT_PROJECTILE_PROTECTION": {
+      "name": "Projectile Protection",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Projectile_Protection"
+    },
+    "ENCHANTMENT_PROSECUTE": {
+      "name": "Prosecute",
+      "minimumEnchanting": 25,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Prosecute"
+    },
+    "ENCHANTMENT_PROSPERITY": {
+      "name": "Prosperity",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Prosperity"
+    },
+    "ENCHANTMENT_PROTECTION": {
+      "name": "Protection",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Protection"
+    },
+    "ENCHANTMENT_PUNCH": {
+      "name": "Punch",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Punch"
+    },
+    "ENCHANTMENT_MAGMARIZER": {
+      "name": "Pyroclasm",
+      "minimumEnchanting": 9,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Pyroclasm"
+    },
+    "ENCHANTMENT_QUICK_BITE": {
+      "name": "Quick Bite",
+      "minimumEnchanting": 23,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Quick_Bite"
+    },
+    "ENCHANTMENT_RAINBOW": {
+      "name": "Rainbow",
+      "minimumEnchanting": 6,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Rainbow"
+    },
+    "ENCHANTMENT_REFLECTION": {
+      "name": "Reflection",
+      "minimumEnchanting": 24,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Reflection"
+    },
+    "ENCHANTMENT_ULTIMATE_REFRIGERATE": {
+      "name": "Refrigerate",
+      "minimumEnchanting": 20,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Refrigerate"
+    },
+    "ENCHANTMENT_REJUVENATE": {
+      "name": "Rejuvenate",
+      "minimumEnchanting": 10,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Rejuvenate"
+    },
+    "ENCHANTMENT_ULTIMATE_REND": {
+      "name": "Rend",
+      "minimumEnchanting": 32,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Rend"
+    },
+    "ENCHANTMENT_REPLENISH": {
+      "name": "Replenish",
+      "minimumEnchanting": 7,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Replenish"
+    },
+    "ENCHANTMENT_RESPIRATION": {
+      "name": "Respiration",
+      "minimumEnchanting": 7,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Respiration_(Enchantment)"
+    },
+    "ENCHANTMENT_RESPITE": {
+      "name": "Respite",
+      "minimumEnchanting": 23,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Respite"
+    },
+    "ENCHANTMENT_SCAVENGER": {
+      "name": "Scavenger",
+      "minimumEnchanting": 1,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Scavenger"
+    },
+    "ENCHANTMENT_SCUBA": {
+      "name": "Scuba",
+      "minimumEnchanting": 5,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Scuba"
+    },
+    "ENCHANTMENT_SHARPNESS": {
+      "name": "Sharpness",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Sharpness"
+    },
+    "ENCHANTMENT_SILK_TOUCH": {
+      "name": "Silk Touch",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Silk_Touch"
+    },
+    "ENCHANTMENT_SMALL_BRAIN": {
+      "name": "Small Brain",
+      "minimumEnchanting": 21,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Small_Brain"
+    },
+    "ENCHANTMENT_SMARTY_PANTS": {
+      "name": "Smarty Pants",
+      "minimumEnchanting": 21,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Smarty_Pants"
+    },
+    "ENCHANTMENT_SMELTING_TOUCH": {
+      "name": "Smelting Touch",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Smelting_Touch"
+    },
+    "ENCHANTMENT_SMITE": {
+      "name": "Smite",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Smite"
+    },
+    "ENCHANTMENT_SMOLDERING": {
+      "name": "Smoldering",
+      "minimumEnchanting": 23,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Smoldering"
+    },
+    "ENCHANTMENT_SNIPE": {
+      "name": "Snipe",
+      "minimumEnchanting": 6,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Snipe"
+    },
+    "ENCHANTMENT_ULTIMATE_SOUL_EATER": {
+      "name": "Soul Eater",
+      "minimumEnchanting": 36,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Soul_Eater"
+    },
+    "ENCHANTMENT_SPIKED_HOOK": {
+      "name": "Spiked Hook",
+      "minimumEnchanting": 18,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Spiked_Hook"
+    },
+    "ENCHANTMENT_STEALTH": {
+      "name": "Stealth",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Stealth"
+    },
+    "ENCHANTMENT_STRONG_MANA": {
+      "name": "Strong Vitality",
+      "minimumEnchanting": 22,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Strong_Vitality"
+    },
+    "ENCHANTMENT_SUGAR_RUSH": {
+      "name": "Sugar Rush",
+      "minimumEnchanting": 7,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Sugar_Rush"
+    },
+    "ENCHANTMENT_SUNDER": {
+      "name": "Sunder",
+      "minimumEnchanting": 2,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Sunder"
+    },
+    "ENCHANTMENT_ULTIMATE_SUNSET": {
+      "name": "Sunset",
+      "minimumEnchanting": 27,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Sunset"
+    },
+    "ENCHANTMENT_ULTIMATE_SWARM": {
+      "name": "Swarm",
+      "minimumEnchanting": 35,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Swarm"
+    },
+    "ENCHANTMENT_TABASCO": {
+      "name": "Tabasco",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Tabasco"
+    },
+    "ENCHANTMENT_TELEKINESIS": {
+      "name": "Telekinesis",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Telekinesis_(Enchantment)"
+    },
+    "ENCHANTMENT_ULTIMATE_THE_ONE": {
+      "name": "The One",
+      "minimumEnchanting": 14,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/The_One"
+    },
+    "ENCHANTMENT_THORNS": {
+      "name": "Thorns",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Thorns"
+    },
+    "ENCHANTMENT_THUNDERBOLT": {
+      "name": "Thunderbolt",
+      "minimumEnchanting": 20,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Thunderbolt"
+    },
+    "ENCHANTMENT_THUNDERLORD": {
+      "name": "Thunderlord",
+      "minimumEnchanting": 14,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Thunderlord"
+    },
+    "ENCHANTMENT_TIDAL": {
+      "name": "Tidal",
+      "minimumEnchanting": 13,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Tidal"
+    },
+    "ENCHANTMENT_TITAN_KILLER": {
+      "name": "Titan Killer",
+      "minimumEnchanting": 28,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Titan_Killer"
+    },
+    "ENCHANTMENT_TOXOPHILITE": {
+      "name": "Toxophilite",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Toxophilite_(Enchantment)"
+    },
+    "ENCHANTMENT_TRANSYLVANIAN": {
+      "name": "Transylvanian",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Transylvanian"
+    },
+    "ENCHANTMENT_TRIPLE_STRIKE": {
+      "name": "Triple-Strike",
+      "minimumEnchanting": 19,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Triple-Strike"
+    },
+    "ENCHANTMENT_TRUE_PROTECTION": {
+      "name": "True Protection",
+      "minimumEnchanting": 15,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/True_Protection"
+    },
+    "ENCHANTMENT_TURBO_WHEAT": {
+      "name": "Turbo-Wheat",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_CARROT": {
+      "name": "Turbo-Carrot",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_POTATO": {
+      "name": "Turbo-Potato",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_PUMPKIN": {
+      "name": "Turbo-Pumpkin",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_MELON": {
+      "name": "Turbo-Melon",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_MUSHROOMS": {
+      "name": "Turbo-Mushrooms",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_CACTUS": {
+      "name": "Turbo-Cacti",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_CANE": {
+      "name": "Turbo-Cane",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_WARTS": {
+      "name": "Turbo-Warts",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_COCO": {
+      "name": "Turbo-Cocoa",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_SUNFLOWER": {
+      "name": "Turbo-Sunflower",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_MOONFLOWER": {
+      "name": "Turbo-Moonflower",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_TURBO_ROSE": {
+      "name": "Turbo-Rose",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Turbo-Crop"
+    },
+    "ENCHANTMENT_ULTIMATE_JERRY": {
+      "name": "Ultimate Jerry",
+      "minimumEnchanting": 18,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Ultimate_Jerry"
+    },
+    "ENCHANTMENT_ULTIMATE_WISE": {
+      "name": "Ultimate Wise",
+      "minimumEnchanting": 20,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Ultimate_Wise"
+    },
+    "ENCHANTMENT_MANA_VAMPIRE": {
+      "name": "Vampiric Vitality",
+      "minimumEnchanting": 22,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Vampiric_Vitality"
+    },
+    "ENCHANTMENT_VAMPIRISM": {
+      "name": "Vampirism",
+      "minimumEnchanting": 15,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Vampirism"
+    },
+    "ENCHANTMENT_VENOMOUS": {
+      "name": "Venomous",
+      "minimumEnchanting": 17,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Venomous"
+    },
+    "ENCHANTMENT_VICIOUS": {
+      "name": "Vicious",
+      "minimumEnchanting": 26,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Vicious"
+    },
+    "ENCHANTMENT_FEROCIOUS_MANA": {
+      "name": "Vivacious Vitality",
+      "minimumEnchanting": 22,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Vivacious_Vitality"
+    },
+    "ENCHANTMENT_ULTIMATE_WISDOM": {
+      "name": "Wisdom",
+      "minimumEnchanting": 27,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Wisdom_(Enchantment)"
+    },
+    "ENCHANTMENT_ARCANE": {
+      "name": "Woodsplitter",
+      "minimumEnchanting": 5,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Woodsplitter"
+    },
+    "ENCHANTMENT_ULTIMATE_BANK": {
+      "name": "Bank",
+      "minimumEnchanting": 16,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Bank_(Enchantment)"
+    },
+    "ENCHANTMENT_DEPTH_STRIDER": {
+      "name": "Depth Strider",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Depth_Strider"
+    },
+    "ENCHANTMENT_FROST_WALKER": {
+      "name": "Frost Walker",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Frost_Walker"
+    },
+    "ENCHANTMENT_QUANTUM": {
+      "name": "Quantum",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Quantum"
+    },
+    "ENCHANTMENT_FLAME": {
+      "name": "Flame",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Flame"
+    },
+    "ENCHANTMENT_FIRE_ASPECT": {
+      "name": "Fire Aspect",
+      "minimumEnchanting": 0,
+      "source": "https://hypixelskyblock.minecraft.wiki/w/Fire_Aspect"
+    }
+  }
+}

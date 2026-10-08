@@ -19,6 +19,8 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const root = body.market, c = body.constraints;
   if (!object(root) || root.success !== true || !object(root.products) || !object(c)) throw new Error('Invalid market/constraints');
   if(c.automaticSelection!==undefined && typeof c.automaticSelection!=='boolean')throw new Error('Invalid automatic selection');
+  const skills=c.accountSkills??{};
+  if(!object(skills)||Object.values(skills).some(v=>!Number.isInteger(v)||v<0||v>60))throw new Error('Invalid account skills');
   const marketAt = finite(root.lastUpdated, now - 60000, now + 5000, 'market timestamp');
   if (!['BOOKS', 'GENERAL', 'BOTH'].includes(c.mode)) throw new Error('Invalid trading mode');
   const coins = finite(c.availableCapital, 0, 1e13, 'capital');
@@ -78,6 +80,10 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const eligible = m => m && m.bid > 0 && m.ask > 0 && !excluded.has(m.id) && !excluded.has(parseBookId(m.id)?.enchant);
   const add = (kind, source, target, n, level = 0, sellLevel = 0) => {
     if (!eligible(source) || !eligible(target)) return;
+    if(kind==='BOOK') {
+      const minimum=enchantRules()[parseBookId(source.id)?.enchant]?.enchanting_req;
+      if(!Number.isInteger(minimum) || minimum>0 && (!Number.isInteger(skills.enchanting) || skills.enchanting<minimum)){counts.filtered++;return;}
+    }
     const selectionKey=kind==='BOOK'?`${parseBookId(source.id).enchant}:${level}:${sellLevel}`:source.id;
     if(allowedRoutes && !allowedRoutes.has(`${kind}:${selectionKey}`))return;
     if(c.automaticSelection && (kind==='GENERAL' ? !automaticCatalog.products[source.id] :

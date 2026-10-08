@@ -1,0 +1,187 @@
+{
+  "books": [
+    {
+      "id": "ENCHANTMENT_OVERLOAD",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Overload",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_REITERATE",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Duplex",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_SWARM",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Swarm",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_SOUL_EATER",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Soul Eater",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_GREEN_THUMB",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Green Thumb",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    },
+    {
+      "id": "ENCHANTMENT_ULTIMATE_WISDOM",
+      "level": 1,
+      "sellLevel": 5,
+      "name": "Wisdom",
+      "instaSellPercentage": 0.0,
+      "instaBuyPercentage": 0.0
+    }
+  ],
+  "tradingMode": "BOOKS",
+  "modeKey": 77,
+  "maxTradingCapital": 65000000.0,
+  "purseReserve": 15000000.0,
+  "general": {
+    "items": [
+      {
+        "id": "FUMING_POTATO_BOOK",
+        "name": "Fuming Potato Book"
+      },
+      {
+        "id": "PRECURSOR_GEAR",
+        "name": "Precursor Gear"
+      },
+      {
+        "id": "WITHER_CATALYST",
+        "name": "Wither Catalyst"
+      },
+      {
+        "id": "GIANT_FRAGMENT_LASER",
+        "name": "L.A.S.R.'s Eye"
+      },
+      {
+        "id": "GIANT_FRAGMENT_DIAMOND",
+        "name": "Diamante's Handle"
+      },
+      {
+        "id": "HEAVY_PEARL",
+        "name": "Heavy Pearl"
+      },
+      {
+        "id": "SUPER_COMPACTOR_3000",
+        "name": "Super Compactor 3000"
+      },
+      {
+        "id": "ENCHANTED_INK_SACK",
+        "name": "Enchanted Ink Sac"
+      },
+      {
+        "id": "SEARED_ESCARGOT",
+        "name": "Seared Escargot"
+      },
+      {
+        "id": "ECTOPLASM",
+        "name": "Ectoplasm"
+      },
+      {
+        "id": "FRIED_FEATHER",
+        "name": "Fried Feather"
+      },
+      {
+        "id": "FLORAL_GELATIN",
+        "name": "Floral Gelatin"
+      },
+      {
+        "id": "JUNGLE_KEY",
+        "name": "Jungle Key"
+      },
+      {
+        "id": "BLUE_RING",
+        "name": "Blue Ring"
+      },
+      {
+        "id": "BROKEN_RADAR",
+        "name": "Broken Radar"
+      },
+      {
+        "id": "DUSKBLOOM",
+        "name": "Duskbloom"
+      },
+      {
+        "id": "SCORCHED_CRAB_STICK",
+        "name": "Scorched Crab Stick"
+      },
+      {
+        "id": "BEJEWELED_HANDLE",
+        "name": "Bejeweled Handle"
+      },
+      {
+        "id": "CACTUS_FLOWER",
+        "name": "Cactus Flower"
+      },
+      {
+        "id": "SHELLFRUIT",
+        "name": "Shellfruit"
+      },
+      {
+        "id": "BLUE_ICE_HUNK",
+        "name": "Hunk of Blue Ice"
+      },
+      {
+        "id": "CARROT_ZEST",
+        "name": "Carrot Zest"
+      },
+      {
+        "id": "PLASMA",
+        "name": "Plasma"
+      },
+      {
+        "id": "ENCHANTED_BLAZE_ROD",
+        "name": "Enchanted Blaze Rod"
+      },
+      {
+        "id": "FIGSTONE",
+        "name": "Figstone"
+      }
+    ],
+    "maxCoinsPerItem": 8000000.0,
+    "maxItemsPerOrder": 64,
+    "maxActiveItems": 3,
+    "minProfitPerBatch": 75000.0,
+    "minMarginPercentage": 3.0,
+    "minWeeklyVolume": 10000.0,
+    "refreshSeconds": 20,
+    "orderTimeoutSeconds": 600,
+    "repriceCooldownSeconds": 120,
+    "maxReprices": 3,
+    "maxHoldingSeconds": 21600,
+    "maxDrawdownPercentage": 15.0
+  },
+  "startKey": 74,
+  "stopKey": 75,
+  "speedMode": false,
+  "speedModeDelay": 100,
+  "minActionDelay": 125,
+  "maxActionDelay": 225,
+  "bazaarTaxPercentage": 1.25,
+  "minNetProfit": 250000.0,
+  "maxBookHoldingSeconds": 86400,
+  "profitHudEnabled": true,
+  "profitHudSide": "LEFT",
+  "profitHudScale": 1.0,
+  "maxBookDrawdownPercentage": 15.0,
+  "firstPage": "ec",
+  "secondPage": "ec 2"
+}
