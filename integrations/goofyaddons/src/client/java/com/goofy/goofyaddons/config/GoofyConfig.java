@@ -50,6 +50,8 @@ public class GoofyConfig {
     public int modeKey = InputConstants.KEY_F7;
     public double maxTradingCapital = 300_000_000;
     public double purseReserve = 50_000_000;
+    /** Lets a queued production run instant-buy missing inputs within spendable capital. Off until tested in game. */
+    public boolean productionBuysIngredients = false;
     public GeneralSettings general = new GeneralSettings();
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings();
     public int toggleKey = InputConstants.KEY_F6;

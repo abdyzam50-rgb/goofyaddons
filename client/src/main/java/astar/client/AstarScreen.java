@@ -334,6 +334,8 @@ final class AstarScreen extends Screen {
         capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber("Purse reserve",()->draft.view().purseReserve,(cfg,v)->cfg.purseReserve=v));
         capital.row("Book slots",()->"Maximum active book routes.",tradingWhole("Book slots",()->draft.view().maxActiveBooks,1,10,(cfg,v)->cfg.maxActiveBooks=v));
         capital.row("Item slots",()->"Maximum active ordinary-item routes.",tradingWhole("Item slots",()->draft.view().general.maxActiveItems,1,10,(cfg,v)->cfg.general.maxActiveItems=v));
+        capital.row("Production buys inputs",()->"Let a queued production run instant-buy missing ingredients within spendable capital. Off until you have tested it in game.",
+            new Check(()->draft.view().productionBuysIngredients,v->editTrading("Production buys inputs",cfg->cfg.productionBuysIngredients=v)));
         Card market=card("Market and account checks","The bundled calculator keeps live market data and the account dashboard.");
         market.row("Background service",()->com.goofy.goofyaddons.features.companion.BundledCalculator.status(),
             new Button("Dashboard",()->com.goofy.goofyaddons.features.companion.BundledCalculator.openDashboard(),Button.PLAIN),

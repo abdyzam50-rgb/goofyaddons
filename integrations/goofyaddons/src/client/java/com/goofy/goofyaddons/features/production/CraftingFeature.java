@@ -17,6 +17,8 @@ public final class CraftingFeature implements Feature {
     private long openedAt,nextCommand,localMismatchSince;
     public String name(){return "Crafting";}
     public boolean queued(){return recipe!=null;}
+    /** The journal id of the most recently queued job, for callers that follow it. */
+    public String jobId(){return jobId;}
     public String activity(){return recipe==null?"No craft queued":"Crafting "+recipe.outputId()+" · "+remaining+" batches remaining";}
     public Set<String> lockedProducts(){if(recipe==null)return Set.of();var ids=new HashSet<>(recipe.ingredients().keySet());ids.add(recipe.outputId());return Set.copyOf(ids);}
     private ProductionJobs jobs()throws java.io.IOException {

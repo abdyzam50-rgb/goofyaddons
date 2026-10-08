@@ -204,10 +204,34 @@ from one registry, so the screen, diagnostics and documentation cannot disagree.
 
 Existing book/general trading, inventory crafting, opt-in BIN listing commands,
 saved arrays, scheduled rests and gameplay evidence collection are retained.
-Automatic craft/Kat/Forge/AH buy/process/sell route selection remains unfinished;
-the integration does not turn the previously research-only routes into executable
-ones. See the preserved production and auction guides under
-`integrations/goofyaddons/docs`.
+
+A production run chains the existing, separately tested steps into one loop: get
+the inputs, process them, wait for and claim a timed result, and optionally list
+the output as a BIN. Queue one, then use the trading toggle:
+
+| Command (under `.a* goofyaddon production`) | Loop |
+| --- | --- |
+| `run <ITEM> <batches> [binPrice maxFee]` | Inputs, craft, optional BIN listing |
+| `forge <ITEM> <slot> [binPrice maxFee]` | Inputs, Forge submission once you open The Forge, wait, claim, optional listing |
+| `kat <PET;rarity>` | Kat upgrade once you open the Pet Sitter with the pet placed, wait, claim |
+| `claim <job> [binPrice maxFee]` | Claims a Forge or Kat job already waiting in `production jobs` |
+| `status` | The run's stage and what it waits on |
+
+- Inputs come from your inventory. **Production buys inputs** (Spending limits)
+  lets a run instant-buy only what is missing, within spendable capital and at most
+  3% above the fresh Bazaar depth quote. It is off by default; leave it off until
+  the in-game checklist passes.
+- Every stage boundary is saved in the production journal. A buy, craft, submission,
+  claim or listing whose effect is not proven sends the run to review and pauses
+  trading. Nothing is ever repeated automatically, and a restart turns an
+  interrupted step into review, as for every other production job. A Forge or Kat
+  timer survives a restart; use `claim` to finish it.
+- A BIN price lists the whole output stack, so keep exactly one stack of the output.
+  Sale proceeds are not counted as profit until the sale is seen.
+- Choosing which item to produce stays with you: production recommendations are
+  still research only.
+
+See the preserved production and auction guides under `integrations/goofyaddons/docs`.
 
 The combined build runs the A* core/pathing/movement tests, the trader regression
 tests, keyboard migration/config-write tests, and a real Java-to-Node calculator

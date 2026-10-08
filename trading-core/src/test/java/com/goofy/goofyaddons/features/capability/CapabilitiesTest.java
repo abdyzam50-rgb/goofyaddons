@@ -18,6 +18,8 @@ class CapabilitiesTest {
         assertEquals(Level.RESEARCH, Capabilities.level(Feature.PIPELINE));
         assertEquals(Level.RESEARCH, Capabilities.level(Feature.PRODUCTION_PLANNING));
         assertEquals(Level.QUEUED, Capabilities.level(Feature.CRAFTING));
+        assertEquals(Level.QUEUED, Capabilities.level(Feature.FORGE));
+        assertEquals(Level.QUEUED, Capabilities.level(Feature.KAT));
         assertEquals(Level.AUTOMATIC, Capabilities.level(Feature.BOOK_FLIPS));
     }
 
@@ -33,6 +35,7 @@ class CapabilitiesTest {
     void diagnosticsListEveryFeature() {
         var state = Capabilities.diagnosticState();
         assertEquals(Feature.values().length, state.size());
-        assertTrue(state.get("FORGE").toString().contains("RESEARCH"));
+        assertTrue(state.get("FORGE").toString().contains("QUEUED"));
+        assertTrue(state.get("PRODUCTION_PLANNING").toString().contains("RESEARCH"));
     }
 }

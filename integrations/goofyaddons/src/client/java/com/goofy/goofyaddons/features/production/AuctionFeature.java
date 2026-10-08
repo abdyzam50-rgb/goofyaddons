@@ -13,6 +13,8 @@ public final class AuctionFeature implements Feature {
     private long mismatchSince,missingSince;
     public String name(){return "Auction House";}
     public boolean queued(){return executor!=null;}
+    /** The journal id of the most recently queued job, for callers that follow it. */
+    public String jobId(){return jobId;}
     public String activity(){return queued()?"Preparing BIN listing for "+product:"No auction queued";}
     public Set<String> lockedProducts(){return product==null?Set.of():Set.of(product);}
     private ProductionJobs jobs()throws java.io.IOException{return FeatureManager.INSTANCE.crafting().productionJobs();}

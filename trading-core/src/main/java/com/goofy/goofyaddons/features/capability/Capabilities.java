@@ -29,10 +29,10 @@ public final class Capabilities {
         GENERAL_FLIPS("Item flips", "Buying, selling, repricing, retirement and saved-position recovery"),
         AUTOMATIC_SELECTION("Automatic routes", "Chooses supported book and item routes; rechecks mode, budget, capacity, requirements and fresh prices"),
         PIPELINE("Pipeline preview", "Advisory allocation; selects only its next route and never reserves the rest"),
-        CRAFTING("Crafting", "Runs queued recipes; not a procurement-to-sale engine"),
-        AUCTION_HOUSE("Auction House", "Queued BIN purchases, listings and management; recommended AH routes are not all executable"),
-        FORGE("Forge", "Menu parsing and a durable job model; the automatic loop is not wired"),
-        KAT("Kat", "Menu parsing and a durable job model; the automatic loop is not wired"),
+        CRAFTING("Crafting", "Runs a queued run end to end: inputs (bought only if you allow it), craft, optional BIN listing; you choose each run"),
+        AUCTION_HOUSE("Auction House", "Queued BIN listings, including a production run's output, and exact BIN purchases; recommended AH routes are not all executable"),
+        FORGE("Forge", "Submits, waits for and claims a queued run once you open The Forge; then lists it if asked"),
+        KAT("Kat", "Upgrades and claims a queued pet once you open Kat with the pet placed; materials are your own"),
         PRODUCTION_PLANNING("Production recommendations", "Planning only; candidates are marked non-executable"),
         ADAPTIVE_ESTIMATES("Adaptive estimates", "Personal and shared execution history calibrate forecasts; no hourly return is guaranteed");
 
@@ -50,8 +50,8 @@ public final class Capabilities {
         set(Feature.PIPELINE, Level.RESEARCH);
         set(Feature.CRAFTING, Level.QUEUED);
         set(Feature.AUCTION_HOUSE, Level.QUEUED);
-        set(Feature.FORGE, Level.RESEARCH);
-        set(Feature.KAT, Level.RESEARCH);
+        set(Feature.FORGE, Level.QUEUED);
+        set(Feature.KAT, Level.QUEUED);
         set(Feature.PRODUCTION_PLANNING, Level.RESEARCH);
         set(Feature.ADAPTIVE_ESTIMATES, Level.RESEARCH);
     }

@@ -17,7 +17,9 @@ public class FeatureManager {
     private final GeneralFlipper general = com.goofy.goofyaddons.features.generalflipper.GeneralTraderFactory.create(() -> this);
     private final com.goofy.goofyaddons.features.production.CraftingFeature crafting=new com.goofy.goofyaddons.features.production.CraftingFeature();
     private final com.goofy.goofyaddons.features.production.AuctionFeature auction=new com.goofy.goofyaddons.features.production.AuctionFeature();
-    private final TradingEngines tradingEngines = new TradingEngines(books, general, crafting, auction);
+    private final com.goofy.goofyaddons.features.production.ProductionLoopFeature production=new com.goofy.goofyaddons.features.production.ProductionLoopFeature();
+    private final TradingEngines tradingEngines = new TradingEngines(books, general, crafting, auction, production);
+    public com.goofy.goofyaddons.features.production.ProductionLoopFeature production(){return production;}
     public com.goofy.goofyaddons.features.production.AuctionFeature auction(){return auction;}
     public com.goofy.goofyaddons.features.production.CraftingFeature crafting(){return crafting;}
     public boolean prepareCrafting(){
@@ -51,7 +53,7 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast executionForecast(String input,String output,int batch) {
         return marketAnalysis.executionForecast(input,output,batch);
     }
-    public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());excluded.addAll(auction.lockedProducts());return java.util.Set.copyOf(excluded);}
+    public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());excluded.addAll(auction.lockedProducts());excluded.addAll(production.lockedProducts());return java.util.Set.copyOf(excluded);}
     public void invalidateMarketReport() { marketAnalysis.stop(); }
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
         return marketAnalysis.automaticHeadReport();
@@ -61,7 +63,7 @@ public class FeatureManager {
         var decision=marketAnalysis.lastDecision();return decision==null?null:decision.summary();
     }
     private List<Feature> engines() {
-        return tradingEngines.enabled(mode, crafting.queued(), auction.queued());
+        return tradingEngines.enabled(mode, production.queued(), crafting.queued(), auction.queued());
     }
 
     public void onTick() {
@@ -136,10 +138,11 @@ public class FeatureManager {
         if (started() && paused()) { resume(source); return; }
         if (started()) return;
         skillPreflight.clear();accountUnlocks.clear();invalidateMarketReport();
-        if(GoofyConfig.INSTANCE.access.checkSkills || mode!=TradingMode.GENERAL || crafting.queued())skillPreflight.begin();
+        if(GoofyConfig.INSTANCE.access.checkSkills || mode!=TradingMode.GENERAL || crafting.queued() || production.queued())skillPreflight.begin();
         else com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(java.util.Map.of());
         crafting.start();
         auction.start();
+        production.start();
         lifecycle.running();
         if(books.recoveryPending()) {mode=GoofyConfig.INSTANCE.tradingMode;books.start();return;}
         applyMode(GoofyConfig.INSTANCE.tradingMode);
@@ -186,11 +189,12 @@ public class FeatureManager {
 
     public void stop(Source source) {
         com.goofy.goofyaddons.features.access.BazaarNpcAccess.cancel();
-        if (lifecycle.stop(source, now()) != Outcome.GRANTED){crafting.stop();auction.stop();return;}
+        if (lifecycle.stop(source, now()) != Outcome.GRANTED){production.stop();crafting.stop();auction.stop();return;}
         skillPreflight.cancel();
         marketAnalysis.stop();
         books.stop();
         general.stop();
+        production.stop();
         crafting.stop();
         auction.stop();
         requested = null;
@@ -207,6 +211,7 @@ public class FeatureManager {
         marketAnalysis.stop();
         books.pause();
         general.pause();
+        production.pause();
         crafting.pause();
         auction.pause();
         scheduler.reset();
@@ -223,7 +228,7 @@ public class FeatureManager {
             previousOwner = null;
         }, failure -> org.slf4j.LoggerFactory.getLogger(FeatureManager.class)
                 .error("Safety cleanup failed; trading remains paused", failure),
-                com.goofy.goofyaddons.features.access.BazaarNpcAccess::cancel, marketAnalysis::stop, books::pause, general::pause, crafting::pause, auction::pause,
+                com.goofy.goofyaddons.features.access.BazaarNpcAccess::cancel, marketAnalysis::stop, books::pause, general::pause, production::pause, crafting::pause, auction::pause,
                 () -> Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot())),
                 () -> ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting."));
     }
@@ -261,6 +266,7 @@ public class FeatureManager {
     }
     public String taskItem() {
         if (!started() || paused()) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";
+        if(production.queued() && (previousOwner==production || previousOwner==crafting || previousOwner==auction || previousOwner==null))return production.activity();
         if(previousOwner==crafting)return crafting.activity();
         if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.taskItem();
@@ -273,6 +279,7 @@ public class FeatureManager {
         if (!started()) return "Use the trading toggle to start";
         if(skillPreflight.pending())return "Checking account skill requirements";
         if(books.recoveryPending())return books.activity();
+        if(production.queued() && (previousOwner==production || previousOwner==crafting || previousOwner==auction || previousOwner==null))return production.activity();
         if(previousOwner==crafting)return crafting.activity();
         if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.activity();
