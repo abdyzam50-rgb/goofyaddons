@@ -200,6 +200,17 @@ applies every live check; the decision explains, it does not authorize.
 Queued or Automatic with the boundary that justifies the label. These labels come
 from one registry, so the screen, diagnostics and documentation cannot disagree.
 
+## Auction House prices (Coflnet)
+
+`production test` prices an Auction House item from Coflnet's lowest BIN through the
+bundled calculator. To use your Coflnet API token, put it on the first line of
+`coflnet-token.txt` in the calculator data folder (on Windows
+`%LOCALAPPDATA%\GoofyAddons\bazaar-calc\coflnet-token.txt`), or set the
+`COFLNET_TOKEN` environment variable before starting Minecraft. The token stays on your
+computer: it is sent only to sky.coflnet.com, never written to logs, and must never be
+committed or built into the mod, since anything in the repository or the jar is public.
+Without a token the public, rate-limited API is used.
+
 ## Production scope and validation
 
 Existing book/general trading, inventory crafting, opt-in BIN listing commands,

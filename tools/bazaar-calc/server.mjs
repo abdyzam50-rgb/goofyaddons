@@ -1,9 +1,9 @@
 // Loopback calculator, account dashboard, market collector and optional paired Discord controls.
 import { DiscordBot } from './discord-bot.mjs';
 import { discordSettings } from './discord-config.mjs';
-import { dataDirectory } from './data-paths.mjs';
+import { dataDirectory, dataFile } from './data-paths.mjs';
 import { createServer } from 'node:http';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { DashboardForecast } from './dashboard-forecast.mjs';
@@ -32,7 +32,15 @@ function calculatorAssets(dir='calculator',prefix='/calculator/') {
  }
 }
 calculatorAssets();
-export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null, control = null, profileFetcher=fetch, resourcesFetcher=fetch, publishingFetcher=fetch, auctionFetcher=fetch, bundle=null } = {}) {
+/**
+ * The private Coflnet API token: COFLNET_TOKEN, else coflnet-token.txt in the data directory.
+ * It stays on this computer, is sent only to sky.coflnet.com and is never logged.
+ */
+export function coflnetToken(env=process.env) {
+  const value=env.COFLNET_TOKEN?.trim() || (()=>{try{const path=dataFile('coflnet-token.txt');return existsSync(path)?readFileSync(path,'utf8').trim():'';}catch{return '';}})();
+  return /^[A-Za-z0-9._-]{16,4096}$/.test(value)?value:null;
+}
+export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null, control = null, profileFetcher=fetch, resourcesFetcher=fetch, publishingFetcher=fetch, auctionFetcher=fetch, auctionToken=coflnetToken, bundle=null } = {}) {
   const forecasts=new DashboardForecast({provenance});
   let itemMetadata=null,itemMetadataAt=0,itemMetadataFlight=null;
   const auctionPrices=new Map();
@@ -78,7 +86,8 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       const cached=auctionPrices.get(item);
       if(cached&&Date.now()-cached.fetchedAt<60000){send(200,cached);return;}
       try {
-        const r=await auctionFetcher(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000)});
+        const token=auctionToken();
+        const r=await auctionFetcher(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000),headers:token?{Authorization:`Bearer ${token}`}:{}});
         if(r.status===404||r.status===204){send(404,{error:'No BIN auctions found for that item'});return;}
         const body=await r.json();
         const lowest=Number(body?.lowest),second=body?.secondLowest==null?null:Number(body.secondLowest);
