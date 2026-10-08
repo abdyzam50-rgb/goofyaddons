@@ -107,8 +107,8 @@ final class GeneralCancel {
             }
         }
         long elapsed = ctx.now() - ctx.stepSince();
-        boolean itemsArrived = count > trade.inventoryBefore && count >= trade.inventoryBefore + trade.expectedClaim;
-        if (trade.expectedClaim > 0 && count < trade.inventoryBefore + trade.expectedClaim) {
+        boolean itemsArrived = com.goofy.goofyaddons.features.transaction.ClaimEvidence.arrived(trade.inventoryBefore, trade.expectedClaim, count);
+        if (com.goofy.goofyaddons.features.transaction.ClaimEvidence.outstanding(trade.inventoryBefore, trade.expectedClaim, count)) {
             ctx.command("managebazaarorders");
             if (ctx.ordersReady()) ctx.recheckOrders("cancel-inventory-not-visible");
             return;

@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features.bookflipper.helper;
 
+import com.goofy.goofyaddons.features.transaction.ActionRetry;
 import com.goofy.goofyaddons.menu.GameActions;
 import com.goofy.goofyaddons.menu.MenuSnapshot;
 import com.goofy.goofyaddons.menu.SlotView;
@@ -19,7 +20,7 @@ public final class BookCombiner {
     private String failure;
     private java.util.Map<String,Integer> skillLevels=java.util.Map.of();
     public void observedSkills(java.util.Map<String,Integer> levels){skillLevels=java.util.Map.copyOf(levels);}
-    private final BookActionRetry retry = new BookActionRetry();
+    private final ActionRetry retry = new ActionRetry();
 
     public void slowdown(long now) { if (pending()) retry.slowdown(now); }
 

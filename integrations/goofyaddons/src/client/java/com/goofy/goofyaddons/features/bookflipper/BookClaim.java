@@ -3,6 +3,7 @@ package com.goofy.goofyaddons.features.bookflipper;
 import com.goofy.goofyaddons.features.TradingSafety;
 import com.goofy.goofyaddons.features.bookflipper.helper.Task;
 import com.goofy.goofyaddons.features.profit.TradeReceipts;
+import com.goofy.goofyaddons.features.transaction.ClaimEvidence;
 
 /**
  * Claiming books from a filled buy order and coins from a completed sell offer.
@@ -70,8 +71,9 @@ final class BookClaim {
     boolean verifyBuy(BookContext ctx) {
         if (pendingBuy == null) return true;
         int observed = inputBooksInInventory(ctx, pendingBuy);
-        if (observed < buyBefore + buyExpected) return false;
-        if (observed != buyBefore + buyExpected) {
+        var outcome = ClaimEvidence.observe(buyBefore, buyExpected, observed);
+        if (outcome == ClaimEvidence.Outcome.PENDING) return false;
+        if (outcome == ClaimEvidence.Outcome.EXCESS) {
             ctx.safetyHalt("Book claim quantity differs from the expected inventory increase; ownership retained.");
             return false;
         }

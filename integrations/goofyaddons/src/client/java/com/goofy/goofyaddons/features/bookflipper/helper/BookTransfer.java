@@ -1,5 +1,6 @@
 package com.goofy.goofyaddons.features.bookflipper.helper;
 
+import com.goofy.goofyaddons.features.transaction.ActionRetry;
 import com.goofy.goofyaddons.menu.*;
 import com.goofy.goofyaddons.utils.Chat;
 import java.util.List;
@@ -14,7 +15,7 @@ public final class BookTransfer {
     private long started;
     private String failure;
     private java.util.Set<Integer> destinationSlots = java.util.Set.of();
-    private final BookActionRetry retry = new BookActionRetry();
+    private final ActionRetry retry = new ActionRetry();
     public String failure() { return failure; }
     public boolean pending() { return pending != null; }
     public int actionRetries() { return retry.retries(); }

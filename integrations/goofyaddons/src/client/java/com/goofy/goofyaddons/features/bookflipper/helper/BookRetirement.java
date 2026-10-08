@@ -181,9 +181,7 @@ public final class BookRetirement {
             boolean fullTitle=title.endsWith("➜ "+item)||title.endsWith("→ "+item);
             // SkyBlock truncates long product titles. The untruncated icon and
             // sale-control lore still identify the exact product and level.
-            boolean truncatedProduct=(title.contains("➜")||title.contains("→")) && menu.slots().size()>13
-                && Chat.strip(menu.slot(13).hoverName()).equals(item)
-                && menu.slot(11).hasLoreLine(item);
+            boolean truncatedProduct=com.goofy.goofyaddons.features.transaction.ProductIdentity.truncatedProductPage(menu,item,11);
             if(fullTitle || truncatedProduct) {
                 if(!menu.loaded(35)||!settled(menu,now))return Result.WAITING;
                 if(menu.slots().size()<=13||!Chat.strip(menu.slots().get(13).hoverName()).equals(item))return block("Instant-sale product identity could not be verified.");

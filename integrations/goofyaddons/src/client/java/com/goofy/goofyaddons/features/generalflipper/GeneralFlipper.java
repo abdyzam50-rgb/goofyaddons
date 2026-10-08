@@ -282,12 +282,12 @@ public class GeneralFlipper implements Feature {
         boolean inputStuck = step==Step.SIGN && !world.signEditorOpen() && !priceMenu()
                 || step==Step.PRICE && !priceMenu()
                 || step==Step.CONFIRM && !menu("Confirm");
-        if(inputStuck && now-stepSince>=8000 && inputRestarts<2) {
+        if(inputStuck && now-stepSince>=com.goofy.goofyaddons.features.transaction.RecoveryRules.INPUT_RESTART_MS && inputRestarts<com.goofy.goofyaddons.features.transaction.RecoveryRules.MAX_INPUT_RESTARTS) {
             inputRestarts++;actions.closeMenu();transition(Step.OPEN_PRODUCT);
             services.event("WARN","general.input_navigation_restart",java.util.Map.of("trade",active.tradeId,"attempt",inputRestarts));
             return;
         }
-        if (now - stepSince > 30000) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
+        if (now - stepSince > com.goofy.goofyaddons.features.transaction.RecoveryRules.STEP_TIMEOUT_MS) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
         if (now < nextAction || claim.coolingDown(now)) return;
         nextAction = now + services.actionDelay();
         try {
@@ -401,7 +401,7 @@ public class GeneralFlipper implements Feature {
 
     void onSlowdown(String message) {
         if (!running || paused || active == null
-                || !com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry.slowdownMessage(message)) return;
+                || !com.goofy.goofyaddons.features.transaction.ActionRetry.slowdownMessage(message)) return;
         claim.slowdown(world.now());navigationRetry.slowdown(world.now());
         services.event("WARN", "general.slowdown", java.util.Map.of("trade", active.tradeId, "step", step.name()));
     }

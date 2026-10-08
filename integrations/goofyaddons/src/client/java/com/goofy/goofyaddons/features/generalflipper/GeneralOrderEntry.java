@@ -127,7 +127,7 @@ final class GeneralOrderEntry {
 
     void verifyPlacement(GeneralContext ctx, Side side) {
         var active = ctx.active();
-        if (ctx.now() - ctx.stepSince() < 2000) return; // Allow escrow/setup to reach the server before opening orders.
+        if (ctx.now() - ctx.stepSince() < com.goofy.goofyaddons.features.transaction.RecoveryRules.ORDER_SETTLE_MS) return; // Allow escrow/setup to reach the server before opening orders.
         ctx.command("managebazaarorders");
         if (!ctx.ordersReady()) return;
         if (ctx.ambiguousOrders()) return;
@@ -180,20 +180,6 @@ final class GeneralOrderEntry {
     /** Hypixel truncates product breadcrumb titles; verify the actual product and control. */
     private boolean productMenuMatches(GeneralContext ctx, int create) {
         var active = ctx.active();
-        var view = ctx.view();
-        if (create < 0) return false;
-        var control = view.slot(create);
-        if (control == null || control.inPlayerInventory() || control.empty()) return false;
-        var icon = view.slot(13);
-        if (icon != null && !icon.empty() && !icon.inPlayerInventory()) {
-            if (icon.customId() != null && !icon.customId().isBlank()) {
-                return active.item.id().equals(icon.customId()) && control.hasLoreLine(active.item.name());
-            }
-            if (active.item.name().equals(com.goofy.goofyaddons.utils.Chat.strip(icon.hoverName()))
-                    && control.hasLoreLine(active.item.name())) return true;
-        }
-        // Keep support for older layouts with full titles, but never contradict readable identity.
-        return ctx.menu(active.item.name()) && (control.loreLines() == null || control.loreLines().isEmpty()
-                || control.hasLoreLine(active.item.name()));
+        return com.goofy.goofyaddons.features.transaction.ProductIdentity.productPage(ctx.view(), active.item.id(), active.item.name(), create);
     }
 }

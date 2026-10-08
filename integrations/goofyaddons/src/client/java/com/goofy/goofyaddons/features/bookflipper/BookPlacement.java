@@ -6,6 +6,7 @@ import com.goofy.goofyaddons.features.bookflipper.BazaarFlipper.State;
 import com.goofy.goofyaddons.features.bookflipper.helper.Book;
 import com.goofy.goofyaddons.features.bookflipper.helper.Task;
 import com.goofy.goofyaddons.features.profit.TradeReceipts;
+import com.goofy.goofyaddons.features.transaction.RecoveryRules;
 
 /**
  * The irreversible half of entering a book order: the selected price, the confirmation
@@ -73,7 +74,7 @@ final class BookPlacement {
             ctx.safetyHalt("Book buy schedule is incompatible with submission; no confirmation clicked."); return false;
         }
         if (task == null || confirmationSelling != sale || !ctx.tasks().contains(task)
-                || ctx.now() - confirmationSelectedAt > 30000 || !sale && task != ctx.activeTask()) {
+                || ctx.now() - confirmationSelectedAt > RecoveryRules.SELECTION_EXPIRY_MS || !sale && task != ctx.activeTask()) {
             ctx.safetyHalt("Book confirmation has no matching price-selection intent."); return false;
         }
         var stack = ctx.menu().slot(13);
@@ -145,7 +146,7 @@ final class BookPlacement {
     void verify(BookContext ctx) {
         Task task = submittedTask;
         if (task == null) { ctx.safetyHalt("Book submission intent missing; ownership retained."); return; }
-        if (ctx.now() - submittedAt < 2000) return;
+        if (ctx.now() - submittedAt < RecoveryRules.ORDER_SETTLE_MS) return;
         if (!ctx.screenOpen()) {
             ctx.clock().start(ctx.delay());
             if (ctx.clock().shouldFire()) { ctx.actions().command("managebazaarorders"); ctx.clock().stop(); }

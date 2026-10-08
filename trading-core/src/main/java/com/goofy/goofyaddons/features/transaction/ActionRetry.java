@@ -1,12 +1,18 @@
-package com.goofy.goofyaddons.features.bookflipper.helper;
+package com.goofy.goofyaddons.features.transaction;
 
 import com.goofy.goofyaddons.menu.*;
 import com.goofy.goofyaddons.utils.Chat;
 import java.util.List;
 import java.util.Locale;
 
-/** Retry only a still-unapplied action after a quiet, stable observation window. */
-public final class BookActionRetry {
+/**
+ * Retry only a still-unapplied action after a quiet, stable observation window.
+ *
+ * <p>Shared by the book and general engines so a click is repeated under one rule: the
+ * caller proves nothing changed since it was sent, the menu stayed still, and the retry
+ * budget is not spent. A placement or cancellation confirmation is never retried here.
+ */
+public final class ActionRetry {
     private int slot, retries;
     private boolean shift;
     private long sentAt, blockedUntil, stableSince;

@@ -4,6 +4,7 @@ import com.goofy.goofyaddons.features.TradingSafety;
 import com.goofy.goofyaddons.features.bookflipper.BazaarFlipper.State;
 import com.goofy.goofyaddons.features.bookflipper.helper.BookSaleSettlement;
 import com.goofy.goofyaddons.features.bookflipper.helper.Task;
+import com.goofy.goofyaddons.features.transaction.RecoveryRules;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +18,6 @@ import java.util.List;
  * its receipt or the order's verified removal.
  */
 final class BookSell {
-    private static final long SALE_RECEIPT_GRACE_MS = 10_000;
-
     void sell(BookContext ctx) {
         Task task = ctx.taskInState(Task.BookState.SELL);
         if (task == null) {
@@ -136,7 +135,7 @@ final class BookSell {
         var claim = ctx.claim();
         var settlement = BookSaleSettlement.check(orderPresent,
                 !ctx.scanner().findLoreInv(output(task)).isEmpty(),
-                claim.saleReceipt(), ctx.now() - claim.saleClaimAt(), SALE_RECEIPT_GRACE_MS);
+                claim.saleReceipt(), ctx.now() - claim.saleClaimAt(), RecoveryRules.RECEIPT_GRACE_MS);
         if (settlement == BookSaleSettlement.Result.COMPLETE) {
             complete(ctx, task);
             ctx.state(State.IDLE);

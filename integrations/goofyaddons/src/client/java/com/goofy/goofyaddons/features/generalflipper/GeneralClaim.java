@@ -1,6 +1,6 @@
 package com.goofy.goofyaddons.features.generalflipper;
 
-import com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry;
+import com.goofy.goofyaddons.features.transaction.ActionRetry;
 
 /**
  * Claiming goods or coins from an order in the orders menu.
@@ -10,7 +10,7 @@ import com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry;
  * basis of a missing acknowledgement.
  */
 final class GeneralClaim {
-    private final BookActionRetry retry = new BookActionRetry();
+    private final ActionRetry retry = new ActionRetry();
     private String title, lore;
     private int slot;
 

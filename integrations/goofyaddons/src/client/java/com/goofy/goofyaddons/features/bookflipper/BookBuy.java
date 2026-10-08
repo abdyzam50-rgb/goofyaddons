@@ -2,6 +2,8 @@ package com.goofy.goofyaddons.features.bookflipper;
 
 import com.goofy.goofyaddons.features.bookflipper.BazaarFlipper.State;
 import com.goofy.goofyaddons.features.bookflipper.helper.Task;
+import com.goofy.goofyaddons.features.transaction.ProductIdentity;
+import com.goofy.goofyaddons.features.transaction.RecoveryRules;
 
 import java.util.List;
 
@@ -28,8 +30,8 @@ final class BookBuy {
             signSubmittedAt = 0; signRestarts = 0;
             return true;
         }
-        if (ctx.now() - signSubmittedAt >= 8000) {
-            if (signRestarts >= 2) { ctx.safetyHalt("Book quantity input did not advance after two navigation restarts; order retained."); return false; }
+        if (ctx.now() - signSubmittedAt >= RecoveryRules.INPUT_RESTART_MS) {
+            if (signRestarts >= RecoveryRules.MAX_INPUT_RESTARTS) { ctx.safetyHalt("Book quantity input did not advance after two navigation restarts; order retained."); return false; }
             signRestarts++; signSubmittedAt = 0; ctx.placement().abandonConfirmation();
             ctx.actions().closeMenu(); ctx.clock().stop();
             ctx.services().event("WARN", "books.input_navigation_restart", java.util.Map.of("trade", ctx.activeTask().getProfitTradeId(), "attempt", signRestarts));
@@ -53,8 +55,9 @@ final class BookBuy {
             ctx.navigationClick(slots.getFirst()); return;
         }
 
-        if (ctx.containerNameCheck(task.getBook().name())) ctx.clock().start(ctx.delay());
-        if (ctx.containerNameCheck(task.getBook().name()) && ctx.scanner().isMenuLoaded(35) && ctx.clock().shouldFire()) {
+        boolean productPage = productPage(ctx, task);
+        if (productPage) ctx.clock().start(ctx.delay());
+        if (productPage && ctx.scanner().isMenuLoaded(35) && ctx.clock().shouldFire()) {
             if (task.instaBuy) {
                 ctx.safetyHalt("Instant book purchases need manual confirmation; order retained."); return;
             }
@@ -124,6 +127,18 @@ final class BookBuy {
             }
             ctx.state(State.VERIFY_PLACEMENT);
         }
+    }
+
+    /**
+     * The product page for this route's input book. A full title is accepted as before; a
+     * truncated breadcrumb only when the icon and the buy control both name the exact book,
+     * and only on a product-sized page, never the larger search results.
+     */
+    private static boolean productPage(BookContext ctx, Task task) {
+        if (ctx.containerNameCheck(task.getBook().name())) return true;
+        var menu = ctx.menu();
+        return ctx.screenOpen() && menu != null && menu.containerEnd() == 36
+                && ProductIdentity.truncatedProductPage(menu, task.getBook().getRomanLevel(task.getBook().level()), 15);
     }
 
     private void writeAmount(BookContext ctx, Task task) {

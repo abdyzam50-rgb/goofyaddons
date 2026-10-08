@@ -8,7 +8,7 @@ import com.goofy.goofyaddons.features.TradingSafety;
 import com.goofy.goofyaddons.features.TransactionWatchdog;
 import com.goofy.goofyaddons.features.bookflipper.helper.BookCombiner;
 import com.goofy.goofyaddons.features.bookflipper.helper.BookRetirement;
-import com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry;
+import com.goofy.goofyaddons.features.transaction.ActionRetry;
 import com.goofy.goofyaddons.features.bookflipper.helper.BookPricePolicy;
 import com.goofy.goofyaddons.features.bookflipper.helper.BookSellCancellation;
 import com.goofy.goofyaddons.features.bookflipper.helper.InventoryMemory;
@@ -147,7 +147,7 @@ public class BazaarFlipper implements Feature {
 
     void soldNotice(String message) {if(running&&!paused&&retiringTask!=null)retirement.receipt(retiringTask,message);}
     void slowdownNotice(String message) {
-        if (!running || paused || !BookActionRetry.slowdownMessage(message)) return;
+        if (!running || paused || !ActionRetry.slowdownMessage(message)) return;
         long now=world.now();navigationRetry.slowdown(now);
         if(bookCombiner.pending()) {bookCombiner.slowdown(now);services.event("WARN","books.anvil_slowdown",java.util.Map.of("phase",bookCombiner.progress()));}
         if(bookTransfer.pending()) {bookTransfer.slowdown(now);services.event("WARN","books.transfer_slowdown",java.util.Map.of("state",state.name()));}
@@ -1060,7 +1060,7 @@ public class BazaarFlipper implements Feature {
             return;
         }
         tick++;
-        if (tick != 1200) return;
+        if (tick != com.goofy.goofyaddons.features.transaction.RecoveryRules.CLAIM_ACKNOWLEDGEMENT_TICKS) return;
         initSelfRecovery();
     }
 

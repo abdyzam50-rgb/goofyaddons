@@ -43,7 +43,7 @@ final class GeneralSell implements GeneralOrderEntry.Side {
         if (TradingSafety.saleComplete(trade.claimPending, trade.receipt, ctx.findOrder(true) < 0, ctx.itemCount(ctx.active().item.id()))) {
             if (!ctx.recordSale(trade.claimUnits, trade.claimedProceeds)) return;
             ctx.completePosition();
-        } else if (ctx.now() - ctx.stepSince() < 10000) {
+        } else if (ctx.now() - ctx.stepSince() < com.goofy.goofyaddons.features.transaction.RecoveryRules.RECEIPT_GRACE_MS) {
             ctx.claim().retry(ctx);
         } else {
             ctx.fail("Sale claim was not confirmed by its receipt and inventory/order updates; position retained.");
