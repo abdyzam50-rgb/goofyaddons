@@ -1,7 +1,7 @@
 # Automatic shared gameplay collector
 
-The mod sends completed gameplay outcomes to the local companion when
-`marketAnalysis.dashboardEnabled` is enabled. Enrolled companions automatically
+The combined mod sends a trade-only local feed when contributor uploads are
+enabled; the optional account dashboard is independent. Enrolled companions automatically
 upload a strict public projection every five minutes. This Cloudflare Worker
 validates and stores it in D1, then publishes a bounded seven-day dataset every
 15 minutes to `gameplay-data:community-history.json` in
@@ -85,19 +85,52 @@ creates the `gameplay-data` branch when needed and writes only its dataset file.
 It does not update master or refactor. Avoid edits to this file from other
 writers; a concurrent commit failure retries on the next scheduled run.
 
-For another tester, add a different enrollment label and replace the Worker's
-`CONTRIBUTOR_HASHES` secret with the updated file. To revoke uploads:
+For another tester, deploy the updated Worker and use a separate
+`CONTRIBUTOR_HASHES_EXTRA` secret. Keep the existing `CONTRIBUTOR_HASHES` untouched.
+Both lists authorize uploads independently. `/health` reports
+`additionalContributorKeysSupported: true` after the new code is deployed.
+
+Add/import testers using the helper, then set:
+
+```sh
+npx wrangler@4.147.0 secret put CONTRIBUTOR_HASHES_EXTRA
+```
+
+On a phone, add a new **Secret** with that name through the Worker settings and
+paste the new hash array. Original owner approvals remain active. Invalid extra
+lists do not disable valid original keys.
+
+To revoke an extra-list tester:
 
 ```sh
 node enroll.mjs revoke tester-01
-npx wrangler@4.147.0 secret put CONTRIBUTOR_HASHES
+npx wrangler@4.147.0 secret put CONTRIBUTOR_HASHES_EXTRA
 ```
 
-Replace the secret with the updated file. Revocation blocks future uploads; it
+Replace the extra list with the updated file. Keys in the original list remain
+approved independently; removing a duplicate from only one list does not revoke it.
+Revocation blocks future uploads; it
 does not erase public Git history or already published samples. Never put a
 shared repository token in the companion ZIP or mod.
 
-## Tester: enroll once
+## Tester: mod settings
+
+Combined A* mod 0.2.5+ includes **G → Macros → Shared gameplay learning**. Paste the
+private owner-approved contributor key, enable uploads and save. There is no terminal
+setup for testers. See [the shared-learning guide](../../docs/SHARED-LEARNING.md).
+
+Keys from external generators can be imported by the owner:
+
+```powershell
+node enroll.mjs import tester-01 "C:\private\tester-01.key"
+```
+
+Then update the updated Worker's `CONTRIBUTOR_HASHES_EXTRA` secret with the complete
+generated tester list, preserving the original owner secret. The supported key format is 32–128 ASCII letters,
+numbers, hyphens or underscores. Approval remains owner-only.
+
+## Tester: legacy standalone companion
+
 
 Keep mod 1.3.52 or newer and install companion 1.3.53 or newer. Stop the companion.
 From the extracted `bazaar-calc` folder, PowerShell can read the enrollment key

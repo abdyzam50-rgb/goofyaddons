@@ -8,3 +8,7 @@ CREATE TABLE IF NOT EXISTS samples (
 );
 CREATE INDEX IF NOT EXISTS samples_received ON samples(contributor,received_at);
 CREATE INDEX IF NOT EXISTS samples_completed ON samples(completed_at);
+CREATE TABLE IF NOT EXISTS publisher_status (
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ state TEXT NOT NULL
+);

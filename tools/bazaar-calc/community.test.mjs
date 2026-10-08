@@ -59,13 +59,26 @@ test('collector publishes only the data branch, preserves code branches and skip
    else if(path==='/git/ref/heads/master')value={object:{sha:'base'}};
    else if(path==='/git/refs'){assert.deepEqual(JSON.parse(opts.body),{ref:'refs/heads/gameplay-data',sha:'base'});branch=true;}
    else if(path==='/contents/community-history.json'&&opts.method==='GET'){if(!saved)return new Response('{}',{status:404});value={sha:'file-sha',content:btoa(saved)};}
-   else if(path==='/contents/community-history.json'&&opts.method==='PUT'){const body=JSON.parse(opts.body);assert.equal(body.branch,'gameplay-data');saved=atob(body.content);validateDataset(JSON.parse(saved),now);}
+   else if(path==='/contents/community-history.json'&&opts.method==='PUT'){const body=JSON.parse(opts.body);assert.equal(body.branch,'gameplay-data');saved=atob(body.content);validateDataset(JSON.parse(saved),now);value={commit:{sha:'a'.repeat(40),html_url:'https://github.com/abdyzam50-rgb/goofyaddons/commit/'+ 'a'.repeat(40)}};}
    else throw new Error('Unexpected GitHub endpoint');
    return Response.json(value);
   };
   assert.equal((await publish(env,{now,fetchImpl:fake})).changed,true);
   assert.equal((await publish(env,{now:now+1000,fetchImpl:fake})).changed,false);
+  const status=await(await handleRequest(new Request('https://collector.test/v1/publishing-status'),env,now+2000)).json();
+  assert.equal(status.result,'UNCHANGED');assert.equal(status.lastCommitAt,now);assert.equal(status.lastSuccessAt,now+1000);
+  assert.equal(status.commitSha,'a'.repeat(40));assert.equal(status.pendingSamples,0);assert.equal(status.publishedSamples,1);
+  assert.ok(status.nextScheduledAt>now+2000);assert.ok(!JSON.stringify(status).includes(token));assert.ok(!JSON.stringify(status).includes(await hash(token)));
   assert.equal(calls.filter(c=>c.method==='PUT').length,1);assert.ok(!saved.includes(token));assert.ok(!saved.includes('private-receipt'));
+ }finally{db.close();}
+});
+test('failed publisher attempts are visible without leaking credentials and newer uploads remain pending',async()=>{
+ const db=new D1(),env=await environment(db);try {
+  await new Store(db).accept(await hash(token),await exportSamples([source()],'x'.repeat(64),now),now);
+  await assert.rejects(publish(env,{now,fetchImpl:async()=>new Response('secret must not be reported',{status:403})}),/HTTP 403/);
+  const status=await(await handleRequest(new Request('https://collector.test/v1/publishing-status'),env,now+1000)).json();
+  assert.equal(status.result,'FAILED');assert.equal(status.error,'HTTP 403');assert.equal(status.pendingSamples,1);assert.equal(status.lastSuccessAt,undefined);
+  const old=await new Store(db).dataset(now-1);assert.equal(old.samples.length,0,'Uploads after the snapshot start cannot be marked published');
  }finally{db.close();}
 });
 test('companion automatically uploads, retries failures, persists acknowledgements and imports fleet corrections without private profit',async()=>{
@@ -112,4 +125,105 @@ test('owner enrollment writes private keys outside the installation, prevents ov
   enroll(dir,'tester-02');enroll(dir,'tester-01',{revoke:true});assert.equal(JSON.parse(readFileSync(first.hashesFile,'utf8')).length,1);
   assert.throws(()=>enroll(dir,'../outside'));
  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('owner can import externally generated keys, rejects duplicate or invalid keys and revokes imported access',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'goofy-import-'));const db=new D1();try {
+  const imported='0123456789abcdef'.repeat(4),entry=enroll(dir,'external-01',{token:imported});
+  assert.equal(readFileSync(entry.keyFile,'utf8').trim(),imported);
+  const approved=JSON.parse(readFileSync(entry.hashesFile,'utf8'));assert.deepEqual(approved,[await hash(imported)]);
+  assert.throws(()=>enroll(dir,'duplicate',{token:imported}));assert.throws(()=>enroll(dir,'invalid',{token:'too-short'}));
+  assert.deepEqual(JSON.parse(readFileSync(entry.hashesFile,'utf8')),approved);
+  const env=await environment(db);env.CONTRIBUTOR_HASHES=JSON.stringify(approved);
+  const body={protocol:COMMUNITY_PROTOCOL,samples:await exportSamples([source()],'x'.repeat(64),now)};
+  assert.equal((await handleRequest(request(body,imported),env,now)).status,200);
+  enroll(dir,'external-01',{revoke:true});env.CONTRIBUTOR_HASHES=readFileSync(entry.hashesFile,'utf8');
+  assert.equal((await handleRequest(request(body,imported),env,now)).status,403);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('keyless settings retain the chosen public repository and download learning without uploading',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'goofy-keyless-'));try {
+  configure(dir,{endpoint:'https://collector.test',repository:'owner/shared-repo',sharingEnabled:false});
+  const h=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now});h.ingest([source()]);const calls=[];
+  const sync=new CommunitySync({executions:h,directory:dir,now:()=>now,fetchImpl:async url=>{
+   calls.push(url);return Response.json({protocol:COMMUNITY_PROTOCOL,generatedAt:now,samples:[]});
+  }});
+  await sync.tick();assert.deepEqual(calls,['https://raw.githubusercontent.com/owner/shared-repo/gameplay-data/community-history.json']);
+  assert.equal(sync.status().sharingEnabled,false);assert.equal(sync.status().error,null);
+  assert.ok(!JSON.stringify(sync.status()).includes(token));
+  assert.throws(()=>configure(dir,{endpoint:'https://collector.test',sharingEnabled:true}));
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('trade-only HTTP feed works without an account dashboard and rejects stale or cross-origin packets',async()=>{
+ const {createCompanion}=await import('./server.mjs');
+ const dir=mkdtempSync(join(tmpdir(),'goofy-feed-'));let ticks=0;
+ const executions=new ExecutionHistory({file:join(dir,'history.json')});
+ const server=createCompanion({executions,community:{tick(){ticks++;}}});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ try {
+  const current=Date.now(),sample={...source(),completedAt:current-1000};
+  const body={protocol:'goofy-executions/1',sentAt:current,executions:[sample]};
+  const url=`http://127.0.0.1:${server.address().port}/v1/executions`;
+  const post=(packet,extra={})=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-Goofy-Dashboard':'local-v1',...extra},body:JSON.stringify(packet)});
+  assert.equal((await post(body,{Origin:'https://other.test'})).status,403);assert.equal(executions.rows.size,0);
+  assert.equal((await post({...body,sentAt:current-60000})).status,400);assert.equal(executions.rows.size,0);
+  assert.equal((await post({...body,token})).status,400);assert.equal(executions.rows.size,0);
+  assert.equal((await post(body)).status,200);assert.equal(executions.rows.size,1);assert.equal(ticks,1);
+  assert.ok(!readFileSync(join(dir,'history.json'),'utf8').includes('Private name'));
+  assert.equal((await post(body)).status,200);assert.equal(executions.rows.size,1);
+ }finally{await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
+});
+
+test('additional contributor secret approves new keys while preserving original owner approvals',async()=>{
+ const db=new D1();try {
+  const env=await environment(db),extraKey='synthetic-extra-'.padEnd(64,'x');
+  const ownerList=env.CONTRIBUTOR_HASHES;
+  env.CONTRIBUTOR_HASHES_EXTRA=JSON.stringify([await hash(extraKey)]);
+  const body={protocol:COMMUNITY_PROTOCOL,samples:await exportSamples([source()],'x'.repeat(64),now)};
+  assert.equal((await handleRequest(request(body),env,now)).status,200);
+  assert.equal((await handleRequest(request(body,extraKey),env,now)).status,200);
+  assert.equal(env.CONTRIBUTOR_HASHES,ownerList);
+  assert.equal(db.sql.prepare('SELECT count(DISTINCT contributor) AS n FROM samples').get().n,2);
+  env.CONTRIBUTOR_HASHES_EXTRA='[]';
+  assert.equal((await handleRequest(request(body,extraKey),env,now)).status,403);
+  assert.equal((await handleRequest(request(body),env,now)).status,200);
+  assert.equal(env.CONTRIBUTOR_HASHES,ownerList);
+  const health=await (await handleRequest(new Request('https://collector.test/health'),env,now)).json();
+  assert.equal(health.additionalContributorKeysSupported,true);assert.equal(health.ready,true);
+  assert.ok(!JSON.stringify(health).includes(ownerList));assert.ok(!JSON.stringify(health).includes(token));
+ }finally{db.close();}
+});
+
+test('malformed or raw-key extra secrets never authorize upload and do not disable a valid owner list',async()=>{
+ const db=new D1();try {
+  const env=await environment(db),unknown='unapproved-contributor-'.padEnd(64,'u');
+  const body={protocol:COMMUNITY_PROTOCOL,samples:await exportSamples([source()],'x'.repeat(64),now)};
+  for(const bad of ['malformed','{}',JSON.stringify([unknown]),JSON.stringify([await hash(unknown),null]),JSON.stringify(Array(1001).fill('a'.repeat(64)))]) {
+   env.CONTRIBUTOR_HASHES_EXTRA=bad;
+   assert.equal((await handleRequest(request(body),env,now)).status,200);
+   assert.equal((await handleRequest(request(body,unknown),env,now)).status,503);
+  }
+  assert.equal(db.sql.prepare('SELECT count(*) AS n FROM samples').get().n,1);
+  env.CONTRIBUTOR_HASHES_EXTRA=JSON.stringify([await hash(unknown)]);env.CONTRIBUTOR_HASHES='malformed';
+  assert.equal((await handleRequest(request(body,unknown),env,now)).status,200);
+  delete env.CONTRIBUTOR_HASHES;
+  assert.equal((await handleRequest(request(body,unknown),env,now)).status,200);
+  const health=await (await handleRequest(new Request('https://collector.test/health'),env,now)).json();assert.equal(health.ready,true);
+ }finally{db.close();}
+});
+
+test('browser-editor collector bundle has no imports and preserves both approval lists',async()=>{
+ const {standaloneSource}=await import('../gameplay-collector/package-update.mjs');
+ const code=standaloneSource();assert.ok(!/^import /m.test(code));
+ const bundled=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+ const db=new D1();try {
+  const env=await environment(db),extra='browser-extra-'.padEnd(64,'z');env.CONTRIBUTOR_HASHES_EXTRA=JSON.stringify([await hash(extra)]);
+  const body={protocol:COMMUNITY_PROTOCOL,samples:await exportSamples([source()],'x'.repeat(64),now)};
+  assert.equal((await bundled.handleRequest(request(body),env,now)).status,200);
+  assert.equal((await bundled.handleRequest(request(body,extra),env,now)).status,200);
+  const health=await (await bundled.handleRequest(new Request('https://collector.test/health'),env,now)).json();
+  assert.equal(health.additionalContributorKeysSupported,true);
+ }finally{db.close();}
 });

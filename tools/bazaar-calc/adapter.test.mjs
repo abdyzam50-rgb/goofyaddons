@@ -9,7 +9,7 @@ export const product = (bid, ask, week = 100000) => ({ sell_summary: [{ pricePer
     buyVolume: 1000, sellVolume: 1000, buyOrders: 10, sellOrders: 10 } });
 export const packet = () => ({ protocol: PROTOCOL, requestId: 'test-1', market: { success: true, lastUpdated: now,
   products: { ENCHANTED_COAL: product(100, 130), ENCHANTMENT_OVERLOAD_4: product(100, 110), ENCHANTMENT_OVERLOAD_5: product(250, 280) } },
-  constraints: { mode: 'BOTH', availableCapital: 10000, inventoryCapacity: 32, maxRecommendations: 10, maxHistoryAgeHours: 48,
+  constraints: { accountSkills:{enchanting:60},mode: 'BOTH', availableCapital: 10000, inventoryCapacity: 32, maxRecommendations: 10, maxHistoryAgeHours: 48,
     taxPercentage: 1.25, bookMinProfit: 0, checkSeconds: 20, bookCheckSeconds: 180, clickDelayMs: 350, bookSlots: 2, generalSlots: 3,
     general: { maxCoinsPerItem: 10000, maxItemsPerOrder: 16, minProfitPerBatch: 0, minMarginPercentage: 0, minWeeklyVolume: 0 },
     excludedProducts: [], configuredBookRoutes: ['ENCHANTMENT_OVERLOAD:4:5'], configuredGeneralItems: ['ENCHANTED_COAL'] } });
@@ -141,4 +141,10 @@ test('live ranking catalog stays broad while execution has no slots, no cash or 
  assert.equal(result.rankingReport.requestId,result.requestId);assert.equal(result.rankingReport.marketAt,result.marketAt);
  assert.equal(result.rankingReport.rankingReport,undefined);
  body.rankingConstraints.availableCapital=Infinity;assert.throws(()=>run(body),/capital/);
+});
+
+ test('book unlock gate excludes below-minimum and unknown skills but includes the exact minimum',()=>{
+ for(const level of [undefined,32,33,34]) {const b=packet();b.constraints.accountSkills=level===undefined?{}:{enchanting:level};
+ const r=run(b);assert.equal(r.rows.some(x=>x.kind==='BOOK'),level>=33);assert.ok(r.rows.some(x=>x.kind==='GENERAL'));}
+ const b=packet();b.constraints.accountSkills={enchanting:'33'};assert.throws(()=>run(b),/account skills/);
 });

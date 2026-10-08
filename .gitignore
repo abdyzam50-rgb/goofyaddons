@@ -1,46 +1,16 @@
-# gradle
-
 .gradle/
 build/
-out/
-classes/
+*.class
+client/run/
 
-# eclipse
-
-*.launch
-
-# idea
-
-.idea/
-*.iml
-*.ipr
-*.iws
-
-# vscode
-
-.settings/
-.vscode/
-bin/
-.classpath
-.project
-
-# macos
-
-*.DS_Store
-
-# fabric
-
-run/
-
-# java
-
-hs_err_*.log
-replay_*.log
-*.hprof
-*.jfr
-
-# Runtime and test logs
-logs/
-
-# Local Bazaar market observations
-tools/bazaar-calc/data/
+client/logs/
+# Contributor credentials and local collector runtime state never belong in the repository.
+**/node_modules/
+**/.wrangler/
+**/.env
+**/.env.*
+**/.dev.vars
+**/contributor-hashes.json
+**/contributor-keys/
+# Local Discord pairing material is never distributed.
+**/goofyaddons-discord.key

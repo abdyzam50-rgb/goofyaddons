@@ -1,0 +1,40 @@
+plugins {
+    id 'java-library'
+    id 'java-test-fixtures'
+}
+
+group = 'com.goofy.goofyaddons'
+version = '0.1.1'
+
+repositories { mavenCentral() }
+
+java {
+    // Reuse the client's installed JDK; release keeps the foundation on Java 21 APIs.
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.withType(JavaCompile).configureEach { options.release = 21 }
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') { useJUnitPlatform() }
+
+// The foundation may only depend on the JDK. Keep this rule executable: tests
+// may use JUnit, but adding a client, JSON, HTTP library or other production
+// dependency must fail check rather than silently undoing the boundary.
+tasks.register('verifyDependencyBoundary') {
+    doLast {
+        def external = configurations.compileClasspath.files + configurations.runtimeClasspath.files
+        if (!external.empty) {
+            throw new GradleException("trading-core must remain JDK-only; found: ${external}")
+        }
+    }
+}
+tasks.named('check') { dependsOn tasks.named('verifyDependencyBoundary') }
+
+tasks.named('processResources') {
+    from('../integrations/goofyaddons/LICENSE') { rename { 'LICENSE_goofyaddons' } }
+}

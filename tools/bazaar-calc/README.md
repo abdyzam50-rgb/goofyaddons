@@ -1,4 +1,14 @@
+> **Combined A* mod 0.2.4+:** this calculator ships inside the mod and starts with
+> Minecraft. Install only the combined mod JAR and Fabric API, then use
+> **G → Macros → Dashboard**. Node is provisioned automatically when needed.
+> The commands below remain available for standalone/development use.
+
 # Local Bazaar Calc companion
+
+The calculator is also prepared as a **public website that requires no visitor
+installation**. See [Public website](../../docs/PUBLIC-WEBSITE.md). Deployment
+serves the full interface from the existing Cloudflare Worker; the local companion
+below is optional for mod users.
 
 Runs the real Bazaar Calc shared engine beside GoofyAddons. The mod sends only a
 public Bazaar snapshot and trading constraints to localhost; this process returns
@@ -55,8 +65,8 @@ switch and current/previous storage observations. No web build or npm install is
 needed. `dashboard/` contains the page and assets; `dashboard-state.mjs` maintains
 the received account view, and `collector.mjs` maintains public market history.
 
-Set `marketAnalysis.dashboardEnabled` to `true`, stop with K, then run
-`/goofyreload` (mod 1.3.26+) or press the Reload configuration key, backslash by
+Set `marketAnalysis.dashboardEnabled` to `true`, stop with the trading toggle (F6 by default), then run
+`.a* goofyaddon reload` or press the Reload configuration key, F8 by
 default and rebindable in Controls. The new reload message reports the exact file
 path and dashboard/analysis ON/OFF status. It defaults to **false**. The mod then sends observed account state to
 localhost approximately every two seconds, even while trading is stopped.
@@ -188,7 +198,7 @@ events and shadow comparisons provide evidence for the later calibration stage.
 `market.shadow_recommendations` includes the report, legacy eligible route rankings,
 capital/capacity and exclusions from the same snapshot. `market.shadow_unavailable`
 records a bridge or validation problem; it does not pause trading. Detailed
-`/goofydebug export` snapshots include the analysis status. Stopped/reloaded/mode-
+`.a* goofyaddon debug export` snapshots include the analysis status. Stopped/reloaded/mode-
 changed requests are discarded; expired recommendations are not exposed as fresh.
 
 ```
@@ -649,3 +659,15 @@ https://github.com/abdyzam50-rgb/goofyaddons/blob/master/tools/gameplay-collecto
 This requires a deployed collector; installing the companion alone does not
 activate uploads or create the hosted service. Keep mod 1.3.52; this update
 changes the companion only.
+
+## Optional Discord status and player controls
+
+The combined A* mod supports a paired Discord bot beside this companion. Follow [the setup guide](../../docs/DISCORD.md). Credentials live in the persistent `discord-settings.json`, and Minecraft receives only a separate pairing key. Run with `--no-discord` to temporarily disable the bot without changing its saved settings.
+
+## Full calculator without a macro
+
+Open http://127.0.0.1:8789/calculator/ or use the dashboard’s Full calculator link.
+All seven upstream flip categories and the portfolio planner are included. Enter
+a username, choose a profile, and use its purse and published unlocks, or enter
+a budget manually. Lookup requires the owner to provision the private shared
+Worker; users need no individual Hypixel key. See [Account calculator](../../docs/ACCOUNT-CALCULATOR.md).

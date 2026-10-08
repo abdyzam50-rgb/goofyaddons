@@ -1,91 +1,26 @@
-plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
-	id 'maven-publish'
-}
+subprojects {
+    apply plugin: 'java-library'
 
-version = project.mod_version
-group = project.maven_group
+    repositories {
+        mavenCentral()
+    }
 
-repositories {
-	maven { url = "https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1" }
-}
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
 
-loom {
-	splitEnvironmentSourceSets()
-	mods {
-		"goofyaddons" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
-	}
-}
+    dependencies {
+        testImplementation platform('org.junit:junit-bom:5.11.4')
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
 
-fabricApi {
-	configureDataGeneration {
-		client = true
-	}
-}
-
-dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-
-	// DevAuth - only active at runtime, not included in release jar
-	runtimeOnly "me.djtheredstoner:DevAuth-fabric:1.2.2"
-	testImplementation platform('org.junit:junit-bom:5.12.2')
-	testImplementation 'org.junit.jupiter:junit-jupiter'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-sourceSets.test.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
-sourceSets.test.runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath
-
-tasks.named('test') {
-	useJUnitPlatform { excludeTags 'calculatorIntegration' }
-}
-
-// Optional real Java -> Node calculator check; the ordinary Java suite needs no Node runtime.
-tasks.register('calculatorIntegrationTest', Test) {
-	testClassesDirs = sourceSets.test.output.classesDirs
-	classpath = sourceSets.test.runtimeClasspath
-	useJUnitPlatform { includeTags 'calculatorIntegration' }
-}
-
-processResources {
-	from('tools/bazaar-calc/mutation-products.json') { into 'goofyaddons' }
-	from('tools/bazaar-calc/automatic-products.json') { into 'goofyaddons' }
-	def version = project.version
-	inputs.property "version", version
-	filesMatching("fabric.mod.json") {
-		expand "version": version
-	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 25
-}
-
-java {
-	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
-}
-
-jar {
-	def projectName = project.name
-	inputs.property "projectName", projectName
-	from("LICENSE") {
-		rename { "${it}_$projectName" }
-	}
-}
-
-publishing {
-	publications {
-		create("mavenJava", MavenPublication) {
-			from components.java
-		}
-	}
-	repositories {
-	}
+    tasks.named('test') {
+        useJUnitPlatform()
+        testLogging {
+            events 'passed', 'skipped', 'failed'
+        }
+    }
 }

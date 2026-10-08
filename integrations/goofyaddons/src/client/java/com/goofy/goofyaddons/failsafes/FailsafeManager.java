@@ -1,0 +1,27 @@
+package com.goofy.goofyaddons.failsafes;
+
+import com.goofy.goofyaddons.features.FeatureManager;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class FailsafeManager {
+    List<Failsafe> failsafes = new ArrayList<>();
+
+    public static FailsafeManager INSTANCE = new FailsafeManager();
+
+    private FailsafeManager() {
+        // Server transfers are observed by TransferRecovery, without forced Hub/island detours.
+    }
+
+    public void reset() {
+        failsafes.forEach(Failsafe::reset);
+    }
+
+    public void onTick() {
+        if (!FeatureManager.INSTANCE.isMacroRunning()) return;
+        failsafes.stream().forEach(failsafe -> failsafe.onTick());
+    }
+
+
+}
