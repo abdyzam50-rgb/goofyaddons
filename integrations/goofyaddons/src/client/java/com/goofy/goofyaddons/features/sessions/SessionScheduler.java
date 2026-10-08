@@ -4,6 +4,7 @@ import com.goofy.goofyaddons.config.GoofyConfig;
 import com.goofy.goofyaddons.diagnostics.Diagnostics;
 import com.goofy.goofyaddons.features.FeatureManager;
 import com.goofy.goofyaddons.features.CapitalManager;
+import com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source;
 import com.goofy.goofyaddons.utils.ChatUtils;
 import com.goofy.goofyaddons.utils.ScoreboardUtils;
 import com.google.gson.*;
@@ -41,8 +42,11 @@ public final class SessionScheduler {
                 .then(ClientCommands.literal("on").executes(context->{manualStart();return 1;}))
                 .then(ClientCommands.literal("off").executes(context->{manualStop();return 1;}))));
     }
-    public void manualStart() {
-        if(!settings().enabled){FeatureManager.INSTANCE.startConfigured();return;}
+    public void manualStart() { manualStart(Source.MANUAL); }
+
+    /** A start asked for by a person, at the keyboard or through the remote control. */
+    public void manualStart(Source source) {
+        if(!settings().enabled){FeatureManager.INSTANCE.startConfigured(source);return;}
         if(cycle.armed())return;
         Minecraft mc=Minecraft.getInstance();var current=mc.getCurrentServer();
         if(current==null || mc.player==null || mc.level==null){ChatUtils.clientMessage("Scheduled sessions require a connected multiplayer server.");return;}
@@ -55,20 +59,22 @@ public final class SessionScheduler {
                 cycle.armForRest(System.currentTimeMillis(),port);
                 if(!cycle.armed())return;
             } else {
-                FeatureManager.INSTANCE.startConfigured();
+                FeatureManager.INSTANCE.startConfigured(source);
                 if(!FeatureManager.INSTANCE.isMacroRunning())return;
                 cycle.arm(System.currentTimeMillis());
             }
             ChatUtils.clientMessage("Scheduled sessions armed: "+status());
             Diagnostics.event("INFO","sessions.armed",java.util.Map.of("zone",settings().zone().getId()));
         }catch(RuntimeException | java.io.IOException failure){
-            FeatureManager.INSTANCE.safetyPause("Cannot arm scheduled sessions; check settings and schedule seed file");
+            FeatureManager.INSTANCE.safetyPause(Source.SCHEDULE,"Cannot arm scheduled sessions; check settings and schedule seed file");
             Diagnostics.failure("sessions.arm_failed",failure);
         }
     }
-    public void manualStop() {
+    public void manualStop() { manualStop(Source.MANUAL); }
+
+    public void manualStop(Source source) {
         com.goofy.goofyaddons.features.discord.DiscordRemote.INSTANCE.cancelPending();
-        cycle.cancel("Manual stop");FeatureManager.INSTANCE.stop();
+        cycle.cancel("Manual stop");FeatureManager.INSTANCE.stop(source);
         if(Minecraft.getInstance().gui.screen() instanceof ScheduledRestScreen)Minecraft.getInstance().gui.setScreen(new TitleScreen());
     }
     public boolean tick() {
@@ -91,7 +97,7 @@ public final class SessionScheduler {
             return skip;
         }catch(RuntimeException failure) {
             cycle.cancel("Scheduled session failed; automatic reconnect cancelled");
-            FeatureManager.INSTANCE.safetyPause(cycle.reason());Diagnostics.failure("sessions.tick_failed",failure);return true;
+            FeatureManager.INSTANCE.safetyPause(Source.SCHEDULE,cycle.reason());Diagnostics.failure("sessions.tick_failed",failure);return true;
         }
     }
     private void loadSeed() throws java.io.IOException {
@@ -128,7 +134,7 @@ public final class SessionScheduler {
             return sidebar!=null && sidebar.getDisplayName().getString().toUpperCase(java.util.Locale.ROOT).contains("SKYBLOCK")
                     && new ScoreboardUtils().getPurse()>=0;
         }
-        public void stop(){FeatureManager.INSTANCE.stop();}
+        public void stop(){FeatureManager.INSTANCE.stop(Source.SCHEDULE);}
         public void disconnect(){
             if(mc().player!=null && !mc().player.containerMenu.getCarried().isEmpty())
                 throw new IllegalStateException("Cannot disconnect with an occupied cursor");
@@ -137,8 +143,8 @@ public final class SessionScheduler {
         }
         public void connect(){ConnectScreen.startConnecting(new ScheduledRestScreen(),mc(),ServerAddress.parseString(server.ip),server,false,null);}
         public void command(String command){Diagnostics.command(command);}
-        public void start(){FeatureManager.INSTANCE.startConfigured();}
-        public void block(String reason){FeatureManager.INSTANCE.safetyPause(reason);ChatUtils.clientMessage(reason);}
+        public void start(){FeatureManager.INSTANCE.startConfigured(Source.SCHEDULE);}
+        public void block(String reason){FeatureManager.INSTANCE.safetyPause(Source.SCHEDULE,reason);ChatUtils.clientMessage(reason);}
         public void scheduleCancelled(String reason){ChatUtils.clientMessage(reason+". Original stop: "+FeatureManager.INSTANCE.activity());}
     };
 }
