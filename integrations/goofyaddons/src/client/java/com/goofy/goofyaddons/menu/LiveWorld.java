@@ -20,6 +20,11 @@ public final class LiveWorld implements GameWorld {
         return minecraft.getUser() == null ? null : minecraft.getUser().getName();
     }
 
+    @Override public String playerId() {
+        var player = Minecraft.getInstance().player;
+        return player == null ? null : player.getUUID().toString();
+    }
+
     @Override public long now() { return System.currentTimeMillis(); }
 
     @Override public boolean signEditorOpen() {

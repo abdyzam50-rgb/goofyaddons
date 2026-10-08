@@ -1,18 +1,17 @@
 package com.goofy.goofyaddons.features.profit;
 
 import com.goofy.goofyaddons.diagnostics.Diagnostics;
-import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 
 /** Called on the client thread; disk errors affect reporting, never replay trades. */
 public final class ProfitTracker {
     public static final ProfitTracker INSTANCE=new ProfitTracker();
-    private final Path path=FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-profit.json");
+    private Path path;
     private ProfitLedger ledger=new ProfitLedger();
     private ExecutionLedger execution=new ExecutionLedger();
-    private final Path executionPath=path.resolveSibling("goofyaddons-execution.json");
-    private final TradeHistory history=new TradeHistory(path.resolveSibling("goofyaddons-transactions.jsonl"));
+    private Path executionPath;
+    private TradeHistory history;
     private String executionError;
     private boolean loaded;
     private String error;
@@ -20,9 +19,20 @@ public final class ProfitTracker {
     private long lastSave;
     private boolean previouslyActive;
     private ProfitTracker() {}
+    /**
+     * Loads the profile trading uses, or the current profile while none is pinned. Reports
+     * follow the profile; with none identified they are empty and nothing is written.
+     */
     private void load() {
-        if (loaded) return;
-        loaded=true;
+        Path current=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.displayPath(com.goofy.goofyaddons.features.account.AccountStorage.PROFIT);
+        if (loaded && java.util.Objects.equals(current,path)) return;
+        if (loaded && path!=null) save(); // Keep the previous profile's session timer.
+        loaded=true;path=current;error=null;executionError=null;
+        ledger=new ProfitLedger();execution=new ExecutionLedger();
+        lastTick=0;previouslyActive=false;
+        if (path==null) {executionPath=null;history=null;return;}
+        executionPath=path.resolveSibling(com.goofy.goofyaddons.features.account.AccountStorage.EXECUTION);
+        history=new TradeHistory(path.resolveSibling(com.goofy.goofyaddons.features.account.AccountStorage.TRANSACTIONS));
         try { execution=ExecutionLedger.read(executionPath); } catch(Exception bad) { executionError="Execution history unreadable; preserved"; Diagnostics.failure("execution.load_failed",bad); }
         try { ledger=ProfitLedger.read(path); }
         catch (Exception bad) { Diagnostics.failure("profit.load_failed",bad); error="Profit file unreadable; preserved"; LoggerFactory.getLogger(ProfitTracker.class).error(error,bad); }
@@ -42,6 +52,7 @@ public final class ProfitTracker {
 
     /** Durable first: the change reaches the history before any snapshot is saved. */
     private boolean record(TradeHistory.Entry entry) {
+        if (history==null) return false; // No profile: nothing may be counted.
         try { history.append(entry); return true; }
         catch (Exception bad) { reportError(bad); return false; }
     }
@@ -70,7 +81,7 @@ public final class ProfitTracker {
         }
         catch(RuntimeException bad){reportError(bad);}
     }
-    public void retire(String id){load();if(executionError!=null)return;
+    public void retire(String id){load();if(executionError!=null || path==null)return;
         try {if(execution.retire(id,System.currentTimeMillis())) {recordSample(execution.latest());execution.write(executionPath);}}
         catch(Exception bad){executionError="Execution history save failed; reporting only";Diagnostics.failure("execution.save_failed",bad);}
     }
@@ -108,15 +119,15 @@ public final class ProfitTracker {
     public java.util.List<ExecutionLedger.Active> activeExecutions() {load();return execution.active(System.currentTimeMillis());}
     public String executionError() {load();return executionError;}
     private void completeExecution(String id,String event,int units,Double proceeds,Double profit,boolean lost) {
-        if(executionError!=null)return;
+        if(executionError!=null || executionPath==null)return;
         try {var sample=execution.complete(id,event,units,proceeds,profit,System.currentTimeMillis(),lost);recordSample(sample);execution.write(executionPath);}
         catch(Exception bad){executionError="Execution history save failed; reporting only";Diagnostics.failure("execution.save_failed",bad);}
     }
     private void recordSample(ExecutionLedger.Sample sample) throws Exception {
-        if(sample!=null)history.append(TradeHistory.Entry.sample(System.currentTimeMillis(),sample));
+        if(sample!=null && history!=null)history.append(TradeHistory.Entry.sample(System.currentTimeMillis(),sample));
     }
     private void writeExecution() {
-        if(executionError!=null)return;
+        if(executionError!=null || executionPath==null)return;
         try {execution.write(executionPath);}
         catch(Exception bad){executionError="Execution history save failed; reporting only";Diagnostics.failure("execution.save_failed",bad);}
     }
@@ -129,7 +140,7 @@ public final class ProfitTracker {
         ledger.resetSession(); save(); return error==null;
     }
     private void save() {
-        if (error!=null) return;
+        if (error!=null || path==null) return;
         try { ledger.write(path); lastSave=System.nanoTime()/1000000; }
         catch (Exception bad) { reportError(bad); return; }
         // Set the history aside only when both snapshots hold everything in it.

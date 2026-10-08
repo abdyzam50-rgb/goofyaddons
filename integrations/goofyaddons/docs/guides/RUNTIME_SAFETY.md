@@ -58,3 +58,31 @@ Switching modes at a safe boundary preserves book tasks in the same world. Trave
 ## Validation and remaining limits
 
 Regression tests cover source age, missing/duplicate/paged orders, exact receipt matching, conservative capacity, holding thresholds, watchdog timing, and journal persistence/corruption. Automated tests do not validate Hypixel's live menu titles, lore, slot numbers, chat format, or network delivery behavior. Unrecognized formats pause. Supported saved book positions resume from live verified evidence in 1.3.29; legacy purchase costs remain unknown. Full automatic crash replay, multi-page order reconciliation, stack-aware optimal sizing of unknown items, and automatic loss liquidation are not implemented.
+
+## Accounts, profiles and saved files
+
+Positions, costs, profit, execution history and production jobs are kept per
+Minecraft account and SkyBlock profile, in
+`config/goofyaddons/accounts/<player>/<profile>/`. Each folder has a
+`storage.json` manifest recording the storage layout version and its owner;
+the files inside keep their existing formats. Settings and the session-schedule
+seed stay shared in `config/`.
+
+Trading starts only after the server announces the profile on join. The first
+start pins that profile until the game restarts, so positions loaded for one
+profile are never saved into another's folder; starting on a different profile
+afterwards asks for a restart.
+
+Files from before this layout (directly in `config/`) are never moved, edited or
+deleted. If they hold no open positions, the first profile to start trading
+copies them into its folder. If they hold open positions, trading waits for a
+choice: on the profile that owns them run `.a* goofyaddon profiles adopt`, or
+run `.a* goofyaddon profiles setaside` to leave them unused. A `.claimed` marker
+beside each original prevents a second profile from adopting the same positions,
+and adopted positions go through the normal read-only verification above before
+anything trades. `.a* goofyaddon profiles` shows the current state.
+
+Every ownership, cost, profit and learning change is also appended to
+`goofyaddons-transactions.jsonl` in the profile folder before its snapshot is
+saved; after a crash, the next load applies what the snapshots missed exactly
+once. This history only rebuilds records and never repeats a game action.

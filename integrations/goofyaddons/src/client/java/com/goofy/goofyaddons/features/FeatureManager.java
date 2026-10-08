@@ -22,6 +22,7 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.production.CraftingFeature crafting(){return crafting;}
     public boolean prepareCrafting(){
         if(started() || GoofyConfig.loadError()!=null)return false;
+        if(!prepareAccount(Source.MANUAL))return false;
         general.restoreBudget();return books.restoreBudget() && !general.hasStateError();
     }
     private final com.goofy.goofyaddons.features.marketanalysis.ShadowMarketAnalysis marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.ShadowMarketAnalysis();
@@ -62,6 +63,7 @@ public class FeatureManager {
     public void onTick() {
         var requirementWorld=new com.goofy.goofyaddons.menu.LiveWorld();
         if(!requirementWorld.inWorld()){if(requirementAccount!=null){clearAccountRequirements();requirementAccount=null;}return;}
+        com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.player(requirementWorld.playerId(),requirementWorld.username());
         if(!java.util.Objects.equals(requirementAccount,requirementWorld.username())){clearAccountRequirements();requirementAccount=requirementWorld.username();if(started())skillPreflight.begin();}
         if(skillPreflight.observe(requirementWorld.menu())){accountUnlocks.clear();invalidateMarketReport();}
         if(!skillPreflight.pending() && !observedSkills().isEmpty())accountUnlocks.poll(requirementWorld.username(),GoofyConfig.INSTANCE.marketAnalysis.endpoint,observedSkills(),requirementWorld.now());
@@ -116,6 +118,7 @@ public class FeatureManager {
             return;
         }
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital, GoofyConfig.INSTANCE.purseReserve);
+        if (!prepareAccount(source)) return;
         // Load both engines' exposure before any gate so capital stays reserved for both.
         boolean booksReady = books.restoreBudget();
         general.restoreBudget(); // Count persisted ordinary-item positions even in Books mode.
@@ -136,6 +139,18 @@ public class FeatureManager {
         lifecycle.running();
         if(books.recoveryPending()) {mode=GoofyConfig.INSTANCE.tradingMode;books.start();return;}
         applyMode(GoofyConfig.INSTANCE.tradingMode);
+    }
+
+    /** Pins the current SkyBlock profile's files before any journal is read. */
+    private boolean prepareAccount(Source source) {
+        var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        String reason=storage.prepare();
+        String adopted=storage.takeEvent();
+        if(adopted!=null)Diagnostics.event("INFO","account.legacy_adopted",java.util.Map.of("detail",adopted));
+        if(reason==null)return true;
+        lifecycle.refuse(source, reason, now());
+        ChatUtils.clientMessage("Cannot start: " + reason);
+        return false;
     }
 
     public void cycleMode() {

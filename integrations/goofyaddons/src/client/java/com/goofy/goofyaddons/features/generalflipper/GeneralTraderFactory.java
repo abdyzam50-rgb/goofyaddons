@@ -24,7 +24,7 @@ public final class GeneralTraderFactory {
 
     public static GeneralFlipper create(Supplier<FeatureManager> manager) {
         java.util.Objects.requireNonNull(manager);
-        var repository = new JsonGeneralOrderRepository(() -> FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-general-orders.json"));
+        var repository = new JsonGeneralOrderRepository(() -> com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.path(com.goofy.goofyaddons.features.account.AccountStorage.GENERAL_ORDERS));
         var engine = new GeneralFlipper(new LiveWorld(), new LiveActions(), repository, new GeneralFlipper.Services() {
             @Override public CapitalManager capital() {return CapitalManager.INSTANCE;}
             @Override public GeneralSettings settings() {return GoofyConfig.INSTANCE.general;}

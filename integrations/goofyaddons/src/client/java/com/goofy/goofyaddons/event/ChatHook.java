@@ -27,6 +27,7 @@ public class ChatHook {
         String text = message.getString().replaceAll("§.", "");
         if (text.startsWith("[GoofyAddons]")) return;
         if(text.startsWith("[Bazaar]")) Diagnostics.event("INFO","bazaar.receipt",java.util.Map.of("message",text));
+        com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.chat(text);
         if(text.startsWith("You are now playing on profile:") || text.startsWith("You switched to profile")) {
             com.goofy.goofyaddons.features.FeatureManager.INSTANCE.clearAccountRequirements();
             com.goofy.goofyaddons.features.FeatureManager.INSTANCE.safetyPause("Profile changed; restart trading to check account requirements");

@@ -21,7 +21,9 @@ public final class CraftingFeature implements Feature {
     public Set<String> lockedProducts(){if(recipe==null)return Set.of();var ids=new HashSet<>(recipe.ingredients().keySet());ids.add(recipe.outputId());return Set.copyOf(ids);}
     private ProductionJobs jobs()throws java.io.IOException {
         if(jobs==null) {
-            jobs=new ProductionJobs(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-production-jobs.json"));
+            var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+            if(storage.pinned()==null) {String reason=storage.prepare();if(reason!=null)throw new java.io.IOException(reason);}
+            jobs=new ProductionJobs(storage.path(com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_JOBS));
             String account=new LiveWorld().username();if(account!=null)jobs.recoverUncertain(account);
         }
         return jobs;

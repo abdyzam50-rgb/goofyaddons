@@ -28,8 +28,11 @@ public final class BookTraderFactory {
         java.util.Objects.requireNonNull(manager);
         BookOrderRepository repository=new BookOrderRepository() {
             private BookJournal delegate;
+            private java.nio.file.Path delegatePath;
             private BookJournal journal() {
-                if(delegate==null)delegate=new BookJournal(FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-book-orders.json"));
+                // Resolved under the profile trading pinned, so positions never cross profiles.
+                var path=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.path(com.goofy.goofyaddons.features.account.AccountStorage.BOOK_ORDERS);
+                if(delegate==null || !path.equals(delegatePath)){delegate=new BookJournal(path);delegatePath=path;}
                 return delegate;
             }
             public List<BookPosition> read() throws Exception {return journal().read();}

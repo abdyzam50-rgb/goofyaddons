@@ -19,7 +19,7 @@ public final class GoofyCommands {
     }
     public static LiteralArgumentBuilder<FabricClientCommandSource> root() {
         var root=literal("goofyaddon").executes(c->{
-            c.getSource().sendFeedback(Component.literal(".a* goofyaddon: start, stop, toggle, status, mode <books|general|both>, reload, debug export, profit, schedule, craft, production, auction."));return 1;
+            c.getSource().sendFeedback(Component.literal(".a* goofyaddon: start, stop, toggle, status, mode <books|general|both>, reload, debug export, profit, schedule, craft, production, auction, profiles."));return 1;
         });
         FEATURES.getRoot().getChildren().forEach(root::then);
         root.then(literal("start").executes(c->{SessionScheduler.INSTANCE.manualStart();return 1;}));
@@ -41,6 +41,18 @@ public final class GoofyCommands {
                 c.getSource().sendFeedback(Component.literal("Trading mode: "+choice));return 1;
             }catch(Exception failure){c.getSource().sendError(Component.literal("Mode not saved: "+failure.getMessage()));return 0;}
         }));
+        var account=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        root.then(literal("profiles").executes(c->{c.getSource().sendFeedback(Component.literal(account.status()));return 1;})
+                .then(literal("adopt").executes(c->{
+                    if(!FeatureManager.INSTANCE.canReloadConfig()){c.getSource().sendError(Component.literal("Stop trading first."));return 0;}
+                    try{c.getSource().sendFeedback(Component.literal(account.adopt()));return 1;}
+                    catch(Exception failure){c.getSource().sendError(Component.literal("Not adopted: "+failure.getMessage()));return 0;}
+                }))
+                .then(literal("setaside").executes(c->{
+                    if(!FeatureManager.INSTANCE.canReloadConfig()){c.getSource().sendError(Component.literal("Stop trading first."));return 0;}
+                    try{c.getSource().sendFeedback(Component.literal(account.setAside()));return 1;}
+                    catch(Exception failure){c.getSource().sendError(Component.literal("Not set aside: "+failure.getMessage()));return 0;}
+                })));
         return root.then(mode);
     }
 }
