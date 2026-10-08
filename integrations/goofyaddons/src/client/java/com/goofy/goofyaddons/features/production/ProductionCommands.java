@@ -58,8 +58,9 @@ public final class ProductionCommands {
         return FeatureManager.INSTANCE.production().queue(output.toUpperCase(java.util.Locale.ROOT).replace(' ','_'),kind,batches,slot,price,fee)?1:0;
     }
     /**
-     * One craft batch end to end for testing: missing inputs are instant-bought for this run only,
-     * and with a price the result is listed as a BIN with a fee ceiling for that price.
+     * One craft batch end to end for testing: missing inputs are instant-bought for this run only.
+     * With a price the result is listed as a BIN with a fee ceiling for that price; without one, a
+     * Bazaar product is sold instantly on the Bazaar and anything else stays in the inventory.
      */
     private static int test(String output,long price){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before queueing production.");return 0;}
@@ -68,7 +69,12 @@ public final class ProductionCommands {
         if(price>0 && menu!=null && menu.slots().stream().anyMatch(s->s.inPlayerInventory() && !s.empty() && id.equals(ProductionMenus.productId(s)))) {
             new LiveActions().message("Move the "+RecipeCatalog.instance().name(id)+" you already hold out of your inventory first, so the listing picks the crafted one.");return 0;
         }
+        if(price==0 && onBazaar(id))price=ProductionRun.SELL_ON_BAZAAR;
         return FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true)?1:0;
+    }
+    private static boolean onBazaar(String id){
+        var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
+        return market!=null && market.has("products") && market.getAsJsonObject("products").has(id);
     }
     private static int claim(String job,long price,long fee){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before claiming.");return 0;}

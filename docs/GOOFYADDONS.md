@@ -212,7 +212,7 @@ the output as a BIN. Queue one, then use the trading toggle:
 | Command (under `.a* goofyaddon production`) | Loop |
 | --- | --- |
 | `run <ITEM> <batches> [binPrice maxFee]` | Inputs, craft, optional BIN listing |
-| `test <ITEM> [binPrice]` | One craft batch end to end: buys missing inputs for this run only, crafts, and with a price lists the result with a fee ceiling for that price |
+| `test <ITEM> [binPrice]` | One craft batch end to end: buys missing inputs for this run only and crafts. With a price it lists the result as a BIN with a fee ceiling for that price; without one, a Bazaar product is sold instantly on the Bazaar (at no less than 97% of the fresh quote) and anything else stays in your inventory |
 | `forge <ITEM> <slot> [binPrice maxFee]` | Inputs, Forge submission once you open The Forge, wait, claim, optional listing |
 | `kat <PET;rarity>` | Kat upgrade once you open the Pet Sitter with the pet placed, wait, claim |
 | `claim <job> [binPrice maxFee]` | Claims a Forge or Kat job already waiting in `production jobs` |

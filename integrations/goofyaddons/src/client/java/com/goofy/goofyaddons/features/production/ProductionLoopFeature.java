@@ -44,7 +44,8 @@ public final class ProductionLoopFeature implements Feature {
             boolean buys = buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients;
             actions.message("Queued production of " + RecipeCatalog.instance().name(output) + ". Use the trading toggle to run."
                     + (buys ? " Missing inputs will be bought instantly within spendable capital." : " Inputs must already be in your inventory.")
-                    + (binPrice > 0 ? " The result is then listed as a BIN at " + binPrice + " coins." : ""));
+                    + (binPrice > 0 ? " The result is then listed as a BIN at " + binPrice + " coins."
+                    : binPrice == ProductionRun.SELL_ON_BAZAAR ? " The result is then sold instantly on the Bazaar." : ""));
             return true;
         } catch (IllegalArgumentException invalid) {
             actions.message("Cannot queue production: " + invalid.getMessage()); return false;
@@ -166,6 +167,12 @@ public final class ProductionLoopFeature implements Feature {
                 if (market == null || !market.has("products")) return null;
                 var product = market.getAsJsonObject("products").get(id);
                 return product != null && product.isJsonObject() ? ProductionPlanner.depth(product.getAsJsonObject(), "buy_summary", units) : null;
+            }
+            public Double instantSellValue(String id, int units) {
+                var market = com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
+                if (market == null || !market.has("products")) return null;
+                var product = market.getAsJsonObject("products").get(id);
+                return product != null && product.isJsonObject() ? ProductionPlanner.instantSellValue(product.getAsJsonObject(), units) : null;
             }
             public String name(String id) { return RecipeCatalog.instance().name(id); }
             public String queueCraft(String output, int batches) {

@@ -40,6 +40,7 @@ class ProductionRunTest {
         public Set<String> occupied(){return occupied;}
         public boolean buyingAllowed(){return buying;}
         public Double instantBuyCost(String id,int units){return units*100.0;}
+        public Double instantSellValue(String id,int units){return units*1000.0;}
         public String name(String id){return catalog().name(id);}
         public String queueCraft(String output,int batches){
             try{String id="craft-"+crafts.size();jobs.put(new ProductionJobs.Job(id,"craft:OUTPUT:0","account",ProductionJobs.State.PLANNED,batches,-1,0,0,null,null,null,null));
@@ -142,5 +143,38 @@ class ProductionRunTest {
         assertEquals(201_200,ProductionPlanner.listingFeeLimit(10_000_000));
         assertEquals(2_501_200,ProductionPlanner.listingFeeLimit(100_000_000));
         assertThrows(IllegalArgumentException.class,()->ProductionPlanner.listingFeeLimit(0));
+    }
+
+    @Test void bazaarSaleSellsTheCraftedOutputOnceAndProvesIt()throws Exception {
+        var env=new Env();env.menu=ProductionRunTest.menu(null,item(54,"INPUT",2));
+        var run=ProductionRun.start(env,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,ProductionRun.SELL_ON_BAZAAR,0);
+        run.tick(false,0);run.tick(false,1);
+        env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);
+        env.menu=ProductionRunTest.menu(null,item(54,"OUTPUT",1));
+        run.tick(false,2);assertEquals(Stage.SELL,run.stage());
+        assertTrue(run.wantsMenu());
+        run.tick(false,3);assertTrue(env.actions.serverEffects().isEmpty(),"no click without the menu");
+        run.tick(true,4);assertEquals(List.of("command:bz Output"),env.actions.serverEffects());
+        env.menu=ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 990 coins")),item(54,"OUTPUT",1));
+        run.tick(true,5);
+        assertTrue(env.actions.serverEffects().contains("click:11"));
+        assertEquals(ProductionJobs.State.LISTING,env.jobs.find(run.jobId()).orElseThrow().state());
+        env.menu=ProductionRunTest.menu(null);env.purse+=978;
+        assertEquals(Step.DONE,run.tick(true,6));
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.equals("click:11")).count());
+        assertTrue(env.listings.isEmpty());
+    }
+
+    @Test void bazaarSaleRefusesWhenTheOutputIsAlreadyHeldOrThePriceIsLow()throws Exception {
+        var held=new Env();held.menu=ProductionRunTest.menu(null,item(54,"INPUT",2),item(55,"OUTPUT",3));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.start(held,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,ProductionRun.SELL_ON_BAZAAR,0));
+        var actions=new RecordingActions();
+        var sale=new BazaarInstantSell("OUTPUT","Output",1,970,r->{});
+        var page=ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 900 coins")),item(54,"OUTPUT",1));
+        assertEquals(BazaarInstantSell.Result.BLOCKED,sale.tick(page,actions,1000,0));
+        assertTrue(actions.serverEffects().isEmpty());
+        var confirm=new BazaarInstantSell("OUTPUT","Output",1,900,r->{});
+        confirm.tick(ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 950 coins")),item(54,"OUTPUT",1)),actions,1000,0);
+        assertEquals(BazaarInstantSell.Result.UNCERTAIN,confirm.tick(ProductionRunTest.menu("Confirm",item(54,"OUTPUT",1)),actions,1000,100));
     }
 }

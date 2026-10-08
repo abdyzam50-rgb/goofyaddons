@@ -59,6 +59,20 @@ public final class ProductionPlanner {
         }catch(RuntimeException invalid){return null;}
         return null;
     }
+    /** Coins from instantly selling these units into the buy orders ("sell_summary"), best bid first, before tax. */
+    static Double instantSellValue(JsonObject product,int units) {
+        if(product==null || units<1 || !product.has("sell_summary"))return null;
+        try {
+            var levels=new ArrayList<JsonObject>();for(var value:product.getAsJsonArray("sell_summary"))levels.add(value.getAsJsonObject());
+            levels.sort(Comparator.comparingDouble((JsonObject x)->x.get("pricePerUnit").getAsDouble()).reversed());
+            double value=0;int remaining=units;
+            for(var level:levels){double price=level.get("pricePerUnit").getAsDouble(),amount=level.get("amount").getAsDouble();
+                if(!Double.isFinite(price) || price<=0 || !Double.isFinite(amount) || amount<0)return null;
+                int take=(int)Math.min(remaining,Math.floor(amount));value+=take*price;remaining-=take;if(remaining==0)return Double.isFinite(value)?value:null;
+            }
+        }catch(RuntimeException invalid){return null;}
+        return null;
+    }
     private static Double topOffer(JsonObject product) {
         try {var levels=product.getAsJsonArray("buy_summary");double price=Double.POSITIVE_INFINITY;
             for(var value:levels){double p=value.getAsJsonObject().get("pricePerUnit").getAsDouble();if(!Double.isFinite(p) || p<=0)return null;price=Math.min(price,p);}

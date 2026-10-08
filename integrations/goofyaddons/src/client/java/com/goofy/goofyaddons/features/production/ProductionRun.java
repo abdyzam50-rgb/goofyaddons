@@ -19,6 +19,11 @@ import java.util.*;
  * production job.
  */
 public final class ProductionRun implements ProductionLoop.Ports {
+    /** A BIN price meaning "instant-sell the output on the Bazaar" instead of listing it. */
+    public static final long SELL_ON_BAZAAR = -1;
+    /** How far below the fresh quote an instant sale may fill, for the book moving before the click. */
+    static final double SALE_FLOOR = 0.97;
+
     /** What the run needs from the game and the other features. */
     public interface Environment {
         ProductionJobs jobs();
@@ -35,6 +40,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
         boolean buyingAllowed();
         /** Instant-buy cost of these units from fresh quotes, or null when unknown. */
         Double instantBuyCost(String id, int units);
+        /** Instant-sell value of these units from fresh quotes, before tax, or null when unknown. */
+        Double instantSellValue(String id, int units);
         String name(String id);
         /** Queues a craft through the crafting feature; returns its job id or null. */
         String queueCraft(String output, int batches);
@@ -55,6 +62,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private ProductionLoop loop;
     private boolean ownsMenu;
     private BazaarInstantBuy buying;
+    private BazaarInstantSell selling;
     private ProductionRecipe recipe;
     private String craftJob, listingJob, workstationJob;
     private ForgeNavigation navigation;
@@ -77,7 +85,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if (timed && batches != 1) throw new IllegalArgumentException("Forge and Kat runs process one batch");
         if (!timed && (batches < 1 || batches > 16)) throw new IllegalArgumentException("Craft runs take 1–16 batches");
         if (kind == ProductionRecipe.Kind.FORGE && (forgeSlot < 0 || forgeSlot > 6)) throw new IllegalArgumentException("Forge slot must be 1–7");
-        if (binPrice < 0 || binPrice > 1_000_000_000_000L || !Double.isFinite(maximumFee) || maximumFee < 0) throw new IllegalArgumentException("Invalid BIN price or fee");
+        if (binPrice < SELL_ON_BAZAAR || binPrice > 1_000_000_000_000L || !Double.isFinite(maximumFee) || maximumFee < 0) throw new IllegalArgumentException("Invalid BIN price or fee");
         var occupied = env.occupied();
         if (occupied.contains(output)) throw new IllegalArgumentException(output + " belongs to a trader position or queued work");
         ProductionRecipe chosen = timed ? options.getFirst() : null;
@@ -85,7 +93,9 @@ public final class ProductionRun implements ProductionLoop.Ports {
         // KAT runs never buy: the pet is the player's own, and its materials are bought by hand.
         boolean procure = kind != ProductionRecipe.Kind.KAT;
         var run = new ProductionRun(env, catalog, output, kind, chosen, batches, forgeSlot, binPrice, maximumFee, id);
-        var plan = new ProductionLoop.Plan(procure, timed, binPrice > 0);
+        if (binPrice == SELL_ON_BAZAAR && run.held().getOrDefault(output, 0) > 0)
+            throw new IllegalArgumentException("move the " + env.name(output) + " you already hold out of your inventory first; an instant sale sells every unit held");
+        var plan = new ProductionLoop.Plan(procure, timed, binPrice != 0);
         env.jobs().put(new ProductionJobs.Job(id, "run:" + kind.name().toLowerCase(Locale.ROOT) + ":" + output, env.account(),
                 procure ? ProductionJobs.State.PLANNED : ProductionJobs.State.PROCESSING, batches, timed ? Math.max(forgeSlot, -1) : -1,
                 0, 0, 0.0, null, null, "Production run planned"));
@@ -130,6 +140,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             case PROCURE -> buying != null || env.buyingAllowed() && !missing().isEmpty();
             case PROCESS -> kind != ProductionRecipe.Kind.CRAFT && workstationMenuOpen();
             case CLAIM -> workstationMenuOpen();
+            case SELL -> binPrice == SELL_ON_BAZAAR;
             default -> false;
         };
     }
@@ -229,6 +240,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     }
 
     @Override public Outcome sell(long now) {
+        if (binPrice == SELL_ON_BAZAAR) return sellOnBazaar(now);
         if (listingJob == null) {
             if (env.craftQueued() || env.listingQueued()) return Outcome.pending("Waiting for other production work");
             listingJob = env.queueListing(output, binPrice, maximumFee);
@@ -237,6 +249,25 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         if (env.listingQueued()) return Outcome.pending("Listing");
         return childFinished(listingJob, Set.of(ProductionJobs.State.SELLING, ProductionJobs.State.DONE), "BIN listing");
+    }
+
+    private Outcome sellOnBazaar(long now) {
+        if (!ownsMenu) return Outcome.pending("Waiting to sell " + env.name(output));
+        if (selling == null) {
+            int units = held().getOrDefault(output, 0);
+            if (units == 0) return Outcome.uncertain("The crafted " + env.name(output) + " is not in the inventory");
+            Double value = env.instantSellValue(output, units);
+            if (value == null) return Outcome.blocked("No fresh Bazaar quote covers selling " + units + " " + env.name(output));
+            selling = new BazaarInstantSell(output, env.name(output), units, value * SALE_FLOOR,
+                    reason -> env.jobs().put(parent().withState(ProductionJobs.State.LISTING, reason)));
+        }
+        var result = selling.tick(env.menu(), env.actions(), env.purse(), now);
+        return switch (result) {
+            case SOLD -> { env.actions().closeMenu(); yield Outcome.DONE; }
+            case UNCERTAIN -> Outcome.uncertain(selling.failure());
+            case BLOCKED -> { String why = selling.failure(); selling = null; env.actions().closeMenu(); yield Outcome.blocked(why); }
+            default -> Outcome.pending("Selling " + env.name(output));
+        };
     }
 
     @Override public void persist(Stage stage, String reason) throws Exception {
