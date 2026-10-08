@@ -60,7 +60,8 @@ public final class ProductionCommands {
     /**
      * One craft batch end to end for testing: missing inputs are instant-bought for this run only.
      * With a price the result is listed as a BIN with a fee ceiling for that price; without one, a
-     * Bazaar product is sold instantly on the Bazaar and anything else stays in the inventory.
+     * Bazaar product is sold instantly on the Bazaar and anything else is listed one coin under
+     * the live lowest BIN.
      */
     private static int test(String output,long price){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before queueing production.");return 0;}
@@ -70,7 +71,39 @@ public final class ProductionCommands {
             new LiveActions().message("Move the "+RecipeCatalog.instance().name(id)+" you already hold out of your inventory first, so the listing picks the crafted one.");return 0;
         }
         if(price==0 && onBazaar(id))price=ProductionRun.SELL_ON_BAZAAR;
+        else if(price==0){priceFromAuctions(id);return 1;}
         return FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true)?1:0;
+    }
+    private static final java.net.http.HttpClient AUCTION_HTTP=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(java.time.Duration.ofSeconds(2));
+    /** Asks the companion for the item's lowest BIN, then queues the test listed one coin under it. */
+    private static void priceFromAuctions(String id){
+        var actions=new LiveActions();
+        try {
+            if(!ProductionRecipe.validId(id))throw new IllegalArgumentException("Unknown product "+id);
+            var settings=new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings();
+            settings.endpoint=com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.marketAnalysis.endpoint;settings.validate();
+            var uri=java.net.URI.create(settings.endpoint).resolve("/v1/ah/price?item="+java.net.URLEncoder.encode(id,java.nio.charset.StandardCharsets.UTF_8));
+            var request=java.net.http.HttpRequest.newBuilder(uri).timeout(java.time.Duration.ofSeconds(15)).GET().build();
+            actions.message("Looking up the lowest BIN for "+RecipeCatalog.instance().name(id)+"…");
+            AUCTION_HTTP.sendAsync(request,java.net.http.HttpResponse.BodyHandlers.limiting(java.net.http.HttpResponse.BodyHandlers.ofString(),16*1024))
+                .whenComplete((response,error)->new com.goofy.goofyaddons.menu.LiveWorld().onClientThread(()->{
+                    try {
+                        if(error!=null)throw new IllegalArgumentException("the calculator could not be reached");
+                        com.google.gson.JsonObject body;
+                        try{body=com.google.gson.JsonParser.parseString(response.body()).getAsJsonObject();}
+                        catch(RuntimeException notJson){throw new IllegalArgumentException("the calculator does not offer auction prices; restart Minecraft so it updates");}
+                        if(response.statusCode()!=200)throw new IllegalArgumentException(body.has("protocol")||!body.has("error")
+                                ?"the calculator does not offer auction prices; restart Minecraft so it updates":body.get("error").getAsString());
+                        var quote=AuctionPricing.parse(body,id,System.currentTimeMillis());
+                        long price=AuctionPricing.listingPrice(quote);
+                        actions.message(String.format(java.util.Locale.ROOT,"Lowest BIN %,d coins%s (Coflnet); listing at %,d.",quote.lowest(),
+                                quote.secondLowest()==null?"":String.format(java.util.Locale.ROOT,", next %,d",quote.secondLowest()),price));
+                        test(id,price);
+                    }catch(RuntimeException failure){
+                        actions.message("No automatic price for "+RecipeCatalog.instance().name(id)+": "+failure.getMessage()+". Use: production test "+id+" <price>");
+                    }
+                }));
+        }catch(RuntimeException failure){actions.message("No automatic price: "+failure.getMessage()+". Use: production test "+id+" <price>");}
     }
     private static boolean onBazaar(String id){
         var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();

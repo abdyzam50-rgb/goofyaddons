@@ -177,4 +177,16 @@ class ProductionRunTest {
         confirm.tick(ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 950 coins")),item(54,"OUTPUT",1)),actions,1000,0);
         assertEquals(BazaarInstantSell.Result.UNCERTAIN,confirm.tick(ProductionRunTest.menu("Confirm",item(54,"OUTPUT",1)),actions,1000,100));
     }
+
+    @Test void auctionPriceUndercutsTheLowestBinAndRefusesOutliersAndStaleQuotes() {
+        long now=1_000_000_000L;
+        var body=com.google.gson.JsonParser.parseString("{\"protocol\":\"goofy-ah-price/1\",\"item\":\"GOLDEN_TOOTH\",\"lowest\":5000,\"secondLowest\":5200,\"fetchedAt\":"+now+"}").getAsJsonObject();
+        var quote=AuctionPricing.parse(body,"GOLDEN_TOOTH",now+1000);
+        assertEquals(4999,AuctionPricing.listingPrice(quote));
+        assertThrows(IllegalArgumentException.class,()->AuctionPricing.parse(body,"OTHER",now));
+        assertThrows(IllegalArgumentException.class,()->AuctionPricing.parse(body,"GOLDEN_TOOTH",now+AuctionPricing.MAX_AGE_MS+1));
+        var outlier=new AuctionPricing.Quote("GOLDEN_TOOTH",1000,5000L,now);
+        assertThrows(IllegalArgumentException.class,()->AuctionPricing.listingPrice(outlier));
+        assertEquals(999,AuctionPricing.listingPrice(new AuctionPricing.Quote("GOLDEN_TOOTH",1000,null,now)));
+    }
 }

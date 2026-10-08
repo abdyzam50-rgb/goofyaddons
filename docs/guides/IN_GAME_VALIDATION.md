@@ -100,7 +100,8 @@ Start with an item you can craft from what you already hold.
    then the trading toggle. **Pass:** one instant buy of the missing amount, one craft,
    one BIN listing at that price; `production status` says done. Without a price, a
    Bazaar item is sold with one "Sell Instantly" click (hold none of it beforehand, since
-   that sells every unit held); anything else stops after the craft. This buys even with **Production buys inputs** off, so use a
+   that sells every unit held); an Auction House item is listed one coin under the lowest
+   BIN, and chat shows the lowest and next BIN it used. Check that against the AH. This buys even with **Production buys inputs** off, so use a
    cheap item.
 7. Only after 1–6 pass: turn on **Production buys inputs**, keep Capital limit small, and
    queue a craft with one ingredient missing. **Pass:** exactly one instant buy of the
