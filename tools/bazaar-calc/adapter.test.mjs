@@ -155,3 +155,30 @@ test('health reports the managed bundle identity it was launched with', async ()
     assert.equal(health.bundle, 'abc123');
   } finally { server.close(); }
 });
+
+test('every skipped route has one reason and configured routes say why they are not ranked',()=>{
+ const b=packet();b.constraints.general.minMarginPercentage=99;
+ const r=run(b);
+ assert.ok(r.rows.every(x=>x.kind==='BOOK'));
+ const total=Object.values(r.filterReasons).reduce((a,n)=>a+n,0);
+ assert.equal(total,r.counts.filtered+r.counts.unsupported+r.counts.warnings);
+ assert.deepEqual(r.deferred.find(x=>x.routeKey==='ENCHANTED_COAL'),{kind:'GENERAL',routeKey:'ENCHANTED_COAL',reason:'minimum-margin'});
+ b.constraints.accountSkills={enchanting:0};
+ const blocked=run(b);
+ assert.ok(blocked.deferred.some(x=>x.routeKey==='ENCHANTMENT_OVERLOAD:4:5'&&x.reason==='enchanting-level'));
+});
+
+test('reports carry one forecast provenance block and an honest capability per row',()=>{
+ const b=packet();b.market.products.ENCHANTED_REDSTONE=product(100,128);
+ const r=run(b);
+ assert.equal(r.forecast.contract,2);assert.equal(r.forecast.quoteAt,r.marketAt);assert.equal(r.forecast.historyAt,r.dataAt);
+ assert.equal(r.forecast.calibration.model,'none');assert.equal(r.forecast.constraints.bookSlots,2);
+ assert.match(r.forecast.scoring,/coinsPerHour descending/);
+ assert.equal(r.rows.find(x=>x.inputId==='ENCHANTED_COAL').capability,'AUTOMATIC');
+ assert.equal(r.rows.find(x=>x.inputId==='ENCHANTED_REDSTONE').capability,'RESEARCH');
+ for(const row of r.rows)assert.equal(row.capability==='AUTOMATIC',row.configured);
+ // Same inputs give the same ranking and the same explanation.
+ assert.deepEqual(run(b).rows.map(x=>[x.routeKey,x.coinsPerHour]),r.rows.map(x=>[x.routeKey,x.coinsPerHour]));
+ assert.deepEqual(run(b).filterReasons,r.filterReasons);
+ r.rows[0].assumptions.push('local');assert.equal(r.rows[1].assumptions.length,3);
+});

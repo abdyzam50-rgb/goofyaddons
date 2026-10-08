@@ -176,6 +176,30 @@ An NPC outside loaded entities still requires coming into range. Whole-Hub
 landmark travel, Kat/Forge/AH physical access, and background wandering remain
 separate integration work.
 
+## Forecasts, decisions and capability labels
+
+Calculator reports carry one provenance block (`forecast`): quote and history
+times, the scoring order, the calibration model and how many personal and shared
+trades calibrated the rows, plus the mode, capital, inventory and slots the
+forecast assumed. Every row says whether the trader would run it (`AUTOMATIC`) or
+shows it for research only (`RESEARCH`). Every skipped route is counted under one
+reason in `filterReasons` (for example `minimum-margin`, `enchanting-level`,
+`not-in-automatic-catalog`), and routes you configured, or that the automatic
+catalog supports, are listed in `deferred` with their reason. Rankings are still
+computed against your total trading capital with one free slot per engine, so
+full position slots never hide them.
+
+When automatic selection hands a route to an engine, **Last route decision** on
+the Macros page says why: its coins/hour, its place among executable and all
+ranked routes, whether the estimate is calibrated, and which higher-scored routes
+were passed over and for what reason. The same record is in the detailed
+diagnostics export and the `market.automatic_decision` event. The engine still
+applies every live check; the decision explains, it does not authorize.
+
+**What runs automatically** on the Macros page lists each feature as Research,
+Queued or Automatic with the boundary that justifies the label. These labels come
+from one registry, so the screen, diagnostics and documentation cannot disagree.
+
 ## Production scope and validation
 
 Existing book/general trading, inventory crafting, opt-in BIN listing commands,

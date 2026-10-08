@@ -56,6 +56,10 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
         return marketAnalysis.automaticHeadReport();
     }
+    /** Why automatic selection last chose its route, in one line; null before any decision. */
+    public String lastRouteDecision() {
+        var decision=marketAnalysis.lastDecision();return decision==null?null:decision.summary();
+    }
     private List<Feature> engines() {
         return tradingEngines.enabled(mode, crafting.queued(), auction.queued());
     }
@@ -253,7 +257,7 @@ public class FeatureManager {
     }
     public String modeLabel() { return (started() ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
     public java.util.Map<String,Object> diagnosticState() {
-        return java.util.Map.of("lifecycle",lifecycle.diagnosticState(),"marketAnalysis",marketAnalysis.diagnosticState(),"books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name());
+        return java.util.Map.of("capabilities",com.goofy.goofyaddons.features.capability.Capabilities.diagnosticState(),"lifecycle",lifecycle.diagnosticState(),"marketAnalysis",marketAnalysis.diagnosticState(),"books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name());
     }
     public String taskItem() {
         if (!started() || paused()) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";

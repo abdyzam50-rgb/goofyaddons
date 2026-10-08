@@ -29,8 +29,24 @@ public final class MarketAnalysisProtocol {
                     confidence,configured,limitedBy,priceBasis,Map.of());
         }
     }
+    /** A route the calculator skipped, which the trader would otherwise have run, and why. */
+    public record Deferral(String kind, String routeKey, String reason) {}
+    /** How a report's scores were produced, so two reports can be compared or explained. */
+    public record Provenance(int contract, String scoring, String calibrationModel, int calibratedRows, int personalSamples, int sharedSamples) {
+        public static final Provenance LEGACY = new Provenance(1, "coinsPerHour descending", "unknown", 0, 0, 0);
+    }
     public record Report(long marketAt, long dataAt, long generatedAt, boolean historyUsed,
-                         String historyStatus, String upstreamCommit, int total, Map<String,Integer> counts, List<Recommendation> rows) {}
+                         String historyStatus, String upstreamCommit, int total, Map<String,Integer> counts, List<Recommendation> rows,
+                         Map<String,Integer> filterReasons, List<Deferral> deferred, Provenance provenance) {
+        public Report(long marketAt,long dataAt,long generatedAt,boolean historyUsed,String historyStatus,String upstreamCommit,
+                int total,Map<String,Integer> counts,List<Recommendation> rows) {
+            this(marketAt,dataAt,generatedAt,historyUsed,historyStatus,upstreamCommit,total,counts,rows,Map.of(),List.of(),Provenance.LEGACY);
+        }
+        /** The same forecast restricted to the given rows, keeping its provenance and reasons. */
+        public Report withRows(List<Recommendation> selected) {
+            return new Report(marketAt,dataAt,generatedAt,historyUsed,historyStatus,upstreamCommit,total,counts,List.copyOf(selected),filterReasons,deferred,provenance);
+        }
+    }
 
     /** Freeze the uncalibrated cycle forecast and observed volumes for a verified purchase. */
     public static com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(Report report,String input,String output,int batch,long now) {
@@ -91,6 +107,7 @@ public final class MarketAnalysisProtocol {
         if (raw == null || raw.size() > integer(c,"maxRecommendations",1,50) || raw.size() > total)
             throw new IllegalArgumentException("Calculator row count exceeds request limits");
         List<Recommendation> rows = new ArrayList<>(); Set<String> unique = new HashSet<>();int blockedRequirements=0;
+        Map<String,Integer> reasons = new TreeMap<>(); List<Deferral> deferred = new ArrayList<>();
         Set<String> excluded = strings(c.getAsJsonArray("excludedProducts"));
         double previous = Double.POSITIVE_INFINITY;
         for (JsonElement element : raw) {
@@ -185,7 +202,11 @@ public final class MarketAnalysisProtocol {
                 }
                 volume=Map.copyOf(values);
             }
-            if(accountBlocked){blockedRequirements++;continue;}
+            if(accountBlocked){
+                blockedRequirements++;reasons.merge("account-requirements",1,Integer::sum);
+                if(configured && deferred.size()<50)deferred.add(new Deferral(kind,key,"account-requirements"));
+                continue;
+            }
             rows.add(new Recommendation(kind,key,input,output,units,batch,batchProfit,capital,rate,coins,seconds,confidence,configured,
                     string(r,"limitedBy"),string(r,"priceBasis"),evidence,volume));
         }
@@ -196,7 +217,39 @@ public final class MarketAnalysisProtocol {
                 if (values.has(key)) counts.put(key,integer(values,key,0,1_000_000));
         }
         counts.merge("filtered",blockedRequirements,Integer::sum);
-        return new Report(marketAt,dataAt,generatedAt,historyUsed,historyStatus,commit,Math.max(rows.size(),total-blockedRequirements),Map.copyOf(counts),List.copyOf(rows));
+        // Explanations are optional and bounded; an older calculator simply has none.
+        if (response.has("filterReasons") && response.get("filterReasons").isJsonObject()) {
+            var values = response.getAsJsonObject("filterReasons");
+            if (values.size() > 64) throw new IllegalArgumentException("Too many calculator filter reasons");
+            for (var e : values.entrySet()) {
+                if (!e.getKey().matches("[a-z0-9-]{1,40}")) throw new IllegalArgumentException("Invalid calculator filter reason");
+                reasons.merge(e.getKey(), integer(values,e.getKey(),0,1_000_000), Integer::sum);
+            }
+        }
+        if (response.has("deferred") && response.get("deferred").isJsonArray()) {
+            var values = response.getAsJsonArray("deferred");
+            if (values.size() > 50) throw new IllegalArgumentException("Too many calculator deferrals");
+            for (var element : values) {
+                var d = element.getAsJsonObject();
+                String reason = string(d,"reason");
+                if (!reason.matches("[a-z0-9-]{1,40}") || !Set.of("BOOK","GENERAL").contains(string(d,"kind")))
+                    throw new IllegalArgumentException("Invalid calculator deferral");
+                if (deferred.size() < 50) deferred.add(new Deferral(string(d,"kind"), string(d,"routeKey"), reason));
+            }
+        }
+        Provenance provenance = Provenance.LEGACY;
+        if (response.has("forecast") && response.get("forecast").isJsonObject()) {
+            var f = response.getAsJsonObject("forecast");
+            if (timestamp(f,"quoteAt") != marketAt || timestamp(f,"historyAt") != dataAt || !string(f,"historyStatus").equals(historyStatus))
+                throw new IllegalArgumentException("Calculator forecast provenance does not match the report");
+            var calibration = f.getAsJsonObject("calibration");
+            if (calibration == null) throw new IllegalArgumentException("Missing calculator calibration provenance");
+            provenance = new Provenance(integer(f,"contract",2,99), string(f,"scoring"), string(calibration,"model"),
+                    integer(calibration,"calibratedRows",0,1_000_000), integer(calibration,"personalSamples",0,100_000_000),
+                    integer(calibration,"sharedSamples",0,100_000_000));
+        }
+        return new Report(marketAt,dataAt,generatedAt,historyUsed,historyStatus,commit,Math.max(rows.size(),total-blockedRequirements),Map.copyOf(counts),List.copyOf(rows),
+                Collections.unmodifiableMap(reasons),List.copyOf(deferred),provenance);
     }
 
     private static Set<String> strings(JsonArray array) {
