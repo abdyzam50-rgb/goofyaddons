@@ -9,6 +9,17 @@ public final class ProductionPlanner {
     public record Candidate(ProductionRecipe recipe,double inputCost,double expectedNetProceeds,double expectedProfit,
             boolean executable,String reason) {}
     private ProductionPlanner() {}
+
+    /**
+     * A ceiling for the BIN listing fee when the player gave none: the Auction House rate for the
+     * price (1% below 10M, 2% below 100M, 2.5% above) plus the largest duration fee. A quote above
+     * it sends the listing to review; nothing is published.
+     */
+    public static long listingFeeLimit(long price) {
+        if(price<1)throw new IllegalArgumentException("BIN price must be positive");
+        double rate=price<10_000_000L?0.01:price<100_000_000L?0.02:0.025;
+        return (long)Math.ceil(price*rate)+1_200;
+    }
     public static List<Candidate> bazaar(JsonObject market,List<ProductionRecipe> recipes,long now,double capital,double tax,
             double minimumProfit,int inventorySlots,Set<String> blocked,Set<String> verifiedUnlocks) {
         if(recipes==null || blocked==null || verifiedUnlocks==null || !Double.isFinite(minimumProfit) || minimumProfit<0

@@ -25,6 +25,10 @@ public final class ProductionCommands {
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,16))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,0,0))
                         .then(sale((c,price,fee)->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,price,fee))))))
+                .then(ClientCommands.literal("test").then(ClientCommands.argument("output",StringArgumentType.word())
+                    .executes(c->test(StringArgumentType.getString(c,"output"),0))
+                    .then(ClientCommands.argument("binPrice",LongArgumentType.longArg(1,1_000_000_000_000L))
+                        .executes(c->test(StringArgumentType.getString(c,"output"),LongArgumentType.getLong(c,"binPrice"))))))
                 .then(ClientCommands.literal("forge").then(ClientCommands.argument("output",StringArgumentType.word())
                     .then(ClientCommands.argument("slot",IntegerArgumentType.integer(1,7))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.FORGE,1,IntegerArgumentType.getInteger(c,"slot")-1,0,0))
@@ -52,6 +56,19 @@ public final class ProductionCommands {
     private static int run(String output,ProductionRecipe.Kind kind,int batches,int slot,long price,long fee){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before queueing production.");return 0;}
         return FeatureManager.INSTANCE.production().queue(output.toUpperCase(java.util.Locale.ROOT).replace(' ','_'),kind,batches,slot,price,fee)?1:0;
+    }
+    /**
+     * One craft batch end to end for testing: missing inputs are instant-bought for this run only,
+     * and with a price the result is listed as a BIN with a fee ceiling for that price.
+     */
+    private static int test(String output,long price){
+        if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before queueing production.");return 0;}
+        String id=output.toUpperCase(java.util.Locale.ROOT).replace(' ','_');
+        var menu=new com.goofy.goofyaddons.menu.LiveWorld().menu();
+        if(price>0 && menu!=null && menu.slots().stream().anyMatch(s->s.inPlayerInventory() && !s.empty() && id.equals(ProductionMenus.productId(s)))) {
+            new LiveActions().message("Move the "+RecipeCatalog.instance().name(id)+" you already hold out of your inventory first, so the listing picks the crafted one.");return 0;
+        }
+        return FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true)?1:0;
     }
     private static int claim(String job,long price,long fee){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before claiming.");return 0;}

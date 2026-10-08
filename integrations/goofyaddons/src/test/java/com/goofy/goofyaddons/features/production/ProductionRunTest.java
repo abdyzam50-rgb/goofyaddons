@@ -135,4 +135,12 @@ class ProductionRunTest {
         assertThrows(IllegalArgumentException.class,()->ProductionRun.start(env,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,0,0));
         assertThrows(IllegalArgumentException.class,()->ProductionRun.start(new Env(),catalog(),"REFINED",ProductionRecipe.Kind.FORGE,2,0,0,0));
     }
+
+    @Test void testListingFeeCeilingFollowsTheAuctionHouseRateBands() {
+        assertEquals(1_250,ProductionPlanner.listingFeeLimit(5_000));
+        assertEquals(101_200,ProductionPlanner.listingFeeLimit(9_999_999));
+        assertEquals(201_200,ProductionPlanner.listingFeeLimit(10_000_000));
+        assertEquals(2_501_200,ProductionPlanner.listingFeeLimit(100_000_000));
+        assertThrows(IllegalArgumentException.class,()->ProductionPlanner.listingFeeLimit(0));
+    }
 }

@@ -212,6 +212,7 @@ the output as a BIN. Queue one, then use the trading toggle:
 | Command (under `.a* goofyaddon production`) | Loop |
 | --- | --- |
 | `run <ITEM> <batches> [binPrice maxFee]` | Inputs, craft, optional BIN listing |
+| `test <ITEM> [binPrice]` | One craft batch end to end: buys missing inputs for this run only, crafts, and with a price lists the result with a fee ceiling for that price |
 | `forge <ITEM> <slot> [binPrice maxFee]` | Inputs, Forge submission once you open The Forge, wait, claim, optional listing |
 | `kat <PET;rarity>` | Kat upgrade once you open the Pet Sitter with the pet placed, wait, claim |
 | `claim <job> [binPrice maxFee]` | Claims a Forge or Kat job already waiting in `production jobs` |
@@ -220,7 +221,8 @@ the output as a BIN. Queue one, then use the trading toggle:
 - Inputs come from your inventory. **Production buys inputs** (Spending limits)
   lets a run instant-buy only what is missing, within spendable capital and at most
   3% above the fresh Bazaar depth quote. It is off by default; leave it off until
-  the in-game checklist passes.
+  the in-game checklist passes. `test` buys missing inputs for its one run even
+  while the setting is off, with the same limits.
 - Every stage boundary is saved in the production journal. A buy, craft, submission,
   claim or listing whose effect is not proven sends the run to review and pauses
   trading. Nothing is ever repeated automatically, and a restart turns an

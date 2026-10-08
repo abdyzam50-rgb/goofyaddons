@@ -25,16 +25,26 @@ public final class ProductionLoopFeature implements Feature {
     public Set<String> lockedProducts() { return run == null ? Set.of() : run.lockedProducts(); }
 
     public boolean queue(String output, ProductionRecipe.Kind kind, int batches, int forgeSlot, long binPrice, double maximumFee) {
+        return queue(output, kind, batches, forgeSlot, binPrice, maximumFee, false);
+    }
+
+    /**
+     * Queues a run. {@code buyInputs} lets this one run instant-buy missing inputs even while the
+     * global setting is off; the player asked for it by name, and spendable capital still caps it.
+     */
+    public boolean queue(String output, ProductionRecipe.Kind kind, int batches, int forgeSlot, long binPrice, double maximumFee, boolean buyInputs) {
         var actions = new LiveActions();
         if (run != null || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
             actions.message("Finish the queued production work first."); return false;
         }
         try {
-            run = ProductionRun.start(environment(), RecipeCatalog.instance(), output, kind, batches, forgeSlot, binPrice, maximumFee);
+            run = ProductionRun.start(environment(buyInputs), RecipeCatalog.instance(), output, kind, batches, forgeSlot, binPrice, maximumFee);
             lastReason = null;
             FeatureManager.INSTANCE.invalidateMarketReport();
+            boolean buys = buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients;
             actions.message("Queued production of " + RecipeCatalog.instance().name(output) + ". Use the trading toggle to run."
-                    + (GoofyConfig.INSTANCE.productionBuysIngredients ? " Missing inputs will be bought instantly within spendable capital." : " Inputs must already be in your inventory."));
+                    + (buys ? " Missing inputs will be bought instantly within spendable capital." : " Inputs must already be in your inventory.")
+                    + (binPrice > 0 ? " The result is then listed as a BIN at " + binPrice + " coins." : ""));
             return true;
         } catch (IllegalArgumentException invalid) {
             actions.message("Cannot queue production: " + invalid.getMessage()); return false;
@@ -51,7 +61,7 @@ public final class ProductionLoopFeature implements Feature {
             actions.message("Finish the queued production work first."); return false;
         }
         try {
-            var env = environment();
+            var env = environment(false);
             var matches = env.jobs().all().stream().filter(j -> j.id().startsWith(jobPrefix) && j.state() == ProductionJobs.State.WAITING
                     && j.account().equals(env.account()) && !j.recipeKey().startsWith("run:")).toList();
             if (matches.size() != 1) { actions.message("Name exactly one waiting Forge or Kat job; see production jobs."); return false; }
@@ -138,7 +148,7 @@ public final class ProductionLoopFeature implements Feature {
         run = null;
     }
 
-    private ProductionRun.Environment environment() throws java.io.IOException {
+    private ProductionRun.Environment environment(boolean buyInputs) throws java.io.IOException {
         var jobs = FeatureManager.INSTANCE.crafting().productionJobs();
         return new ProductionRun.Environment() {
             public ProductionJobs jobs() { return jobs; }
@@ -150,7 +160,7 @@ public final class ProductionLoopFeature implements Feature {
             public double spendable() { double purse = purse(); return Double.isFinite(purse) && purse >= 0 ? CapitalManager.INSTANCE.available(purse) : 0; }
             public Map<String,Integer> skills() { return FeatureManager.INSTANCE.observedSkills(); }
             public Set<String> occupied() { return CapitalManager.INSTANCE.occupiedProducts(); }
-            public boolean buyingAllowed() { return GoofyConfig.INSTANCE.productionBuysIngredients; }
+            public boolean buyingAllowed() { return buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients; }
             public Double instantBuyCost(String id, int units) {
                 var market = com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
                 if (market == null || !market.has("products")) return null;

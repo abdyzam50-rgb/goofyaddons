@@ -96,7 +96,12 @@ Start with an item you can craft from what you already hold.
    `production jobs`, then `production claim <job>` with The Forge open. **Pass:** one claim.
 5. Kat: place the pet in Kat's menu, `production kat <PET;rarity>`, start trading.
    **Pass:** one upgrade submission; later `production claim <job>` with the pet shown.
-6. Only after 1–5 pass: turn on **Production buys inputs**, keep Capital limit small, and
+6. Quick end-to-end test: `production test <ITEM> <price>` with one ingredient missing,
+   then the trading toggle. **Pass:** one instant buy of the missing amount, one craft,
+   one BIN listing at that price; `production status` says done. Without a price it
+   stops after the craft. This buys even with **Production buys inputs** off, so use a
+   cheap item.
+7. Only after 1–6 pass: turn on **Production buys inputs**, keep Capital limit small, and
    queue a craft with one ingredient missing. **Pass:** exactly one instant buy of the
    missing amount, then the craft. **Watch for:** a confirmation screen after the amount
    sign. If one appears, the run stops in review by design; send a screenshot of it.
