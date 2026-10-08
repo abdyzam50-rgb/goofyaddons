@@ -72,7 +72,8 @@ public final class ProductionCommands {
         }
         if(price==0 && onBazaar(id))price=ProductionRun.SELL_ON_BAZAAR;
         else if(price==0){priceFromAuctions(id);return 1;}
-        return FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true)?1:0;
+        if(!FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true))return 0;
+        FeatureManager.INSTANCE.startProductionTest();return 1;
     }
     private static final java.net.http.HttpClient AUCTION_HTTP=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(java.time.Duration.ofSeconds(2));
     /** Asks the companion for the item's lowest BIN, then queues the test listed one coin under it. */

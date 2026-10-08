@@ -42,7 +42,8 @@ public final class ProductionLoopFeature implements Feature {
             lastReason = null;
             FeatureManager.INSTANCE.invalidateMarketReport();
             boolean buys = buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients;
-            actions.message("Queued production of " + RecipeCatalog.instance().name(output) + ". Use the trading toggle to run."
+            actions.message("Queued production of " + RecipeCatalog.instance().name(output) + "."
+                    + (buyInputs ? " Running it now as a test; the trading toggle or stop ends it." : " Use the trading toggle to run.")
                     + (buys ? " Missing inputs will be bought instantly within spendable capital." : " Inputs must already be in your inventory.")
                     + (binPrice > 0 ? " The result is then listed as a BIN at " + binPrice + " coins."
                     : binPrice == ProductionRun.SELL_ON_BAZAAR ? " The result is then sold instantly on the Bazaar." : ""));

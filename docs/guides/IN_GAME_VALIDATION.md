@@ -96,8 +96,8 @@ Start with an item you can craft from what you already hold.
    `production jobs`, then `production claim <job>` with The Forge open. **Pass:** one claim.
 5. Kat: place the pet in Kat's menu, `production kat <PET;rarity>`, start trading.
    **Pass:** one upgrade submission; later `production claim <job>` with the pet shown.
-6. Quick end-to-end test: `production test <ITEM> <price>` with one ingredient missing,
-   then the trading toggle. **Pass:** one instant buy of the missing amount, one craft,
+6. Quick end-to-end test: `production test <ITEM> <price>` with one ingredient missing.
+   It starts by itself; leave trading off. **Pass:** one instant buy of the missing amount, one craft,
    one BIN listing at that price; `production status` says done. Without a price, a
    Bazaar item is sold with one "Sell Instantly" click (hold none of it beforehand, since
    that sells every unit held); an Auction House item is listed one coin under the lowest

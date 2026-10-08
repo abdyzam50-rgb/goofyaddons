@@ -43,6 +43,10 @@ public class FeatureManager {
 
     private String requirementAccount;
     private long profileTabAt;
+    /** A production test runs the production, crafting and auction features alone, outside the trading lifecycle. */
+    private boolean productionTest;
+    private final MenuScheduler testScheduler = new MenuScheduler();
+    private long testQuotesAt;
     private FeatureManager() {}
     private boolean started() { return lifecycle.started(); }
     private boolean paused() { return lifecycle.paused(); }
@@ -78,6 +82,7 @@ public class FeatureManager {
         if(!skillPreflight.pending() && !observedSkills().isEmpty())accountUnlocks.poll(requirementWorld.username(),GoofyConfig.INSTANCE.marketAnalysis.endpoint,observedSkills(),requirementWorld.now());
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);
         marketAnalysis.poll(started()?mode:GoofyConfig.INSTANCE.tradingMode);
+        if (productionTest && !started()) { tickProductionTest(); return; }
         if (!started() || paused()) return;
         if(com.goofy.goofyaddons.features.access.BazaarNpcAccess.tick())return;
         if(skillPreflight.pending()) {
@@ -116,6 +121,7 @@ public class FeatureManager {
 
     /** A start from any source; a schedule or transfer never clears a safety block. */
     public void startConfigured(Source source) {
+        if (productionTest) { stopProductionTest("Production test stopped by the trading toggle"); return; }
         Diagnostics.event("INFO","trading.start_requested",Diagnostics.snapshot());
         if (lifecycle.start(source, now()) == Outcome.DENIED) {
             Diagnostics.event("WARN","trading.start_denied",java.util.Map.of("source",source.name(),"reason",lifecycle.reason()));
@@ -191,6 +197,7 @@ public class FeatureManager {
     public void stop() { stop(Source.MANUAL); }
 
     public void stop(Source source) {
+        if (productionTest) stopProductionTest("Production test stopped");
         com.goofy.goofyaddons.features.access.BazaarNpcAccess.cancel();
         if (lifecycle.stop(source, now()) != Outcome.GRANTED){production.stop();crafting.stop();auction.stop();return;}
         skillPreflight.cancel();
@@ -204,6 +211,51 @@ public class FeatureManager {
         scheduler.reset();
         previousOwner = null;
         FailsafeManager.INSTANCE.reset();
+    }
+
+    /**
+     * Runs the queued production work now, without the trading toggle: no trader starts, and
+     * the rest schedule and server transfers do not gate it. Every journal, proof and review
+     * rule still applies, a safety pause still ends it, and the toggle or stop ends it too.
+     */
+    public boolean startProductionTest() {
+        if (started()) { ChatUtils.clientMessage("Stop trading first; the queued production runs with trading anyway."); return false; }
+        if (!production.queued()) return false;
+        productionTest = true;
+        testScheduler.reset();
+        production.start(); crafting.start(); auction.start();
+        Diagnostics.event("INFO", "production.test_started", java.util.Map.of("activity", production.activity()));
+        return true;
+    }
+
+    private void tickProductionTest() {
+        try {
+            long now = now();
+            // Traders normally keep Bazaar quotes fresh; with them off, the test keeps its own.
+            if (com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh() == null && now - testQuotesAt >= 5000) {
+                testQuotesAt = now; com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch();
+            }
+            var parts = List.<Feature>of(production, crafting, auction);
+            for (Feature part : parts) { part.poll(); if (!productionTest) return; }
+            Feature owner = testScheduler.select(parts);
+            if (owner != null) owner.onTick();
+            if (productionTest && !production.queued() && !crafting.queued() && !auction.queued()) {
+                productionTest = false;
+                production.stop(); crafting.stop(); auction.stop();
+                testScheduler.reset();
+                ChatUtils.clientMessage("Production test finished.");
+            }
+        } catch (RuntimeException failure) {
+            Diagnostics.failure("production.test_failed", failure);
+            safetyPause("Production test failed; inspect inventory and menus before retrying");
+        }
+    }
+
+    private void stopProductionTest(String why) {
+        productionTest = false;
+        production.stop(); crafting.stop(); auction.stop();
+        testScheduler.reset();
+        ChatUtils.clientMessage(why + ".");
     }
 
     public void pause() { pause(Source.MANUAL); }
@@ -225,6 +277,7 @@ public class FeatureManager {
 
     /** Latches a pause; the first reason stays the visible one until a person clears it. */
     public void safetyPause(Source source, String reason) {
+        productionTest = false;
         SafetyActions.latch(() -> {
             lifecycle.block(source, reason, now());
             scheduler.reset();
