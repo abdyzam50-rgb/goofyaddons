@@ -49,12 +49,15 @@ public class GeneralFlipper implements Feature {
     private final Services services;
     private final com.goofy.goofyaddons.menu.NavigationRetry navigationRetry = new com.goofy.goofyaddons.menu.NavigationRetry();
     private int inputRestarts;
-    private final com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry claimRetry =
-            new com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry();
+    private final GeneralClaim claim = new GeneralClaim();
+    private final GeneralOrderEntry entry = new GeneralOrderEntry();
+    private final GeneralBuy buySide = new GeneralBuy();
+    private final GeneralSell sellSide = new GeneralSell();
+    private final GeneralCancel cancellation = new GeneralCancel();
+    private final GeneralOrderReview review = new GeneralOrderReview();
+    private final Session session = new Session();
     private final com.goofy.goofyaddons.features.bookflipper.helper.PurseObservation purseObservation =
             new com.goofy.goofyaddons.features.bookflipper.helper.PurseObservation();
-    private String claimTitle, claimLore;
-    private int claimSlot;
     private final com.goofy.goofyaddons.menu.GameWorld world;
     private final GeneralOrderRepository repository;
     private final com.goofy.goofyaddons.menu.GameActions actions;
@@ -70,7 +73,6 @@ public class GeneralFlipper implements Feature {
     private CompletableFuture<JsonObject> request;
     private int generation;
     private JsonObject products;
-    private final com.goofy.goofyaddons.features.MenuObservationStability confirmationStability=new com.goofy.goofyaddons.features.MenuObservationStability();
     private final com.goofy.goofyaddons.features.MenuRecheck menuRecheck=new com.goofy.goofyaddons.features.MenuRecheck();
     private final com.goofy.goofyaddons.menu.BedrockMenuRecovery bedrockRecovery=new com.goofy.goofyaddons.menu.BedrockMenuRecovery();
     private boolean reopeningOrders;
@@ -84,16 +86,8 @@ public class GeneralFlipper implements Feature {
     private boolean snapshotFresh;
     private GeneralPosition active;
     private Step step;
-    private boolean selling;
-    private int inventoryBefore;
-    private int expectedClaim;
-    private boolean receipt;
-    private boolean claimPending;
-    private int claimUnits;
-    private int cancelSoldUnits;
-    private boolean reopenedCancelOptions;
-    private boolean cancelNeedsClaim;
-    private Double claimedProceeds;
+    /** Evidence for the position being worked on; replaced whenever work is selected. */
+    private GeneralTrade trade = new GeneralTrade();
     private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
     private String lastBlockedItem;
     @Override public void navigationResumed(long elapsed){stepSince+=elapsed;nextAction+=elapsed;navigationRetry.reset();}
@@ -130,9 +124,9 @@ public class GeneralFlipper implements Feature {
         state.put("navigationPending",navigationRetry.pending());
         state.put("activeTrade",active==null?"none":active.tradeId);state.put("activeItem",active==null?"none":active.item.id());
         state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:world.now()-stepSince);
-        state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",claimPending);state.put("receipt",receipt);
-        state.put("claimUnits",claimUnits);state.put("inventoryBefore",inventoryBefore);state.put("expectedClaim",expectedClaim);
-        state.put("ordersContainer",ordersSettle.container());state.put("selling",selling);
+        state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",trade.claimPending);state.put("receipt",trade.receipt);
+        state.put("claimUnits",trade.claimUnits);state.put("inventoryBefore",trade.inventoryBefore);state.put("expectedClaim",trade.expectedClaim);
+        state.put("ordersContainer",ordersSettle.container());state.put("selling",trade.selling);
         var retained=new java.util.ArrayList<java.util.Map<String,Object>>();
         for(GeneralPosition position:positions) {
             var details=new java.util.LinkedHashMap<String,Object>();
@@ -268,7 +262,7 @@ public class GeneralFlipper implements Feature {
         long now = world.now();
         if(step==Step.OPEN_PRODUCT || step==Step.PRODUCT || step==Step.QUANTITY
                 || step==Step.SIGN || step==Step.PRICE || step==Step.CONFIRM) {
-            var recovery=bedrockRecovery.observe(active.tradeId+":"+selling,view,now);
+            var recovery=bedrockRecovery.observe(active.tradeId+":"+trade.selling,view,now);
             if(recovery==com.goofy.goofyaddons.menu.BedrockMenuRecovery.Result.EXHAUSTED) {
                 fail("Bazaar action icons failed to load after three menu reopens; position retained.");return;
             }
@@ -294,7 +288,7 @@ public class GeneralFlipper implements Feature {
             return;
         }
         if (now - stepSince > 30000) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
-        if (now < nextAction || claimRetry.coolingDown(now)) return;
+        if (now < nextAction || claim.coolingDown(now)) return;
         nextAction = now + services.actionDelay();
         try {
             if(reopeningOrders) {
@@ -318,105 +312,17 @@ public class GeneralFlipper implements Feature {
                     command("managebazaarorders");
                     if (TradingSafety.ordersTitle(view.title())) transition(Step.ORDERS);
                 }
-                case ORDERS -> inspectOrders();
-                case CANCEL_DETAIL -> cancelDetail();
-                case VERIFY_CANCEL -> verifyCancellation();
-                case OPEN_PRODUCT -> {
-                    command("bz " + active.item.name());
-                    if(skipUnmetProduct())return;
-                    int create=find(selling?"Create Sell Offer":"Create Buy Order",false);
-                    if (menu("Bazaar") || productMenuMatches(create)) transition(Step.PRODUCT);
-                }
-                case PRODUCT -> openProduct();
-                case QUANTITY -> {
-                    if (world.signEditorOpen()) transition(Step.SIGN);
-                    else if (menu("How many")) {
-                        int custom = find("Custom Amount", false);
-                        if (custom < 0) custom = find("Custom", false);
-                        if (custom >= 0) { click(custom); transition(Step.SIGN); }
-                    } else if (priceMenu()) transition(Step.PRICE);
-                }
-                case SIGN -> {
-                    if (world.signEditorOpen()) {
-                        if (!actions.writeSign(Integer.toString(active.quantity))) {
-                            fail("Could not write the order amount onto the sign; no order submitted."); return;
-                        }
-                        transition(Step.PRICE);
-                    } else if (priceMenu()) transition(Step.PRICE);
-                }
-                case PRICE -> choosePrice();
-                case CONFIRM -> {
-                    if (!menu("Confirm")) return;
-                    if(!TradingSafety.confirmationTitle(view.title(),selling)) {
-                        fail("Unexpected confirmation type; no order submitted.");return;
-                    }
-                    if (!selling && !freshQuotes()) { fail("Quotes expired before order confirmation."); return; }
-                    if (!selling && active.quantity > capacityFor(active.item.id())) {
-                        fail("Not enough inventory capacity for this buy order."); return;
-                    }
-                    int confirm = 13;
-                    if (!loadedSlot(confirm)) return;
-                    if(!confirmationStability.ready(view.containerId(),
-                            view.title()+"\n"+view.slot(confirm).hoverName()+"\n"+lore(confirm),
-                            !lore(confirm).isBlank(),now)) return;
-                    double expectedPrice=selling?active.sellPrice:active.unitCost;
-                    double purse = selling ? -1 : services.purse();
-                    if (!selling && !purchasePurseReady(purse)) return;
-                    if(!com.goofy.goofyaddons.features.ConfirmationCheck.matches(view.title(),selling,
-                            view.slot(confirm).hoverName(),lore(confirm),active.item.name(),active.quantity,expectedPrice)) {
-                        fail("Confirmation item, quantity or price is unreadable or differs; no order submitted.");return;
-                    }
-                    if(selling) {
-                        if(itemCount(active.item.id())!=active.quantity || !saleAllowed(expectedPrice)) {
-                            fail("Inventory or holding limit changed before sale confirmation; no order submitted.");return;
-                        }
-                    } else if(!com.goofy.goofyaddons.features.ConfirmationCheck.buyAllowed(expectedPrice,active.quantity,currentAsk(),
-                            services.taxPercentage(),settings().minMarginPercentage,settings().minProfitPerBatch,settings().maxCoinsPerItem)
-                            || !capital.resize(OWNER,active.item.id(),active.cost(),purse)) {
-                        fail("Price or available capital changed before buy confirmation; no order submitted.");return;
-                    }
-                    active.submitted = true;
-                    if (selling) active.saleEvent = java.util.UUID.randomUUID().toString();
-                    active.placedAt = now;
-                    if (!save()) return; // Persist intent before the irreversible click.
-                    click(confirm);
-                    services.event("INFO","order.submitted",java.util.Map.of("trade",active.tradeId,"item",active.item.id(),"units",active.quantity,"side",selling?"SELL":"BUY","unitPrice",selling?active.sellPrice:active.unitCost,"cost",active.cost()));
-                    transition(Step.VERIFY_ORDER);
-                    actions.closeMenu();
-                }
-                case VERIFY_ORDER -> {
-                    if(now-stepSince<2000) return; // Allow escrow/setup to reach the server before opening orders.
-                    command("managebazaarorders");
-                    if (!ordersReady()) return;
-                    if (ambiguousOrders()) return;
-                    int order = findOrder(selling);
-                    if (order >= 0) {
-                        if (!orderMatchesPosition(order)) return;
-                        services.event("INFO","order.verified",java.util.Map.of("trade",active.tradeId,"item",active.item.id(),"units",active.quantity,"side",selling?"SELL":"BUY"));
-                        active.stage = selling ? Stage.SELL_ORDER : Stage.BUY_ORDER;
-                        if (!selling) { capital.purchased(OWNER, active.item.id()); services.placed(active); }
-                        finishWork();
-                    } else if (!selling && itemCount(active.item.id()) >= active.quantity) {
-                        capital.purchased(OWNER, active.item.id());
-                        active.stage = Stage.INVENTORY;
-                        if(!recordAcquisition()) return;
-                        finishWork();
-                    } else {
-                        recheckOrders("placement-not-visible");
-                    }
-                }
-                case VERIFY_SALE -> {
-                    command("managebazaarorders");
-                    if (!ordersReady() || ambiguousOrders()) return;
-                    if (TradingSafety.saleComplete(claimPending, receipt, findOrder(true) < 0, itemCount(active.item.id()))) {
-                        if(!recordSale(claimUnits, claimedProceeds)) return;
-                        completePosition();
-                    } else if (now - stepSince < 10000) {
-                        retryClaim();
-                    } else {
-                        fail("Sale claim was not confirmed by its receipt and inventory/order updates; position retained.");
-                    }
-                }
+                case ORDERS -> review.inspect(session);
+                case CANCEL_DETAIL -> cancellation.detail(session);
+                case VERIFY_CANCEL -> cancellation.verify(session);
+                case OPEN_PRODUCT -> entry.openProduct(session);
+                case PRODUCT -> entry.product(session);
+                case QUANTITY -> entry.quantity(session, world.signEditorOpen());
+                case SIGN -> entry.sign(session, world.signEditorOpen());
+                case PRICE -> entry.price(session, side());
+                case CONFIRM -> entry.confirm(session, side());
+                case VERIFY_ORDER -> entry.verifyPlacement(session, side());
+                case VERIFY_SALE -> sellSide.settle(session);
             }
         } catch (Exception failure) {
             services.failure("general.transaction_failed",failure);
@@ -440,13 +346,9 @@ public class GeneralFlipper implements Feature {
             }
             if (workDue(position, now)) {
                 active = position;
-                cancelNeedsClaim=false;
-                selling = position.stage == Stage.INVENTORY || position.stage == Stage.SELL_ORDER;
-                claimRetry.reset();
-                receipt = false;
-                claimPending = false;
-                cancelSoldUnits = 0;
-                claimedProceeds = null;
+                trade = new GeneralTrade();
+                trade.selling = position.stage == Stage.INVENTORY || position.stage == Stage.SELL_ORDER;
+                claim.reset();
                 transition(Step.OPEN_ORDERS);
                 return;
             }
@@ -474,367 +376,11 @@ public class GeneralFlipper implements Feature {
             position.stage = Stage.PLANNED;
             positions.add(position);
             active = position;
-            selling = false;
-            claimRetry.reset();
-            claimPending = false;
-            cancelSoldUnits = 0;
-            claimedProceeds = null;
-            receipt = false;
+            trade = new GeneralTrade();
+            claim.reset();
             if (save()) transition(Step.OPEN_ORDERS);
             return;
         }
-    }
-
-    private void inspectOrders() {
-        if (!ordersReady() || ambiguousOrders()) return;
-        int buy = findOrder(false);
-        int sell = findOrder(true);
-        int inventory = itemCount(active.item.id());
-        if(buy<0 && sell<0 && active.stage!=Stage.PLANNED && (active.stage!=Stage.INVENTORY || inventory==0)
-                && recheckOrders("tracked-order-absent")) return;
-        if(buy<0 && sell<0 && inventory==0 && active.stage==Stage.BUY_ORDER && active.cancelRequested
-                && active.confirmedCancelRefund!=null && Double.isFinite(active.confirmedCancelRefund)
-                && Math.abs(active.confirmedCancelRefund-active.cost())<=0.51) {
-            selling=false;receipt=true;inventoryBefore=0;expectedClaim=0;transition(Step.VERIFY_CANCEL);return;
-        }
-        OrderLore.Fill saleFill = sell < 0 ? null : OrderLore.fill(lore(sell));
-        boolean fullySold = saleFill != null && saleFill.filled() == active.quantity;
-        long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
-        double netExit = freshQuotes() ? currentAsk() * (1 - services.taxPercentage() / 100) : -1;
-        boolean holdingLimitHit = active.stage != Stage.PLANNED && !fullySold
-                && TradingSafety.holdingLimit(held, world.now(), settings().maxHoldingSeconds,
-                    active.unitCost, netExit, settings().maxDrawdownPercentage);
-        // Cancel outstanding buys before checking whether acquired stock may be sold.
-        // Age requests an exit; it must not prevent claiming/refunding that exit.
-        if (holdingLimitHit && buy < 0 && TradingSafety.holdingLimit(0, world.now(),
-                settings().maxHoldingSeconds, active.unitCost, netExit, settings().maxDrawdownPercentage)) {
-            fail("Drawdown limit reached for " + active.item.name() + ". GeneralPosition retained for review."); return;
-        }
-        if (active.stage == Stage.PLANNED && !active.submitted) {
-            if (buy >= 0 || sell >= 0 || inventory > 0) {
-                capital.release(OWNER, active.item.id());
-                positions.remove(active);
-                fail("Pre-existing order/inventory for " + active.item.name() + "; remove it or remove this item from the allowlist.");
-                return;
-            }
-            if(services.excludedProducts().contains(active.item.id())) {
-                skipUnavailable("Excluded by account/category access filter");return;
-            }
-            selling = false;
-            actions.closeMenu();
-            transition(Step.OPEN_PRODUCT);
-            return;
-        }
-        if (buy >= 0 && sell >= 0) { fail("Both buy and sell orders exist for one tracked item; manual reconciliation required."); return; }
-        if (buy >= 0) {
-            if (!orderMatchesPosition(buy)) return;
-            active.stage = Stage.BUY_ORDER;
-            if (active.heldSince == 0) active.heldSince = active.placedAt;
-            capital.purchased(OWNER, active.item.id());
-            int claimable = OrderLore.claimable(lore(buy), inventory);
-            boolean cancel = holdingLimitHit || active.cancelRequested || claimable + inventory >= active.quantity || inventory > 0 || shouldReprice(false)
-                    || world.now() - active.placedAt >= settings().orderTimeoutSeconds * 1000L;
-            if (!cancel) { finishWork(); return; }
-            selling = false;
-            inventoryBefore = inventory;
-            expectedClaim = claimable;
-            if (claimable > capacityFor(active.item.id())) {
-                fail("Insufficient inventory space to claim the tracked buy order."); return;
-            }
-            receipt = false;
-            reopenedCancelOptions=false;
-            armClaim(buy);
-            transition(Step.CANCEL_DETAIL);
-            click(buy);
-            return;
-        }
-        if (sell >= 0) {
-            if (!orderMatchesPosition(sell)) return;
-            active.stage = Stage.SELL_ORDER;
-            OrderLore.Fill filled = OrderLore.fill(lore(sell));
-            int soldUnits = filled == null ? -1 : filled.filled();
-            if (soldUnits >= active.quantity) {
-                receipt = false;
-                claimPending = true;
-                active.settlementPending=true;
-                claimUnits = active.quantity;
-                inventoryBefore = inventory;
-                claimedProceeds = null;
-                if (!save()) return;
-                armClaim(sell);
-                transition(Step.VERIFY_SALE);
-                click(sell); // Claim completed sale, never sell arbitrary inventory.
-                actions.closeMenu();
-                return;
-            }
-            if (soldUnits >= 0 && shouldReprice(true) && active.reprices < settings().maxReprices && freshQuotes()
-                    && saleAllowed(currentAsk())) {
-                selling = true;
-                inventoryBefore = inventory;
-                expectedClaim = Math.max(0, active.quantity - soldUnits);
-                cancelSoldUnits = soldUnits;
-                claimedProceeds = null;
-                if (expectedClaim > capacityFor(active.item.id())) {
-                    fail("Insufficient inventory space to cancel the sell offer."); return;
-                }
-                receipt = false;
-                reopenedCancelOptions=false;
-                active.settlementPending=soldUnits>0;
-                if(!save()) return;
-                armClaim(sell);
-                transition(Step.CANCEL_DETAIL);
-                click(sell);
-                return;
-            }
-            finishWork();
-            return;
-        }
-        if (inventory > 0) {
-            if (inventory > active.quantity) { fail("Inventory exceeds tracked quantity; manual reconciliation required."); return; }
-            active.quantity = inventory;
-            active.stage = Stage.INVENTORY;
-            active.cancelRequested=false;
-            if(!recordAcquisition()) return;
-            restoreFunding(active);
-            selling = true;
-            actions.closeMenu();
-            transition(Step.OPEN_PRODUCT);
-        } else if (active.stage == Stage.SELL_ORDER || active.cancelRequested) {
-            fail("Tracked sell/cancel position is absent; ownership is uncertain. GeneralPosition retained for manual reconciliation.");
-        } else if (world.now() - active.placedAt > 5000) {
-            fail("Tracked buy order and inventory are both missing; manual reconciliation required.");
-        }
-    }
-
-    private void cancelDetail() {
-        if (view.title() == null) {
-            command("managebazaarorders");
-            return;
-        }
-        if (menu("Order")) {
-            int cancel = find("Cancel Order", false);
-            if (cancel >= 0) {
-                active.cancelRequested = true;
-                if (!save()) return;
-                capital.funding(OWNER, active.item.id(), null);
-                click(cancel);
-                actions.closeMenu();
-                transition(Step.VERIFY_CANCEL);
-                return;
-            }
-        }
-        // Partial buy claims leave the order in the list. Reopen its options
-        // only after the expected inventory delta and the server's options hint.
-        if (!reopenedCancelOptions && ordersReady() && !ambiguousOrders()) {
-            int order=findOrder(selling);
-            boolean mayOpen=order>=0 && (selling
-                    ? OrderLore.canOpenSellOptionsAfterClaim(lore(order),cancelSoldUnits,claimedProceeds!=null)
-                    : OrderLore.canOpenOptionsAfterClaim(lore(order),inventoryBefore,itemCount(active.item.id()),expectedClaim));
-            if(mayOpen) {
-                if(!orderMatchesPosition(order)) return;
-                services.event("INFO","order.claim_then_open_options",java.util.Map.of("trade",active.tradeId,"inventoryBefore",inventoryBefore,"inventoryNow",itemCount(active.item.id()),"expectedClaim",expectedClaim));
-                reopenedCancelOptions=true;
-                click(order);
-                return;
-            }
-        }
-        // A fully filled order can be claimed directly without an order detail screen.
-        if (!selling && ordersReady() && itemCount(active.item.id()) > inventoryBefore && findOrder(false) < 0) {
-            // More units may fill between reading the order and claiming it. Use the
-            // acknowledged whole position, not the earlier partial-fill estimate.
-            expectedClaim = active.quantity - inventoryBefore;
-            actions.closeMenu();
-            transition(Step.VERIFY_CANCEL);
-            return;
-        }
-        retryClaim();
-    }
-
-    private void verifyCancellation() {
-        int count = itemCount(active.item.id());
-        // A sell can complete after its options were opened. Cancellation then
-        // returns no inventory: the verified full offer needs a coin claim.
-        if (selling && cancelSoldUnits == 0 && ordersReady() && !ambiguousOrders()) {
-            int order=findOrder(true);
-            var fill=order<0?null:OrderLore.fill(lore(order));
-            if(fill!=null && fill.filled()==active.quantity) {
-                if(!orderMatchesPosition(order))return;
-                active.cancelRequested=false;active.settlementPending=true;
-                claimUnits=active.quantity;claimPending=true;receipt=false;
-                claimedProceeds=null;expectedClaim=0;inventoryBefore=count;
-                if(!save())return;
-                armClaim(order);transition(Step.VERIFY_SALE);click(order);actions.closeMenu();
-                services.event("INFO","order.cancel_completed_sale",java.util.Map.of("trade",active.tradeId,"units",claimUnits));
-                return;
-            }
-        }
-        // A fill can land after opening options but before the server processes
-        // cancellation. Claim against fresh ownership/quantity observations,
-        // then let CANCEL_DETAIL verify the delta before cancelling again.
-        if(!selling && cancelNeedsClaim && ordersReady() && !ambiguousOrders()) {
-            int order=findOrder(false);
-            if(order>=0) {
-                if(!orderMatchesPosition(order))return;
-                int claimable=OrderLore.claimable(lore(order),count);
-                if(claimable>0) {
-                    if(claimable>capacityFor(active.item.id()) || count+claimable>active.quantity){fail("Cannot safely claim newly filled units before cancellation; position retained.");return;}
-                    inventoryBefore=count;expectedClaim=claimable;receipt=false;reopenedCancelOptions=false;cancelNeedsClaim=false;
-                    active.cancelRequested=false;active.confirmedCancelRefund=null;
-                    if(!save())return;
-                    armClaim(order);transition(Step.CANCEL_DETAIL);click(order);
-                    services.event("INFO","order.cancel_fill_claim",java.util.Map.of("trade",active.tradeId,"units",claimable));
-                    return;
-                }
-            }
-        }
-        long elapsed = world.now() - stepSince;
-        boolean itemsArrived = count > inventoryBefore && count >= inventoryBefore + expectedClaim;
-        if (expectedClaim > 0 && count < inventoryBefore + expectedClaim) {
-            command("managebazaarorders");
-            if(ordersReady()) recheckOrders("cancel-inventory-not-visible");
-            return;
-        }
-        if (!itemsArrived && !receipt) {
-            command("managebazaarorders");
-            if(ordersReady()) recheckOrders("cancel-outcome-not-visible");
-            return;
-        }
-        if (elapsed < 500) return;
-        // Reopen orders to verify cancellation before creating a replacement.
-        command("managebazaarorders");
-        if (!ordersReady() || ambiguousOrders()) return;
-        if(findOrder(selling)>=0) {recheckOrders("cancel-not-visible");return;}
-        if (selling && cancelSoldUnits > 0) {
-            if(!recordSale(cancelSoldUnits, claimedProceeds)) return;
-            cancelSoldUnits = 0;
-            active.settlementPending=false;
-        }
-        if (count == 0) {
-            capital.funding(OWNER, active.item.id(), 0.0);
-            long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
-            boolean agedOut = held > 0 && world.now() - held >= settings().maxHoldingSeconds * 1000L;
-            if (!selling && !agedOut && active.reprices < settings().maxReprices && freshQuotes()) {
-                JsonObject product = products.getAsJsonObject(active.item.id());
-                double bid = product == null ? -1 : GeneralCalculator.topPrice(product, "sell_summary");
-                double net = currentAsk() * (1 - services.taxPercentage() / 100) - bid;
-                if (bid > 0 && net * active.quantity >= settings().minProfitPerBatch
-                        && net / bid * 100 >= settings().minMarginPercentage
-                        && bid * active.quantity <= settings().maxCoinsPerItem
-                        && capital.resize(OWNER, active.item.id(), bid * active.quantity, services.purse())) {
-                    active.unitCost = bid;
-                    active.reprices++;
-                    active.stage = Stage.PLANNED;
-                    active.submitted = false;
-                    active.cancelRequested = false;
-                    active.confirmedCancelRefund=null;
-                    finishWork();
-                    return;
-                }
-            }
-            completePosition();
-            return;
-        }
-        if (count > active.quantity) { fail("Inventory exceeds tracked quantity; manual reconciliation required."); return; }
-        active.quantity = count;
-        active.cancelRequested = false;
-        active.confirmedCancelRefund = null;
-        active.stage = Stage.INVENTORY;
-        if (!selling && !recordAcquisition()) return;
-        if (selling) active.reprices++;
-        restoreFunding(active);
-        finishWork();
-    }
-
-    private void openProduct() {
-        int create = find(selling ? "Create Sell Offer" : "Create Buy Order", false);
-        if(skipUnmetProduct())return;
-        if (productMenuMatches(create)) {
-            if (selling) {
-                int quantity = itemCount(active.item.id());
-                if (quantity <= 0 || quantity > active.quantity) { fail("Tracked inventory quantity does not match."); return; }
-                active.quantity = quantity;
-            }
-            click(create);
-            transition(Step.QUANTITY);
-            return;
-        }
-        if (create<0 && menu("Bazaar")) {
-            int item = find(active.item.name(), true);
-            if (item >= 0) click(item);
-        }
-    }
-
-    private boolean skipUnmetProduct() {
-        int create=find("Create Buy Order",false);
-        if (!selling && active.stage==Stage.PLANNED && !active.submitted && !active.cancelRequested) {
-            // Only inspect controls on a verified product, or its exact search-result entry.
-            String reason=null;
-            if(productMenuMatches(create)) {
-                reason=com.goofy.goofyaddons.features.access.ActionRequirements.blocked(view.slot(create).hoverName()+"\n"+lore(create),services.skillLevels(),com.goofy.goofyaddons.features.access.ActionRequirements.Action.BUY);
-                var icon=view.slot(13);
-                if(reason==null && icon!=null)reason=BazaarAccess.unmet(icon.lore());
-            } else {
-                var icon=view.slot(13);
-                if(icon!=null && !icon.inPlayerInventory() && !icon.empty() && (active.item.id().equals(icon.customId())
-                        || active.item.name().equals(com.goofy.goofyaddons.utils.Chat.strip(icon.hoverName()))))
-                    reason=BazaarAccess.unmet(icon.lore());
-            }
-            if(reason==null && menu("Bazaar")) {
-                int item=find(active.item.name(),true);
-                if(item>=0)reason=BazaarAccess.unmet(lore(item));
-            }
-            if(reason!=null) {
-                services.excludeProduct(active.item.id(),reason);skipUnavailable(reason);return true;
-            }
-        }
-        return false;
-    }
-
-    /** Hypixel truncates product breadcrumb titles; verify the actual product and control. */
-    private boolean productMenuMatches(int create) {
-        if(create<0)return false;
-        var control=view.slot(create);
-        if(control==null || control.inPlayerInventory() || control.empty())return false;
-        var icon=view.slot(13);
-        if(icon!=null && !icon.empty() && !icon.inPlayerInventory()) {
-            if(icon.customId()!=null && !icon.customId().isBlank()) {
-                return active.item.id().equals(icon.customId()) && control.hasLoreLine(active.item.name());
-            }
-            if(active.item.name().equals(com.goofy.goofyaddons.utils.Chat.strip(icon.hoverName()))
-                    && control.hasLoreLine(active.item.name()))return true;
-        }
-        // Keep support for older layouts with full titles, but never contradict readable identity.
-        return menu(active.item.name()) && (control.loreLines()==null || control.loreLines().isEmpty()
-                || control.hasLoreLine(active.item.name()));
-    }
-
-    private void choosePrice() {
-        if (!priceMenu() || !loadedSlot(12) || (!selling && !freshQuotes())) return;
-        double price = unitPrice(12);
-        if (price <= 0) { fail("Unable to read the transaction price."); return; }
-        if (selling) {
-            if (!saleAllowed(price)) {
-                fail("Drawdown limit reached at the live sell price; position retained."); return;
-            }
-            active.sellPrice = price;
-        } else {
-            double purse = services.purse();
-            if (!purchasePurseReady(purse)) return;
-            double net = currentAsk() * (1 - services.taxPercentage() / 100) - price;
-            if (net <= 0 || net / price * 100 < settings().minMarginPercentage
-                    || net * active.quantity < settings().minProfitPerBatch
-                    || price * active.quantity > settings().maxCoinsPerItem
-                    || !capital.resize(OWNER, active.item.id(), price * active.quantity, purse)) {
-                capital.release(OWNER, active.item.id());
-                positions.remove(active);
-                finishWork();
-                return;
-            }
-            active.unitCost = price;
-            active.purchasePriceKnown = true;
-        }
-        click(12); // Current top order price, matching the calculator.
-        transition(Step.CONFIRM);
     }
 
     private boolean purchasePurseReady(double purse) {
@@ -853,29 +399,10 @@ public class GeneralFlipper implements Feature {
                 settings().maxDrawdownPercentage);
     }
 
-    private void armClaim(int slot) {
-        claimSlot = slot;
-        claimTitle = view.title();
-        claimLore = lore(slot);
-        claimRetry.sent(slot, false, world.now());
-    }
-
-    private void retryClaim() {
-        // Only the original, unchanged claim may be repeated. Placement and cancellation
-        // confirmations are never replayed on the basis of a missing acknowledgement.
-        boolean unchanged = java.util.Objects.equals(claimTitle, view.title())
-                && findOrder(selling) == claimSlot && java.util.Objects.equals(claimLore, lore(claimSlot))
-                && itemCount(active.item.id()) == inventoryBefore && !receipt && claimedProceeds == null;
-        if (claimRetry.retry(view, unchanged, actions, world.now())) {
-            services.event("WARN", "general.claim_retried", java.util.Map.of(
-                    "trade", active.tradeId, "attempt", claimRetry.retries(), "slot", claimSlot));
-        }
-    }
-
     void onSlowdown(String message) {
         if (!running || paused || active == null
                 || !com.goofy.goofyaddons.features.bookflipper.helper.BookActionRetry.slowdownMessage(message)) return;
-        claimRetry.slowdown(world.now());navigationRetry.slowdown(world.now());
+        claim.slowdown(world.now());navigationRetry.slowdown(world.now());
         services.event("WARN", "general.slowdown", java.util.Map.of("trade", active.tradeId, "step", step.name()));
     }
 
@@ -935,7 +462,7 @@ public class GeneralFlipper implements Feature {
         snapshotCandidates = snapshotFresh ? candidates() : List.of();
     }
     private GeneralSettings settings() { return services.settings(); }
-    private boolean priceMenu() { return menu(selling ? "At what price" : "How much do you want to pay"); }
+    private boolean priceMenu() { return menu(trade.selling ? "At what price" : "How much do you want to pay"); }
     // Now strips formatting codes, matching BazaarFlipper. A code inside the label used
     // to make a known menu unrecognisable, which surfaced as a step timeout.
     private boolean menu(String title) {
@@ -950,7 +477,7 @@ public class GeneralFlipper implements Feature {
     }
     private void transition(Step next) {
         services.event("INFO","general.transition",java.util.Map.of("from",step==null?"none":step.name(),"to",next.name(),"item",taskItem()));
-        confirmationStability.reset();menuRecheck.reset();reopeningOrders=false;
+        entry.stepChanged();menuRecheck.reset();reopeningOrders=false;
         purseObservation.reset();
         step = next; stepSince = world.now(); lastCommand = 0;
         ordersSettle.reset();
@@ -1025,31 +552,10 @@ public class GeneralFlipper implements Feature {
 
     void onNotice(String message) {
         if (!running || paused || active == null) return;
-        if(!selling && step==Step.VERIFY_CANCEL && active.cancelRequested
-                && com.goofy.goofyaddons.utils.Chat.strip(message).equals("[Bazaar] You have goods to claim on this order!")) {
-            cancelNeedsClaim=true;
-            return;
-        }
-        if(!selling && active.stage==Stage.BUY_ORDER && active.purchasePriceKnown && active.cancelRequested
-                && (step==Step.CANCEL_DETAIL||step==Step.VERIFY_CANCEL) && expectedClaim==0 && inventoryBefore==0) {
-            Double refund=TradeReceipts.buyCancellationRefund(message,active.cost());
-            if(refund!=null) {
-                receipt=true;active.confirmedCancelRefund=refund;
-                if(!save())return;
-                services.event("INFO","order.cancel_refund_verified",java.util.Map.of("trade",active.tradeId,"refund",refund));
-            }
-        }
+        if (cancellation.serverNotice(session, message)) return;
         if(!message.contains(active.item.name()))return;
-        if (step == Step.VERIFY_SALE && claimPending) {
-            Double coins = TradeReceipts.saleProceeds(message, active.item.name(), claimUnits);
-            if (coins != null) { receipt = true; claimedProceeds = coins; }
-        }
-        if (selling && cancelSoldUnits > 0 && (step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL)) {
-            Double coins = TradeReceipts.saleProceeds(message, active.item.name(), cancelSoldUnits);
-            if (coins != null) claimedProceeds = coins;
-        }
-        if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && active.cancelRequested
-                && TradingSafety.cancellationReceipt(message, active.item.name())) receipt = true;
+        sellSide.receipt(session, message);
+        cancellation.itemNotice(session, message);
     }
     private boolean recordAcquisition() {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
@@ -1088,6 +594,55 @@ public class GeneralFlipper implements Feature {
         active = null;navigationRetry.reset();inputRestarts=0;
         actions.closeMenu();
         services.safetyPause(message);
+    }
+
+    private GeneralOrderEntry.Side side() { return trade.selling ? sellSide : buySide; }
+
+    /** The engine's rules, as the operations see them. */
+    private final class Session implements GeneralContext {
+        @Override public GeneralPosition active() { return active; }
+        @Override public GeneralTrade trade() { return trade; }
+        @Override public GeneralClaim claim() { return claim; }
+        @Override public List<GeneralPosition> positions() { return positions; }
+        @Override public com.goofy.goofyaddons.menu.MenuSnapshot view() { return view; }
+        @Override public long now() { return world.now(); }
+        @Override public String username() { return world.username(); }
+        @Override public com.goofy.goofyaddons.menu.GameActions actions() { return actions; }
+        @Override public Services services() { return services; }
+        @Override public CapitalManager capital() { return capital; }
+        @Override public GeneralSettings settings() { return GeneralFlipper.this.settings(); }
+        @Override public Step step() { return step; }
+        @Override public long stepSince() { return stepSince; }
+        @Override public void transition(Step next) { GeneralFlipper.this.transition(next); }
+        @Override public void click(int slot) { GeneralFlipper.this.click(slot); }
+        @Override public void command(String text) { GeneralFlipper.this.command(text); }
+        @Override public void fail(String message) { GeneralFlipper.this.fail(message); }
+        @Override public boolean save() { return GeneralFlipper.this.save(); }
+        @Override public boolean menu(String title) { return GeneralFlipper.this.menu(title); }
+        @Override public boolean priceMenu() { return GeneralFlipper.this.priceMenu(); }
+        @Override public boolean loadedSlot(int slot) { return GeneralFlipper.this.loadedSlot(slot); }
+        @Override public int find(String text, boolean exact) { return GeneralFlipper.this.find(text, exact); }
+        @Override public String lore(int slot) { return GeneralFlipper.this.lore(slot); }
+        @Override public double unitPrice(int slot) { return GeneralFlipper.this.unitPrice(slot); }
+        @Override public int itemCount(String id) { return GeneralFlipper.this.itemCount(id); }
+        @Override public int capacityFor(String id) { return GeneralFlipper.this.capacityFor(id); }
+        @Override public boolean ordersReady() { return GeneralFlipper.this.ordersReady(); }
+        @Override public boolean ambiguousOrders() { return GeneralFlipper.this.ambiguousOrders(); }
+        @Override public int findOrder(boolean sell) { return GeneralFlipper.this.findOrder(sell); }
+        @Override public boolean orderMatchesPosition(int slot) { return GeneralFlipper.this.orderMatchesPosition(slot); }
+        @Override public boolean recheckOrders(String reason) { return GeneralFlipper.this.recheckOrders(reason); }
+        @Override public boolean freshQuotes() { return GeneralFlipper.this.freshQuotes(); }
+        @Override public double currentAsk() { return GeneralFlipper.this.currentAsk(); }
+        @Override public JsonObject products() { return products; }
+        @Override public boolean shouldReprice(boolean sell) { return GeneralFlipper.this.shouldReprice(sell); }
+        @Override public boolean purchasePurseReady(double purse) { return GeneralFlipper.this.purchasePurseReady(purse); }
+        @Override public boolean saleAllowed(double price) { return GeneralFlipper.this.saleAllowed(price); }
+        @Override public void restoreFunding(GeneralPosition position) { GeneralFlipper.this.restoreFunding(position); }
+        @Override public boolean recordAcquisition() { return GeneralFlipper.this.recordAcquisition(); }
+        @Override public boolean recordSale(int units, Double proceeds) { return GeneralFlipper.this.recordSale(units, proceeds); }
+        @Override public void skipUnavailable(String reason) { GeneralFlipper.this.skipUnavailable(reason); }
+        @Override public void finishWork() { GeneralFlipper.this.finishWork(); }
+        @Override public void completePosition() { GeneralFlipper.this.completePosition(); }
     }
 
     private void load() {
