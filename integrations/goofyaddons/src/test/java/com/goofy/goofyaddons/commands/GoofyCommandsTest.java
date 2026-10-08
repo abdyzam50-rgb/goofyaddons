@@ -21,13 +21,13 @@ class GoofyCommandsTest {
     }
     @Test void everyFeatureLivesUnderOneNamespace() {
         assertEquals(Set.of("goofyaddon"),commands.getRoot().getChildren().stream().map(n->n.getName()).collect(Collectors.toSet()));
-        assertEquals(Set.of("start","stop","toggle","status","mode","reload","debug","profit","schedule","craft","production","auction"),
+        assertEquals(Set.of("start","stop","toggle","status","mode","reload","debug","profit","schedule","craft","production","auction","profiles"),
             commands.getRoot().getChild("goofyaddon").getChildren().stream().map(n->n.getName()).collect(Collectors.toSet()));
     }
     @Test void realFeatureArgumentsStillParseAndInvalidAmountsFailClosed() {
         for(String suffix:new String[]{"debug export","profit scale 1.5","profit reset","schedule on","schedule off","craft ENCHANTED_COAL 2",
                 "production recipes ENCHANTED_COAL","production jobs","auction inspect","auction prepare ENCHANTED_COAL 1000",
-                "auction sell ENCHANTED_COAL 1000 50","mode both","toggle","reload"}) {
+                "auction sell ENCHANTED_COAL 1000 50","mode both","toggle","reload","profiles","profiles adopt","profiles setaside"}) {
             var parse=commands.parse("goofyaddon "+suffix,null);
             assertFalse(parse.getReader().canRead(),suffix);assertTrue(parse.getExceptions().isEmpty(),suffix);
         }
