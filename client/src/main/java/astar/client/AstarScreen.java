@@ -349,6 +349,7 @@ final class AstarScreen extends Screen {
         market.row("Account dashboard",()->"Share local account snapshots with the companion site.",new Check(()->draft.view().marketAnalysis.dashboardEnabled,v->editTrading("Account dashboard",cfg->cfg.marketAnalysis.dashboardEnabled=v)));
         market.row("Bazaar access",()->"NPC mode uses A* to approach a loaded Bazaar NPC.",new Mode<>(List.of("AUTO","COMMAND","NPC"),()->draft.view().access.bazaarMode,v->v,v->editTrading("Bazaar access",cfg->cfg.access.bazaarMode=v)));
         market.row("Skill checks",()->"Check account levels and skip blocked routes.",new Check(()->draft.view().access.checkSkills,v->editTrading("Skill checks",cfg->cfg.access.checkSkills=v)));
+        market.row("Versions",()->com.goofy.goofyaddons.diagnostics.ReleaseInfo.manifest().summary());
         market.row("Last route decision",()->{String why=manager.lastRouteDecision();return why==null?"No automatic route chosen yet.":why;});
         Card abilities=card("What runs automatically","Research only plans or reads menus, Queued runs steps you start, Automatic chooses and finishes its own work.");
         for(var entry:com.goofy.goofyaddons.features.capability.Capabilities.all())

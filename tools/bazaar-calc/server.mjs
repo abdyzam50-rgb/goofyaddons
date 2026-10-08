@@ -11,7 +11,7 @@ import { DashboardState } from './dashboard-state.mjs';
 import { MarketCollector } from './collector.mjs';
 import { ExecutionHistory } from './execution-history.mjs';
 import { CommunitySync } from './community.mjs';
-import { recommend, PROTOCOL } from './adapter.mjs';
+import { recommend, PROTOCOL, FORECAST_CONTRACT } from './adapter.mjs';
 const history = JSON.parse(gunzipSync(readFileSync(new URL('./history.json.gz', import.meta.url))));
 const provenance = JSON.parse(readFileSync(new URL('./provenance.json', import.meta.url), 'utf8'));
 const assets = new Map([
@@ -125,7 +125,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       return;
     }
     if (req.method === 'GET' && req.url === '/health') {
-      send(200, { protocol: PROTOCOL, bundle: bundle ?? undefined, readOnly: !control, discord:control?.deliveryStatus?.()??{enabled:false}, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}, dataDirectory:dataDirectory() }); return;
+      send(200, { protocol: PROTOCOL, forecastContract: FORECAST_CONTRACT, bundle: bundle ?? undefined, readOnly: !control, discord:control?.deliveryStatus?.()??{enabled:false}, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}, dataDirectory:dataDirectory() }); return;
     }
     if (req.method !== 'POST' || req.url !== '/v1/recommendations') { send(404, { error: 'Unknown endpoint' }); return; }
     if (req.headers['x-goofy-analysis'] !== 'shadow-v1' || req.headers['content-type'] !== 'application/json') { send(400, { error: 'Invalid request headers' }); return; }

@@ -152,7 +152,7 @@ test('health reports the managed bundle identity it was launched with', async ()
   const server = createCompanion({ bundle: 'abc123' }); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     const health = await (await fetch(`http://127.0.0.1:${server.address().port}/health`)).json();
-    assert.equal(health.bundle, 'abc123');
+    assert.equal(health.bundle, 'abc123'); assert.equal(health.forecastContract, 2); assert.match(health.upstreamCommit, /^[0-9a-f]{40}$/);
   } finally { server.close(); }
 });
 

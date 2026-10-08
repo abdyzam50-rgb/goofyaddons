@@ -253,6 +253,22 @@ excluded from the combined resources. A*'s descriptor initializes the trader onc
 then A*, and registers the trader's packet mirror mixin. Both license notices are
 included in the JAR: A*'s PolyForm Noncommercial license and the trader's MIT notice.
 
+### Versions and support bundles
+
+One release manifest lists what an install is made of: the mod, Minecraft, Fabric,
+Java, the calculator protocol and bundle digest, the upstream calculator commit,
+the forecast contract, the saved-file layout and the journal and config schemas.
+The running calculator reports its bundle, upstream commit and forecast contract
+on `/health`, and the manifest lists every disagreement with what this mod bundled
+(for example an older calculator still answering on the port). See it with
+`.a* goofyaddon debug version` or **Versions** on the Macros page.
+
+`.a* goofyaddon debug export` now also carries the manifest, the calculator
+supervisor state and the last 40 lines of `companion.log` and
+`companion-error.log`. Keys, tokens, passwords and long secret-like strings are
+removed when the tails are read and again when the bundle is written; contributor
+keys and Discord credentials are never included.
+
 ### Keybinds
 
 In **G → Macros → Keybinds**, click **Change** next to an action, then press its new key. Escape cancels. Changes are saved immediately while trading is stopped and also appear in Minecraft Controls. Defaults are F6 for trading on/off, F7 for switching mode, and F8 for reloading. Paused or recovering trading and armed rest schedules count as on: the toggle stops them. Starting requires a connected world with no menu open. Old default J/K/M controls migrate to the new defaults; a customized old start key becomes the toggle.

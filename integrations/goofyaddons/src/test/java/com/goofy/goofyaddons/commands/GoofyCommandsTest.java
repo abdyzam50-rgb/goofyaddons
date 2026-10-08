@@ -27,7 +27,7 @@ class GoofyCommandsTest {
     @Test void realFeatureArgumentsStillParseAndInvalidAmountsFailClosed() {
         for(String suffix:new String[]{"debug export","profit scale 1.5","profit reset","schedule on","schedule off","craft ENCHANTED_COAL 2",
                 "production recipes ENCHANTED_COAL","production jobs","auction inspect","auction prepare ENCHANTED_COAL 1000",
-                "auction sell ENCHANTED_COAL 1000 50","mode both","toggle","reload","profiles","profiles adopt","profiles setaside","production run ENCHANTED_COAL 2","production run ENCHANTED_COAL 2 5000 100","production forge REFINED_DIAMOND 1","production kat BLUE_WHALE;4","production claim abc123 5000 100","production status"}) {
+                "auction sell ENCHANTED_COAL 1000 50","mode both","toggle","reload","profiles","profiles adopt","profiles setaside","production run ENCHANTED_COAL 2","production run ENCHANTED_COAL 2 5000 100","production forge REFINED_DIAMOND 1","production kat BLUE_WHALE;4","production claim abc123 5000 100","production status","debug version"}) {
             var parse=commands.parse("goofyaddon "+suffix,null);
             assertFalse(parse.getReader().canRead(),suffix);assertTrue(parse.getExceptions().isEmpty(),suffix);
         }

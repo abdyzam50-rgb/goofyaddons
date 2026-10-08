@@ -45,4 +45,16 @@ class CompanionLogTailTest {
         assertEquals("bad [redacted]", ManagedCompanion.redact("bad " + "A".repeat(40)));
         assertEquals("Error: listen EADDRINUSE 127.0.0.1:8789", ManagedCompanion.redact("Error: listen EADDRINUSE 127.0.0.1:8789"));
     }
+
+    @Test
+    void exportTailsKeepMoreLinesButStayBoundedAndRedacted() throws Exception {
+        Path log = directory.resolve("companion.log");
+        var text = new StringBuilder();
+        for (int i = 0; i < 100; i++) text.append("line ").append(i).append(" token=abc").append(i).append('\n');
+        Files.writeString(log, text);
+        var tail = ManagedCompanion.logTail(log, 40, 8192);
+        assertEquals(40, tail.size());
+        assertEquals("line 99 token=[redacted]", tail.getLast());
+        assertTrue(ManagedCompanion.logTail(log, 40, 64).size() < 40);
+    }
 }

@@ -45,7 +45,8 @@ public final class ManagedCompanion implements AutoCloseable {
     private volatile Integer lastExitCode;
     private volatile String lastFailure;
     private volatile java.util.List<String> errorTail=java.util.List.of();
-    private volatile String externalBundle;
+    private volatile String externalBundle,runningCommit;
+    private volatile Integer runningContract;
     private String bundleId;
     public ManagedCompanion(byte[] bundle,Path data,Path config,RuntimeResolver runtime,Map<String,String> childEnvironment) {
         this(bundle,data,config,runtime,childEnvironment,java.util.List.of());
@@ -69,6 +70,7 @@ public final class ManagedCompanion implements AutoCloseable {
         state.put("enabled",enabled);state.put("desiredPort",port);state.put("runningPort",runningPort);
         state.put("revision",revision);state.put("runningRevision",runningRevision);
         state.put("bundle",bundleId());state.put("externalBundle",externalBundle==null?"unknown":externalBundle);
+        state.put("runningCommit",runningCommit==null?"unknown":runningCommit);state.put("runningForecastContract",runningContract==null?"unknown":runningContract);
         state.put("failures",failures);state.put("lastExitCode",lastExitCode==null?"none":lastExitCode);
         state.put("lastFailure",lastFailure==null?"none":lastFailure);state.put("errorLogTail",errorTail);
         return state;
@@ -89,6 +91,8 @@ public final class ManagedCompanion implements AutoCloseable {
                 var health=JsonParser.parseString(response.body()).getAsJsonObject();
                 if(!health.has("protocol") || !"goofy-bazaar-shadow/1".equals(health.get("protocol").getAsString()))return false;
                 externalBundle=health.has("bundle") && health.get("bundle").isJsonPrimitive()?health.get("bundle").getAsString():null;
+                runningCommit=health.has("upstreamCommit") && health.get("upstreamCommit").isJsonPrimitive()?health.get("upstreamCommit").getAsString():null;
+                runningContract=health.has("forecastContract") && health.get("forecastContract").isJsonPrimitive()?health.get("forecastContract").getAsInt():null;
                 if(health.has("community")) {
                     var community=health.getAsJsonObject("community");
                     boolean sharing=community.has("sharingEnabled") && community.get("sharingEnabled").getAsBoolean();
@@ -170,18 +174,30 @@ public final class ManagedCompanion implements AutoCloseable {
         }
     }
 
+    /** What the calculator answering on the port reports about itself; null values are unknown. */
+    public String runningBundle(){return externalBundle;}
+    public String runningCommit(){return runningCommit;}
+    public Integer runningContract(){return runningContract;}
+    /** Bounded, redacted tails of both calculator logs, for a diagnostics export. */
+    public Map<String,java.util.List<String>> logTails() {
+        var tails=new java.util.LinkedHashMap<String,java.util.List<String>>();
+        tails.put("companion.log",logTail(data.resolve("companion.log"),40,8192));
+        tails.put("companion-error.log",logTail(data.resolve("companion-error.log"),40,8192));
+        return tails;
+    }
     /** The last lines of the calculator's error log, bounded and stripped of anything key-like. */
-    static java.util.List<String> errorLogTail(Path log) {
+    static java.util.List<String> errorLogTail(Path log){return logTail(log,12,4096);}
+    static java.util.List<String> logTail(Path log,int maxLines,int maxBytes) {
         try {
             if(!Files.isRegularFile(log))return java.util.List.of();
             long size=Files.size(log);
             try(var channel=FileChannel.open(log,StandardOpenOption.READ)) {
-                long start=Math.max(0,size-4096);
+                long start=Math.max(0,size-maxBytes);
                 var buffer=java.nio.ByteBuffer.allocate((int)(size-start));
                 channel.read(buffer,start);
                 var lines=new String(buffer.array(),java.nio.charset.StandardCharsets.UTF_8).lines()
                         .map(String::strip).filter(line->!line.isEmpty()).map(ManagedCompanion::redact).toList();
-                return java.util.List.copyOf(lines.subList(Math.max(0,lines.size()-12),lines.size()));
+                return java.util.List.copyOf(lines.subList(Math.max(0,lines.size()-maxLines),lines.size()));
             }
         } catch(IOException unreadable){return java.util.List.of();}
     }

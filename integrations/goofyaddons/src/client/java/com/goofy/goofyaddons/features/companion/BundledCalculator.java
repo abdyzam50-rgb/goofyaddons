@@ -53,6 +53,8 @@ public final class BundledCalculator {
         });
     }
     public static String status(){return companion==null?unavailable:companion.status();}
+    public static java.util.Map<String,java.util.List<String>> logTails(){return companion==null?java.util.Map.of():companion.logTails();}
+    public static ManagedCompanion companion(){return companion;}
     public static java.util.Map<String,Object> diagnosticState(){return companion==null?java.util.Map.of("state","UNAVAILABLE","status",unavailable):companion.diagnosticState();}
     public static void retry(){if(companion!=null)companion.retry();}
     public static void openDashboard(){if(companion!=null)open(companion.dashboard());}
