@@ -3,7 +3,6 @@ package com.goofy.goofyaddons.features.bookflipper.helper;
 import com.google.gson.Gson;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 /** Saved ownership and trade identity; live verification reconstructs supported cycles before resumption. */
@@ -47,12 +46,7 @@ public final class BookJournal implements BookOrderRepository {
         previousTracked = null;
         String json = GSON.toJson(positions);
         if (json.equals(previous)) return;
-        Files.createDirectories(path.getParent());
-        Path temp = Files.createTempFile(path.getParent(), "book-orders-", ".tmp");
-        try {
-            Files.writeString(temp, json);
-            Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
-            previous = json;
-        } finally { Files.deleteIfExists(temp); }
+        com.goofy.goofyaddons.storage.AtomicFiles.replace(path, json, "book-orders-");
+        previous = json;
     }
 }

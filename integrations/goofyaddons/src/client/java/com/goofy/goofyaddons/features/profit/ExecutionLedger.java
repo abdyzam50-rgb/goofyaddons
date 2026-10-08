@@ -33,21 +33,40 @@ public final class ExecutionLedger {
     }
     public void interrupt(String id) {open.computeIfPresent(id,(key,o)->new Open(o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,o.startedAt,true,o.expectedProfit,o.forecast));}
     public void interrupt() { open.replaceAll((id,o)->new Open(o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,o.startedAt,true,o.expectedProfit,o.forecast)); }
-    public void complete(String trade,String event,int baseUnits,Double proceeds,Double profit,long now,boolean lost) {
-        if(samples.stream().anyMatch(s->s.eventId.equals(event)))return;
-        Open o=open.get(trade);if(o==null)return; // Resumed holdings have no measured start.
+    /** Returns the completed cycle's sample, or null while the cycle is still partial or unmeasured. */
+    public Sample complete(String trade,String event,int baseUnits,Double proceeds,Double profit,long now,boolean lost) {
+        if(samples.stream().anyMatch(s->s.eventId.equals(event)))return null;
+        Open o=open.get(trade);if(o==null)return null; // Resumed holdings have no measured start.
         Partial p=partials.computeIfAbsent(trade,ignored->new Partial());
-        if(!p.events.add(event))return;
+        if(!p.events.add(event))return null;
         p.units+=baseUnits;p.known&=proceeds!=null&&profit!=null;
         if(proceeds!=null)p.proceeds+=proceeds;if(profit!=null)p.profit+=profit;
-        if(!lost && p.units<o.inputUnits)return; // Partial claims are not completed cycles.
+        if(!lost && p.units<o.inputUnits)return null; // Partial claims are not completed cycles.
         open.remove(trade);partials.remove(trade);
         long elapsed=now-o.startedAt;
-        samples.add(new Sample(event,o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,now,Math.max(0,elapsed),p.known?p.proceeds:null,p.known?p.profit:null,
-                !lost&&!o.interrupted&&p.units==o.inputUnits&&p.known&&elapsed>0&&elapsed<=86400000,false,o.expectedProfit,o.forecast));
+        var sample=new Sample(event,o.engine,o.inputId,o.outputId,o.inputUnits,o.batch,now,Math.max(0,elapsed),p.known?p.proceeds:null,p.known?p.profit:null,
+                !lost&&!o.interrupted&&p.units==o.inputUnits&&p.known&&elapsed>0&&elapsed<=86400000,false,o.expectedProfit,o.forecast);
+        samples.add(sample);
         samples.removeIf(s->s.completedAt<now-7*86400000L);
         while(samples.size()>2000)samples.removeFirst();
+        return sample;
     }
+
+    /**
+     * Adds a sample recorded in the transaction history but missing from the saved file,
+     * after a crash between the two writes. False when it is already present or invalid.
+     */
+    public boolean restore(Sample sample,long now) {
+        if(sample==null || samples.stream().anyMatch(s->s.eventId.equals(sample.eventId)))return false;
+        if(!validSample(sample) || sample.completedAt<now-7*86400000L)return false;
+        samples.add(sample);
+        samples.sort(Comparator.comparingLong(Sample::completedAt));
+        while(samples.size()>2000)samples.removeFirst();
+        return samples.contains(sample);
+    }
+
+    /** The most recently added sample, or null. */
+    public Sample latest() { return samples.isEmpty()?null:samples.getLast(); }
     /** A deliberately retired route gives a lower bound on normal-cycle duration, not a successful cycle. */
     public boolean retire(String trade,long now) {
         partials.remove(trade);
@@ -73,14 +92,17 @@ public final class ExecutionLedger {
         Sample[] rows=new Gson().fromJson(Files.readString(path),Sample[].class);
         if(rows==null||rows.length>2000)throw new IllegalStateException("Invalid execution history");
         for(var s:rows) {
-            if(s==null||s.eventId==null||s.eventId.isBlank()||s.inputId==null||!s.inputId.matches("[A-Z0-9_]+")||s.outputId==null||!s.outputId.matches("[A-Z0-9_]+")
-                ||!("books".equals(s.engine)||"general".equals(s.engine))||s.inputUnits<1||s.batch<1||s.completedAt<=0||s.observedMillis<0
-                ||s.proceeds!=null&&(!Double.isFinite(s.proceeds)||s.proceeds<0)||s.censored&&(s.eligible||s.proceeds!=null||s.profit!=null||s.observedMillis<180000||s.observedMillis>86400000)
-                ||s.profit!=null&&!Double.isFinite(s.profit)||s.expectedProfit!=null&&(!Double.isFinite(s.expectedProfit)||s.expectedProfit<=0))throw new IllegalStateException("Invalid execution sample");
-            if(s.forecast!=null && !valid(s.forecast))throw new IllegalStateException("Invalid execution forecast");
+            if(!validSample(s))throw new IllegalStateException("Invalid execution sample");
             ledger.samples.add(s);
         }
         return ledger;
+    }
+    private static boolean validSample(Sample s) {
+            if(s==null||s.eventId==null||s.eventId.isBlank()||s.inputId==null||!s.inputId.matches("[A-Z0-9_]+")||s.outputId==null||!s.outputId.matches("[A-Z0-9_]+")
+                ||!("books".equals(s.engine)||"general".equals(s.engine))||s.inputUnits<1||s.batch<1||s.completedAt<=0||s.observedMillis<0
+                ||s.proceeds!=null&&(!Double.isFinite(s.proceeds)||s.proceeds<0)||s.censored&&(s.eligible||s.proceeds!=null||s.profit!=null||s.observedMillis<180000||s.observedMillis>86400000)
+                ||s.profit!=null&&!Double.isFinite(s.profit)||s.expectedProfit!=null&&(!Double.isFinite(s.expectedProfit)||s.expectedProfit<=0))return false;
+            return s.forecast==null || valid(s.forecast);
     }
     private static boolean valid(Forecast f) {
         return Double.isFinite(f.cycleSeconds)&&f.cycleSeconds>0&&f.cycleSeconds<=30*86400
@@ -88,8 +110,6 @@ public final class ExecutionLedger {
                 &&Double.isFinite(f.outputPerDay)&&f.outputPerDay>0&&f.outputPerDay<=1e15;
     }
     public void write(Path path) throws Exception {
-        Files.createDirectories(path.getParent());var temp=Files.createTempFile(path.getParent(),"execution-",".tmp");
-        try {Files.writeString(temp,new Gson().toJson(samples));Files.move(temp,path,StandardCopyOption.REPLACE_EXISTING);}
-        finally {Files.deleteIfExists(temp);}
+        com.goofy.goofyaddons.storage.AtomicFiles.replace(path,new Gson().toJson(samples),"execution-");
     }
 }
