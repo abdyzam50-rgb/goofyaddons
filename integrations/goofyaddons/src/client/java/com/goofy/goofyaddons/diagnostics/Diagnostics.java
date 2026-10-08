@@ -65,10 +65,12 @@ public final class Diagnostics {
         Minecraft mc=Minecraft.getInstance();var manager=FeatureManager.INSTANCE;
         data.put("status",manager.status());data.put("mode",manager.modeLabel());data.put("action",manager.activity());data.put("item",manager.taskItem());
         data.put("connected",mc.player!=null && mc.level!=null);
-        if(detailed) data.put("calculator",Map.of(
-            "status",com.goofy.goofyaddons.features.companion.BundledCalculator.status(),
-            "autoStart",GoofyConfig.INSTANCE.marketAnalysis.autoStartCompanion,
-            "endpoint",GoofyConfig.INSTANCE.marketAnalysis.endpoint));
+        if(detailed) {
+            var calculator=new LinkedHashMap<String,Object>(com.goofy.goofyaddons.features.companion.BundledCalculator.diagnosticState());
+            calculator.put("autoStart",GoofyConfig.INSTANCE.marketAnalysis.autoStartCompanion);
+            calculator.put("endpoint",GoofyConfig.INSTANCE.marketAnalysis.endpoint);
+            data.put("calculator",calculator);
+        }
         data.put("screen",mc.gui.screen()==null?"none":mc.gui.screen().getClass().getSimpleName());
         if(mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) {
             data.put("menuTitle",mc.gui.screen().getTitle().getString());

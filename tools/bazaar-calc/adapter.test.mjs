@@ -98,7 +98,7 @@ test('real local HTTP companion accepts the mod protocol and returns recommendat
   const server = createCompanion(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     const url = `http://127.0.0.1:${server.address().port}`;
-    const health = await (await fetch(url + '/health')).json(); assert.equal(health.readOnly, true);
+    const health = await (await fetch(url + '/health')).json(); assert.equal(health.readOnly, true); assert.equal(health.bundle, undefined);
     const body = packet(); body.market.lastUpdated = Date.now();
     body.market.products = { SYNTHETIC_ORDINARY: product(100, 130) }; body.constraints.configuredGeneralItems = [];
     const response = await fetch(url + '/v1/recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goofy-Analysis': 'shadow-v1' }, body: JSON.stringify(body) });
@@ -147,4 +147,11 @@ test('live ranking catalog stays broad while execution has no slots, no cash or 
  for(const level of [undefined,32,33,34]) {const b=packet();b.constraints.accountSkills=level===undefined?{}:{enchanting:level};
  const r=run(b);assert.equal(r.rows.some(x=>x.kind==='BOOK'),level>=33);assert.ok(r.rows.some(x=>x.kind==='GENERAL'));}
  const b=packet();b.constraints.accountSkills={enchanting:'33'};assert.throws(()=>run(b),/account skills/);
+});
+test('health reports the managed bundle identity it was launched with', async () => {
+  const server = createCompanion({ bundle: 'abc123' }); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const health = await (await fetch(`http://127.0.0.1:${server.address().port}/health`)).json();
+    assert.equal(health.bundle, 'abc123');
+  } finally { server.close(); }
 });

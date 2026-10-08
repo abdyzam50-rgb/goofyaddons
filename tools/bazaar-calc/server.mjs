@@ -32,7 +32,7 @@ function calculatorAssets(dir='calculator',prefix='/calculator/') {
  }
 }
 calculatorAssets();
-export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null, control = null, profileFetcher=fetch, resourcesFetcher=fetch, publishingFetcher=fetch } = {}) {
+export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null, control = null, profileFetcher=fetch, resourcesFetcher=fetch, publishingFetcher=fetch, bundle=null } = {}) {
   const forecasts=new DashboardForecast({provenance});
   let itemMetadata=null,itemMetadataAt=0,itemMetadataFlight=null;
   const server = createServer(async (req, res) => {
@@ -125,7 +125,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       return;
     }
     if (req.method === 'GET' && req.url === '/health') {
-      send(200, { protocol: PROTOCOL, readOnly: !control, discord:control?.deliveryStatus?.()??{enabled:false}, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}, dataDirectory:dataDirectory() }); return;
+      send(200, { protocol: PROTOCOL, bundle: bundle ?? undefined, readOnly: !control, discord:control?.deliveryStatus?.()??{enabled:false}, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}, dataDirectory:dataDirectory() }); return;
     }
     if (req.method !== 'POST' || req.url !== '/v1/recommendations') { send(404, { error: 'Unknown endpoint' }); return; }
     if (req.headers['x-goofy-analysis'] !== 'shadow-v1' || req.headers['content-type'] !== 'application/json') { send(400, { error: 'Invalid request headers' }); return; }
@@ -153,7 +153,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let discord=null;
   try {const settings=process.argv.includes('--no-discord')?null:discordSettings();if(settings)discord=new DiscordBot(settings);}
   catch {console.error('Discord configuration invalid; Discord controls disabled.');}
-  const server = createCompanion({ collector,executions,community,control:discord?.control });
+  // The mod passes its bundle digest so it can tell its own calculator from an older one on the port.
+  const bundle=process.argv.find(arg=>arg.startsWith('--bundle='))?.slice('--bundle='.length).replace(/[^A-Za-z0-9]/g,'').slice(0,64)||null;
+  const server = createCompanion({ collector,executions,community,control:discord?.control,bundle });
   server.listen(port, '127.0.0.1', () => {
     console.log(`Bazaar Calc companion: http://127.0.0.1:${port}; continuous collection ${collector ? 'enabled (20s)' : 'disabled'}`);
     console.log(`Persistent data: ${dataDirectory()}`);

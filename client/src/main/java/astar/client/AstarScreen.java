@@ -261,21 +261,33 @@ final class AstarScreen extends Screen {
     }
 
     private String tradingNote;
-    private void editTrading(java.util.function.Consumer<com.goofy.goofyaddons.config.GoofyConfig> edit) {
+    /** Settings edits wait here until Apply; typing never writes the file or restarts anything. */
+    private final com.goofy.goofyaddons.config.SettingsDraft draft=com.goofy.goofyaddons.config.SettingsDraft.live();
+    private void editTrading(String label,java.util.function.Consumer<com.goofy.goofyaddons.config.GoofyConfig> edit) {
+        draft.edit(label,edit);
+    }
+    private void applyTrading() {
+        focus(null);tradingNote=draft.apply();
+    }
+    private void discardTrading() {
+        focus(null);draft.discard();tradingNote="Unsaved changes discarded.";
+    }
+    /** Re-saves the reviewed file as loaded, without any unapplied draft changes. */
+    private void commitReviewed() {
         try {
             var gson=new com.google.gson.Gson();
             var candidate=gson.fromJson(gson.toJson(com.goofy.goofyaddons.config.GoofyConfig.INSTANCE),com.goofy.goofyaddons.config.GoofyConfig.class);
-            edit.accept(candidate);
             com.goofy.goofyaddons.config.GoofyConfig.commitSettings(candidate);
             tradingNote="Settings saved.";
         }catch(Exception failure){tradingNote=failure.getMessage();}
     }
-    private Field tradingNumber(java.util.function.DoubleSupplier value, java.util.function.BiConsumer<com.goofy.goofyaddons.config.GoofyConfig,Double> set) {
-        Field field=new Field(BigDecimal.valueOf(value.getAsDouble()).toPlainString(),20,"coins",text->{
-            try{double v=Double.parseDouble(text);editTrading(cfg->set.accept(cfg,v));}
-            catch(NumberFormatException invalid){tradingNote="Enter a valid number.";}
-        },c->Character.isDigit(c)||c=='.');
-        field.live=()->BigDecimal.valueOf(value.getAsDouble()).toPlainString();return field.wide(96);
+    private Field tradingNumber(String label,java.util.function.DoubleSupplier value, java.util.function.BiConsumer<com.goofy.goofyaddons.config.GoofyConfig,Double> set) {
+        Field field=new Field(BigDecimal.valueOf(value.getAsDouble()).toPlainString(),20,"coins",text->draft.decimal(label,text,set),c->Character.isDigit(c)||c=='.');
+        field.live=()->draft.error(label)!=null?draft.raw(label):BigDecimal.valueOf(value.getAsDouble()).toPlainString();return field.wide(96);
+    }
+    private Field tradingWhole(String label,java.util.function.IntSupplier value,int min,int max,java.util.function.BiConsumer<com.goofy.goofyaddons.config.GoofyConfig,Integer> set) {
+        Field field=new Field(Integer.toString(value.getAsInt()),6,min+"–"+max,text->draft.whole(label,text,min,max,set),c->Character.isDigit(c));
+        field.live=()->draft.error(label)!=null?draft.raw(label):Integer.toString(value.getAsInt());return field.wide(72);
     }
     private net.minecraft.client.KeyMapping bindingCapture;
     private int bindingSlot;
@@ -302,7 +314,13 @@ final class AstarScreen extends Screen {
             },Button.ACCENT).when(()->!manager.isMacroRunning() && client.canStartTrading()),
             new Button("Stop",()->com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStop(),Button.PLAIN));
         status.row("Mode",()->"Change trading mode while stopped.",new Mode<>(List.of(com.goofy.goofyaddons.features.TradingMode.values()),
-            ()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.tradingMode,Enum::name,v->editTrading(cfg->cfg.tradingMode=v)));
+            ()->draft.view().tradingMode,Enum::name,v->editTrading("Mode",cfg->cfg.tradingMode=v)));
+        Card pending=card("Unsaved changes","Edits below are a draft. Apply validates and saves them together; restarts happen only then.");
+        pending.callout(()->draft.dirty()?Callout.WARN:Callout.INFO,draft::summary);
+        pending.row("Apply",()->"Spending and mode changes require stopping the trader first.",
+            new Button("Apply",this::applyTrading,Button.ACCENT).when(draft::canApply),
+            new Button("Discard",this::discardTrading,Button.PLAIN).when(draft::dirty));
+        pending.callout(()->Callout.INFO,()->tradingNote);
         Card keys=card("Keybinds","Click Change, then press a key. Escape cancels. Bindings also appear in Minecraft Controls.");
         keys.row("Trading on / off",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey.getTranslatedKeyMessage().getString(),
             new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey,0),Button.PLAIN));
@@ -312,25 +330,23 @@ final class AstarScreen extends Screen {
             new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.reloadKey,2),Button.PLAIN));
         keys.callout(()->Callout.INFO,()->tradingNote);
         Card capital=card("Spending limits","These limits apply to every purchase. Changes require stopping the trader.");
-        capital.row("Capital limit",()->"Maximum committed trading capital, in coins.",tradingNumber(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.maxTradingCapital,(cfg,v)->cfg.maxTradingCapital=v));
-        capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.purseReserve,(cfg,v)->cfg.purseReserve=v));
-        capital.row("Book slots",()->"Maximum active book routes.",tradingNumber(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.maxActiveBooks,(cfg,v)->{if(v!=Math.rint(v))throw new IllegalArgumentException("Use a whole slot count");cfg.maxActiveBooks=v.intValue();}));
-        capital.row("Item slots",()->"Maximum active ordinary-item routes.",tradingNumber(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.general.maxActiveItems,(cfg,v)->{if(v!=Math.rint(v))throw new IllegalArgumentException("Use a whole slot count");cfg.general.maxActiveItems=v.intValue();}));
+        capital.row("Capital limit",()->"Maximum committed trading capital, in coins.",tradingNumber("Capital limit",()->draft.view().maxTradingCapital,(cfg,v)->cfg.maxTradingCapital=v));
+        capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber("Purse reserve",()->draft.view().purseReserve,(cfg,v)->cfg.purseReserve=v));
+        capital.row("Book slots",()->"Maximum active book routes.",tradingWhole("Book slots",()->draft.view().maxActiveBooks,1,10,(cfg,v)->cfg.maxActiveBooks=v));
+        capital.row("Item slots",()->"Maximum active ordinary-item routes.",tradingWhole("Item slots",()->draft.view().general.maxActiveItems,1,10,(cfg,v)->cfg.general.maxActiveItems=v));
         Card market=card("Market and account checks","The bundled calculator keeps live market data and the account dashboard.");
         market.row("Background service",()->com.goofy.goofyaddons.features.companion.BundledCalculator.status(),
             new Button("Dashboard",()->com.goofy.goofyaddons.features.companion.BundledCalculator.openDashboard(),Button.PLAIN),
             new Button("Retry / restart",()->com.goofy.goofyaddons.features.companion.BundledCalculator.retry(),Button.PLAIN));
         market.row("Calculator port",()->"Change this if another program occupies the port. Dashboard and trade feed follow this setting.",
-            tradingNumber(()->java.net.URI.create(com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.marketAnalysis.endpoint).getPort(),(cfg,v)->{
-                if(v!=Math.rint(v)||v<1024||v>65535)throw new IllegalArgumentException("Use a whole port from 1024 to 65535");
-                cfg.marketAnalysis.endpoint="http://127.0.0.1:"+v.intValue()+"/v1/recommendations";
-            }));
-        market.row("Auto-start",()->"Start the bundled calculator with Minecraft; saved data stays outside the mod folder.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.marketAnalysis.autoStartCompanion,v->editTrading(cfg->cfg.marketAnalysis.autoStartCompanion=v)));
-        market.row("Calculator",()->"Enable local market analysis.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.marketAnalysis.enabled,v->editTrading(cfg->{cfg.marketAnalysis.enabled=v;if(!v)cfg.marketAnalysis.automaticSelection=false;})));
-        market.row("Automatic routes",()->"Choose supported flips from the calculator while retaining spending and requirement checks.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.marketAnalysis.automaticSelection,v->editTrading(cfg->{cfg.marketAnalysis.automaticSelection=v;if(v)cfg.marketAnalysis.enabled=true;})));
-        market.row("Account dashboard",()->"Share local account snapshots with the companion site.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.marketAnalysis.dashboardEnabled,v->editTrading(cfg->cfg.marketAnalysis.dashboardEnabled=v)));
-        market.row("Bazaar access",()->"NPC mode uses A* to approach a loaded Bazaar NPC.",new Mode<>(List.of("AUTO","COMMAND","NPC"),()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.access.bazaarMode,v->v,v->editTrading(cfg->cfg.access.bazaarMode=v)));
-        market.row("Skill checks",()->"Check account levels and skip blocked routes.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.access.checkSkills,v->editTrading(cfg->cfg.access.checkSkills=v)));
+            tradingWhole("Calculator port",()->java.net.URI.create(draft.view().marketAnalysis.endpoint).getPort(),1024,65535,
+                (cfg,v)->cfg.marketAnalysis.endpoint="http://127.0.0.1:"+v+"/v1/recommendations"));
+        market.row("Auto-start",()->"Start the bundled calculator with Minecraft; saved data stays outside the mod folder.",new Check(()->draft.view().marketAnalysis.autoStartCompanion,v->editTrading("Auto-start",cfg->cfg.marketAnalysis.autoStartCompanion=v)));
+        market.row("Calculator",()->"Enable local market analysis.",new Check(()->draft.view().marketAnalysis.enabled,v->editTrading("Calculator",cfg->{cfg.marketAnalysis.enabled=v;if(!v)cfg.marketAnalysis.automaticSelection=false;})));
+        market.row("Automatic routes",()->"Choose supported flips from the calculator while retaining spending and requirement checks.",new Check(()->draft.view().marketAnalysis.automaticSelection,v->editTrading("Automatic routes",cfg->{cfg.marketAnalysis.automaticSelection=v;if(v)cfg.marketAnalysis.enabled=true;})));
+        market.row("Account dashboard",()->"Share local account snapshots with the companion site.",new Check(()->draft.view().marketAnalysis.dashboardEnabled,v->editTrading("Account dashboard",cfg->cfg.marketAnalysis.dashboardEnabled=v)));
+        market.row("Bazaar access",()->"NPC mode uses A* to approach a loaded Bazaar NPC.",new Mode<>(List.of("AUTO","COMMAND","NPC"),()->draft.view().access.bazaarMode,v->v,v->editTrading("Bazaar access",cfg->cfg.access.bazaarMode=v)));
+        market.row("Skill checks",()->"Check account levels and skip blocked routes.",new Check(()->draft.view().access.checkSkills,v->editTrading("Skill checks",cfg->cfg.access.checkSkills=v)));
         var sharing=com.goofy.goofyaddons.features.companion.BundledCalculator.contributor();
         Card community=card("Shared gameplay learning","Learn from the public dataset. Uploads require a private key approved by the collector owner.");
         community.row("Sync status",()->com.goofy.goofyaddons.features.companion.BundledCalculator.sharingStatus());
@@ -358,25 +374,25 @@ final class AstarScreen extends Screen {
         discord.row("Private settings",()->"Fill in the bot token and channel/user IDs, then restart the background service.",new Button("Open settings",()->com.goofy.goofyaddons.features.companion.BundledCalculator.openDiscordSettings(),Button.PLAIN).when(()->com.goofy.goofyaddons.features.companion.BundledCalculator.discordSettingsReady()));
         discord.row("Webhook interval",()->"Configured in the companion's private discord-settings.json; default five minutes.");
         discord.row("Bridge",()->com.goofy.goofyaddons.features.discord.DiscordRemote.INSTANCE.status());
-        discord.row("Enabled",()->"Requires the companion bot and config/goofyaddons-discord.key.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.discord.enabled,v->editTrading(cfg->cfg.discord.enabled=v)));
-        discord.row("Pause on contact",()->"Pause trading after a mention or staff message until you review it.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.discord.pauseOnContact,v->editTrading(cfg->cfg.discord.pauseOnContact=v)));
-        discord.row("Mention alerts",()->"Send messages mentioning your player name to your Discord channel.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.discord.alertMentions,v->editTrading(cfg->cfg.discord.alertMentions=v)));
-        discord.row("Staff-message alerts",()->"Notify on a staff rank in the sender prefix; respond manually.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.discord.alertStaff,v->editTrading(cfg->cfg.discord.alertStaff=v)));
+        discord.row("Enabled",()->"Requires the companion bot and config/goofyaddons-discord.key.",new Check(()->draft.view().discord.enabled,v->editTrading("Discord enabled",cfg->cfg.discord.enabled=v)));
+        discord.row("Pause on contact",()->"Pause trading after a mention or staff message until you review it.",new Check(()->draft.view().discord.pauseOnContact,v->editTrading("Pause on contact",cfg->cfg.discord.pauseOnContact=v)));
+        discord.row("Mention alerts",()->"Send messages mentioning your player name to your Discord channel.",new Check(()->draft.view().discord.alertMentions,v->editTrading("Mention alerts",cfg->cfg.discord.alertMentions=v)));
+        discord.row("Staff-message alerts",()->"Notify on a staff rank in the sender prefix; respond manually.",new Check(()->draft.view().discord.alertStaff,v->editTrading("Staff-message alerts",cfg->cfg.discord.alertStaff=v)));
         Card rest=card("Daily rest schedule","Local regional time with daylight saving. Existing session windows are preserved.");
-        rest.row("Enabled",()->"Log off and reconnect according to the configured time ranges.",new Check(()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.restSchedule.enabled,v->editTrading(cfg->cfg.restSchedule.enabled=v)));
-        Field zone=new Field(com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.restSchedule.timeZone,64,"America/New_York",v->editTrading(cfg->cfg.restSchedule.timeZone=v),c->Character.isLetterOrDigit(c)||c=='/'||c=='_'||c=='-'||c=='+');
-        zone.live=()->com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.restSchedule.timeZone;
+        rest.row("Enabled",()->"Log off and reconnect according to the configured time ranges.",new Check(()->draft.view().restSchedule.enabled,v->editTrading("Rest schedule enabled",cfg->cfg.restSchedule.enabled=v)));
+        Field zone=new Field(draft.view().restSchedule.timeZone,64,"America/New_York",v->editTrading("Time zone",cfg->cfg.restSchedule.timeZone=v),c->Character.isLetterOrDigit(c)||c=='/'||c=='_'||c=='-'||c=='+');
+        zone.live=()->draft.view().restSchedule.timeZone;
         rest.row("Time zone",()->"Use a regional name such as America/Toronto.",zone.wide(160));
-        for(int index=0;index<com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.restSchedule.windows.size();index++) {
+        for(int index=0;index<draft.view().restSchedule.windows.size();index++) {
             final int i=index;
             String[] names={"Login from","Login until","Logout from","Logout until"};
             for(int field=0;field<4;field++) {
                 final int f=field;
                 java.util.function.Supplier<String> value=()->{
-                    var w=com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.restSchedule.windows.get(i);
+                    var w=draft.view().restSchedule.windows.get(i);
                     return switch(f){case 0->w.loginFrom;case 1->w.loginUntil;case 2->w.logoutFrom;default->w.logoutUntil;};
                 };
-                Field time=new Field(value.get(),5,"HH:mm",v->editTrading(cfg->{
+                Field time=new Field(value.get(),5,"HH:mm",v->editTrading("Session "+(i+1)+" · "+names[f],cfg->{
                     var w=cfg.restSchedule.windows.get(i);
                     switch(f){case 0->w.loginFrom=v;case 1->w.loginUntil=v;case 2->w.logoutFrom=v;default->w.logoutUntil=v;}
                 }),c->Character.isDigit(c)||c==':');time.live=value;
@@ -384,7 +400,7 @@ final class AstarScreen extends Screen {
             }
         }
         Card files=card("Saved settings and sessions","Advanced route settings and regional rest windows remain in goofyaddons.json. Existing data files are retained.");
-        files.row("Review / reload",()->com.goofy.goofyaddons.config.GoofyConfig.location(),new Button("Save reviewed",()->editTrading(cfg->{}),Button.PLAIN),
+        files.row("Review / reload",()->com.goofy.goofyaddons.config.GoofyConfig.location(),new Button("Save reviewed",this::commitReviewed,Button.PLAIN).when(()->!draft.dirty()),
             new Button("Reload",()->{if(manager.canReloadConfig())com.goofy.goofyaddons.config.ConfigReload.reload();else tradingNote="Stop trading before reloading.";},Button.PLAIN));
         files.callout(()->Callout.INFO,()->tradingNote);
     }

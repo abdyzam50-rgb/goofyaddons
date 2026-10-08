@@ -113,12 +113,21 @@ or install anything system-wide. Runtime failures appear in the Macros page.
 
 Use **G → Macros → Market and account checks**:
 
-- **Background service** shows startup/download/running/failure status.
+- Settings on this page are a draft. Typing never saves the file or restarts the
+  calculator. **Unsaved changes** lists what changed, any field that needs fixing,
+  and which restart Apply will cause; **Apply** validates and saves everything at
+  once, and **Discard** drops the draft. A keybind or reload saved while a draft is
+  open is kept when the draft is applied.
+- **Background service** shows startup/download/running/failure status. When a
+  start fails, the status carries the exit code and the last line of
+  `companion-error.log`, and the detailed diagnostics export includes the last few
+  log lines with keys and tokens removed. If another calculator already answers on
+  the port with a different version, the status says so instead of using it silently.
 - **Dashboard** opens the local site in your browser.
 - **Retry / restart** retries startup or restarts the service owned by this mod.
 - **Calculator port** changes the local port for the service, dashboard, account
   lookup and trade feed together. If 8789 is occupied, stop trading, choose a free
-  port such as 8790, save settings, and use Retry / restart. The mod identifies
+  port such as 8790, and press Apply; the bundled calculator restarts once on the new port. The mod identifies
   unrelated listeners without stopping them or repeatedly launching a conflicting
   process. Existing history and private keys stay in the same data folder.
 - **Auto-start** can be disabled when you prefer a separately managed calculator.
