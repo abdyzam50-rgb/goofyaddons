@@ -42,6 +42,7 @@ public class FeatureManager {
     private Feature previousOwner;
 
     private String requirementAccount;
+    private long profileTabAt;
     private FeatureManager() {}
     private boolean started() { return lifecycle.started(); }
     private boolean paused() { return lifecycle.paused(); }
@@ -70,6 +71,8 @@ public class FeatureManager {
         var requirementWorld=new com.goofy.goofyaddons.menu.LiveWorld();
         if(!requirementWorld.inWorld()){if(requirementAccount!=null){clearAccountRequirements();requirementAccount=null;}return;}
         com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.player(requirementWorld.playerId(),requirementWorld.username());
+        var accounts=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        if(accounts.current()==null && requirementWorld.now()-profileTabAt>=1000){profileTabAt=requirementWorld.now();accounts.tabList(requirementWorld.tabList());}
         if(!java.util.Objects.equals(requirementAccount,requirementWorld.username())){clearAccountRequirements();requirementAccount=requirementWorld.username();if(started())skillPreflight.begin();}
         if(skillPreflight.observe(requirementWorld.menu())){accountUnlocks.clear();invalidateMarketReport();}
         if(!skillPreflight.pending() && !observedSkills().isEmpty())accountUnlocks.poll(requirementWorld.username(),GoofyConfig.INSTANCE.marketAnalysis.endpoint,observedSkills(),requirementWorld.now());

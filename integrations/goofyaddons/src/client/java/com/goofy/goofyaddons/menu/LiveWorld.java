@@ -25,6 +25,18 @@ public final class LiveWorld implements GameWorld {
         return player == null ? null : player.getUUID().toString();
     }
 
+    /** The tab list's entries as plain text, empty when not connected. */
+    public java.util.List<String> tabList() {
+        var connection = Minecraft.getInstance().getConnection();
+        if (connection == null) return java.util.List.of();
+        var lines = new java.util.ArrayList<String>();
+        for (var info : connection.getListedOnlinePlayers()) {
+            var name = info.getTabListDisplayName();
+            if (name != null) lines.add(name.getString().replaceAll("§.", ""));
+        }
+        return lines;
+    }
+
     @Override public long now() { return System.currentTimeMillis(); }
 
     @Override public boolean signEditorOpen() {

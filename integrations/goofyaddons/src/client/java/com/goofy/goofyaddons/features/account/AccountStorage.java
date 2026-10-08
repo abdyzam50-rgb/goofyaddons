@@ -33,7 +33,9 @@ public final class AccountStorage {
     public static final AccountStorage INSTANCE = new AccountStorage(
             () -> net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir());
 
-    private static final Pattern PROFILE = Pattern.compile("^(?:You are now playing on profile: |You switched to profile:? |Your profile was changed to: )([A-Za-z]+)");
+    private static final Pattern PROFILE = Pattern.compile("^(?:You are (?:now )?playing on profile: |You switched to profile:? |Your profile was changed to: )([A-Za-z]+)");
+    /** The "Profile: Mango" line of the SkyBlock tab list, for sessions that started after the join message. */
+    private static final Pattern TAB_PROFILE = Pattern.compile("^\\s*Profile: ([A-Za-z]+)");
     private static final Pattern PROFILE_ID = Pattern.compile("^Profile ID: ([0-9a-fA-F-]{32,36})");
 
     private final Supplier<Path> configDir;
@@ -61,6 +63,19 @@ public final class AccountStorage {
         return changed;
     }
 
+    /**
+     * Reads the tab list while no join message has named the profile, so a game that joined
+     * SkyBlock before the announcement was seen (or missed it) still identifies the profile.
+     * The join and switch messages stay the authority once seen.
+     */
+    public synchronized void tabList(List<String> lines) {
+        if (profile != null || player == null || lines == null) return;
+        for (String line : lines) {
+            Matcher name = line == null ? null : TAB_PROFILE.matcher(line);
+            if (name != null && name.find()) { profile = name.group(1); return; }
+        }
+    }
+
     /** The player's UUID when the game provides it, otherwise their name. */
     public synchronized void player(String uuid, String username) {
         String next = uuid != null && !uuid.isBlank() ? uuid : username != null && !username.isBlank() ? "name:" + username : null;
@@ -79,7 +94,7 @@ public final class AccountStorage {
      */
     public synchronized String prepare() {
         AccountScope scope = current();
-        if (scope == null) return "SkyBlock profile not identified yet; rejoin SkyBlock so the server announces your profile";
+        if (scope == null) return "SkyBlock profile not identified yet; be on SkyBlock with the tab list showing your profile, or rejoin SkyBlock";
         if (pinned != null && !pinned.equals(scope))
             return "Trading data is open for profile " + pinned.profile() + "; restart the game to trade on " + scope.profile();
         try {
