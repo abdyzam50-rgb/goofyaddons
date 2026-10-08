@@ -153,7 +153,7 @@ public class FeatureManager {
         var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
         String reason=storage.prepare();
         String adopted=storage.takeEvent();
-        if(adopted!=null)Diagnostics.event("INFO","account.legacy_adopted",java.util.Map.of("detail",adopted));
+        if(adopted!=null){Diagnostics.event("INFO","account.legacy_adopted",java.util.Map.of("detail",adopted));ChatUtils.clientMessage(adopted+". The originals in config/ are unchanged.");}
         if(reason==null)return true;
         lifecycle.refuse(source, reason, now());
         ChatUtils.clientMessage("Cannot start: " + reason);
