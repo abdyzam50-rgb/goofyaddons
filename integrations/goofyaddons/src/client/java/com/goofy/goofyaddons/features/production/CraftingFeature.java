@@ -80,13 +80,14 @@ public final class CraftingFeature implements Feature {
     public boolean isRunning(){return running && !paused;}
     public boolean needsMenu(){return isRunning() && recipe!=null;}
     public boolean canYield(){return recipe==null;}
-    private long nextAction;
+    public void slowdownNotice(String message) {
+        if(isRunning() && executor.busy() && com.goofy.goofyaddons.features.transaction.ActionRetry.slowdownMessage(message)) {
+            executor.slowdown(System.currentTimeMillis());Diagnostics.event("WARN","production.craft_slowdown",Map.of("job",jobId));
+        }
+    }
     public void onTick() {
         if(!needsMenu())return;
-        // Same randomised pacing as the flippers: one step per action delay, never one per tick.
-        long paced=System.currentTimeMillis();
-        if(paced<nextAction)return;
-        nextAction=paced+com.goofy.goofyaddons.utils.ActionDelay.next();
+        // The executor paces observed grid mutations; do not add the trader's delay on top.
         var world=new LiveWorld();var actions=new LiveActions();var menu=world.menu();long now=world.now();
         try {
             if(!opening) {

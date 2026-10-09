@@ -58,3 +58,28 @@ multiple unresolved matches do not trigger a guessed click. Product-page checks
 retain that identity decision, including truncated titles. Regression scenarios
 cover Gold Ingot versus Enchanted Gold Ingot in either result order, missing IDs,
 ambiguous IDs, inventory exclusion, and a conflicting product page.
+
+## Repeated grid splitting and fast pacing (0.2.20)
+
+Owned grid stacks can be halved repeatedly, such as 64 → 32 → 16 → 8. Halves are
+placed into another matching ingredient cell even when a different ingredient
+appears earlier in the recipe. Oversized cells are accepted only when this
+executor placed them for splitting and their count can be halved exactly to the
+required count. Arbitrary quantities retain exact one-item placement where a
+half-stack operation cannot fit. Unneeded halves return to the original inventory
+slot; no ingredient is dropped.
+
+Normal crafting uses a 100 ms interval from the previous click after observing
+the owned cursor/grid/inventory change. Crafting no longer adds the randomized
+trader delay, and observation latency counts toward that interval. Every tick
+keeps conservation and ownership guards in place. Missing acknowledgements still
+wait, with unchanged bounded retries. A server slowdown message pauses clicks
+and retries for one second and raises subsequent intervals by 100 ms, up to
+500 ms. The backed-off interval carries over into later batches.
+
+The catalog Enchanted Eye of Ender regression fills the four 16-powder cells from
+one 64 stack, places 16 enchanted pearls and shift-clicks the verified result in
+11 clicks, approximately 1.1 seconds in a menu that acknowledges immediately.
+This is simulation evidence, not a live latency guarantee. Regression tests also
+cover returning 48 unused units from a single 16-unit cell, cooldown protection,
+and refusing unowned oversized cells. The full build passed 981 Java tests.

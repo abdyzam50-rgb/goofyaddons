@@ -49,7 +49,7 @@ public class FeatureManager {
     private boolean productionTest;
     private final MenuScheduler testScheduler = new MenuScheduler();
     private long testQuotesAt;
-    private FeatureManager() {}
+    private FeatureManager() {com.goofy.goofyaddons.event.ChatHook.onMessage("",crafting::slowdownNotice);}
     private boolean started() { return lifecycle.started(); }
     private boolean paused() { return lifecycle.paused(); }
     private static long now() { return System.currentTimeMillis(); }

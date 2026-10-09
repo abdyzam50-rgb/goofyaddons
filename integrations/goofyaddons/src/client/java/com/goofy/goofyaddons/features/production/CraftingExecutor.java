@@ -13,18 +13,24 @@ public final class CraftingExecutor {
     public enum Result {WAITING,CRAFTED,BLOCKED}
     private static final int[] GRID={10,11,12,19,20,21,28,29,30};
     private static final int RESULT=23;
-    private static final long SETTLE_MS=500;
+    private static final long FAST_SETTLE_MS=100;
     private ProductionRecipe recipe;
-    private int container,source=-1,splitTarget=-1;
+    private int container,source=-1;
+    private final Set<Integer> splitTargets=new HashSet<>();
     private Map<String,Integer> before;
     private MenuSnapshot sent;
     private long sentAt,started,next,inconsistentSince;
+    private long settleMs=FAST_SETTLE_MS,cooldownUntil;
     private int retries;
     private boolean submitted;
     private String failure;
     public String failure(){return failure;}
     public boolean busy(){return recipe!=null;}
-    public void reset(){recipe=null;sent=null;before=null;submitted=false;source=splitTarget=-1;failure=null;inconsistentSince=0;}
+    public void reset(){recipe=null;sent=null;before=null;submitted=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;}
+    public void slowdown(long now) {
+        if(recipe==null)return;
+        settleMs=Math.min(500,settleMs+100);cooldownUntil=Math.max(cooldownUntil,now+1000);
+    }
     private Result block(String reason){failure=reason;return Result.BLOCKED;}
     public Result tick(ProductionRecipe wanted,MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,long now) {
         return tick(wanted,menu,actions,skills,Map.of(),now);
@@ -53,9 +59,10 @@ public final class CraftingExecutor {
             return Result.WAITING;
         }
         inconsistentSince=0;
-        if(submitted && completed(menu)){reset();return Result.CRAFTED;}
+        if(now<cooldownUntil)return Result.WAITING;
+        if(submitted && completed(menu) && now-sentAt>=settleMs){reset();return Result.CRAFTED;}
         if(sent!=null) {
-            if(!sameContents(sent,menu)) {sent=null;retries=0;next=now+SETTLE_MS;}
+            if(!sameContents(sent,menu)) {sent=null;retries=0;next=sentAt+settleMs;}
             else if(now-sentAt>=2000) {
                 if(retries>=2)return block("Crafting input was not acknowledged; grid and cursor retained");
                 // A duplicate is permitted only against the exact same cursor/grid/inventory.
@@ -64,31 +71,35 @@ public final class CraftingExecutor {
         }
         if(now<next)return Result.WAITING;
         if(submitted)return Result.WAITING;
-        if(splitTarget>=0) {
-            var expected=recipe.grid().get(splitTarget);var donor=menu.slot(GRID[splitTarget]);
-            if(!empty(donor) && expected.id().equals(donor.customId()) && donor.count()==expected.count()*2 && menu.cursorEmpty()) {
-                // Pick up half from the grid, leaving the required half in this cell.
-                send(menu,actions,GRID[splitTarget],false,true,now);return Result.WAITING;
-            }
-            if(!empty(donor) && expected.id().equals(donor.customId()) && donor.count()==expected.count()
-                    && !menu.cursorEmpty() && expected.id().equals(menu.carried().customId()) && menu.carried().count()==expected.count())splitTarget=-1;
-            else return block("Crafting stack split changed unexpectedly; grid and cursor retained");
-        }
-        int target=-1;
+        int target=-1,donor=-1;
         for(int i=0;i<9;i++) {
             var expected=recipe.grid().get(i);var actual=menu.slot(GRID[i]);
             if(expected==null){if(!empty(actual))return block("Unexpected item in recipe grid");continue;}
-            if(!empty(actual) && (!expected.id().equals(actual.customId()) || actual.count()>expected.count()))return block("Recipe grid identity/count mismatch");
-            if(empty(actual) || actual.count()<expected.count()){target=i;break;}
+            if(!empty(actual) && !expected.id().equals(actual.customId()))return block("Recipe grid identity/count mismatch");
+            if(count(actual)>expected.count()) {
+                if(!splitTargets.contains(i) || !canSplit(count(actual),expected.count()))return block("Crafting stack split changed unexpectedly; grid and cursor retained");
+                if(donor<0)donor=i;
+            } else {
+                splitTargets.remove(i);
+                if(count(actual)<expected.count() && target<0)target=i;
+            }
+        }
+        if(menu.cursorEmpty() && donor>=0) {
+            send(menu,actions,GRID[donor],false,true,now);return Result.WAITING;
         }
         if(!menu.cursorEmpty()) {
             var cursor=menu.carried();
             if(cursor==null || cursor.empty() || cursor.customId()==null)return block("Unreadable crafting cursor");
+            // Reuse this ingredient's halves even if a different ingredient occurs earlier in the grid.
+            for(int i=0;i<9;i++) {
+                var expected=recipe.grid().get(i);
+                if(expected!=null && expected.id().equals(cursor.customId()) && count(menu.slot(GRID[i]))<expected.count()) {target=i;break;}
+            }
             if(target>=0 && recipe.grid().get(target).id().equals(cursor.customId())) {
                 int remaining=recipe.grid().get(target).count()-count(menu.slot(GRID[target]));
-                if(empty(menu.slot(GRID[target])) && cursor.count()==64 && remaining==32) {
-                    // Always take the whole inventory stack; split its 64 into 32s inside the grid.
-                    splitTarget=target;send(menu,actions,GRID[target],false,false,now);return Result.WAITING;
+                if(empty(menu.slot(GRID[target])) && cursor.count()>remaining && canSplit(cursor.count(),remaining)) {
+                    // Park the whole stack in the grid; reuse each half in another matching cell.
+                    splitTargets.add(target);send(menu,actions,GRID[target],false,false,now);return Result.WAITING;
                 }
                 send(menu,actions,GRID[target],false,cursor.count()>remaining,now);return Result.WAITING;
             }
@@ -117,6 +128,10 @@ public final class CraftingExecutor {
         sent=menu;sentAt=now;retries=0;actionSlot=slot;actionShift=shift;actionRight=right;replay(actions);
     }
     private void replay(GameActions actions){if(actionRight)actions.rightClick(actionSlot);else actions.click(actionSlot,actionShift);}
+    private static boolean canSplit(int stack,int required) {
+        if(required<1 || stack<=required || stack%required!=0)return false;
+        int ratio=stack/required;return (ratio & (ratio-1))==0;
+    }
     private boolean completed(MenuSnapshot menu){
         if(!menu.cursorEmpty())return false;
         for(int slot:GRID)if(!empty(menu.slot(slot)))return false;

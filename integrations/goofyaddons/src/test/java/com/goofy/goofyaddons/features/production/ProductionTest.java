@@ -25,14 +25,14 @@ class ProductionTest {
             boolean ready=true;int[] grid={10,11,12,19,20,21,28,29,30};
             for(int i=0;i<9;i++){var need=r.grid().get(i);var slot=slots[grid[i]];
                 ready &= need==null?slot.empty():!slot.empty() && need.id().equals(slot.customId()) && need.count()==slot.count();}
-            slots[23]=ready || preview?stack(23,"OUTPUT",1):stack(23,"",0);
+            slots[23]=ready || preview?stack(23,r.outputId(),r.outputCount()):stack(23,"",0);
             if(quickCraft)slots[16]=stack(16,"OUTPUT",1);
             return new MenuSnapshot(77,title,cursor.empty(),Arrays.asList(slots.clone()),cursor);
         }
         public void click(int slot,boolean shift){clicks++;inputs.add((shift?"shift:":"left:")+slot);if(discard)return;
             if(shift && slot==23){
-                assertEquals("OUTPUT",slots[23].customId());int[] grid={10,11,12,19,20,21,28,29,30};
-                for(int i:grid)slots[i]=stack(i,"",0);slots[56]=stack(56,"OUTPUT",1);return;
+                assertEquals(r.outputId(),slots[23].customId());int[] grid={10,11,12,19,20,21,28,29,30};
+                for(int i:grid)slots[i]=stack(i,"",0);slots[56]=stack(56,r.outputId(),r.outputCount());return;
             }
             if(cursor.empty()){var s=slots[slot];cursor=stack(-1,s.customId(),s.count());slots[slot]=stack(slot,"",0);}
             else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));
@@ -112,6 +112,35 @@ class ProductionTest {
         for(long now=1000;now<20000 && result==CraftingExecutor.Result.WAITING;now+=150)result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
         assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(32,server.slots[54].count());
         assertEquals(2,server.inputs.stream().filter("right:10"::equals).count());assertTrue(server.cursor.empty());
+    }
+    @Test void enchantedEyeSplitsBlazeIntoFourSixteensAcrossTheMixedIngredientGrid() {
+        var r=RecipeCatalog.instance().forOutput("ENCHANTED_EYE_OF_ENDER").stream().filter(x->x.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
+        var server=new Server(r,64);server.slots[54]=stack(54,"BLAZE_POWDER",64);server.slots[55]=stack(55,"ENCHANTED_ENDER_PEARL",16);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;long now=1000;
+        for(;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(r,server.menu(),server,Map.of(),Map.of("enderpearl",6),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
+        assertEquals(List.of("left:54","left:11","right:11","left:19","right:11","left:21","right:19","left:29","left:55","left:20","shift:23"),server.inputs);
+        assertTrue(now-1000<=1600,"Acknowledged crafting added unnecessary delays: "+(now-1000));
+        assertEquals("ENCHANTED_EYE_OF_ENDER",server.slots[56].customId());assertTrue(server.cursor.empty());
+    }
+    @Test void singleSixteenCellSplitsTwiceAndReturnsTheOtherFortyEight() {
+        var r=recipe(16);var server=new Server(r,64);var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(48,server.slots[54].count());
+        assertEquals(2,server.inputs.stream().filter("right:10"::equals).count());assertEquals(9,server.clicks);assertTrue(server.cursor.empty());
+    }
+    @Test void slowdownStopsNewClicksAndRetriesBeforeTheCooldownEnds() {
+        var r=recipe(32);var server=new Server(r,64);server.discard=true;var executor=new CraftingExecutor();
+        executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),1000);executor.slowdown(2900);
+        executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),3100);assertEquals(1,server.clicks);
+        executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),3900);assertEquals(2,server.clicks);
+    }
+    @Test void oversizedCellsNotPlacedForASplitCannotBeAdopted() {
+        var r=recipe(16);var server=new Server(r,64);var executor=new CraftingExecutor();
+        executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),1000);
+        server.slots[10]=stack(10,"INPUT",32);server.cursor=stack(-1,"INPUT",32);
+        assertEquals(CraftingExecutor.Result.BLOCKED,executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),1200));
+        assertEquals(1,server.clicks);
     }
     @Test void ignoredPickupRetriesBoundedlyWithoutRepeatedFastClicks() {
         var r=recipe(5);var server=new Server(r,64);server.discard=true;var executor=new CraftingExecutor();
