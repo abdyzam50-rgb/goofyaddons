@@ -122,4 +122,27 @@ class BazaarInstantBuyTest {
         assertTrue(actions.serverEffects().contains("click:16"));
         assertFalse(actions.serverEffects().contains("click:10")&&actions.serverEffects().indexOf("click:10")>0);
     }
+
+    @Test void presetButtonsBuyOneOrAStackAtTheirQuotedTotal() {
+        var actions=new RecordingActions();
+        var one=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",1,600,intents::add);
+        var amounts=menu(2,"Enchanted Coal \u279c Instant",
+                SlotView.named(10,"Buy only one!",List.of("Enchanted Coal","","Amount: 1x","","Price: 485.6 coins","","Click to buy now!")),
+                SlotView.named(12,"Buy a stack!",List.of("Enchanted Coal","","Amount: 64x","","Per unit: 466.9 coins","Price: 31,077 coins")),
+                SlotView.named(16,"Custom Amount",List.of("Buy Order Quantity")));
+        one.tick(product(485.6),false,actions,5000,0);
+        one.tick(amounts,false,actions,5000,100);
+        assertEquals(List.of("click:10","click:10"),actions.serverEffects());
+        assertEquals(1,intents.size());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,one.tick(menu(3,null,item(54,"ENCHANTED_COAL",1)),false,actions,4514.4,200));
+        assertEquals(31_077.0,BazaarInstantBuy.presetTotal("Enchanted Coal\n\nAmount: 64x\n\nPer unit: 466.9 coins\nPrice: 31,077 coins","Enchanted Coal",64));
+        assertNull(BazaarInstantBuy.presetTotal("Enchanted Coal Block\nAmount: 1x\nPrice: 485.6 coins","Enchanted Coal",1));
+        assertNull(BazaarInstantBuy.presetTotal("Enchanted Coal\nAmount: 64x\nPrice: 31,077 coins","Enchanted Coal",1));
+        var stack=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",64,30_000,intents::add);
+        var other=new RecordingActions();
+        stack.tick(product(400),false,other,50_000,0);
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,stack.tick(amounts,false,other,50_000,100));
+        assertTrue(stack.failure().contains("above"),stack.failure());
+        assertEquals(List.of("click:10"),other.serverEffects());
+    }
 }

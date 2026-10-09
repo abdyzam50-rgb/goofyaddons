@@ -85,6 +85,22 @@ public final class BazaarInstantBuy {
                 int custom = productControl(menu) < 0 ? menu.firstByHoverName("Custom Amount", true) : -1;
                 if (custom < 0)
                     return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy amount menu did not open") : Result.WAITING;
+                // "Buy only one!" and "Buy a stack!" buy on click and quote their exact total, so they
+                // skip the sign and are checked against the limit by their own price.
+                int preset = amount == 1 ? menu.firstByHoverName("Buy only one!", true) : amount == 64 ? menu.firstByHoverName("Buy a stack!", true) : -1;
+                if (preset >= 0) {
+                    String lore = menu.slot(preset).lore();
+                    Double total = presetTotal(lore, name, amount);
+                    if (total == null) return block("Instant buy preset for " + name + " is unreadable");
+                    if (total > maximumCost + 1e-6) return block(String.format(java.util.Locale.ROOT,
+                            "Instant buy of %d %s would cost %,.0f coins, above the %,.0f limit", amount, name, total, maximumCost));
+                    if (!Double.isFinite(purse) || purse < total) return block("Purse cannot cover the instant buy");
+                    try { intent.record("Instant buy intent: " + amount + " " + productId + " up to " + Math.round(maximumCost) + " coins"); }
+                    catch (Exception journal) { return block("Instant buy intent could not be saved; nothing bought"); }
+                    step = Step.VERIFY; stepAt = now;
+                    actions.click(preset, false);
+                    return Result.WAITING;
+                }
                 actions.click(custom, false); step = Step.SIGN; stepAt = now;
             }
             case SIGN -> {
@@ -131,6 +147,21 @@ public final class BazaarInstantBuy {
         if (!matcher.find()) return null;
         try {
             double value = Double.parseDouble(matcher.group(1).replace(",", ""));
+            return Double.isFinite(value) && value > 0 ? value : null;
+        } catch (NumberFormatException invalid) { return null; }
+    }
+
+    /** The quoted total of a preset amount button, when it names this product and amount. */
+    static Double presetTotal(String lore, String name, int amount) {
+        if (lore == null) return null;
+        String text = Chat.strip(lore);
+        if (!text.lines().map(String::strip).anyMatch(name::equalsIgnoreCase)) return null;
+        var units = java.util.regex.Pattern.compile("(?im)^\\s*amount:\\s*([0-9][0-9,]*)x\\s*$").matcher(text);
+        if (!units.find() || !Integer.toString(amount).equals(units.group(1).replace(",", ""))) return null;
+        var price = java.util.regex.Pattern.compile("(?im)^\\s*price:\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*coins\\s*$").matcher(text);
+        if (!price.find()) return null;
+        try {
+            double value = Double.parseDouble(price.group(1).replace(",", ""));
             return Double.isFinite(value) && value > 0 ? value : null;
         } catch (NumberFormatException invalid) { return null; }
     }
