@@ -77,7 +77,9 @@ public final class BazaarInstantBuy {
             case AMOUNT -> {
                 if (signOpen) { step = Step.SIGN; stepAt = now; return tick(menu, true, actions, purse, now); }
                 if (menu == null || menu.title() == null) return Result.WAITING;
-                if (!Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("how many")) {
+                // Hypixel titles it "<product> ➜ Instant Buy"; older menus asked "How many do you want?".
+                String title = Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT);
+                if (!title.contains("how many") && !title.endsWith("instant buy")) {
                     return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy amount menu did not open") : Result.WAITING;
                 }
                 int custom = menu.firstByHoverName("Custom Amount", true);

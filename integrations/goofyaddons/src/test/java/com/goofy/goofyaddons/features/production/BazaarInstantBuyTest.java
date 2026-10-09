@@ -105,4 +105,12 @@ class BazaarInstantBuyTest {
         assertTrue(buy.failure().contains("exact name"),buy.failure());
         assertTrue(actions.serverEffects().stream().noneMatch(e->e.startsWith("click")));
     }
+
+    @Test void acceptsTheCurrentInstantBuyAmountMenuTitle() {
+        var actions=new RecordingActions();var buy=buy(1100);
+        buy.tick(product(100),false,actions,5000,0);
+        buy.tick(menu(2,"Enchanted Coal \u279c Instant Buy",SlotView.named(10,"Buy only one!",List.of()),SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,100);
+        assertTrue(actions.serverEffects().contains("click:16"));
+        assertFalse(actions.serverEffects().contains("click:10")&&actions.serverEffects().indexOf("click:10")>0);
+    }
 }
