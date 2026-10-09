@@ -51,7 +51,9 @@ public final class BazaarInstantBuy {
         if (started == 0) started = now;
         if (stepAt == 0) stepAt = now;
         if (step == Step.VERIFY) return verify(menu, purse, now);
-        if (now - started > 45_000) return block("Instant buy of " + name + " did not reach the amount sign; nothing bought");
+        // The overall deadline covers reaching the amount; the sign and confirmation have their own.
+        if ((step == Step.OPEN || step == Step.PRODUCT || step == Step.AMOUNT) && now - started > 45_000)
+            return block("Instant buy of " + name + " did not reach the amount sign; nothing bought");
         // Hypixel menus can leave a clicked button on the cursor until the server resyncs it, so
         // a held item pauses clicks for a moment before it blocks. Opening the Bazaar is a command.
         boolean held = menu != null && menu.title() != null && !menu.cursorEmpty();
