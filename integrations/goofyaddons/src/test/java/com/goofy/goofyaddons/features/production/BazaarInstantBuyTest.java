@@ -68,4 +68,14 @@ class BazaarInstantBuyTest {
         assertEquals(1234.5,BazaarInstantBuy.unitPrice("Enchanted Coal\nPrice per unit: 1,234.5 coins"));
         assertNull(BazaarInstantBuy.unitPrice("Price per unit: free"));
     }
+
+    @Test void aStaleCursorWithNoMenuOnScreenStillOpensTheBazaarButBlocksClicks() {
+        var actions=new RecordingActions();var buy=buy(1100);
+        var none=new MenuSnapshot(1,null,false,menu(1,null).slots());
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(none,false,actions,5000,0));
+        assertEquals(List.of("command:bz Enchanted Coal"),actions.serverEffects());
+        var held=product(100);held=new MenuSnapshot(held.containerId(),held.title(),false,held.slots());
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,buy.tick(held,false,actions,5000,100));
+        assertEquals(1,actions.serverEffects().size());
+    }
 }

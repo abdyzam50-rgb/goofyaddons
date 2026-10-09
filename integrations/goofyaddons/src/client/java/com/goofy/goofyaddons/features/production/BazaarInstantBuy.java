@@ -51,7 +51,9 @@ public final class BazaarInstantBuy {
         if (stepAt == 0) stepAt = now;
         if (step == Step.VERIFY) return verify(menu, purse, now);
         if (now - started > 45_000) return block("Instant buy of " + name + " did not reach the amount sign; nothing bought");
-        if (menu != null && !menu.cursorEmpty()) return block("Instant buy needs an empty cursor");
+        // Only a click can misplace a held item; with no menu on screen the step is a chat command,
+        // and the server clears the cursor when it opens the Bazaar.
+        if (menu != null && menu.title() != null && !menu.cursorEmpty()) return block("Instant buy needs an empty cursor");
         switch (step) {
             case OPEN -> {
                 if (menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, signOpen, actions, purse, now); }
