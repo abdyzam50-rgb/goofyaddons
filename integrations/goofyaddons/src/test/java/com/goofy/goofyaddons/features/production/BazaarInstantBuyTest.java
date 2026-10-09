@@ -69,14 +69,23 @@ class BazaarInstantBuyTest {
         assertNull(BazaarInstantBuy.unitPrice("Price per unit: free"));
     }
 
-    @Test void aStaleCursorWithNoMenuOnScreenStillOpensTheBazaarButBlocksClicks() {
+    @Test void aHeldCursorPausesClicksAndBlocksOnlyIfItStays() {
         var actions=new RecordingActions();var buy=buy(1100);
         var none=new MenuSnapshot(1,null,false,menu(1,null).slots());
         assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(none,false,actions,5000,0));
         assertEquals(List.of("command:bz Enchanted Coal"),actions.serverEffects());
         var held=product(100);held=new MenuSnapshot(held.containerId(),held.title(),false,held.slots());
-        assertEquals(BazaarInstantBuy.Result.BLOCKED,buy.tick(held,false,actions,5000,100));
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(held,false,actions,5000,100));
         assertEquals(1,actions.serverEffects().size());
+        // The server resyncs the cursor and the buy carries on.
+        buy.tick(product(100),false,actions,5000,200);
+        assertTrue(actions.serverEffects().contains("click:10"));
+        var amount=menu(2,"Enchanted Coal \u279c Instant",SlotView.named(16,"Custom Amount",List.of()));
+        var heldAmount=new MenuSnapshot(2,amount.title(),false,amount.slots());
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(heldAmount,false,actions,5000,300));
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,buy.tick(heldAmount,false,actions,5000,30_000));
+        assertTrue(buy.failure().contains("empty cursor"));
+        assertFalse(actions.serverEffects().contains("click:16"));
     }
 
     MenuSnapshot results(int id,String... names) {
@@ -106,10 +115,10 @@ class BazaarInstantBuyTest {
         assertTrue(actions.serverEffects().stream().noneMatch(e->e.startsWith("click")));
     }
 
-    @Test void acceptsTheCurrentInstantBuyAmountMenuTitle() {
+    @Test void recognisesTheAmountMenuUnderACutTitle() {
         var actions=new RecordingActions();var buy=buy(1100);
         buy.tick(product(100),false,actions,5000,0);
-        buy.tick(menu(2,"Enchanted Coal \u279c Instant Buy",SlotView.named(10,"Buy only one!",List.of()),SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,100);
+        buy.tick(menu(2,"Enchanted Coal \u279c Instant",SlotView.named(10,"Buy only one!",List.of()),SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,100);
         assertTrue(actions.serverEffects().contains("click:16"));
         assertFalse(actions.serverEffects().contains("click:10")&&actions.serverEffects().indexOf("click:10")>0);
     }

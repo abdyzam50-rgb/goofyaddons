@@ -28,7 +28,7 @@ public final class BazaarInstantBuy {
     private final double maximumCost;
     private final Intent intent;
     private Step step = Step.OPEN;
-    private long started, stepAt;
+    private long started, stepAt, heldSince;
     private int before = -1;
     private double purseBefore = Double.NaN, spent;
     private String failure;
@@ -52,14 +52,17 @@ public final class BazaarInstantBuy {
         if (stepAt == 0) stepAt = now;
         if (step == Step.VERIFY) return verify(menu, purse, now);
         if (now - started > 45_000) return block("Instant buy of " + name + " did not reach the amount sign; nothing bought");
-        // Only a click can misplace a held item; with no menu on screen the step is a chat command,
-        // and the server clears the cursor when it opens the Bazaar.
-        if (menu != null && menu.title() != null && !menu.cursorEmpty()) return block("Instant buy needs an empty cursor");
+        // Hypixel menus can leave a clicked button on the cursor until the server resyncs it, so
+        // a held item pauses clicks for a moment before it blocks. Opening the Bazaar is a command.
+        boolean held = menu != null && menu.title() != null && !menu.cursorEmpty();
+        if (!held) heldSince = 0; else if (heldSince == 0) heldSince = now;
+        if (held && step != Step.OPEN)
+            return now - heldSince > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy needs an empty cursor") : Result.WAITING;
         switch (step) {
             case OPEN -> {
-                if (menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, signOpen, actions, purse, now); }
-                String stuck = search.step(menu, actions, now);
-                if (stuck != null) return block(stuck);
+                if (!held && menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, signOpen, actions, purse, now); }
+                String stuck = search.step(menu, held, actions, now);
+                if (stuck != null) return block(held ? "Instant buy needs an empty cursor" : stuck);
             }
             case PRODUCT -> {
                 if (menu == null) return Result.WAITING;
@@ -77,13 +80,11 @@ public final class BazaarInstantBuy {
             case AMOUNT -> {
                 if (signOpen) { step = Step.SIGN; stepAt = now; return tick(menu, true, actions, purse, now); }
                 if (menu == null || menu.title() == null) return Result.WAITING;
-                // Hypixel titles it "<product> ➜ Instant Buy"; older menus asked "How many do you want?".
-                String title = Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT);
-                if (!title.contains("how many") && !title.endsWith("instant buy")) {
+                // Hypixel cuts long titles ("Enchanted Gold Ingot ➜ Instant"), so the amount menu is
+                // recognised by its Custom Amount control once the product page is gone.
+                int custom = productControl(menu) < 0 ? menu.firstByHoverName("Custom Amount", true) : -1;
+                if (custom < 0)
                     return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy amount menu did not open") : Result.WAITING;
-                }
-                int custom = menu.firstByHoverName("Custom Amount", true);
-                if (custom < 0) return block("Instant buy menu has no Custom Amount control");
                 actions.click(custom, false); step = Step.SIGN; stepAt = now;
             }
             case SIGN -> {

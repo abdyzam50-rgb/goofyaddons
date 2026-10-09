@@ -18,15 +18,15 @@ final class BazaarSearch {
     BazaarSearch(String name) { this.name = name; }
 
     /** Null while the product page is still on its way, or why it could not be reached. */
-    String step(MenuSnapshot menu, GameActions actions, long now) {
-        int result = resultSlot(menu, name);
+    String step(MenuSnapshot menu, boolean held, GameActions actions, long now) {
+        int result = held ? -1 : resultSlot(menu, name);
         if (result >= 0 && menu.containerId() != clicked) {
             clicked = menu.containerId(); nextCommand = now + RecoveryRules.INPUT_RESTART_MS;
             actions.click(result, false);
             return null;
         }
         if (now < nextCommand) return null;
-        if (opens >= 3) return result < 0 && resultsPage(menu)
+        if (opens >= 3) return !held && result < 0 && resultsPage(menu)
                 ? "Bazaar search did not list " + name + " by its exact name"
                 : "Bazaar product page for " + name + " did not open";
         opens++; nextCommand = now + RecoveryRules.INPUT_RESTART_MS;

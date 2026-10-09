@@ -26,7 +26,7 @@ public final class BazaarInstantSell {
     private final double minimumProceeds;
     private final BazaarInstantBuy.Intent intent;
     private Step step = Step.OPEN;
-    private long started, stepAt;
+    private long started, stepAt, heldSince;
     private double purseBefore = Double.NaN, proceeds;
     private String failure;
 
@@ -46,13 +46,16 @@ public final class BazaarInstantSell {
         if (started == 0) started = now;
         if (step == Step.VERIFY) return verify(menu, purse, now);
         if (now - started > 45_000) return block("Instant sale of " + name + " did not reach the product page; nothing sold");
-        // Only a click can misplace a held item; with no menu on screen the step is a chat command,
-        // and the server clears the cursor when it opens the Bazaar.
-        if (menu != null && menu.title() != null && !menu.cursorEmpty()) return block("Instant sale needs an empty cursor");
+        // Hypixel menus can leave a clicked button on the cursor until the server resyncs it, so
+        // a held item pauses clicks for a moment before it blocks. Opening the Bazaar is a command.
+        boolean held = menu != null && menu.title() != null && !menu.cursorEmpty();
+        if (!held) heldSince = 0; else if (heldSince == 0) heldSince = now;
+        if (held && step != Step.OPEN)
+            return now - heldSince > RecoveryRules.INPUT_RESTART_MS ? block("Instant sale needs an empty cursor") : Result.WAITING;
         if (step == Step.OPEN) {
-            if (menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, actions, purse, now); }
-            String stuck = search.step(menu, actions, now);
-            return stuck == null ? Result.WAITING : block(stuck);
+            if (!held && menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, actions, purse, now); }
+            String stuck = search.step(menu, held, actions, now);
+            return stuck == null ? Result.WAITING : block(held ? "Instant sale needs an empty cursor" : stuck);
         }
         int control = productControl(menu);
         if (control < 0) return Result.WAITING;
