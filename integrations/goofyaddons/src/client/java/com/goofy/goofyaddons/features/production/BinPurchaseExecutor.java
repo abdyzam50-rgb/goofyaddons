@@ -4,19 +4,27 @@ import com.goofy.goofyaddons.menu.*;
 import com.goofy.goofyaddons.utils.Chat;
 import java.util.*;
 
-/** BIN-only, one exact auction UUID. A delayed confirmation never authorizes another purchase. */
+/** BIN-only GUI browsing; a delayed confirmation never authorizes another purchase. */
 public final class BinPurchaseExecutor {
     public enum Result {WAITING,PURCHASED,BLOCKED}
     private enum Step {OPEN,VIEW,CONFIRM,VERIFY,DONE}
     private final ProductionMenus.BinListing listing;
     private final ProductionJobs journal;
     private final String jobId;
+    private final AuctionBrowserNavigation browser;
+    private final AuctionPricing.Quote quote;
     private Step step=Step.OPEN;
-    private long started,nextCommand,clickedAt;
-    private int opens;
+    private long started,clickedAt;
     private Double purseBefore;
     private String failure;
-    public BinPurchaseExecutor(ProductionMenus.BinListing listing,ProductionJobs journal,String jobId){this.listing=listing;this.journal=journal;this.jobId=jobId;}
+    public BinPurchaseExecutor(ProductionMenus.BinListing listing,ProductionJobs journal,String jobId){this(listing,journal,jobId,null);}
+    public BinPurchaseExecutor(ProductionMenus.BinListing listing,ProductionJobs journal,String jobId,AuctionPricing.Quote quote){
+        this.listing=listing;this.journal=journal;this.jobId=jobId;this.quote=quote;
+        String name=RecipeCatalog.instance().name(listing.productId());
+        if(listing.productId().contains(";"))name=listing.identity().petType().replace('_',' ');
+        browser=new AuctionBrowserNavigation(name,s->listing.productId().equals(ProductionMenus.productId(s))
+            && s.count()==listing.count() && listing.identity().uuid()!=null && listing.identity().uuid().equals(s.metadata().uuid()));
+    }
     public String failure(){return failure;}
     private Result block(String reason){failure=reason;return Result.BLOCKED;}
     public Result tick(MenuSnapshot menu,boolean signOpen,GameActions actions,String account,double purse,double maximum,double spendable,long now) {
@@ -26,8 +34,9 @@ public final class BinPurchaseExecutor {
             if(step==Step.DONE)return Result.PURCHASED;
             if(step==Step.OPEN && job.state()!=ProductionJobs.State.PLANNED)return block("Saved BIN purchase requires reconciliation; no replay");
             if(started==0)started=now;
-            if(now-started>45000)return review(job,"BIN navigation/purchase timed out; verify live inventory and auction");
-            if(menu==null || !menu.cursorEmpty() || signOpen)return block("BIN purchase requires a readable menu and empty cursor");
+            if(now-started>120000)return review(job,"BIN navigation/purchase timed out; verify live inventory and auction");
+            AuctionPricing.validateObserved(quote,listing.productId(),listing.price(),now);
+            if(menu==null || !menu.cursorEmpty() || signOpen && step!=Step.OPEN)return block("BIN purchase requires a readable menu and empty cursor");
             if(step==Step.CONFIRM || step==Step.VERIFY) {
                 var acquired=menu.slots().stream().filter(s->s.inPlayerInventory() && !s.empty() && s.count()==listing.count()
                         && listing.identity().uuid()!=null && listing.identity().uuid().equals(s.metadata().uuid())
@@ -42,13 +51,14 @@ public final class BinPurchaseExecutor {
             String title=Chat.strip(menu.title());
             switch(step) {
                 case OPEN -> {
-                    if(menu.title()!=null && !title.equals("BIN Auction View"))return block("Close the unrelated menu before BIN navigation");
-                    if(menu.title()==null) {
-                        if(now>=nextCommand){if(opens>=3)return block("BIN auction did not open");opens++;nextCommand=now+8000;actions.command("viewauction "+listing.auctionUuid());}return Result.WAITING;
-                    }
-                    step=Step.VIEW;
+                    var result=browser.tick(menu,signOpen,actions,now);
+                    if(result==AuctionBrowserNavigation.Result.BLOCKED)return block(browser.failure());
+                    if(result!=AuctionBrowserNavigation.Result.READY)return Result.WAITING;
+                    if(Double.compare(browser.price(),listing.price())!=0)return block("Observed BIN price changed; replan before buying");
+                    actions.click(browser.selected().index(),false);step=Step.VIEW;clickedAt=now;return Result.WAITING;
                 }
                 case VIEW -> {
+                    if(!"BIN Auction View".equals(title)){if(now-clickedAt>10000)return block("Selected BIN did not open");return Result.WAITING;}
                     if(!ProductionMenus.binPurchase(menu,listing,now,maximum,spendable))return block("BIN item, price, expiry or spending limit is not verified");
                     if(menu.slots().stream().anyMatch(s->s.inPlayerInventory() && !s.empty() && listing.identity().uuid()!=null && listing.identity().uuid().equals(s.metadata().uuid())))return block("BIN target UUID already exists in inventory");
                     var buy=menu.slots().stream().filter(s->!s.empty() && !s.inPlayerInventory() && Set.of("Buy Item","Buy it now").contains(Chat.strip(s.hoverName()))).toList();

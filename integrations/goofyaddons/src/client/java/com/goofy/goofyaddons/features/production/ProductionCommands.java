@@ -61,9 +61,12 @@ public final class ProductionCommands {
      * One craft batch end to end for testing: missing inputs are instant-bought for this run only.
      * With a price the result is listed as a BIN with a fee ceiling for that price; without one, a
      * Bazaar product is sold instantly on the Bazaar and anything else is listed one coin under
-     * the live lowest BIN.
+     * the matching lowest BIN observed in /ah, validated with Coflnet.
      */
     private static int test(String output,long price){
+        return test(output,price,false);
+    }
+    private static int test(String output,long price,boolean guiPricing){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before queueing production.");return 0;}
         String id=output.toUpperCase(java.util.Locale.ROOT).replace(' ','_');
         var menu=new com.goofy.goofyaddons.menu.LiveWorld().menu();
@@ -73,11 +76,11 @@ public final class ProductionCommands {
         if(price==0 && com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null){withBazaarQuotes(id);return 1;}
         if(price==0 && onBazaar(id))price=ProductionRun.SELL_ON_BAZAAR;
         else if(price==0){priceFromAuctions(id);return 1;}
-        if(!FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true))return 0;
+        if(!FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true,guiPricing))return 0;
         FeatureManager.INSTANCE.startProductionTest();return 1;
     }
     private static final java.net.http.HttpClient AUCTION_HTTP=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(java.time.Duration.ofSeconds(2));
-    /** Asks the companion for the item's lowest BIN, then queues the test listed one coin under it. */
+    /** Gets a price-only reference for fee budgeting; the automatic sale price is observed in /ah. */
     private static void priceFromAuctions(String id){
         var actions=new LiveActions();
         try {
@@ -98,9 +101,9 @@ public final class ProductionCommands {
                                 ?"the calculator does not offer auction prices; restart Minecraft so it updates":body.get("error").getAsString());
                         var quote=AuctionPricing.parse(body,id,System.currentTimeMillis());
                         long price=AuctionPricing.listingPrice(quote);
-                        actions.message(String.format(java.util.Locale.ROOT,"Lowest BIN %,d coins%s (Coflnet); listing at %,d.",quote.lowest(),
-                                quote.secondLowest()==null?"":String.format(java.util.Locale.ROOT,", next %,d",quote.secondLowest()),price));
-                        test(id,price);
+                        actions.message(String.format(java.util.Locale.ROOT,"Coflnet reference %,d coins%s. The sale price will come from matching BINs observed in /ah.",quote.lowest(),
+                                quote.secondLowest()==null?"":String.format(java.util.Locale.ROOT,", next %,d",quote.secondLowest())));
+                        test(id,price,true);
                     }catch(RuntimeException failure){
                         actions.message("No automatic price for "+RecipeCatalog.instance().name(id)+": "+failure.getMessage()+". Use: production test "+id+" <price>");
                     }

@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.23-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.24-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -37,6 +37,10 @@ See the craft notes above for yield accounting and recovery rules.
 The 0.2.23 update expands basic ingredient preparation to paper/books, wooden
 components and tools, gold nuggets, redstone torches, Eyes of Ender and bottles.
 See the [ingredient audit](BASIC-INGREDIENT-AUDIT.md) for supported recipes and limits.
+
+The 0.2.24 update uses Auction House browsing and search for BIN discovery,
+with Coflnet as a price validator. See [auction navigation and pricing](AUCTION-GUI-MARKET-CHECK.md)
+for the supported flow and remaining AH procurement integration.
 
 ## Installation and saved data
 
@@ -228,8 +232,8 @@ from one registry, so the screen, diagnostics and documentation cannot disagree.
 
 ## Auction House prices (Coflnet)
 
-`production test` prices an Auction House item from Coflnet's lowest BIN through the
-bundled calculator. To use your Coflnet API token, put it on the first line of
+Automatic `production test` sales price from matching BINs observed in `/ah`.
+The bundled calculator fetches Coflnet prices for validation and initial fee budgeting. To use your Coflnet API token, put it on the first line of
 `coflnet-token.txt` in the calculator data folder (on Windows
 `%LOCALAPPDATA%\GoofyAddons\bazaar-calc\coflnet-token.txt`), or set the
 `COFLNET_TOKEN` environment variable before starting Minecraft. The token stays on your
@@ -249,7 +253,7 @@ the output as a BIN. Queue one, then use the trading toggle:
 | Command (under `.a* goofyaddon production`) | Loop |
 | --- | --- |
 | `run <ITEM> <batches> [binPrice maxFee]` | Inputs, craft, optional BIN listing |
-| `test <ITEM> [binPrice]` | Runs at once, without the trading toggle (traders stay off; the rest schedule and transfers do not gate it; the toggle or `stop` ends it). One craft batch end to end: buys missing inputs for this run only and crafts. With a price it lists the result as a BIN with a fee ceiling for that price; without one, a Bazaar product is sold instantly on the Bazaar (at no less than 97% of the fresh quote) and anything else is listed one coin under the live lowest BIN from Coflnet, unless that lowest BIN is under half the next one |
+| `test <ITEM> [binPrice]` | Runs at once, without the trading toggle (traders stay off; the rest schedule and transfers do not gate it; the toggle or `stop` ends it). One craft batch end to end: buys missing inputs for this run only and crafts. With a price it lists the result as a BIN with a fee ceiling for that price; without one, a Bazaar product is sold instantly on the Bazaar (at no less than 97% of the fresh quote) and anything else is listed one coin under the matching BIN observed in `/ah`, validated against a fresh Coflnet price |
 | `forge <ITEM> <slot> [binPrice maxFee]` | Inputs, Forge submission once you open The Forge, wait, claim, optional listing |
 | `kat <PET;rarity>` | Kat upgrade once you open the Pet Sitter with the pet placed, wait, claim |
 | `claim <job> [binPrice maxFee]` | Claims a Forge or Kat job already waiting in `production jobs` |

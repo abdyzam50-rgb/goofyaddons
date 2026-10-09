@@ -115,25 +115,34 @@ class WorkstationTest {
         var listing=new ProductionMenus.BinListing("a".repeat(32),"BLUE_WHALE;3",identity,1,1000,1000,60000);
         var jobs=new ProductionJobs(dir.resolve("bin.json"));jobs.put(new ProductionJobs.Job("buy","bin:pet","account",ProductionJobs.State.PLANNED,1,-1,0,0,null,identity.uuid(),listing.auctionUuid(),null));
         var pet=new SlotView(13,false,13,false,"Blue Whale","Blue Whale",List.of(),"PET",null,1,1,identity);
-        var actions=new RecordingActions();var executor=new BinPurchaseExecutor(listing,jobs,"buy");
+        var actions=new RecordingActions();var executor=new BinPurchaseExecutor(listing,jobs,"buy",new AuctionPricing.Quote(listing.productId(),1000,1100L,1000));
         executor.tick(menu(1,null),false,actions,"account",5000,1000,5000,1000);
-        var view=menu(2,"BIN Auction View",pet,SlotView.named(31,"Buy Item",List.of("Price: 1,000 coins")));
-        executor.tick(view,false,actions,"account",5000,1000,5000,1500);
-        executor.tick(view,false,actions,"account",5000,1000,5000,1800);
+        executor.tick(menu(2,"Auction House",SlotView.named(11,"Auctions Browser",List.of())),false,actions,"account",5000,1000,5000,1100);
+        var filter=SlotView.named(50,"BIN Filter",List.of("▶ BIN Only"));var sort=SlotView.named(49,"Sort",List.of("▶ Lowest Price"));
+        var search=SlotView.named(48,"Search",List.of());
+        executor.tick(menu(3,"Auctions Browser",filter,sort,search),false,actions,"account",5000,1000,5000,1200);
+        executor.tick(menu(3,"Auctions Browser",filter,sort,search),true,actions,"account",5000,1000,5000,1300);
+        var resultPet=new SlotView(10,false,10,false,"Blue Whale","Blue Whale",List.of("Buy it now: 1,000 coins"),"PET",null,1,1,identity);
+        var results=menu(4,"Auctions Browser",filter,sort,search,resultPet);
+        executor.tick(results,false,actions,"account",5000,1000,5000,1400);
+        executor.tick(results,false,actions,"account",5000,1000,5000,1950);
+        var view=menu(5,"BIN Auction View",pet,SlotView.named(31,"Buy Item",List.of("Price: 1,000 coins")));
+        executor.tick(view,false,actions,"account",5000,1000,5000,1960);
+        executor.tick(view,false,actions,"account",5000,1000,5000,1980);
         assertEquals(ProductionJobs.State.BUYING,new ProductionJobs(dir.resolve("bin.json")).find("buy").orElseThrow().state());
         var confirm=menu(3,"Confirm Purchase",pet,SlotView.named(11,"Confirm",List.of("Price: 1,000 coins")));
         executor.tick(confirm,false,actions,"account",5000,1000,5000,2000);
         executor.tick(confirm,false,actions,"account",5000,1000,5000,2100);
         var acquired=new SlotView(54,true,0,false,"Blue Whale","Blue Whale",List.of(),"PET",null,1,1,identity);
         assertEquals(BinPurchaseExecutor.Result.PURCHASED,executor.tick(menu(0,null,acquired),false,actions,"account",4000,1000,4000,2300));
-        assertEquals(List.of("command:viewauction "+listing.auctionUuid(),"click:31","click:11"),actions.serverEffects());
+        assertEquals(List.of("command:ah","click:11","click:48","sign:BLUE WHALE","click:10","click:31","click:11"),actions.serverEffects());
         assertEquals(1000,jobs.find("buy").orElseThrow().costBasis());assertEquals(ProductionJobs.State.OUTPUT_READY,jobs.find("buy").orElseThrow().state());
     }
     @Test void restartedBinIntentNeverClicksThePurchaseControlAgain()throws Exception {
         var identity=new ItemMetadata("pet-uuid","BLUE_WHALE","EPIC",10.0,null,null,0,null);
         var listing=new ProductionMenus.BinListing("a".repeat(32),"BLUE_WHALE;3",identity,1,1000,1000,60000);
         var jobs=new ProductionJobs(dir.resolve("bin.json"));jobs.put(new ProductionJobs.Job("buy","bin:pet","account",ProductionJobs.State.BUYING,1,-1,0,0,null,identity.uuid(),listing.auctionUuid(),null));
-        var actions=new RecordingActions();var executor=new BinPurchaseExecutor(listing,jobs,"buy");
+        var actions=new RecordingActions();var executor=new BinPurchaseExecutor(listing,jobs,"buy",new AuctionPricing.Quote(listing.productId(),1000,1100L,1000));
         assertEquals(BinPurchaseExecutor.Result.BLOCKED,executor.tick(menu(1,null),false,actions,"account",5000,1000,5000,1500));assertTrue(actions.serverEffects().isEmpty());
     }
     @Test void binCreationChecksActualItemQuantityAndPriceInsteadOfOnlyTitle() {

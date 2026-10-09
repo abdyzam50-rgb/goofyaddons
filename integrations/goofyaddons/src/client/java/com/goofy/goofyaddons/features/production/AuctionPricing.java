@@ -16,6 +16,13 @@ public final class AuctionPricing {
     static final long MAX_AGE_MS = 5 * 60_000;
 
     private AuctionPricing() {}
+    public static void validateObserved(Quote quote,String product,double observed,long now) {
+        if(quote==null || !product.equals(quote.item()) || quote.fetchedAt()>now+5000 || now-quote.fetchedAt()>MAX_AGE_MS)
+            throw new IllegalArgumentException("Fresh matching Coflnet price required");
+        listingPrice(quote); // Retain the extreme-lowest outlier check.
+        if(!Double.isFinite(observed) || observed<1 || observed<quote.lowest()*0.9 || observed>quote.lowest()*1.1)
+            throw new IllegalArgumentException("Observed BIN price differs from Coflnet by more than 10%; refresh and review");
+    }
 
     static Quote parse(JsonObject body, String item, long now) {
         if (body == null || !"goofy-ah-price/1".equals(text(body, "protocol")) || !item.equals(text(body, "item")))

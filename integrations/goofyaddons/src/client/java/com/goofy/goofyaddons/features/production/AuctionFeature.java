@@ -8,11 +8,17 @@ import java.util.*;
 /** Opt-in BIN preparation owns the foreground menu until manual publication/review. */
 public final class AuctionFeature implements Feature {
     private BinListingExecutor executor;
+    private AuctionBrowserNavigation browser;
+    private SlotView expected;
+    private long requestedPrice;
+    private boolean publish,guiPricing;
+    private double maximumFee;
+    private java.util.concurrent.CompletableFuture<AuctionPricing.Quote> priceCheck;
     private String jobId,product;
     private boolean running,paused;
     private long mismatchSince,missingSince;
     public String name(){return "Auction House";}
-    public boolean queued(){return executor!=null;}
+    public boolean queued(){return executor!=null || browser!=null;}
     /** The journal id of the most recently queued job, for callers that follow it. */
     public String jobId(){return jobId;}
     public String activity(){return queued()?"Preparing BIN listing for "+product:"No auction queued";}
@@ -20,6 +26,12 @@ public final class AuctionFeature implements Feature {
     private ProductionJobs jobs()throws java.io.IOException{return FeatureManager.INSTANCE.crafting().productionJobs();}
     public boolean queue(String id,long price) {return queue(id,price,false,0);}
     public boolean queue(String id,long price,boolean publish,double maximumFee) {
+        return queue(id,price,publish,maximumFee,false);
+    }
+    public boolean queueMarket(String id,long estimatedPrice,boolean publish,double maximumFee) {
+        return queue(id,estimatedPrice,publish,maximumFee,true);
+    }
+    private boolean queue(String id,long price,boolean publish,double maximumFee,boolean guiPricing) {
         var actions=new LiveActions();var menu=new LiveWorld().menu();
         if(queued() || FeatureManager.INSTANCE.crafting().queued()) {actions.message("Finish the queued production operation first.");return false;}
         if(menu==null || !menu.cursorEmpty()){actions.message("Clear the cursor before preparing an auction.");return false;}
@@ -32,9 +44,13 @@ public final class AuctionFeature implements Feature {
             var item=items.getFirst();
             jobs().put(new ProductionJobs.Job(jobId,"auction:prepare:"+id,new LiveWorld().username(),ProductionJobs.State.OUTPUT_READY,1,-1,0,0,null,item.metadata().petType()==null?null:item.metadata().uuid(),null,
                 "Existing inventory stack selected; cost basis unknown"));
-            executor=new BinListingExecutor(item,price,jobs(),jobId,publish,maximumFee);product=id;mismatchSince=missingSince=0;
+            expected=item;requestedPrice=price;this.publish=publish;this.maximumFee=maximumFee;this.guiPricing=guiPricing;
+            product=id;mismatchSince=missingSince=0;priceCheck=null;
+            browser=new AuctionBrowserNavigation(RecipeCatalog.instance().name(id),s->id.equals(ProductionMenus.productId(s))
+                && s.count()==item.count() && Objects.equals(s.enchantments(),item.enchantments())
+                && Objects.equals(s.metadata().petType(),item.metadata().petType()) && Objects.equals(s.metadata().petTier(),item.metadata().petTier()));
             actions.message("Queued BIN "+(publish?"listing":"preparation")+" at "+price+" coins. Use the trading toggle."+(publish?" Fee limit: "+maximumFee:" Final publication remains manual."));return true;
-        }catch(Exception failed){executor=null;product=null;Diagnostics.failure("auction.queue_failed",failed);actions.message("Auction preparation could not be saved; no action performed.");return false;}
+        }catch(Exception failed){executor=null;browser=null;product=null;Diagnostics.failure("auction.queue_failed",failed);actions.message("Auction preparation could not be saved; no action performed.");return false;}
     }
     public void start(){running=true;paused=false;}
     public void resume(){paused=false;}
@@ -49,7 +65,7 @@ public final class AuctionFeature implements Feature {
             if(job.state()!=ProductionJobs.State.REVIEW)jobs().put(job.withState(job.state()==ProductionJobs.State.OUTPUT_READY?ProductionJobs.State.CANCELLED:ProductionJobs.State.REVIEW,
                 "Auction preparation interrupted; inspect inventory and the sell slot before retrying"));
         }catch(Exception failure){Diagnostics.failure("auction.journal_failed",failure);}
-        executor=null;product=null;
+        if(priceCheck!=null)priceCheck.cancel(true);priceCheck=null;browser=null;executor=null;product=null;
     }
     private long nextAction;
     public void onTick() {
@@ -77,6 +93,21 @@ public final class AuctionFeature implements Feature {
                 mismatchSince=0;
             }
             double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse();
+            if(browser!=null) {
+                var state=browser.tick(observed,world.signEditorOpen(),new LiveActions(),now);
+                if(state==AuctionBrowserNavigation.Result.BLOCKED){FeatureManager.INSTANCE.safetyPause(browser.failure());return;}
+                if(state!=AuctionBrowserNavigation.Result.READY)return;
+                if(priceCheck==null){priceCheck=AuctionPriceLookup.fetch(product);return;}
+                if(!priceCheck.isDone())return;
+                try {
+                    var quote=priceCheck.join();AuctionPricing.validateObserved(quote,product,browser.price(),now);
+                    long price=guiPricing?Math.max(1,(long)Math.floor(browser.price())-1):requestedPrice;
+                    AuctionPricing.validateObserved(quote,product,price,now);
+                    executor=new BinListingExecutor(expected,price,jobs(),jobId,publish,maximumFee);
+                    new LiveActions().message("Observed matching lowest BIN "+(long)browser.price()+"; Coflnet validated. Listing price "+price+".");
+                    browser=null;priceCheck=null;new LiveActions().closeMenu();return;
+                }catch(RuntimeException failed){FeatureManager.INSTANCE.safetyPause("Auction GUI/API prices could not be validated; no item moved or listing submitted");return;}
+            }
             var result=executor.tick(observed,world.signEditorOpen(),new LiveActions(),world.username(),purse,CapitalManager.INSTANCE.available(purse),now);
             if(result==BinListingExecutor.Result.BLOCKED) {
                 if(observed!=null)try{AuctionCommands.capture(observed);}catch(java.io.IOException failure){Diagnostics.failure("auction.capture_failed",failure);}
