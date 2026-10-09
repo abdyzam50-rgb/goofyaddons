@@ -27,7 +27,7 @@ class ProductionRunTest {
     final class Env implements ProductionRun.Environment {
         ProductionJobs jobs;MenuSnapshot menu=ProductionRunTest.menu(null);boolean sign,buying,craftQueued,listingQueued;
         double purse=10_000;final RecordingActions actions=new RecordingActions();final List<String> crafts=new ArrayList<>(),listings=new ArrayList<>();
-        Set<String> occupied=Set.of();
+        Set<String> occupied=Set.of(),unquoted=Set.of();
         Map<String,Integer> unlocks=Map.of();boolean requirementsPending;
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
@@ -42,7 +42,7 @@ class ProductionRunTest {
         public boolean requirementsPending(){return requirementsPending;}
         public Set<String> occupied(){return occupied;}
         public boolean buyingAllowed(){return buying;}
-        public Double instantBuyCost(String id,int units){return units*100.0;}
+        public Double instantBuyCost(String id,int units){return unquoted.contains(id)?null:units*100.0;}
         public Double instantSellValue(String id,int units){return units*1000.0;}
         public String name(String id){return catalog().name(id);}
         public String queueCraft(String output,int batches){
@@ -72,6 +72,47 @@ class ProductionRunTest {
         assertEquals(com.goofy.goofyaddons.features.production.ProductionLoop.Step.PENDING,run.tick(true,3000));
         assertTrue(run.reason().contains("Buying"));
         run.tick(true,4000);assertFalse(env.actions.serverEffects().isEmpty());
+    }
+    @Test void eyeIngredientsAreCraftedFromRodsInJournaledChunksBeforeFinalCraft()throws Exception {
+        var env=new Env();env.unlocks=Map.of("enderpearl",6);
+        env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",32),item(55,"ENCHANTED_ENDER_PEARL",16));
+        var run=ProductionRun.start(env,RecipeCatalog.instance(),"ENCHANTED_EYE_OF_ENDER",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertFalse(run.wantsMenu());run.tick(false,0);
+        assertEquals(List.of("BLAZE_POWDERx16"),env.crafts);assertEquals(Stage.PROCURE,run.stage());
+        assertEquals(ProductionJobs.State.PROCESSING,env.jobs.find(run.jobId()).orElseThrow().state());
+        assertTrue(run.lockedProducts().contains("BLAZE_ROD"));
+        env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);
+        env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",16),item(55,"ENCHANTED_ENDER_PEARL",16),item(56,"BLAZE_POWDER",32));
+        run.tick(false,1);run.tick(false,2);assertEquals(List.of("BLAZE_POWDERx16","BLAZE_POWDERx16"),env.crafts);
+        env.craftQueued=false;env.finish("craft-1",ProductionJobs.State.OUTPUT_READY);
+        env.menu=ProductionRunTest.menu(null,item(55,"ENCHANTED_ENDER_PEARL",16),item(56,"BLAZE_POWDER",64));
+        run.tick(false,3);run.tick(false,4);assertEquals(Stage.PROCESS,run.stage());
+        run.tick(false,5);assertEquals("ENCHANTED_EYE_OF_ENDERx1",env.crafts.getLast());assertTrue(env.actions.serverEffects().isEmpty());
+    }
+    @Test void occupiedBaseIngredientsCannotBeConsumedByPreparation()throws Exception {
+        var env=new Env();env.occupied=Set.of("BLAZE_ROD");
+        env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",1));
+        var grid=Arrays.asList(new ProductionRecipe.Ingredient("BLAZE_POWDER",2),null,null,null,null,null,null,null,null);
+        var target=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("BLAZE_POWDER",2),grid,0,0,"",null);
+        var recipes=new ArrayList<>(RecipeCatalog.instance().recipes());recipes.add(target);
+        var run=ProductionRun.start(env,new RecipeCatalog(recipes,Map.of()),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertEquals(Step.BLOCKED,run.tick(false,0));assertTrue(run.reason().contains("BLAZE_ROD"));assertTrue(env.crafts.isEmpty());
+    }
+    @Test void missingPowderBuysRodsEvenWithoutAPowderQuote()throws Exception {
+        var env=new Env();env.buying=true;env.unlocks=Map.of("enderpearl",6);env.unquoted=Set.of("BLAZE_POWDER");
+        env.menu=ProductionRunTest.menu(null,item(54,"ENCHANTED_ENDER_PEARL",16));
+        var run=ProductionRun.start(env,RecipeCatalog.instance(),"ENCHANTED_EYE_OF_ENDER",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertTrue(run.wantsMenu());run.tick(true,0);assertTrue(run.reason().contains("32 BLAZE_ROD"),run.reason());
+        run.tick(true,1);assertEquals(List.of("command:bz BLAZE_ROD"),env.actions.serverEffects());
+        assertTrue(env.crafts.isEmpty());
+    }
+    @Test void failedIntermediateCraftRequiresReviewAndCannotStartTheFinalCraft()throws Exception {
+        var env=new Env();env.unlocks=Map.of("enderpearl",6);
+        env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",32),item(55,"ENCHANTED_ENDER_PEARL",16));
+        var run=ProductionRun.start(env,RecipeCatalog.instance(),"ENCHANTED_EYE_OF_ENDER",ProductionRecipe.Kind.CRAFT,1,-1,5000,100);
+        run.tick(false,0);env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.REVIEW);
+        assertEquals(Step.UNCERTAIN,run.tick(false,1));assertEquals(Stage.REVIEW,run.stage());
+        assertEquals(List.of("BLAZE_POWDERx16"),env.crafts);assertTrue(env.listings.isEmpty());
     }
 
     @Test void craftRunFromHeldInputsCraftsThenListsAndRecordsEveryBoundary()throws Exception {

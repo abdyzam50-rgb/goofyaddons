@@ -6,7 +6,7 @@ trader source and guides live under `integrations/goofyaddons/`; existing save
 files retain their formats and paths. See [installation and migration](docs/GOOFYADDONS.md)
 and [completed architecture work](trading-core/README.md).
 
-Download the latest combined mod: [astar-client-0.2.21-BETA.jar](dist/astar-client-0.2.21-BETA.jar).
+Download the latest combined mod: [astar-client-0.2.22-BETA.jar](dist/astar-client-0.2.22-BETA.jar).
 
 # A*
 
@@ -38,7 +38,7 @@ downloads Java 25 for the build if it isn't installed):
 .\gradlew.bat -p client build
 ```
 
-Put `client\build\libs\astar-client-0.2.21-BETA.jar` (with the trader and Mines map inside)
+Put `client\build\libs\astar-client-0.2.22-BETA.jar` (with the trader and Mines map inside)
 in your `.minecraft\mods` folder, next to Fabric API. On Linux or macOS use
 `./gradlew -p client build`. To try it without installing,
 `.\gradlew.bat -p client runClient` starts a development game with the mod.

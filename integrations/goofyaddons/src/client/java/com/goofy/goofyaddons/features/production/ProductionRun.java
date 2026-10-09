@@ -68,6 +68,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private BazaarInstantSell selling;
     private ProductionRecipe recipe;
     private String craftJob, listingJob, workstationJob;
+    private String ingredientCraftJob;
     private ForgeNavigation navigation;
     private WorkstationExecutor workstation;
     private double spent;
@@ -133,6 +134,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         var ids = new HashSet<String>();ids.add(output);
         if (recipe != null) ids.addAll(recipe.ingredients().keySet());
         else catalog.forOutput(output).stream().filter(r -> r.kind() == kind).forEach(r -> ids.addAll(r.ingredients().keySet()));
+        ids.addAll(IngredientPreparation.dependencies(catalog,ids));
         return Set.copyOf(ids);
     }
 
@@ -140,7 +142,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     public boolean wantsMenu() {
         if (finished()) return false;
         return switch (loop.stage()) {
-            case PROCURE -> buying != null || env.buyingAllowed() && !missing().isEmpty();
+            case PROCURE -> ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty());
             case PROCESS -> kind != ProductionRecipe.Kind.CRAFT && workstationMenuOpen();
             case CLAIM -> workstationMenuOpen();
             case SELL -> binPrice == SELL_ON_BAZAAR;
@@ -157,6 +159,13 @@ public final class ProductionRun implements ProductionLoop.Ports {
     // ---- Stages ------------------------------------------------------------------------
 
     @Override public Outcome procure(long now) {
+        if(ingredientCraftJob!=null) {
+            if(env.craftQueued())return Outcome.pending("Crafting intermediate ingredients");
+            var result=childFinished(ingredientCraftJob,Set.of(ProductionJobs.State.OUTPUT_READY,ProductionJobs.State.DONE),"Ingredient craft");
+            if(result!=Outcome.DONE)return result;
+            ingredientCraftJob=null;
+            return Outcome.pending("Intermediate craft verified; checking remaining inputs");
+        }
         if (buying != null) {
             if (!ownsMenu) return Outcome.pending("Waiting to buy " + env.name(buying.productId()));
             var result = buying.tick(env.menu(), env.signOpen(), env.actions(), env.purse(), now);
@@ -169,9 +178,20 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         var requirement=craftRequirement();
         if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
-        var missing = missing();
-        if (missing.isEmpty()) return Outcome.DONE;
-        for (String id : missing.keySet()) if (env.occupied().contains(id)) return Outcome.blocked(id + " belongs to a trader position; production will not use it");
+        var preparation=preparation();var missing=preparation.purchases();
+        for (String id : preparation.products()) if (env.occupied().contains(id)) return Outcome.blocked(id + " belongs to a trader position; production will not use it");
+        if (missing.isEmpty()) {
+            if(preparation.crafts().isEmpty())return Outcome.DONE;
+            if(env.craftQueued())return Outcome.pending("Waiting for other crafting work");
+            var craft=preparation.crafts().getFirst();
+            // The existing executor journals at most 16 batches per child job. Replan from
+            // actual inventory after completion, so large preparations need no guessed counts.
+            try {env.jobs().put(parent().withState(ProductionJobs.State.PROCESSING,"Preparing "+craft.output()+" for "+output));}
+            catch(Exception failure){return Outcome.blocked("Intermediate crafting intent could not be saved; no craft queued");}
+            ingredientCraftJob=env.queueCraft(craft.output(),Math.min(16,craft.batches()));
+            if(ingredientCraftJob==null)return Outcome.blocked("Intermediate craft could not be queued; check ingredients and cursor");
+            return Outcome.pending("Crafting "+env.name(craft.output())+" from base materials");
+        }
         if (!env.buyingAllowed()) {
             var text = new StringJoiner(", ");missing.forEach((id, n) -> text.add(n + " " + env.name(id)));
             return Outcome.blocked("Missing " + text + "; add them to your inventory or turn on automatic ingredient buying");
@@ -312,11 +332,13 @@ public final class ProductionRun implements ProductionLoop.Ports {
             }
             if (need.isEmpty()) return Map.of();
             double cost = 0;
-            for (var e : need.entrySet()) { Double c = env.instantBuyCost(e.getKey(), e.getValue()); cost += c == null ? 1e18 : c; }
+            for (var e : IngredientPreparation.plan(catalog,need,held).purchases().entrySet()) { Double c = env.instantBuyCost(e.getKey(), e.getValue()); cost += c == null ? 1e18 : c; }
             if (best == null || cost < bestCost) { best = need; bestCost = cost; }
         }
         return best == null ? Map.of() : best;
     }
+
+    private IngredientPreparation.Plan preparation() {return IngredientPreparation.plan(catalog,missing(),held());}
 
     private String craftRequirement() {
         if(kind!=ProductionRecipe.Kind.CRAFT)return null;

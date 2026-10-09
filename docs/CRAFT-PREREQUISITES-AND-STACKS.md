@@ -110,3 +110,37 @@ rate-limit and invalid-response failures keep the normal retry interval; no
 unknown collection level is treated as an unlock. Messages distinguish a local
 calculator connection failure, timeout and invalid response without displaying
 exception bodies or credentials. Profile changes still cancel stale requests.
+
+## Preparing basic ingredients before the final craft (0.2.22)
+
+Production procurement expands three basic intermediates: `BLAZE_POWDER`,
+`STICK`, and `WOOD` (oak planks). Missing powder is made from Blaze Rods;
+missing sticks are made from planks, and missing planks are made from logs.
+Other inputs retain their existing procurement behavior. This is a bounded
+vanilla preparation system, not arbitrary recursive SkyBlock recipe execution.
+
+The planner uses recipe yields and existing inventory, rounds batches upward,
+shares preparation surplus and reserves ingredients already held for the final
+recipe. With no powder, one Enchanted Eye of Ender requires buying 32 Blaze
+Rods instead of 64 powder, plus any missing 16 Enchanted Ender Pearls. Five
+missing sticks require one log, one plank batch and two stick batches (eight
+sticks produced). Already-held intermediates and base inputs reduce purchases.
+
+Variant cost selection uses expanded base purchase quotes. Products used by
+trader positions are rejected, and the run locks the complete ingredient chain
+against new trader selections. Missing base quotes or insufficient spendable
+capital block purchases. With automatic buying disabled, held base inputs can
+still be crafted; missing base inputs must be supplied by the player.
+
+Once base inputs are acquired, preparation runs through the existing crafting
+executor and production journal, at most 16 batches per child job. The parent
+records preparation intent before queueing each craft. The run waits for that
+child's verified completion and replans from actual inventory, rather than
+assuming all projected output exists. Failed or uncertain preparation requires
+review and cannot advance to the final craft or sale. Restart/stop follows the
+existing production recovery rules; interrupted preparation is marked for review.
+
+Regression coverage checks rods procurement without a powder quote, log/plank/
+stick ordering and yield rounding, held input accounting, occupied base inputs,
+32 powder batches across two child jobs and failure before the final craft.
+Live Minecraft validation remains necessary.

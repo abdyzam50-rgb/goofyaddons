@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.21-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.22-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -29,6 +29,10 @@ See [craft split and pacing details](CRAFT-PREREQUISITES-AND-STACKS.md).
 
 The 0.2.21 update shortens retries for transient profile connection failures and
 verifies the normal Blaze Rod → two Blaze Powder recipe. See the craft notes above.
+
+The 0.2.22 update prepares missing Blaze Powder, sticks and oak planks from
+base materials before the final craft; other ingredients retain direct procurement.
+See the craft notes above for yield accounting and recovery rules.
 
 ## Installation and saved data
 
