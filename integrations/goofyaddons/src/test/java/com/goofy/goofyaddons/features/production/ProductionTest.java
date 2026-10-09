@@ -72,6 +72,17 @@ class ProductionTest {
         assertTrue(catalog.forOutput("ASPECT_OF_THE_VOID").stream().allMatch(r->r.requirement().contains("Enderman Slayer 6")));
         assertTrue(catalog.forOutput("BLUE_WHALE;4").stream().anyMatch(r->r.inputPet().equals("BLUE_WHALE;3")));
     }
+    @Test void normalBlazePowderConsumesOneRodAndProducesTwoWithoutAccountRequirements() {
+        var r=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();
+        assertEquals(Map.of("BLAZE_ROD",1),r.ingredients());assertEquals(2,r.outputCount());assertTrue(r.requirement().isBlank());
+        var server=new Server(r,0);server.slots[54]=stack(54,"BLAZE_ROD",64);server.slots[55]=stack(55,"",0);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=100)
+            result=executor.tick(r,server.menu(),server,Map.of(),Map.of(),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertTrue(server.cursor.empty());
+        assertEquals("BLAZE_POWDER",server.slots[56].customId());assertEquals(2,server.slots[56].count());
+        assertEquals(63,server.slots[54].count());assertEquals("shift:23",server.inputs.getLast());
+    }
     @Test void fullCraftWaitsForEachObservationAndConservesSurplusIngredients() {
         var r=recipe(5);var server=new Server(r,64);var executor=new CraftingExecutor();
         CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;

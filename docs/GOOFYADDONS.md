@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.20-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.21-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -26,6 +26,9 @@ in settings, production messages and diagnostics. See [fixing profile access](PR
 The 0.2.20 craft update repeatedly halves owned grid stacks (including 64 → 32 → 16),
 reuses halves across matching cells, and removes stacked crafting delays.
 See [craft split and pacing details](CRAFT-PREREQUISITES-AND-STACKS.md).
+
+The 0.2.21 update shortens retries for transient profile connection failures and
+verifies the normal Blaze Rod → two Blaze Powder recipe. See the craft notes above.
 
 ## Installation and saved data
 

@@ -23,6 +23,7 @@ public final class AccountUnlocks {
     private String account,profile;
     private long next,expires;
     private int generation;
+    private int connectionFailures;
     private CompletableFuture<?> pending;
     private String failureCode="NOT_STARTED",failure="Account lookup has not started";
     private boolean collectionsAvailable;
@@ -37,7 +38,7 @@ public final class AccountUnlocks {
             .thenApply(response->new Response(response.statusCode(),JsonParser.parseString(response.body()).getAsJsonObject()));
     }
     public boolean pending(){return pending!=null;}
-    public void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;unlocks=apiSkills=Map.of();account=profile=null;next=expires=0;collectionsAvailable=false;failureCode="NOT_STARTED";failure="Account lookup has not started";}
+    public void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;unlocks=apiSkills=Map.of();account=profile=null;next=expires=0;connectionFailures=0;collectionsAvailable=false;failureCode="NOT_STARTED";failure="Account lookup has not started";}
     public String status(long now) {
         if(profile==null)return "Waiting for the current SkyBlock profile";
         if(pending())return "Fetching account prerequisites";
@@ -49,6 +50,19 @@ public final class AccountUnlocks {
             "collectionsAvailable",now<expires && collectionsAvailable,"expiresInMs",Math.max(0,expires-now),"retryInMs",Math.max(0,next-now));
     }
     private void fail(String code,String reason) {unlocks=apiSkills=Map.of();expires=0;collectionsAvailable=false;failureCode=code;failure=reason;}
+    private void connectionFailure(Throwable error) {
+        while(error instanceof java.util.concurrent.CompletionException && error.getCause()!=null)error=error.getCause();
+        if(error instanceof JsonParseException || error instanceof IllegalStateException) {
+            connectionFailures=0;fail("INVALID_RESPONSE","Calculator returned an invalid profile response; retrying automatically");return;
+        }
+        long delay=switch(++connectionFailures){case 1->5000;case 2->15000;case 3->30000;default->60000;};
+        next=clock.getAsLong()+delay;
+        if(error instanceof java.net.ConnectException)
+            fail("CALCULATOR_UNREACHABLE","Local calculator connection failed; retrying automatically in "+delay/1000+" seconds");
+        else if(error instanceof HttpTimeoutException)
+            fail("PROFILE_TIMEOUT","Account lookup timed out; retrying automatically in "+delay/1000+" seconds");
+        else fail("UNREACHABLE","Profile connection failed; retrying automatically in "+delay/1000+" seconds");
+    }
     static String serviceFailure(String code,int status) {
         return switch(code) {
             case "HYPIXEL_FORBIDDEN" -> "Hypixel rejected profile access (HTTP 403). Update the Worker HYPIXEL_API_KEY secret and check SkyBlock profile permissions";
@@ -77,7 +91,8 @@ public final class AccountUnlocks {
             request.whenComplete((response,error)->clientThread.accept(()->{
                     if(token!=generation)return;pending=null;
                     try {
-                        if(error!=null){fail("UNREACHABLE","Profile service could not be reached; check the calculator and Worker. Retrying automatically");return;}
+                        if(error!=null){connectionFailure(error);return;}
+                        connectionFailures=0;
                         if(response.status()!=200) {
                             String code=response.body().has("failureCode")?response.body().get("failureCode").getAsString():"PROFILE_SERVICE_UNAVAILABLE";
                             fail(switch(code){case "HYPIXEL_FORBIDDEN","HYPIXEL_UNAUTHORIZED","PROFILE_NOT_CONFIGURED","PROFILE_RATE_LIMITED","USERNAME_NOT_FOUND","USERNAME_SERVICE_UNAVAILABLE"->code;default->"PROFILE_SERVICE_UNAVAILABLE";},serviceFailure(code,response.status()));return;

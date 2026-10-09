@@ -8,6 +8,34 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AccountUnlocksTest {
+    @Test void calculatorStartupFailureRetriesAfterFiveSecondsAndRecovers() {
+        var clock=new AtomicLong(1000000);var calls=new AtomicLong();
+        var account=new AccountUnlocks(uri->calls.incrementAndGet()==1
+            ?CompletableFuture.failedFuture(new java.util.concurrent.CompletionException(new java.net.ConnectException("private network details")))
+            :CompletableFuture.completedFuture(new AccountUnlocks.Response(200,profile(clock.get()))),Runnable::run,clock::get);
+        account.poll("Tester","Mango","http://127.0.0.1:8789/v1/recommendations",Map.of(),clock.get());
+        assertEquals("CALCULATOR_UNREACHABLE",account.diagnosticState(clock.get()).get("failureCode"));
+        assertFalse(account.status(clock.get()).contains("private network details"));assertTrue(account.current(clock.get()).isEmpty());
+        clock.addAndGet(4999);account.poll("Tester","Mango","http://127.0.0.1:8789/v1/recommendations",Map.of(),clock.get());assertEquals(1,calls.get());
+        clock.incrementAndGet();account.poll("Tester","Mango","http://127.0.0.1:8789/v1/recommendations",Map.of(),clock.get());
+        assertEquals(2,calls.get());assertEquals(4,account.current(clock.get()).get("goldingot"));
+    }
+    @Test void repeatedConnectionFailuresBackOffAndDoNotPublishAssumedUnlocks() {
+        var clock=new AtomicLong(1000000);
+        var account=new AccountUnlocks(uri->CompletableFuture.failedFuture(new java.net.http.HttpTimeoutException("secret")),Runnable::run,clock::get);
+        for(long delay:new long[]{5000,15000,30000,60000,60000}) {
+            account.poll("Tester","Mango","http://127.0.0.1:8789/v1/recommendations",Map.of(),clock.get());
+            assertEquals(delay,account.diagnosticState(clock.get()).get("retryInMs"));
+            assertEquals("PROFILE_TIMEOUT",account.diagnosticState(clock.get()).get("failureCode"));assertTrue(account.current(clock.get()).isEmpty());
+            clock.addAndGet(delay);
+        }
+    }
+    @Test void malformedResponsesKeepNormalRetryIntervalAndExplainTheResponseFailure() {
+        var account=new AccountUnlocks(uri->CompletableFuture.failedFuture(new JsonSyntaxException("private body")),Runnable::run,()->1000000);
+        account.poll("Tester","Mango","http://127.0.0.1:8789/v1/recommendations",Map.of(),1000000);
+        assertEquals("INVALID_RESPONSE",account.diagnosticState(1000000).get("failureCode"));
+        assertEquals(60000L,account.diagnosticState(1000000).get("retryInMs"));assertFalse(account.status(1000000).contains("private body"));
+    }
     JsonObject profile(long at) {
         var root=JsonParser.parseString("""
           {"protocol":"goofy-profile/1","username":"Tester","profiles":[

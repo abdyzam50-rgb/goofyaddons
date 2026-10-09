@@ -83,3 +83,30 @@ one 64 stack, places 16 enchanted pearls and shift-clicks the verified result in
 This is simulation evidence, not a live latency guarantee. Regression tests also
 cover returning 48 unused units from a single 16-unit cell, cooldown protection,
 and refusing unowned oversized cells. The full build passed 981 Java tests.
+
+## Normal Blaze Powder and transient profile connections (0.2.21)
+
+The bundled `crafting:BLAZE_POWDER:0` recipe uses one normal `BLAZE_ROD`
+and produces two `BLAZE_POWDER`, with no account prerequisite. It is separate
+from enchanted Blaze Powder. The executor regression uses a full 64-rod stack,
+returns the remaining 63 rods and shift-clicks the two verified powder into
+inventory. This recipe was already present; no duplicate catalog entry is added.
+
+To craft with existing rods: `.a* goofyaddon craft BLAZE_POWDER 16` produces
+32 powder over 16 batches. Toggle trading on to run the queued craft. To buy the
+missing rod, craft two powder and instant-sell them as a test, use
+`.a* goofyaddon production test BLAZE_POWDER`.
+
+The supplied October 9 diagnostics show a connection failure at 13:36:06 UTC,
+a verified profile at 13:37:06 UTC, a completed Eye of Ender craft at 13:37:12
+and a finished production run at 13:37:14. The calculator was ready at export.
+This establishes automatic recovery, rather than another persistent API denial.
+The original exception details were not recorded, so the exact cause of the
+initial connection failure cannot be proved from that bundle.
+
+Local connection failures and timeouts now retry after 5, 15, 30 and then 60
+seconds, capped at 60. Successful responses reset the backoff. Known permission,
+rate-limit and invalid-response failures keep the normal retry interval; no
+unknown collection level is treated as an unlock. Messages distinguish a local
+calculator connection failure, timeout and invalid response without displaying
+exception bodies or credentials. Profile changes still cancel stale requests.
