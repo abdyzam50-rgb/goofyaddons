@@ -19,7 +19,7 @@ public final class GoofyCommands {
     }
     public static LiteralArgumentBuilder<FabricClientCommandSource> root() {
         var root=literal("goofyaddon").executes(c->{
-            c.getSource().sendFeedback(Component.literal(".a* goofyaddon: start, stop, toggle, status, mode <books|general|both>, reload, debug export, profit, schedule, craft, production, auction, profiles."));return 1;
+            c.getSource().sendFeedback(Component.literal(".a* goofyaddon: start, stop, toggle, status, mode <books|general|both|craft>, reload, debug export, profit, schedule, craft, production, auction, profiles."));return 1;
         });
         FEATURES.getRoot().getChildren().forEach(root::then);
         root.then(literal("start").executes(c->{SessionScheduler.INSTANCE.manualStart();return 1;}));

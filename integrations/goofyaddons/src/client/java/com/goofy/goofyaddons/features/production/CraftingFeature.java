@@ -30,7 +30,8 @@ public final class CraftingFeature implements Feature {
         }
         return jobs;
     }
-    public boolean queue(String output,int batches) {
+    public boolean queue(String output,int batches) { return queue(output,batches,null); }
+    public boolean queue(String output,int batches,String recipeKey) {
         if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>16){new LiveActions().message("Finish the queued craft first; batch count must be 1–16.");return false;}
         var menu=new LiveWorld().menu();
         if(menu==null || !menu.cursorEmpty()){new LiveActions().message("Clear the cursor before queueing crafting.");return false;}
@@ -38,9 +39,11 @@ public final class CraftingFeature implements Feature {
         for(var slot:menu.slots())if(slot.inPlayerInventory() && slot.containerSlot()<36 && !slot.empty() && slot.customId()!=null)
             counts.merge(slot.customId(),slot.count(),Integer::sum);
         var manager=FeatureManager.INSTANCE;
-        var chosen=selectRecipe(RecipeCatalog.instance(),output,batches,counts,CapitalManager.INSTANCE.occupiedProducts(),manager.observedSkills(),manager.observedUnlocks());
+        var catalog=RecipeCatalog.instance();
+        if(recipeKey!=null)catalog=new RecipeCatalog(catalog.recipes().stream().filter(r->r.key().equals(recipeKey)&&r.outputId().equals(output)).toList(),Map.of());
+        var chosen=selectRecipe(catalog,output,batches,counts,CapitalManager.INSTANCE.occupiedProducts(),manager.observedSkills(),manager.observedUnlocks());
         if(chosen.isEmpty()) {
-            var held=selectRecipe(RecipeCatalog.instance(),output,batches,counts,CapitalManager.INSTANCE.occupiedProducts());
+            var held=selectRecipe(catalog,output,batches,counts,CapitalManager.INSTANCE.occupiedProducts());
             String reason=held.map(r->com.goofy.goofyaddons.features.access.RouteRequirements.craft(r.requirement(),manager.observedSkills(),manager.observedUnlocks())).orElse(null);
             new LiveActions().message(reason==null?"No supported recipe with enough unreserved inventory ingredients for "+output+".":
                 "Cannot queue craft: "+reason+(manager.accountRequirementsPending()?". Account lookup is in progress; retry once it finishes.":". Check the account lookup or open Your Skills."));return false;

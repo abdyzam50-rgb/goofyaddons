@@ -53,6 +53,17 @@ public class GoofyConfig {
     public double purseReserve = 50_000_000;
     /** Lets a queued production run instant-buy missing inputs within spendable capital. Off until tested in game. */
     public boolean productionBuysIngredients = false;
+    public CraftFlips craftFlips=new CraftFlips();
+    public static final class CraftFlips {
+        public String venue="BOTH";
+        public double maximumCapital=0,minimumProfit=10000;
+        public int maxBatches=16;
+        public void validate() {
+            if(!Set.of("BOTH","BAZAAR","AH").contains(venue)||!Double.isFinite(maximumCapital)||maximumCapital<0
+                    ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>16)
+                throw new IllegalArgumentException("Invalid craft-flip limits");
+        }
+    }
     public GeneralSettings general = new GeneralSettings();
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings();
     public int toggleKey = InputConstants.KEY_F6;
@@ -159,6 +170,8 @@ public class GoofyConfig {
                 || debugKey < 4 || debugKey > 511 || debugKey == toggleKey || debugKey == reloadKey) {
             throw new IllegalArgumentException("Invalid mode or shared capital settings");
         }
+        if(craftFlips==null)throw new IllegalArgumentException("craftFlips must be an object");
+        craftFlips.validate();
         if(discord==null)throw new IllegalArgumentException("discord must be an object");
         general.validate();
         if(restSchedule==null)throw new IllegalArgumentException("restSchedule must be an object");

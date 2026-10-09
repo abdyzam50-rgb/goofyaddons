@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.26-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.27-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -420,3 +420,16 @@ and Auction House menus. It does not scrape unopened menus or account data that
 hasn't been observed. When reporting a menu bug, export with the affected screen
 open and share the ZIP. The individual auction/compactor inspect commands remain
 available for focused captures.
+
+## Automatic craft flips (0.2.27)
+
+Choose **CRAFT** under **G → Macros → Mode**, then start with F6. This mode runs
+production, crafting and sale verification; book/general order selection is disabled.
+Set **Craft flips → Sale market** to **BAZAAR** or **BOTH** for automatic Bazaar
+crafts. AH routes currently appear as previews for individual production tests.
+
+The local dashboard's **Craft production plan** and `.a* goofyaddon production flips`
+show current candidates, batch costs, conservative net profit, prerequisites and
+blocked-route reasons. The ranking updates every 20 seconds even while stopped.
+See [craft discovery and execution](CRAFT-FLIP-PIPELINE.md) for the source contracts,
+fee/depth model, profit accounting and remaining AH settlement work.

@@ -1,4 +1,5 @@
 // Loopback calculator, account dashboard, market collector and optional paired Discord controls.
+import {CraftMarket} from './craft-market.mjs';
 import {profileFailure} from './profile-errors.mjs';
 import { DiscordBot } from './discord-bot.mjs';
 import { discordSettings } from './discord-config.mjs';
@@ -45,6 +46,20 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
   const forecasts=new DashboardForecast({provenance});
   let itemMetadata=null,itemMetadataAt=0,itemMetadataFlight=null;
   const auctionPrices=new Map();
+  async function auctionPrice(item) {
+    const cached=auctionPrices.get(item);
+    if(cached&&Date.now()-cached.fetchedAt<60000)return cached;
+    const token=auctionToken();
+    const r=await auctionFetcher(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000),headers:token?{Authorization:`Bearer ${token}`}:{}});
+    if(r.status===404||r.status===204)throw Object.assign(new Error('No BIN auctions found for that item'),{status:404});
+    const body=await r.json(),lowest=Number(body?.lowest),second=body?.secondLowest==null||Number(body.secondLowest)===0?null:Number(body.secondLowest);
+    if(r.ok&&lowest===0)throw Object.assign(new Error('No BIN auctions found for that item'),{status:404});
+    if(!r.ok||!Number.isFinite(lowest)||lowest<1||lowest>1e13||(second!=null&&(!Number.isFinite(second)||second<lowest)))throw new Error('Invalid auction price');
+    const price={protocol:'goofy-ah-price/1',item,lowest,secondLowest:second,source:'coflnet',fetchedAt:Date.now()};
+    if(auctionPrices.size>500)auctionPrices.clear();auctionPrices.set(item,price);return price;
+  }
+  const craftMarket=new CraftMarket({fetcher:auctionFetcher,token:auctionToken,price:auctionPrice});
+
   const server = createServer(async (req, res) => {
     const host = req.headers.host?.split(':')[0];
     if (!['127.0.0.1','localhost'].includes(host)) { res.writeHead(403);res.end();return; }
@@ -84,22 +99,13 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       // Lowest BIN for one item from Coflnet, so listings are priced from the live market, not typed in.
       const item=url.searchParams.get('item')??'';
       if(!/^[A-Z0-9_:;\-]{1,64}$/.test(item)){send(400,{error:'Give a SkyBlock item ID'});return;}
-      const cached=auctionPrices.get(item);
-      if(cached&&Date.now()-cached.fetchedAt<60000){send(200,cached);return;}
-      try {
-        const token=auctionToken();
-        const r=await auctionFetcher(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000),headers:token?{Authorization:`Bearer ${token}`}:{}});
-        if(r.status===404||r.status===204){send(404,{error:'No BIN auctions found for that item'});return;}
-        const body=await r.json();
-        // Coflnet answers 200 with zeros when nothing is listed, and a zero second price for a lone listing.
-        const lowest=Number(body?.lowest),second=body?.secondLowest==null||Number(body.secondLowest)===0?null:Number(body.secondLowest);
-        if(r.ok&&lowest===0){send(404,{error:'No BIN auctions found for that item'});return;}
-        if(!r.ok||!Number.isFinite(lowest)||lowest<1||lowest>1e13||(second!=null&&(!Number.isFinite(second)||second<lowest)))throw new Error();
-        const price={protocol:'goofy-ah-price/1',item,lowest,secondLowest:second,source:'coflnet',fetchedAt:Date.now()};
-        if(auctionPrices.size>500)auctionPrices.clear();
-        auctionPrices.set(item,price);send(200,price);
-      }catch{send(502,{error:'Auction price service unavailable; give a price'});}
+      try {send(200,await auctionPrice(item));}
+      catch(e){send(e.status===404?404:502,{error:e.status===404?e.message:'Auction price service unavailable; give a price'});}
       return;
+    }
+    if(req.method==='GET'&&url.pathname==='/v1/crafts/market') {
+      const products=collector?.market()?.products??{};
+      send(200,await craftMarket.refresh(products));return;
     }
     if(req.method==='GET'&&url.pathname==='/v1/profiles') {
       const username=url.searchParams.get('username')??'';

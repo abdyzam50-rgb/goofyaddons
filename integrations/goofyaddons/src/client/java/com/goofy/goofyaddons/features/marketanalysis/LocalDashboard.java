@@ -36,6 +36,7 @@ public final class LocalDashboard {
         status.add("funded",funded==null?JsonNull.INSTANCE:new JsonPrimitive(funded));
         status.addProperty("fundingUnknown",CapitalManager.INSTANCE.fundingUnknown());
         body.add("status",status);
+        body.add("production",new Gson().toJsonTree(manager.production().craftPlan()));
         var inventory=new JsonArray();
         if(connected) for(int i=0;i<mc.player.getInventory().getContainerSize();i++) {
             var stack=mc.player.getInventory().getItem(i);if(stack.isEmpty())continue;

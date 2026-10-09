@@ -23,6 +23,7 @@ account.analysis.pipeline={status:'READY',executionAuthority:false,expiresAt:clo
   account:{available:1050000,pending:20000,inventoryCapacity:29,bookSlots:1,generalSlots:2},plannedCapital:400000,capitalLeft:650000,
   next:[{priority:1,route:{kind:'GENERAL',inputId:'ENCHANTED_QUARTZ',outputId:'ENCHANTED_QUARTZ',inputUnits:16,capitalUsed:400000,profitPerBatch:7500,cycleSeconds:900,confidence:'ESTIMATED'}}],
   deferred:[{routeKey:'EXPENSIVE',reason:'Insufficient spendable capital'}]};
+account.production={generatedAt:clock,error:null,rankingNote:'Score is not realized coins/hour',rows:[{name:'Enchanted Gold',venue:'BAZAAR',batches:2,outputUnits:2,capital:50000,profit:10000,eligible:true},{name:'Grappling Hook',venue:'AH',batches:1,outputUnits:1,capital:100000,profit:20000,eligible:false,reason:'AH sale/expiry/claim reconciliation is not implemented'}]};
 dashboard.accept(account);
 const community={status:()=>({sharingEnabled:true,downloadsEnabled:true,imported:12,pending:2,lastUpload:clock,error:null})};
 const server=createCompanion({dashboard,community,collector:{status:()=>({enabled:true,fresh:true,intervalSeconds:20}),history:()=>({asOf:clock}),quote:()=>({ask:20000,sourceAt:clock})}});
@@ -30,8 +31,8 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.
 const product=(bid,ask)=>({sell_summary:[{pricePerUnit:bid,amount:1000,orders:10}],buy_summary:[{pricePerUnit:ask,amount:1000,orders:10}],
  quick_status:{buyMovingWeek:100000,sellMovingWeek:100000,buyVolume:1000,sellVolume:1000,buyOrders:10,sellOrders:10}});
 const forecastRequest={protocol:'goofy-bazaar-shadow/1',requestId:'browser-portfolio',market:{success:true,lastUpdated:clock,
- products:{ENCHANTED_COAL:product(1000,2500),ENCHANTMENT_OVERLOAD_4:product(10000,11000),ENCHANTMENT_OVERLOAD_5:product(25000,28000)}},
- constraints:{mode:'BOTH',automaticSelection:true,availableCapital:1050000,inventoryCapacity:29,maxRecommendations:50,maxHistoryAgeHours:48,
+ products:{ENCHANTED_COAL:product(1000,1300),ENCHANTMENT_OVERLOAD_4:product(10000,11000),ENCHANTMENT_OVERLOAD_5:product(25000,28000)}},
+ constraints:{mode:'BOTH',automaticSelection:true,skills:{enchanting:60},availableCapital:1050000,inventoryCapacity:29,maxRecommendations:50,maxHistoryAgeHours:48,
  taxPercentage:1.25,bookMinProfit:0,checkSeconds:20,bookCheckSeconds:180,clickDelayMs:350,bookSlots:1,generalSlots:2,
  general:{maxCoinsPerItem:2000000,maxItemsPerOrder:32,minProfitPerBatch:0,minMarginPercentage:0,minWeeklyVolume:0},excludedProducts:[],configuredBookRoutes:[],configuredGeneralItems:[]}};
 forecastRequest.rankingConstraints={...forecastRequest.constraints,availableCapital:2000000,inventoryCapacity:32};
@@ -70,6 +71,9 @@ try {
     assert.equal(await evaluate(`document.querySelectorAll('#inventory-grid .inventory-slot.faded').length`),2);
     assert.equal(await evaluate(`document.querySelectorAll('.storage-slot.faded').length`),1);
     await evaluate(`document.getElementById('inventory-search').value='';document.getElementById('inventory-search').dispatchEvent(new Event('input'));`);
+    assert.equal(await evaluate(`document.getElementById('craft-rows').children.length`),2);
+    assert.match(await evaluate(`document.getElementById('craft-rows').textContent`),/Eligible for CRAFT mode/);
+    assert.match(await evaluate(`document.getElementById('craft-rows').textContent`),/AH sale\/expiry\/claim reconciliation/);
     assert.equal(await evaluate(`document.querySelectorAll('.flip-card').length`),2);
     assert.notEqual(await evaluate(`document.getElementById('predicted').textContent`),'—');
     assert.equal(await evaluate(`document.getElementById('committed').textContent`),'950,000');
@@ -114,10 +118,14 @@ try {
   await evaluate(`document.getElementById('route-engine').value='BOOK';document.getElementById('route-engine').dispatchEvent(new Event('input'));document.querySelector('#prediction-rows button').click();`);
   assert.match(await evaluate(`document.getElementById('detail-values').textContent`),/12 similar-volume trades/);
   console.log('PASS full capacity preserves live rankings and peer evidence while pipeline waits');
+  account.status.mode='CRAFT';account.sentAt=++clock;dashboard.accept(account);await new Promise(r=>setTimeout(r,2200));
+  assert.equal(await evaluate(`document.getElementById('predicted').textContent`),'—');
+  assert.match(await evaluate(`document.getElementById('craft-rows').textContent`),/Enchanted Gold/);
+  console.log('PASS CRAFT mode renders live craft plans and suppresses book/general portfolio forecasts');
   clock+=11000;await new Promise(r=>setTimeout(r,2200));
   assert.match(await evaluate(`document.getElementById('notice').textContent`),/offline or stale/);
   assert.equal(await evaluate(`document.getElementById('predicted').textContent`),'—');assert.equal(await evaluate(`document.getElementById('live-predicted').textContent`),'—');assert.doesNotMatch(await evaluate(`document.getElementById('pipeline-rows').textContent`),/ENCHANTED_QUARTZ/);
-  assert.equal(await evaluate(`document.getElementById('position-profit').textContent`),'—');assert.deepEqual(errors,[]);assert.equal(await evaluate(`document.querySelectorAll('.flip-card').length`),0);assert.equal(await evaluate(`document.getElementById('favorite-route').disabled`),true);console.log('PASS stale account hides cards, details, forecasts and plan; no browser exceptions');
+  assert.equal(await evaluate(`document.getElementById('position-profit').textContent`),'—');assert.doesNotMatch(await evaluate(`document.getElementById('craft-rows').textContent`),/Enchanted Gold/);assert.deepEqual(errors,[]);assert.equal(await evaluate(`document.querySelectorAll('.flip-card').length`),0);assert.equal(await evaluate(`document.getElementById('favorite-route').disabled`),true);console.log('PASS stale account hides cards, details, forecasts and plan; no browser exceptions');
 } finally {
   ws?.close();const exited=once(chrome,'exit');chrome.kill();await exited;
   await new Promise(r=>{server.close(r);server.closeAllConnections();});await rm(profile,{recursive:true,force:true});

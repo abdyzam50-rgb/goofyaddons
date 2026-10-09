@@ -152,4 +152,13 @@ class ProfitLedgerTest {
         assertEquals(1,ledger.summary().incomplete());
         assertThrows(IllegalArgumentException.class,()->ledger.recoverHoldings("partial","general","Coal",1));
     }
+    @Test void craftReceiptsUseTheirOwnProfitBucketAndOldInputsRemainUnknown()throws Exception {
+        var ledger=new ProfitLedger();ledger.acquire("craft-run","craft","OUTPUT","craft-input",1,100.0);
+        ledger.sell("craft-run","craft","OUTPUT","craft-sale",1,160.0);
+        assertEquals(60,ledger.summary().profit());assertEquals(60,ledger.summary().craft());assertEquals(0,ledger.summary().general());
+        ledger.acquire("old-inputs","craft","OUTPUT","old-inputs",1,null);
+        ledger.sell("old-inputs","craft","OUTPUT","old-sale",1,200.0);
+        assertEquals(1,ledger.summary().incomplete());assertEquals(60,ledger.summary().profit());
+    }
+
 }

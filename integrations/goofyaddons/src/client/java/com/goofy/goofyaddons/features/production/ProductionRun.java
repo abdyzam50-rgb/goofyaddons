@@ -41,6 +41,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         /** Products owned by trader positions or other queued work. */
         Set<String> occupied();
         boolean buyingAllowed();
+        default String procurementBlock(){return null;}
         /** Instant-buy cost of these units from fresh quotes, or null when unknown. */
         Double instantBuyCost(String id, int units);
         /** Instant-sell value of these units from fresh quotes, before tax, or null when unknown. */
@@ -48,10 +49,13 @@ public final class ProductionRun implements ProductionLoop.Ports {
         String name(String id);
         /** Queues a craft through the crafting feature; returns its job id or null. */
         String queueCraft(String output, int batches);
+        default String queueCraftRecipe(String output,int batches,String key){return queueCraft(output,batches);}
         boolean craftQueued();
         /** Queues a published BIN listing through the auction feature; returns its job id or null. */
         String queueListing(String product, long price, double maximumFee);
         boolean listingQueued();
+        default void outputConfirmed(String id,String output,int units,Double cost){}
+        default void saleConfirmed(String id,String output,int units,double proceeds){}
     }
 
     private final Environment env;
@@ -72,11 +76,14 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private ForgeNavigation navigation;
     private WorkstationExecutor workstation;
     private double spent;
+    private boolean basisUnknown;
 
     private ProductionRun(Environment env, RecipeCatalog catalog, String output, ProductionRecipe.Kind kind, ProductionRecipe recipe,
                           int batches, int forgeSlot, long binPrice, double maximumFee, String jobId) {
         this.env = env; this.catalog = catalog; this.output = output; this.kind = kind; this.recipe = recipe;
         this.batches = batches; this.forgeSlot = forgeSlot; this.binPrice = binPrice; this.maximumFee = maximumFee; this.jobId = jobId;
+        var menu=env.menu();
+        basisUnknown=menu==null||lockedProducts().stream().anyMatch(id->menu.countInInventory(id)>0);
     }
 
     /** Plans and journals a new run. Throws with a player-readable reason when it cannot start. */
@@ -106,6 +113,13 @@ public final class ProductionRun implements ProductionLoop.Ports {
         run.loop = new ProductionLoop(plan, run);
         return run;
     }
+
+    static ProductionRun startCraft(Environment env,RecipeCatalog catalog,ProductionRecipe recipe,int batches,long price,double fee)throws Exception {
+        if(recipe.kind()!=ProductionRecipe.Kind.CRAFT||!catalog.byKey(recipe.key()).filter(recipe::equals).isPresent())throw new IllegalArgumentException("Unverified craft recipe");
+        var run=start(env,catalog,recipe.outputId(),recipe.kind(),batches,-1,price,fee);run.recipe=recipe;return run;
+    }
+    public double spent(){return spent;}
+    public int outputUnits(){return Math.multiplyExact(batches,recipe==null?1:recipe.outputCount());}
 
     /** A claim-only run for a Forge or Kat job already waiting in the journal. */
     public static ProductionRun claim(Environment env, RecipeCatalog catalog, ProductionJobs.Job waiting, ItemMetadata pet,
@@ -176,6 +190,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 default -> { return Outcome.PENDING; }
             }
         }
+        String marketBlock=env.procurementBlock();if(marketBlock!=null)return Outcome.blocked(marketBlock);
         var requirement=craftRequirement();
         if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
         var compactorConflict=PersonalCompactors.conflict(env.menu(),lockedProducts(),catalog);
@@ -213,7 +228,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if (craftJob == null) {
                 var requirement=craftRequirement();
                 if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
-                craftJob = env.queueCraft(output, batches);
+                craftJob = recipe==null?env.queueCraft(output,batches):env.queueCraftRecipe(output,batches,recipe.key());
                 if (craftJob == null) return Outcome.blocked("Craft could not be queued; inputs changed or another production step is queued");
                 return Outcome.pending("Crafting");
             }
@@ -287,12 +302,12 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if (units == 0) return Outcome.uncertain("The crafted " + env.name(output) + " is not in the inventory");
             Double value = env.instantSellValue(output, units);
             if (value == null) return Outcome.blocked("No fresh Bazaar quote covers selling " + units + " " + env.name(output));
-            selling = new BazaarInstantSell(output, env.name(output), units, value * SALE_FLOOR,
+            selling = new BazaarInstantSell(output, env.name(output), units, value * SALE_FLOOR,value*1.03,
                     reason -> env.jobs().put(parent().withState(ProductionJobs.State.LISTING, reason)));
         }
         var result = selling.tick(env.menu(), env.actions(), env.purse(), now);
         return switch (result) {
-            case SOLD -> { env.actions().closeMenu(); yield Outcome.DONE; }
+            case SOLD -> { if(kind==ProductionRecipe.Kind.CRAFT)env.saleConfirmed(jobId,output,selling.amount(),selling.proceeds());env.actions().closeMenu();yield Outcome.DONE; }
             case UNCERTAIN -> Outcome.uncertain(selling.failure());
             case BLOCKED -> { String why = selling.failure(); selling = null; env.actions().closeMenu(); yield Outcome.blocked(why); }
             default -> Outcome.pending("Selling " + env.name(output));
@@ -314,6 +329,10 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 job.submittedAt(), job.readyAt(), spent > 0 ? spent : job.costBasis(), job.petUuid(), job.auctionUuid(),
                 reason != null ? reason : stage == Stage.DONE ? "Production run finished; proceeds are recorded only when the sale is seen" : null,
                 job.completedBatches()));
+        if(stage==Stage.SELL&&kind==ProductionRecipe.Kind.CRAFT&&binPrice==SELL_ON_BAZAAR) {
+            var menu=env.menu();int units=menu==null?0:menu.countInInventory(output);
+            if(units>0)env.outputConfirmed(jobId,output,units,basisUnknown||spent<=0?null:spent);
+        }
     }
 
     // ---- Helpers -----------------------------------------------------------------------
@@ -351,7 +370,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private String craftRequirement() {
         if(kind!=ProductionRecipe.Kind.CRAFT)return null;
         String reason="No verified crafting recipe for "+output;
-        for(var option:catalog.forOutput(output))if(option.kind()==kind) {
+        for(var option:recipe==null?catalog.forOutput(output):List.of(recipe))if(option.kind()==kind) {
             var blocked=com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks());
             if(blocked==null)return null;
             reason=blocked;

@@ -671,3 +671,12 @@ All seven upstream flip categories and the portfolio planner are included. Enter
 a username, choose a profile, and use its purse and published unlocks, or enter
 a budget manually. Lookup requires the owner to provision the private shared
 Worker; users need no individual Hypixel key. See [Account calculator](../../docs/ACCOUNT-CALCULATOR.md).
+
+## Craft market discovery (combined mod 0.2.27)
+
+`GET /v1/crafts/market` provides sanitized Coflnet AH craft candidates and fresh
+price-only BIN quotes. The mod joins these against its verified recipe catalog
+and account unlocks. Bazaar craft prices continue to use the ordinary public
+Hypixel market collector. In the local dashboard, **Craft production plan** shows
+ranked batches and the mod's execution blockers. See
+[craft discovery and execution](../../docs/CRAFT-FLIP-PIPELINE.md).

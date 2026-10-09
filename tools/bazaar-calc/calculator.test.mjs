@@ -32,3 +32,13 @@ test('manual calculator and fresh market work without an account snapshot or act
  assert.equal(coflnetToken({COFLNET_TOKEN:' abc.def-ghi_jkl0123456 '}),'abc.def-ghi_jkl0123456');
  assert.equal(coflnetToken({COFLNET_TOKEN:'has space in it 0123456789'}),null);
 });
+
+test('companion serves sanitized craft discovery with fresh BIN quotes and no auction IDs',async t=>{
+ const now=Date.now();const server=createCompanion({collector:{market:()=>({products:{BZ_ITEM:{}}})},auctionFetcher:async url=>url.endsWith('/crafts/profit')?
+  Response.json(['AH_ITEM','BZ_ITEM'].map(itemId=>({itemId,type:'crafting',sellPrice:20000,craftCost:10000,volume:100,median:19000,lastUpdated:new Date(now).toISOString()}))):
+  Response.json({lowest:20000,secondLowest:21000,uuid:'not-for-navigation'})});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>{server.close(r);server.closeAllConnections();}));
+ const body=await(await fetch(`http://127.0.0.1:${server.address().port}/v1/crafts/market`)).json();
+ assert.equal(body.protocol,'goofy-craft-market/1');assert.equal(body.rows.length,1);assert.equal(body.rows[0].item,'AH_ITEM');
+ assert.equal(body.rows[0].quote.lowest,20000);assert.ok(!JSON.stringify(body).includes('not-for-navigation'));
+});

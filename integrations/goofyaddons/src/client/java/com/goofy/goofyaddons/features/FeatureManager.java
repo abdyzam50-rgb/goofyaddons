@@ -93,6 +93,7 @@ public class FeatureManager {
             com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(observedSkills());invalidateMarketReport();
         }
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);
+        production.refreshSelection();
         marketAnalysis.poll(started()?mode:GoofyConfig.INSTANCE.tradingMode);
         if (productionTest && !started()) { tickProductionTest(); return; }
         if (!started() || paused()) return;
@@ -333,7 +334,7 @@ public class FeatureManager {
     public java.util.Map<String,Object> diagnosticState() {
         return java.util.Map.of("capabilities",com.goofy.goofyaddons.features.capability.Capabilities.diagnosticState(),"lifecycle",lifecycle.diagnosticState(),"marketAnalysis",marketAnalysis.diagnosticState(),"books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name(),
             "accountRequirements",accountUnlocks.diagnosticState(now()),"production",java.util.Map.of("queued",production.queued(),"activity",production.activity(),
-                "personalCompactor",com.goofy.goofyaddons.features.production.PersonalCompactors.status(new com.goofy.goofyaddons.menu.LiveWorld().menu())));
+                "craftPlan",production.craftPlan(),"personalCompactor",com.goofy.goofyaddons.features.production.PersonalCompactors.status(new com.goofy.goofyaddons.menu.LiveWorld().menu())));
     }
     public String taskItem() {
         if (!started() || paused()) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";
@@ -342,7 +343,7 @@ public class FeatureManager {
         if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.taskItem();
         if (previousOwner == general) return general.taskItem();
-        return "Monitoring both configured engines";
+        return mode==TradingMode.CRAFT?production.activity():"Monitoring both configured engines";
     }
     public String activity() {
         if (lifecycle.blocked()) return lifecycle.reason();
@@ -355,6 +356,6 @@ public class FeatureManager {
         if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.activity();
         if (previousOwner == general) return general.activity();
-        return "Waiting for orders or eligible flips";
+        return mode==TradingMode.CRAFT?production.activity():"Waiting for orders or eligible flips";
     }
 }

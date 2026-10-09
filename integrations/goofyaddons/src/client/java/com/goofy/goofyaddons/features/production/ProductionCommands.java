@@ -15,6 +15,7 @@ public final class ProductionCommands {
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,16))
                         .executes(c->queue(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"))))));
             dispatcher.register(ClientCommands.literal("production")
+                .then(ClientCommands.literal("flips").executes(c->{FeatureManager.INSTANCE.production().showCraftPlans();return 1;}))
                 .then(ClientCommands.literal("compactor").executes(c->{
                     var menu=new com.goofy.goofyaddons.menu.LiveWorld().menu();
                     var found=PersonalCompactors.detect(menu);var actions=new LiveActions();

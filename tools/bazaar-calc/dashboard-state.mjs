@@ -16,7 +16,7 @@ export class DashboardState {
     }
     if (this.account?.sessionId===body.sessionId && body.sentAt<=this.account.sentAt) return false;
     this.account={protocol:body.protocol,sessionId:body.sessionId,sentAt:body.sentAt,account:body.account,status:body.status,
-      inventory:body.inventory,books:body.books,general:body.general,analysis:body.analysis,profit:body.profit,profitError:body.profitError ?? null,executionError:body.executionError ?? null};
+      production:body.production??null,inventory:body.inventory,books:body.books,general:body.general,analysis:body.analysis,profit:body.profit,profitError:body.profitError ?? null,executionError:body.executionError ?? null};
     if(!body.account.connected && this.previousConnected?.sessionId===body.sessionId) {
       this.account.account={...body.account,name:this.previousConnected.account.name};
       this.account.inventory=this.previousConnected.inventory;

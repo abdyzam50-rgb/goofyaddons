@@ -70,6 +70,7 @@ public final class ShadowMarketAnalysis {
         catch(RuntimeException failure) { unavailable(failure); }
     }
     private void pollObserved(TradingMode currentMode) {
+        if(currentMode==TradingMode.CRAFT){stop();status="CRAFT_ANALYSIS";return;}
         GoofyConfig cfg=env.config();
         if(cfg==null || !cfg.marketAnalysis.enabled) {
             if(!status.equals("DISABLED")) stop(); status="DISABLED"; return;

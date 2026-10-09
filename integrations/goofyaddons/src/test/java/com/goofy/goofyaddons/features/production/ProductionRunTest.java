@@ -36,7 +36,7 @@ class ProductionRunTest {
         ProductionJobs jobs;MenuSnapshot menu=ProductionRunTest.menu(null);boolean sign,buying,craftQueued,listingQueued;
         double purse=10_000;final RecordingActions actions=new RecordingActions();final List<String> crafts=new ArrayList<>(),listings=new ArrayList<>();
         Set<String> occupied=Set.of(),unquoted=Set.of();
-        Map<String,Integer> unlocks=Map.of();boolean requirementsPending;
+        Map<String,Integer> unlocks=Map.of();boolean requirementsPending;String procurementBlock,pinnedKey;
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
         public String account(){return "account";}
@@ -50,6 +50,8 @@ class ProductionRunTest {
         public boolean requirementsPending(){return requirementsPending;}
         public Set<String> occupied(){return occupied;}
         public boolean buyingAllowed(){return buying;}
+        public String procurementBlock(){return procurementBlock;}
+        public String queueCraftRecipe(String output,int batches,String key){pinnedKey=key;return queueCraft(output,batches);}
         public Double instantBuyCost(String id,int units){return unquoted.contains(id)?null:units*100.0;}
         public Double instantSellValue(String id,int units){return units*1000.0;}
         public String name(String id){return catalog().name(id);}
@@ -286,4 +288,23 @@ class ProductionRunTest {
         assertThrows(IllegalArgumentException.class,()->AuctionPricing.listingPrice(outlier));
         assertEquals(999,AuctionPricing.listingPrice(new AuctionPricing.Quote("GOLDEN_TOOTH",1000,null,now)));
     }
+    @Test void automaticCraftPinsTheRankedRecipeAndPriceGuardStopsFurtherPurchases()throws Exception {
+        var env=new Env();env.buying=true;env.procurementBlock="Market moved below profit target";
+        var catalog=catalog();var recipe=catalog.forOutput("OUTPUT").stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
+        var run=ProductionRun.startCraft(env,catalog,recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        assertEquals(Step.BLOCKED,run.tick(true,1000));assertTrue(env.actions.serverEffects().isEmpty());
+        env.procurementBlock=null;env.menu=ProductionRunTest.menu(null,item(54,"INPUT",2));
+        run.tick(false,1100);run.tick(false,1200);
+        assertEquals(recipe.key(),env.pinnedKey);
+    }
+
+    @Test void unrelatedPurseIncreaseCannotConfirmBoundedCraftSaleProfit() {
+        var actions=new RecordingActions();
+        var sale=new BazaarInstantSell("OUTPUT","Output",1,900,1100,reason->{});
+        var page=ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 1000 coins")),item(54,"OUTPUT",1));
+        sale.tick(page,actions,1000,0);
+        assertEquals(BazaarInstantSell.Result.UNCERTAIN,sale.tick(ProductionRunTest.menu(null),actions,6000,100));
+        assertEquals(0,sale.proceeds());
+    }
+
 }

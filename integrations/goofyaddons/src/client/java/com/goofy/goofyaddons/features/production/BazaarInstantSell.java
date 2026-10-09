@@ -23,21 +23,25 @@ public final class BazaarInstantSell {
     private final String productId, name;
     private final BazaarSearch search;
     private final int amount;
-    private final double minimumProceeds;
+    private final double minimumProceeds,maximumProceeds;
     private final BazaarInstantBuy.Intent intent;
     private Step step = Step.OPEN;
     private long started, stepAt, heldSince;
     private double purseBefore = Double.NaN, proceeds;
     private String failure;
 
-    public BazaarInstantSell(String productId, String name, int amount, double minimumProceeds, BazaarInstantBuy.Intent intent) {
+    public BazaarInstantSell(String productId,String name,int amount,double minimumProceeds,BazaarInstantBuy.Intent intent) {
+        this(productId,name,amount,minimumProceeds,Double.POSITIVE_INFINITY,intent);
+    }
+    public BazaarInstantSell(String productId,String name,int amount,double minimumProceeds,double maximumProceeds,BazaarInstantBuy.Intent intent) {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
-                || amount < 1 || amount > 71680 || !Double.isFinite(minimumProceeds) || minimumProceeds < 0 || intent == null)
+                || amount < 1 || amount > 71680 || !Double.isFinite(minimumProceeds) || minimumProceeds < 0 || Double.isNaN(maximumProceeds)||maximumProceeds<minimumProceeds||intent == null)
             throw new IllegalArgumentException("Invalid instant sale");
-        this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.minimumProceeds = minimumProceeds; this.intent = intent;
+        this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.minimumProceeds = minimumProceeds;this.maximumProceeds=maximumProceeds; this.intent = intent;
     }
 
     public String failure() { return failure; }
+    public int amount(){return amount;}
     /** Coins the verified sale added to the purse; zero until it is verified. */
     public double proceeds() { return proceeds; }
 
@@ -76,7 +80,9 @@ public final class BazaarInstantSell {
         if (menu != null && menu.title() != null && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
             return uncertain("Unexpected instant sale confirmation screen; inspect it before continuing");
         if (menu != null && Double.isFinite(purse) && count(menu) == 0 && purse > purseBefore) {
-            proceeds = purse - purseBefore; step = Step.DONE; return Result.SOLD;
+            double delta=purse-purseBefore;
+            if(delta+0.51<minimumProceeds||delta>maximumProceeds+0.51)return uncertain("Sale purse delta is outside the quoted range; profit is unverified");
+            proceeds=delta;step=Step.DONE;return Result.SOLD;
         }
         return now - stepAt > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant sale of " + name + " was not confirmed by inventory and purse") : Result.WAITING;
     }

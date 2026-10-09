@@ -18,7 +18,7 @@ public final class ProfitLedger {
         List<Lot> lots = new ArrayList<>();
     }
     public record Sale(String engine, String item, int units, Double proceeds, Double profit) {}
-    public record Summary(double profit, double books, double general, int settlements, int incomplete, long activeMillis) {
+    public record Summary(double profit, double books, double general, double craft, int settlements, int incomplete, long activeMillis) {
         public Double perHour() { return activeMillis >= 60000 && settlements > 0 && incomplete == 0 ? profit * 3600000 / activeMillis : null; }
     }
     private int version = 1;
@@ -116,13 +116,13 @@ public final class ProfitLedger {
     }
     public void resetSession() { sessionFirstSale=sales.size(); activeMillis=0; }
     public Summary summary() {
-        double books=0, general=0;
+        double books=0,general=0,craft=0;
         int incomplete=0;
         for (Sale sale : sales.subList(sessionFirstSale,sales.size())) {
             if (sale.profit==null) { incomplete++; continue; }
-            if (sale.engine.equals("books")) books+=sale.profit; else general+=sale.profit;
+            if(sale.engine.equals("books"))books+=sale.profit;else if(sale.engine.equals("craft"))craft+=sale.profit;else general+=sale.profit;
         }
-        return new Summary(books+general,books,general,sales.size()-sessionFirstSale,incomplete,activeMillis);
+        return new Summary(books+general+craft,books,general,craft,sales.size()-sessionFirstSale,incomplete,activeMillis);
     }
     public List<Sale> history() { return List.copyOf(sales); }
 
@@ -155,7 +155,7 @@ public final class ProfitLedger {
     }
     private static void validateIdentity(String id,String engine,String item,String event,int units) {
         if (id==null || id.isBlank() || event==null || event.isBlank() || item==null || item.isBlank()
-                || !("books".equals(engine) || "general".equals(engine)) || units<=0) throw new IllegalArgumentException("Invalid ledger event");
+                || !("books".equals(engine) || "general".equals(engine)||"craft".equals(engine)) || units<=0) throw new IllegalArgumentException("Invalid ledger event");
     }
     private static void validateMoney(Double value) {
         if (value!=null && (!Double.isFinite(value) || value<0)) throw new IllegalArgumentException("Invalid money amount");

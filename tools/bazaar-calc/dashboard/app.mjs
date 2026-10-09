@@ -63,6 +63,11 @@ function empty(tbody,columns,message) { const row=document.createElement('tr'),c
 function row(tbody,values) { const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value ?? '—';tr.append(td);}tbody.append(tr); }
 function render() {
   if(!state)return;
+  const craft=state.account?.production,craftRows=$('craft-rows');craftRows.replaceChildren();
+  const craftFresh=state.fresh&&Number.isFinite(craft?.generatedAt)&&Date.now()-craft.generatedAt<=60000;
+  for(const item of craftFresh?craft.rows??[]:[])row(craftRows,[item.name,item.venue,`${item.batches} / ${item.outputUnits}`,coins(item.capital),coins(item.profit),item.eligible?'Eligible for CRAFT mode':item.reason]);
+  if(!craftRows.children.length)empty(craftRows,6,craftFresh?'No priced craft route meets the current market and capacity checks.':'Waiting for a fresh craft plan from Minecraft.');
+  put('craft-note',craftFresh?[craft.activity,craft.error,craft.rankingNote].filter(Boolean).join(' · '):'Waiting for fresh mod data. Set mode to CRAFT to run eligible Bazaar crafts; AH routes are individual-test previews.');
   const a=state.account,live=state.fresh && a?.account.connected,market=state.collector;
   put('account-name',a?.account.name || 'Waiting for Minecraft');put('trader-status',a ? `${a.status.state} · ${a.status.mode}${live?'':' · last observed'}` : 'No account connected');
   put('market-status',market.fresh?'Market feed live':market.enabled?'Market feed awaiting fresh data':'Market collection disabled');

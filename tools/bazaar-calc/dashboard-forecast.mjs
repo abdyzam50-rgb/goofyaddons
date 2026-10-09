@@ -22,6 +22,7 @@ export class DashboardForecast {
  acceptRequest(body) {this.request=structuredClone(body);this.cache=null;}
  view(view,history,executions) {
   const now=this.now(),a=view.account,b=this.request;
+  if(a?.status.mode==='CRAFT')return {portfolio:unavailable('Craft mode: see the craft production plan'),live:unavailable('Craft mode: see the craft production plan')};
   if(!view.fresh||!a?.account.connected)return {portfolio:unavailable('Waiting for fresh account data'),live:unavailable('Waiting for fresh account data')};
   if(!view.predictions||!b||!finite(b.market?.lastUpdated)||now-b.market.lastUpdated>60000||b.market.lastUpdated>now+5000)
    return {portfolio:unavailable('Waiting for fresh calculator inputs'),live:unavailable('Waiting for fresh calculator inputs')};
