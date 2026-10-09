@@ -178,6 +178,16 @@ class ProductionRunTest {
         assertEquals(BazaarInstantSell.Result.UNCERTAIN,confirm.tick(ProductionRunTest.menu("Confirm",item(54,"OUTPUT",1)),actions,1000,100));
     }
 
+    @Test void bazaarSaleClicksThroughTheSearchResults() {
+        var actions=new RecordingActions();
+        var sale=new BazaarInstantSell("OUTPUT","Output",1,900,r->{});
+        sale.tick(null,actions,1000,0);
+        sale.tick(ProductionRunTest.menu("Bazaar \u279c \"Output\"",SlotView.named(12,"Output",List.of()),item(54,"OUTPUT",1)),actions,1000,100);
+        assertEquals(List.of("command:bz Output","click:12"),actions.serverEffects());
+        sale.tick(ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 950 coins")),item(54,"OUTPUT",1)),actions,1000,200);
+        assertTrue(actions.serverEffects().contains("click:11"));
+    }
+
     @Test void auctionPriceUndercutsTheLowestBinAndRefusesOutliersAndStaleQuotes() {
         long now=1_000_000_000L;
         var body=com.google.gson.JsonParser.parseString("{\"protocol\":\"goofy-ah-price/1\",\"item\":\"GOLDEN_TOOTH\",\"lowest\":5000,\"secondLowest\":5200,\"fetchedAt\":"+now+"}").getAsJsonObject();

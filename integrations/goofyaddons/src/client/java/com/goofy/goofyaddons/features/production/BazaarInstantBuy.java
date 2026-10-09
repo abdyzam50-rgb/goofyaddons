@@ -23,12 +23,13 @@ public final class BazaarInstantBuy {
     private enum Step { OPEN, PRODUCT, AMOUNT, SIGN, VERIFY, DONE }
 
     private final String productId, name;
+    private final BazaarSearch search;
     private final int amount;
     private final double maximumCost;
     private final Intent intent;
     private Step step = Step.OPEN;
-    private long started, nextCommand, stepAt;
-    private int opens, before = -1;
+    private long started, stepAt;
+    private int before = -1;
     private double purseBefore = Double.NaN, spent;
     private String failure;
 
@@ -36,7 +37,7 @@ public final class BazaarInstantBuy {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
                 || amount < 1 || amount > 71680 || !Double.isFinite(maximumCost) || maximumCost <= 0 || intent == null)
             throw new IllegalArgumentException("Invalid instant buy");
-        this.productId = productId; this.name = name; this.amount = amount; this.maximumCost = maximumCost; this.intent = intent;
+        this.productId = productId; this.name = name; search = new BazaarSearch(name); this.amount = amount; this.maximumCost = maximumCost; this.intent = intent;
     }
 
     public String failure() { return failure; }
@@ -57,10 +58,8 @@ public final class BazaarInstantBuy {
         switch (step) {
             case OPEN -> {
                 if (menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, signOpen, actions, purse, now); }
-                if (now >= nextCommand) {
-                    if (opens >= 3) return block("Bazaar product page for " + name + " did not open");
-                    opens++; nextCommand = now + RecoveryRules.INPUT_RESTART_MS; actions.command("bz " + name);
-                }
+                String stuck = search.step(menu, actions, now);
+                if (stuck != null) return block(stuck);
             }
             case PRODUCT -> {
                 if (menu == null) return Result.WAITING;

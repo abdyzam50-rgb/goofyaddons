@@ -1,0 +1,52 @@
+package com.goofy.goofyaddons.features.production;
+
+import com.goofy.goofyaddons.features.transaction.RecoveryRules;
+import com.goofy.goofyaddons.menu.GameActions;
+import com.goofy.goofyaddons.menu.MenuSnapshot;
+import com.goofy.goofyaddons.utils.Chat;
+
+/**
+ * Reaches a Bazaar product page by name. "/bz <name>" opens a search results page, so the
+ * product is one more click: the single result whose name matches exactly. The command is
+ * resent only after a pause, since sending it closes whatever menu is open.
+ */
+final class BazaarSearch {
+    private final String name;
+    private int opens, clicked = Integer.MIN_VALUE;
+    private long nextCommand;
+
+    BazaarSearch(String name) { this.name = name; }
+
+    /** Null while the product page is still on its way, or why it could not be reached. */
+    String step(MenuSnapshot menu, GameActions actions, long now) {
+        int result = resultSlot(menu, name);
+        if (result >= 0 && menu.containerId() != clicked) {
+            clicked = menu.containerId(); nextCommand = now + RecoveryRules.INPUT_RESTART_MS;
+            actions.click(result, false);
+            return null;
+        }
+        if (now < nextCommand) return null;
+        if (opens >= 3) return result < 0 && resultsPage(menu)
+                ? "Bazaar search did not list " + name + " by its exact name"
+                : "Bazaar product page for " + name + " did not open";
+        opens++; nextCommand = now + RecoveryRules.INPUT_RESTART_MS;
+        actions.command("bz " + name);
+        return null;
+    }
+
+    private static boolean resultsPage(MenuSnapshot menu) {
+        return menu != null && menu.title() != null && Chat.strip(menu.title()).startsWith("Bazaar");
+    }
+
+    static int resultSlot(MenuSnapshot menu, String name) {
+        if (!resultsPage(menu)) return -1;
+        int found = -1;
+        for (var slot : menu.slots()) {
+            if (slot.empty() || slot.inPlayerInventory() || slot.hoverName() == null) continue;
+            if (!Chat.strip(slot.hoverName()).equalsIgnoreCase(name)) continue;
+            if (found >= 0) return -1;
+            found = slot.index();
+        }
+        return found;
+    }
+}

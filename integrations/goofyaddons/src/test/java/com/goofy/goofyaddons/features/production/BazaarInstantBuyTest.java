@@ -78,4 +78,31 @@ class BazaarInstantBuyTest {
         assertEquals(BazaarInstantBuy.Result.BLOCKED,buy.tick(held,false,actions,5000,100));
         assertEquals(1,actions.serverEffects().size());
     }
+
+    MenuSnapshot results(int id,String... names) {
+        var found=new ArrayList<SlotView>();
+        for(int i=0;i<names.length;i++)found.add(SlotView.named(11+i,names[i],List.of()));
+        return menu(id,"Bazaar \u279c \"Enchanted Coal\"",found.toArray(SlotView[]::new));
+    }
+
+    @Test void clicksTheExactSearchResultInsteadOfResendingTheCommand() {
+        var actions=new RecordingActions();var buy=buy(1100);
+        buy.tick(null,false,actions,5000,0);
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(results(5,"Enchanted Coal Block","Enchanted Coal"),false,actions,5000,100));
+        assertEquals(List.of("command:bz Enchanted Coal","click:12"),actions.serverEffects());
+        // The same results page is not clicked twice, and the command is not resent while it loads.
+        buy.tick(results(5,"Enchanted Coal Block","Enchanted Coal"),false,actions,5000,200);
+        assertEquals(2,actions.serverEffects().size());
+        buy.tick(product(100),false,actions,5000,300);
+        assertTrue(actions.serverEffects().contains("click:10"));
+    }
+
+    @Test void aSearchWithoutTheExactNameBlocksAfterRetries() {
+        var actions=new RecordingActions();var buy=buy(1100);
+        BazaarInstantBuy.Result result=null;
+        for(long t=0;t<40_000;t+=1000){result=buy.tick(results(5,"Enchanted Coal Block"),false,actions,5000,t);if(result!=BazaarInstantBuy.Result.WAITING)break;}
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,result);
+        assertTrue(buy.failure().contains("exact name"),buy.failure());
+        assertTrue(actions.serverEffects().stream().noneMatch(e->e.startsWith("click")));
+    }
 }

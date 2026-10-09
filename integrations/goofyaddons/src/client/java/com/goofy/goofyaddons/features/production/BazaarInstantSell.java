@@ -21,12 +21,12 @@ public final class BazaarInstantSell {
     private enum Step { OPEN, PRODUCT, VERIFY, DONE }
 
     private final String productId, name;
+    private final BazaarSearch search;
     private final int amount;
     private final double minimumProceeds;
     private final BazaarInstantBuy.Intent intent;
     private Step step = Step.OPEN;
-    private long started, nextCommand, stepAt;
-    private int opens;
+    private long started, stepAt;
     private double purseBefore = Double.NaN, proceeds;
     private String failure;
 
@@ -34,7 +34,7 @@ public final class BazaarInstantSell {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
                 || amount < 1 || amount > 71680 || !Double.isFinite(minimumProceeds) || minimumProceeds < 0 || intent == null)
             throw new IllegalArgumentException("Invalid instant sale");
-        this.productId = productId; this.name = name; this.amount = amount; this.minimumProceeds = minimumProceeds; this.intent = intent;
+        this.productId = productId; this.name = name; search = new BazaarSearch(name); this.amount = amount; this.minimumProceeds = minimumProceeds; this.intent = intent;
     }
 
     public String failure() { return failure; }
@@ -51,11 +51,8 @@ public final class BazaarInstantSell {
         if (menu != null && menu.title() != null && !menu.cursorEmpty()) return block("Instant sale needs an empty cursor");
         if (step == Step.OPEN) {
             if (menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, actions, purse, now); }
-            if (now >= nextCommand) {
-                if (opens >= 3) return block("Bazaar product page for " + name + " did not open");
-                opens++; nextCommand = now + RecoveryRules.INPUT_RESTART_MS; actions.command("bz " + name);
-            }
-            return Result.WAITING;
+            String stuck = search.step(menu, actions, now);
+            return stuck == null ? Result.WAITING : block(stuck);
         }
         int control = productControl(menu);
         if (control < 0) return Result.WAITING;
