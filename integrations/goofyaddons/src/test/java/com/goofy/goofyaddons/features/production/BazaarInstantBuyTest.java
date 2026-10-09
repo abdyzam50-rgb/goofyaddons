@@ -81,6 +81,8 @@ class BazaarInstantBuyTest {
         assertTrue(actions.serverEffects().contains("click:13"));
         // The confirmation screen lingering after the click is not a second, unexpected one.
         assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(confirmation(10,"1,000"),false,actions,5000,400));
+        var redrawn=confirmation(10,"1,000");redrawn=new MenuSnapshot(6,redrawn.title(),true,redrawn.slots());
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(redrawn,false,actions,5000,450));
         assertEquals(BazaarInstantBuy.Result.BOUGHT,buy.tick(menu(5,null,item(54,"ENCHANTED_COAL",10)),false,actions,4000,500));
         assertEquals(1,actions.serverEffects().stream().filter(e->e.equals("click:13")).count());
     }

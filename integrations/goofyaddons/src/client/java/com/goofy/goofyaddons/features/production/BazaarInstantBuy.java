@@ -138,11 +138,13 @@ public final class BazaarInstantBuy {
     }
 
     private Result verify(MenuSnapshot menu, double purse, long now) {
-        if (menu != null && menu.title() != null && menu.containerId() != confirmContainer
-                && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
-            return uncertain("Unexpected instant buy confirmation screen; inspect it before continuing");
         Result proven = proof(menu, purse);
         if (proven != null) return proven;
+        // After the confirmation click Hypixel may redraw that screen under a new menu id; it is
+        // never clicked again, so only a confirmation the run never saw is a surprise.
+        if (confirmContainer == Integer.MIN_VALUE && menu != null && menu.title() != null
+                && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
+            return uncertain("Unexpected instant buy confirmation screen; inspect it before continuing");
         return now - stepAt > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant buy of " + name + " was not confirmed by inventory and purse") : Result.WAITING;
     }
 
