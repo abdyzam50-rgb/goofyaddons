@@ -178,6 +178,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         var requirement=craftRequirement();
         if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
+        var compactorConflict=PersonalCompactors.conflict(env.menu(),lockedProducts(),catalog);
+        if(compactorConflict!=null)return Outcome.blocked(compactorConflict);
         var preparation=preparation();var missing=preparation.purchases();
         for (String id : preparation.products()) if (env.occupied().contains(id)) return Outcome.blocked(id + " belongs to a trader position; production will not use it");
         if (missing.isEmpty()) {

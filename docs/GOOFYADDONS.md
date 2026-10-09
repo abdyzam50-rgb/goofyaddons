@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.24-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.25-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -41,6 +41,10 @@ See the [ingredient audit](BASIC-INGREDIENT-AUDIT.md) for supported recipes and 
 The 0.2.24 update uses Auction House browsing and search for BIN discovery,
 with Coflnet as a price validator. See [auction navigation and pricing](AUCTION-GUI-MARKET-CHECK.md)
 for the supported flow and remaining AH procurement integration.
+
+The 0.2.25 update detects Personal Compactor tiers and blocks conflicting active
+recipes before production uses their inputs. Automatic bulk configuration and
+cleanup remain pending; see [the implementation boundary](PERSONAL-COMPACTOR.md).
 
 ## Installation and saved data
 

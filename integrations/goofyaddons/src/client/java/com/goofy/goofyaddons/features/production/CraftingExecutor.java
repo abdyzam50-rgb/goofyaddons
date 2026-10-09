@@ -37,6 +37,8 @@ public final class CraftingExecutor {
     }
     public Result tick(ProductionRecipe wanted,MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,long now) {
         if(recipe==null){String reason=com.goofy.goofyaddons.features.access.RouteRequirements.craft(wanted.requirement(),skills,unlocks);if(reason!=null)return block(reason);}
+        var compactorConflict=PersonalCompactors.conflict(menu,wanted.ingredients().keySet(),RecipeCatalog.instance());
+        if(compactorConflict!=null)return block(compactorConflict);
         if(menu==null || !"Craft Item".equals(Chat.strip(menu.title())))return block("Open the SkyBlock Craft Item menu before crafting");
         if(wanted.kind()!=ProductionRecipe.Kind.CRAFT)return block("Not a crafting recipe");
         if(recipe==null) {

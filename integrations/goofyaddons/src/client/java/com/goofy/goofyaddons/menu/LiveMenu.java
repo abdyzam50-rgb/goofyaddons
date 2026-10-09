@@ -61,7 +61,18 @@ public final class LiveMenu {
         String vanilla=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item.getItem()).toString();
         String uuid=tag==null?null:tag.getStringOr("uuid","");
         if(uuid!=null && uuid.isBlank())uuid=null;
-        if(tag==null || !"PET".equals(tag.getStringOr("id","")))return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla);
+        if(tag==null || !"PET".equals(tag.getStringOr("id",""))) {
+            CompactorData compactor=null;
+            if(tag!=null && CompactorData.tier(tag.getStringOr("id",""))>0) {
+                try {
+                    int tier=CompactorData.tier(tag.getStringOr("id",""));var recipes=new java.util.HashMap<Integer,String>();
+                    for(int i=0;i<CompactorData.capacity(tier);i++)recipes.put(i,tag.getStringOr("personal_compact_"+i,""));
+                    Integer active=tag.getByte("PERSONAL_DELETOR_ACTIVE").map(Byte::intValue).orElse(null);
+                    compactor=CompactorData.parse(tag.getStringOr("id",""),active,recipes);
+                }catch(RuntimeException invalid){compactor=null;}
+            }
+            return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla,compactor);
+        }
         try {
             var pet=com.google.gson.JsonParser.parseString(tag.getStringOr("petInfo","")).getAsJsonObject();
             if(pet.has("uuid") && !pet.get("uuid").isJsonNull() && !pet.get("uuid").getAsString().isBlank())uuid=pet.get("uuid").getAsString();

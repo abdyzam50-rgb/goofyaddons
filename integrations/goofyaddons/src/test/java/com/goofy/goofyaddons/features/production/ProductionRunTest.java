@@ -11,6 +11,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
     @TempDir Path dir;
+    @Test void activeCompactorConflictStopsBeforeBuyingAnyRawIngredients()throws Exception {
+        var env=new Env();env.buying=true;env.unlocks=Map.of("goldingot",4);
+        var device=PersonalCompactorsTest.device(54,true,7000,true,Map.of(0,"ENCHANTED_GOLD_BLOCK"));
+        env.menu=ProductionRunTest.menu(null,device);
+        var run=ProductionRun.start(env,RecipeCatalog.instance(),"ENCHANTED_GOLD",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertEquals(Step.BLOCKED,run.tick(true,1000));assertTrue(run.reason().contains("Personal Compactor"),run.reason());
+        assertTrue(env.actions.serverEffects().isEmpty());assertTrue(env.crafts.isEmpty());
+    }
 
     static SlotView item(int i,String id,int n){return new SlotView(i,i>=54,i>=54?i-54:i,false,id,id,List.of(),id,null,n,64);}
     static MenuSnapshot menu(String title,SlotView... actual) {

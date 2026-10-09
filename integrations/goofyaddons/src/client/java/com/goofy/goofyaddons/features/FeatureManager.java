@@ -75,6 +75,7 @@ public class FeatureManager {
 
     public void onTick() {
         var requirementWorld=new com.goofy.goofyaddons.menu.LiveWorld();
+        com.goofy.goofyaddons.features.production.PersonalCompactors.observe(requirementWorld.menu());
         if(!requirementWorld.inWorld()){if(requirementAccount!=null){clearAccountRequirements();requirementAccount=null;}return;}
         com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.player(requirementWorld.playerId(),requirementWorld.username());
         var accounts=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
@@ -331,7 +332,8 @@ public class FeatureManager {
     public String modeLabel() { return (started() ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
     public java.util.Map<String,Object> diagnosticState() {
         return java.util.Map.of("capabilities",com.goofy.goofyaddons.features.capability.Capabilities.diagnosticState(),"lifecycle",lifecycle.diagnosticState(),"marketAnalysis",marketAnalysis.diagnosticState(),"books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name(),
-            "accountRequirements",accountUnlocks.diagnosticState(now()),"production",java.util.Map.of("queued",production.queued(),"activity",production.activity()));
+            "accountRequirements",accountUnlocks.diagnosticState(now()),"production",java.util.Map.of("queued",production.queued(),"activity",production.activity(),
+                "personalCompactor",com.goofy.goofyaddons.features.production.PersonalCompactors.status(new com.goofy.goofyaddons.menu.LiveWorld().menu())));
     }
     public String taskItem() {
         if (!started() || paused()) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";

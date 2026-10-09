@@ -15,6 +15,21 @@ public final class ProductionCommands {
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,16))
                         .executes(c->queue(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"))))));
             dispatcher.register(ClientCommands.literal("production")
+                .then(ClientCommands.literal("compactor").executes(c->{
+                    var menu=new com.goofy.goofyaddons.menu.LiveWorld().menu();
+                    var found=PersonalCompactors.detect(menu);var actions=new LiveActions();
+                    if(found.isEmpty())actions.message("No Personal Compactor observed. Keep it in ordinary inventory or open its Accessory Bag page.");
+                    for(var slot:found) {
+                        var data=slot.metadata().compactor();
+                        actions.message("Personal Compactor "+com.goofy.goofyaddons.menu.CompactorData.tier(slot.customId())+" · "+
+                            (data==null || data.active()==null?"state unknown":data.active()?"enabled":"disabled")+
+                            (data==null?"":" · "+data.recipes().size()+"/"+com.goofy.goofyaddons.menu.CompactorData.capacity(data.tier())+" recipes"));
+                    }
+                    actions.message("Automatic bulk configuration is pending GUI verification; existing recipes are preserved.");return 1;
+                }).then(ClientCommands.literal("inspect").executes(c->{
+                    try {PersonalCompactors.capture();new LiveActions().message("Saved compactor GUI controls to config/goofyaddons-compactor-menu.json.");}
+                    catch(java.io.IOException missing){new LiveActions().message("Open the Personal Compactor menu first, then run this command.");}return 1;
+                })))
                 .then(ClientCommands.literal("jobs").executes(c->{
                     try {var jobs=FeatureManager.INSTANCE.crafting().journal();
                         if(jobs.isEmpty())new LiveActions().message("No production jobs recorded.");

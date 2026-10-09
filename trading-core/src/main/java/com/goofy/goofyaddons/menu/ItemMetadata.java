@@ -1,8 +1,11 @@
 package com.goofy.goofyaddons.menu;
 
-/** Identity needed for pets and BIN listings; display names are never enough. */
+/** Item identity and selected device facts; display names are never enough. */
 public record ItemMetadata(String uuid,String petType,String petTier,Double petExperience,
-        String petHeldItem,String petSkin,Integer petCandyUsed,String vanillaId) {
+        String petHeldItem,String petSkin,Integer petCandyUsed,String vanillaId,CompactorData compactor) {
+    public ItemMetadata(String uuid,String petType,String petTier,Double petExperience,String petHeldItem,String petSkin,Integer petCandyUsed,String vanillaId) {
+        this(uuid,petType,petTier,petExperience,petHeldItem,petSkin,petCandyUsed,vanillaId,null);
+    }
     public static final ItemMetadata EMPTY=new ItemMetadata(null,null,null,null,null,null,null,null);
     public String petVariant() {
         if(petType==null || petTier==null)return null;
