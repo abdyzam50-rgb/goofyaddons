@@ -148,8 +148,8 @@ class WorkstationTest {
             "OUTPUT":{"buy_summary":[{"pricePerUnit":100,"amount":5}]}}}
             """).getAsJsonObject();
         var rows=ProductionPlanner.bazaar(market,List.of(forge()),2000,1000,1,1,10,Set.of(),Set.of(forge().key()));
-        assertEquals(1,rows.size());assertEquals(30,rows.getFirst().inputCost());assertFalse(rows.getFirst().executable());
-        assertTrue(ProductionPlanner.bazaar(market,List.of(forge()),2000,29,1,1,10,Set.of(),Set.of()).isEmpty());
+        assertEquals(1,rows.size());assertEquals(31.2,rows.getFirst().inputCost(),1e-9);assertFalse(rows.getFirst().executable());
+        assertTrue(ProductionPlanner.bazaar(market,List.of(forge()),2000,31,1,1,10,Set.of(),Set.of()).isEmpty());
         market.getAsJsonObject("products").getAsJsonObject("INPUT").getAsJsonArray("buy_summary").remove(1);
         assertTrue(ProductionPlanner.bazaar(market,List.of(forge()),2000,1000,1,1,10,Set.of(),Set.of()).isEmpty());
     }

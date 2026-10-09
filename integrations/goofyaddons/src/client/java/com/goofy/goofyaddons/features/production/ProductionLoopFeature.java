@@ -173,7 +173,7 @@ public final class ProductionLoopFeature implements Feature {
                 var market = com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
                 if (market == null || !market.has("products")) return null;
                 var product = market.getAsJsonObject("products").get(id);
-                return product != null && product.isJsonObject() ? ProductionPlanner.depth(product.getAsJsonObject(), "buy_summary", units) : null;
+                return product != null && product.isJsonObject() ? ProductionPlanner.instantBuyCost(product.getAsJsonObject(), units) : null;
             }
             public Double instantSellValue(String id, int units) {
                 var market = com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
