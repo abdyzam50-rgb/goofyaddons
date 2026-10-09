@@ -23,3 +23,12 @@ Automatic AH craft execution remains gated on sale/expiry/claim reconciliation.
 See [the architecture review](docs/GOOFYADDONS-ARCHITECTURE-REVIEW.md) for wider follow-up work.
 
 Older release notes under `docs/development/` describe the standalone trader.
+
+The public craft-site update passed TypeScript/Vite builds and 113 Node tests,
+including conservative depth/budget/requirements/volume gates, whole-batch sizing,
+base preparation, fresh BIN validation, price-only fixed-destination Worker
+requests, shared caching and failure handling. Run
+`node tools/bazaar-calc/craft-planner-browser-check.mjs` for desktop/mobile profile
+import, preparation steps, market filters, price refresh and stale-price removal.
+Fixtures validate these flows; live owner deployment and real Coflnet access must
+be verified separately after deploying the website assets and Worker together.

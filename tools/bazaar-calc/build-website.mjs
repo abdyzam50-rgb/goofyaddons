@@ -1,16 +1,20 @@
 // Rebuild the full, MIT upstream calculator with a small GoofyAddons profile-import overlay.
 // node build-website.mjs UPSTREAM_CHECKOUT SITE_DATA_DIRECTORY NEU_DIRECTORY
+// Pass - for NEU_DIRECTORY to retain the supplied published recipe/reference snapshot.
 // The checkout must have its pinned dependencies installed and shared package built first.
 import {cpSync,readFileSync,writeFileSync,mkdirSync,readdirSync,rmSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 const COMMIT='85cc23d621cd7194b163abf3d55ea76b682fcc2a';
-const [checkout,data,neu]=process.argv.slice(2).map(p=>resolve(p));
-if(!checkout||!data||!neu)throw new Error('Provide upstream checkout, published site data, and NEU directory');
+const [checkout,data,neu]=process.argv.slice(2).map(p=>p==='-'?null:resolve(p));
+if(!checkout||!data||process.argv.length<5)throw new Error('Provide upstream checkout, published site data, and NEU directory');
 if(execFileSync('git',['rev-parse','HEAD'],{cwd:checkout,encoding:'utf8'}).trim()!==COMMIT)throw new Error('Wrong upstream revision');
 const root=fileURLToPath(new URL('.',import.meta.url)),web=join(checkout,'packages/web');
 function patch(file,old,next){const p=join(checkout,file),text=readFileSync(p,'utf8');if(text.includes(next))return;if(!text.includes(old))throw new Error(`Patch mismatch: ${file}`);writeFileSync(p,text.replace(old,next));}
+for(const file of ['CraftPlanner.tsx','craft-plan.mjs','craft-plan.d.mts'])cpSync(join(root,'website-src',file),join(web,'src/components',file));
+patch('packages/web/src/pages/Flips.tsx','// Flip tables',"import { CraftPlanner } from '../components/CraftPlanner';\n// Flip tables");
+patch('packages/web/src/pages/Flips.tsx','  return (\n    <>\n      <div className="pagehead">','  return (\n    <>\n      {kind === "craft" && <CraftPlanner />}\n      <div className="pagehead">');
 cpSync(join(root,'website-src/ProfileLookup.tsx'),join(web,'src/components/ProfileLookup.tsx'));
 cpSync(join(root,'website-src/CommunityStatus.tsx'),join(web,'src/components/CommunityStatus.tsx'));
 patch('packages/web/src/pages/Static.tsx','import { useQuery }',"import { CommunityStatus } from '../components/CommunityStatus';\nimport { useQuery }");
@@ -67,6 +71,10 @@ for(const route of ['flips/bazaar','flips/craft','flips/book','flips/forge','fli
 }
 // Ship full history/reference data, including item pages, rather than requiring a second install.
 cpSync(data,join(out,'data'),{recursive:true});
+cpSync(join(root,'../../integrations/goofyaddons/src/main/resources/goofyaddons/production-recipes.json'),join(out,'data/production-recipes.json'));
+mkdirSync(join(out,'licenses'),{recursive:true});
+cpSync(join(root,'../../integrations/goofyaddons/src/main/resources/goofyaddons/NEU-CATALOG-LICENSE.txt'),join(out,'licenses/NEU-CATALOG-LICENSE.txt'));
+if(neu){
 const {parseNeuItem,neuToHypixelId,petAuctionKey}=await import(pathToFileURL(join(checkout,'packages/shared/dist/index.js')));
 const recipes=[],items=JSON.parse(readFileSync(join(out,'data/items.json'),'utf8')),known=new Set(items.map(i=>i.id)),seen=new Set();
 for(const file of readdirSync(join(neu,'items')).filter(f=>f.endsWith('.json'))) {
@@ -82,9 +90,12 @@ writeFileSync(join(out,'data/recipes.json'),JSON.stringify(recipes));writeFileSy
 const manifest=JSON.parse(readFileSync(join(out,'data/manifest.json'),'utf8'));
 manifest.recipesVersion='NotEnoughUpdates-REPO 777a3aae04ff462ea20ea9b346e9208d7ce9adc5';
 writeFileSync(join(out,'data/manifest.json'),JSON.stringify(manifest));
+}
 // Source maps are build diagnostics, not a runtime dependency.
 for(const f of readdirSync(join(out,'assets')))if(f.endsWith('.map'))rmSync(join(out,'assets',f));
 mkdirSync(join(out,'licenses'),{recursive:true});cpSync(join(checkout,'LICENSE'),join(out,'licenses/BAZAAR-CALC-LICENSE'));
-cpSync(join(neu,'LICENSE'),join(out,'licenses/NEU-LICENSE'));
-writeFileSync(join(out,'provenance.json'),JSON.stringify({repository:'https://github.com/Goofythesecond/bazaar-calc',commit:COMMIT,neu:manifest.recipesVersion,overlay:'build-website.mjs + website-src/ProfileLookup.tsx + website-src/CommunityStatus.tsx',researchOnly:true},null,2));
-console.log(`Embedded full calculator: ${recipes.length} recipes, ${items.length} items`);
+if(neu)cpSync(join(neu,'LICENSE'),join(out,'licenses/NEU-LICENSE'));
+else cpSync(join(out,'licenses/NEU-CATALOG-LICENSE.txt'),join(out,'licenses/NEU-LICENSE'));
+const manifest=JSON.parse(readFileSync(join(out,'data/manifest.json'),'utf8'));
+writeFileSync(join(out,'provenance.json'),JSON.stringify({repository:'https://github.com/Goofythesecond/bazaar-calc',commit:COMMIT,neu:manifest.recipesVersion,overlay:'build-website.mjs + website-src (profile, status, live craft planner)',researchOnly:true},null,2));
+console.log('Embedded full calculator with live verified craft plans');

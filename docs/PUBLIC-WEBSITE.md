@@ -99,3 +99,53 @@ and deploying the website updates its history snapshot.
 For an existing installation, deploy the complete updated Worker and calculator
 assets together, preserving the D1 ID and Cloudflare secrets. Copying only the
 standalone Worker cannot update the browser pages.
+
+## Live craft plans (0.2.27 website update)
+
+Open `/calculator/flips/craft`. A new production planner sits above the original
+craft research table; the existing buy-order/sell-offer calculations remain.
+Load a username or enter your budget and confirmed unlocks in Settings & unlocks.
+The production planner prices whole batches, including base preparations such as
+blaze rods → blaze powder, from the same verified recipe catalog as the mod.
+
+Search, sale-market, minimum-profit, maximum-batch and feasible-only controls are
+local browser preferences for this view. Rankings remain visible when a route is
+blocked, showing the unmet requirement or budget/liquidity/price reason. They do
+not depend on macro positions or slots. Without confirmed unlocks, required routes
+remain marked for confirmation. The browser cannot observe inventory, positions,
+compactor configuration or available space; those must be checked before trading.
+
+Bazaar instant costs use full ask depth, the mod's 4% observed purchase surcharge
+and 3% price-change allowance. Sales use full bid depth, a 3% movement allowance
+and configured tax. Batches are limited to 5% of estimated daily volume (the smaller
+weekly side divided by seven). AH outputs need Coflnet discovery plus a fresh,
+item-specific BIN quote; listing fees and a conservative sale allowance are
+included. Discovery prices alone cannot authorize a recommendation. AH provider
+volume has an unspecified window and is never labeled daily volume.
+
+`/v1/crafts/market` refreshes bounded quote rotations centrally and strips auction
+IDs. Bazaar and AH requests refresh about every 20 seconds while the page is
+visible. Expired Bazaar prices clear production recommendations; expired AH
+quotes disable their routes. If AH fails, Bazaar plans continue. `COFLNET_TOKEN`
+is an optional Worker **secret** if the deployed Coflnet service requires one;
+no contributor, GitHub, Hypixel or Coflnet secret is sent to visitors.
+
+Estimated net profit is per batch. The effort/liquidity ranking score is not a
+coins/hour forecast, and each row evaluates your budget independently. AH results
+are manual planning opportunities: the mod's automatic AH execution still needs
+sale/expiry/claim reconciliation. This page does not start the macro.
+
+For this update, download `dist/goofyaddons-public-website-craft-0.2.27.zip`, copy
+its `tools` files into the existing website deployment folder. This update ships
+`wrangler.example.jsonc` so extraction preserves your actual `wrangler.jsonc` D1
+database binding. Keep that existing configuration, then run from
+`tools/gameplay-collector`:
+
+```powershell
+npx wrangler@4.147.0 deploy
+```
+
+Existing Worker secrets stay on Cloudflare; they need not be entered again.
+Verify `/calculator/flips/craft` and `/v1/crafts/market` after deploying. No schema
+migration or new user installation is required. Building this update does not
+publish it to your Cloudflare account.

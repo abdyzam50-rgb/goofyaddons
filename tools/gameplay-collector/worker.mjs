@@ -2,6 +2,7 @@ import {COMMUNITY_PROTOCOL,DAY,DATA_BRANCH,hash,repositoryValid,validateSubmissi
 import {handleProfileLookup} from './profile-lookup.mjs';
 import {PublishingStatus} from './publishing-status.mjs';
 import {publicMarket} from './public-market.mjs';
+import {publicCrafts} from './public-crafts.mjs';
 const json=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 // Independent lists: a malformed tester list must not disable the original owner list.
 function approvedHashes(value) {
@@ -38,6 +39,7 @@ export class Store {
 }
 export async function handleRequest(request,env,now=Date.now()) {
  const path=new URL(request.url).pathname;
+ if(request.method==='GET'&&path==='/v1/crafts/market')return publicCrafts(request,env);
  if(request.method==='GET'&&['/v1/market','/v1/items'].includes(path))return publicMarket(request,{now});
  if(request.method==='GET'&&path==='/v1/publishing-status') {
   if(!env.DB)return json(503,{error:'Publishing status storage unavailable'});
