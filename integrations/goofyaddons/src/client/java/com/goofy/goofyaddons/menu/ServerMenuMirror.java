@@ -26,12 +26,17 @@ public final class ServerMenuMirror {
         if(id==mc.player.containerMenu.containerId && index>=0 && index<mc.player.containerMenu.slots.size()) {
             var slot=mc.player.containerMenu.slots.get(index);
             STORE.slot(id,index,LiveMenu.view(index,slot.container==mc.player.getInventory(),slot.getContainerSlot(),item));
-        } else if(id==0 && index>=0 && index<mc.player.inventoryMenu.slots.size()) {
+        } else if(id==0 && index>=0 && index<mc.player.inventoryMenu.slots.size()
+                && (mc.player.containerMenu==mc.player.inventoryMenu || index>=36 && index<=45)) {
+            // Matches the client: with another menu open it applies window-0 updates to the hotbar
+            // and offhand only, so mirroring the rest would leave this copy holding items nobody sees.
             var slot=mc.player.inventoryMenu.slots.get(index);if(slot.container==mc.player.getInventory())inventory(slot.getContainerSlot(),item);
         }
     }
     public static void inventory(int slot,ItemStack item){STORE.inventory(slot,LiveMenu.view(-1,true,slot,item));}
     public static void cursor(ItemStack item){STORE.cursor(LiveMenu.view(-1,false,-1,item));}
+    /** Replaces this copy with the client's own view; only for before any click, when the client holds no predictions. */
+    public static void adopt(MenuSnapshot local){if(local!=null && local.carried()!=null)STORE.content(local.containerId(),local.slots(),local.carried());}
     public static MenuSnapshot read(){
         var mc=Minecraft.getInstance();return mc.player==null?null:STORE.read(mc.player.containerMenu.containerId,mc.gui.screen()==null?null:mc.gui.screen().getTitle().getString());
     }
