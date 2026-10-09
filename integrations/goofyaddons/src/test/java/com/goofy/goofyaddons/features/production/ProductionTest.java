@@ -83,6 +83,18 @@ class ProductionTest {
         assertEquals("BLAZE_POWDER",server.slots[56].customId());assertEquals(2,server.slots[56].count());
         assertEquals(63,server.slots[54].count());assertEquals("shift:23",server.inputs.getLast());
     }
+    @Test void addedBasicIntermediatesExecuteTheirExactCatalogYieldsWithoutAccountRequirements() {
+        for(String id:List.of("PAPER","SUGAR","BOOK","BOWL","CHEST","GOLD_NUGGET","REDSTONE_TORCH_ON","EYE_OF_ENDER","GLASS_BOTTLE",
+                "WORKBENCH","BUCKET","WOOD_PICKAXE","WOOD_AXE","WOOD_HOE","WOOD_SPADE","WOOD_SWORD")) {
+            var r=RecipeCatalog.instance().forOutput(id).getFirst();var server=new Server(r,0);server.slots[55]=stack(55,"",0);
+            int slot=54;for(var e:new TreeMap<>(r.ingredients()).entrySet())server.slots[slot]=stack(slot++,e.getKey(),e.getValue());
+            var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+            for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=100)
+                result=executor.tick(r,server.menu(),server,Map.of(),Map.of(),now);
+            assertEquals(CraftingExecutor.Result.CRAFTED,result,id+": "+executor.failure());assertTrue(server.cursor.empty());
+            assertEquals(id,server.slots[56].customId());assertEquals(r.outputCount(),server.slots[56].count());
+        }
+    }
     @Test void fullCraftWaitsForEachObservationAndConservesSurplusIngredients() {
         var r=recipe(5);var server=new Server(r,64);var executor=new CraftingExecutor();
         CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;

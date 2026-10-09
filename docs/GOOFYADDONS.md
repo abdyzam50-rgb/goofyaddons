@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.22-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.23-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -33,6 +33,10 @@ verifies the normal Blaze Rod → two Blaze Powder recipe. See the craft notes a
 The 0.2.22 update prepares missing Blaze Powder, sticks and oak planks from
 base materials before the final craft; other ingredients retain direct procurement.
 See the craft notes above for yield accounting and recovery rules.
+
+The 0.2.23 update expands basic ingredient preparation to paper/books, wooden
+components and tools, gold nuggets, redstone torches, Eyes of Ender and bottles.
+See the [ingredient audit](BASIC-INGREDIENT-AUDIT.md) for supported recipes and limits.
 
 ## Installation and saved data
 

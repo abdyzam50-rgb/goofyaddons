@@ -106,6 +106,15 @@ class ProductionRunTest {
         run.tick(true,1);assertEquals(List.of("command:bz BLAZE_ROD"),env.actions.serverEffects());
         assertTrue(env.crafts.isEmpty());
     }
+    @Test void preparationPreservesPaperNeededByTheFinalRecipe()throws Exception {
+        var env=new Env();env.menu=ProductionRunTest.menu(null,item(54,"PAPER",3),item(55,"LEATHER",1));
+        var grid=Arrays.asList(new ProductionRecipe.Ingredient("BOOK",1),new ProductionRecipe.Ingredient("PAPER",3),null,null,null,null,null,null,null);
+        var target=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("BOOK",1,"PAPER",3),grid,0,0,"",null);
+        var recipes=new ArrayList<>(RecipeCatalog.instance().recipes());recipes.add(target);
+        var run=ProductionRun.start(env,new RecipeCatalog(recipes,Map.of()),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertEquals(Step.BLOCKED,run.tick(false,0));assertTrue(run.reason().contains("SUGAR_CANE"),run.reason());
+        assertTrue(env.crafts.isEmpty());assertTrue(env.actions.serverEffects().isEmpty());
+    }
     @Test void failedIntermediateCraftRequiresReviewAndCannotStartTheFinalCraft()throws Exception {
         var env=new Env();env.unlocks=Map.of("enderpearl",6);
         env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",32),item(55,"ENCHANTED_ENDER_PEARL",16));

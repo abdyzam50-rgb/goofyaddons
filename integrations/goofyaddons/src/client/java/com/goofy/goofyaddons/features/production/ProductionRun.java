@@ -317,28 +317,34 @@ public final class ProductionRun implements ProductionLoop.Ports {
     // ---- Helpers -----------------------------------------------------------------------
 
     /** Inputs still missing for the cheapest craftable recipe, or nothing when one is already covered. */
-    Map<String,Integer> missing() {
+    Map<String,Integer> missing() {return selection().deficits();}
+    private record Selection(Map<String,Integer> deficits,Map<String,Integer> reserved) {}
+    private Selection selection() {
         var held = held();
         var options = recipe != null ? List.of(recipe)
                 : catalog.forOutput(output).stream().filter(r -> r.kind() == kind).toList();
-        Map<String,Integer> best = null;double bestCost = Double.POSITIVE_INFINITY;
+        Selection best = null;double bestCost = Double.POSITIVE_INFINITY;
         for (var option : options) {
             if(kind==ProductionRecipe.Kind.CRAFT && com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks())!=null)continue;
             var need = new LinkedHashMap<String,Integer>();
+            var reserved=new HashMap<String,Integer>();
             for (var e : new TreeMap<>(option.ingredients()).entrySet()) {
                 if (e.getKey().equals(option.inputPet())) continue;
+                reserved.put(e.getKey(),Math.multiplyExact(e.getValue(),batches));
                 long short_ = (long) e.getValue() * batches - held.getOrDefault(e.getKey(), 0);
                 if (short_ > 0) need.put(e.getKey(), (int) Math.min(Integer.MAX_VALUE, short_));
             }
-            if (need.isEmpty()) return Map.of();
+            if (need.isEmpty()) return new Selection(Map.of(),reserved);
             double cost = 0;
-            for (var e : IngredientPreparation.plan(catalog,need,held).purchases().entrySet()) { Double c = env.instantBuyCost(e.getKey(), e.getValue()); cost += c == null ? 1e18 : c; }
-            if (best == null || cost < bestCost) { best = need; bestCost = cost; }
+            for (var e : IngredientPreparation.plan(catalog,need,held,reserved).purchases().entrySet()) { Double c = env.instantBuyCost(e.getKey(), e.getValue()); cost += c == null ? 1e18 : c; }
+            if (best == null || cost < bestCost) { best = new Selection(need,reserved); bestCost = cost; }
         }
-        return best == null ? Map.of() : best;
+        return best == null ? new Selection(Map.of(),Map.of()) : best;
     }
 
-    private IngredientPreparation.Plan preparation() {return IngredientPreparation.plan(catalog,missing(),held());}
+    private IngredientPreparation.Plan preparation() {
+        var selected=selection();return IngredientPreparation.plan(catalog,selected.deficits(),held(),selected.reserved());
+    }
 
     private String craftRequirement() {
         if(kind!=ProductionRecipe.Kind.CRAFT)return null;

@@ -144,3 +144,10 @@ Regression coverage checks rods procurement without a powder quote, log/plank/
 stick ordering and yield rounding, held input accounting, occupied base inputs,
 32 powder batches across two child jobs and failure before the final craft.
 Live Minecraft validation remains necessary.
+
+## More basic intermediates (0.2.23)
+
+The preparation flow now handles paper, sugar, books, bowls, chests, gold nuggets,
+redstone torches, normal Eyes of Ender, glass bottles, crafting tables, empty
+buckets and wooden tools. See [the ingredient audit](BASIC-INGREDIENT-AUDIT.md)
+for source quantities, exclusions and smelting limitations.
