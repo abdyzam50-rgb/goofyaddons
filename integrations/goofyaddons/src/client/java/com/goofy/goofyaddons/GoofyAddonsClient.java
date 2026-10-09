@@ -15,6 +15,7 @@ import net.minecraft.client.Minecraft;
 
 
 public class GoofyAddonsClient implements ClientModInitializer {
+    private static boolean debugScreenHeld;
 
     @Override
     public void onInitializeClient() {
@@ -30,8 +31,18 @@ public class GoofyAddonsClient implements ClientModInitializer {
         GoofyKeybinds.register();
         // Vanilla does not dispatch ordinary mapping clicks through container/rest screens.
         // The same toggle must still stop automation immediately while a menu owns input.
-        net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client,screen,width,height)->
+        net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client,screen,width,height)-> {
+            debugScreenHeld=false;
+            net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents.afterKeyRelease(screen).register((current,event)->{
+                if(GoofyKeybinds.debugKey.matches(event))debugScreenHeld=false;
+            });
             net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents.allowKeyPress(screen).register((current,event)->{
+                if(current instanceof com.goofy.goofyaddons.keybinds.BindingCaptureScreen settings && settings.capturingTradingBinding())return true;
+                if(GoofyKeybinds.debugKey.matches(event)) {
+                    while(GoofyKeybinds.debugKey.consumeClick()) {}
+                    if(!debugScreenHeld) { debugScreenHeld=true;Diagnostics.exportFromKeybind(); }
+                    return false;
+                }
                 if(GoofyKeybinds.toggleKey.matches(event) && (!FeatureManager.INSTANCE.canReloadConfig()
                         || com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.armed()
                         || com.goofy.goofyaddons.features.discord.DiscordRemote.INSTANCE.active())) {
@@ -40,7 +51,8 @@ public class GoofyAddonsClient implements ClientModInitializer {
                     return false;
                 }
                 return true;
-            }));
+            });
+        });
         com.goofy.goofyaddons.config.ConfigReload.register();
         com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.register();
         ProfitHud.register();
@@ -49,6 +61,10 @@ public class GoofyAddonsClient implements ClientModInitializer {
         final Minecraft minecraft = Minecraft.getInstance();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             try {
+            boolean debugRequested=false;
+            while(GoofyKeybinds.debugKey.consumeClick())debugRequested=true;
+            if(debugRequested && !debugScreenHeld)Diagnostics.exportFromKeybind();
+            if(client.gui.screen()==null)debugScreenHeld=false;
             // Coalesce queued clicks: a slow tick must never stop and immediately restart.
             boolean toggleRequested = false;
             while (GoofyKeybinds.toggleKey.consumeClick()) toggleRequested = true;
@@ -58,11 +74,9 @@ public class GoofyAddonsClient implements ClientModInitializer {
             if(stopRequested)com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStop();
             com.goofy.goofyaddons.features.discord.DiscordRemote.INSTANCE.tick();
             if(!stopRequested && com.goofy.goofyaddons.features.sessions.TransferRecovery.INSTANCE.tick()) {
-                while(GoofyKeybinds.modeKey.consumeClick()) {}
                 ProfitTracker.INSTANCE.tick(false);Diagnostics.tick();return;
             }
             if(!stopRequested && com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.tick()) {
-                while(GoofyKeybinds.modeKey.consumeClick()) {}
                 ProfitTracker.INSTANCE.tick(false);Diagnostics.tick();return;
             }
             if (client.player == null || client.level == null) {
@@ -76,8 +90,7 @@ public class GoofyAddonsClient implements ClientModInitializer {
             if (com.goofy.goofyaddons.features.SafetyActions.tradingTick(stopRequested, FeatureManager.INSTANCE::stop,
                     FailsafeManager.INSTANCE::onTick, FeatureManager.INSTANCE::onTick)) {
                 if(reloadRequested)com.goofy.goofyaddons.config.ConfigReload.reload();
-                // Discard queued starts/mode changes so stop wins the entire tick.
-                while (GoofyKeybinds.modeKey.consumeClick()) {}
+                // Discard queued starts so stop wins the entire tick.
                 ProfitTracker.INSTANCE.tick(false);
                 Diagnostics.tick();
                 return;
@@ -88,9 +101,6 @@ public class GoofyAddonsClient implements ClientModInitializer {
 
             if (toggleRequested && client.gui.screen()==null) {
                 com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStart();
-            }
-            while (GoofyKeybinds.modeKey.consumeClick()) {
-                FeatureManager.INSTANCE.cycleMode();
             }
             Diagnostics.tick();
             } catch (RuntimeException failure) {

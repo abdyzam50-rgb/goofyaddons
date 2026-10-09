@@ -18,6 +18,8 @@ public final class Diagnostics {
     private static final DiagnosticQueue WORKER=new DiagnosticQueue(512,64);
     private static final Map<String,String> LAST=new HashMap<>();
     private static volatile String error;
+    private static java.util.Map<String,String> exportVersions=Map.of();
+    private static final java.util.concurrent.atomic.AtomicBoolean exporting=new java.util.concurrent.atomic.AtomicBoolean();
     private static long heartbeat;
     private static long lastSample;
     private Diagnostics() {}
@@ -130,7 +132,10 @@ public final class Diagnostics {
             data.put("capitalLimit",GoofyConfig.INSTANCE.maxTradingCapital);data.put("reserve",GoofyConfig.INSTANCE.purseReserve);
             data.put("minDelay",GoofyConfig.INSTANCE.minActionDelay);data.put("maxDelay",GoofyConfig.INSTANCE.maxActionDelay);
         }
-        if(detailed) data.put("engines",manager.diagnosticState());
+        if(detailed) {
+            data.put("engines",manager.diagnosticState());
+            data.put("currentMenu",DebugMenuCapture.describe(new com.goofy.goofyaddons.menu.LiveWorld().menu()));
+        }
         data.put("droppedEvents",WORKER.totalDropped());data.put("criticalDroppedEvents",WORKER.criticalDropped());data.put("logError",error==null?"none":error);
         return data;
     }
@@ -170,6 +175,7 @@ public final class Diagnostics {
     }
     /** Attach commands without initializing live rendering, menus or log files. */
     public static void registerCommands(java.util.Map<String,String> versions) {
+        exportVersions=Map.copyOf(versions);
         com.goofy.goofyaddons.commands.GoofyCommands.register(dispatcher->dispatcher.register(ClientCommands.literal("debug")
             .executes(context->{context.getSource().sendFeedback(Component.literal("Diagnostics: logs/goofyaddons | dropped: "+WORKER.totalDropped()+" | error: "+(error==null?"none":error)+" | .a* goofyaddon debug export"));return 1;})
             .then(ClientCommands.literal("version").executes(context->{
@@ -179,24 +185,38 @@ public final class Diagnostics {
                 return 1;
             }))
             .then(ClientCommands.literal("export").executes(context->{
-                var state=snapshot(true);var source=context.getSource();var mc=Minecraft.getInstance();
-                var profit=com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE;
-                state.put("versions",Map.copyOf(versions));
-                state.put("release",ReleaseInfo.manifest().diagnosticState());
-                // Bounded tails of both calculator logs; the export redacts every string again.
-                state.put("companionLogs",com.goofy.goofyaddons.features.companion.BundledCalculator.logTails());
-                state.put("profit",profit.summary());state.put("profitError",profit.error());
-                state.put("executions",profit.executionSamples());state.put("activeExecutions",profit.activeExecutions());
-                state.put("executionError",profit.executionError());
-                state.put("funded",CapitalManager.INSTANCE.funded());
-                state.put("fundingUnknown",CapitalManager.INSTANCE.fundingUnknown());
-                source.sendFeedback(Component.literal("Creating diagnostic bundle..."));
-                boolean accepted=WORKER.submit(false,()->{
-                    try { var file=LOG.export(state);mc.execute(()->source.sendFeedback(Component.literal("Saved diagnostics: "+file))); }
-                    catch(Exception failed) {mc.execute(()->source.sendFeedback(Component.literal("Diagnostic export failed: "+failed.getClass().getSimpleName())));}
-                });
-                if(!accepted) {source.sendFeedback(Component.literal("Diagnostic queue full; retry export shortly."));return 0;}
-                return 1;
+                return export(message->context.getSource().sendFeedback(Component.literal(message)));
             }))));
     }
+    /** Shared command/keybind export: observe on the client thread, write off-thread. */
+    public static void exportFromKeybind() {
+        export(com.goofy.goofyaddons.utils.ChatUtils::clientMessage);
+    }
+    private static int export(java.util.function.Consumer<String> feedback) {
+        if(LOG==null){feedback.accept("Diagnostics are not initialized.");return 0;}
+        if(!exporting.compareAndSet(false,true)){feedback.accept("Diagnostic export already in progress.");return 0;}
+        var mc=Minecraft.getInstance();
+        try {
+            var state=new LinkedHashMap<String,Object>(detailedSnapshot());
+            var profit=com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE;
+            state.put("versions",exportVersions);
+            state.put("release",ReleaseInfo.manifest().diagnosticState());
+            state.put("companionLogs",com.goofy.goofyaddons.features.companion.BundledCalculator.logTails());
+            state.put("profit",profit.summary());state.put("profitError",profit.error());
+            state.put("executions",profit.executionSamples());state.put("activeExecutions",profit.activeExecutions());
+            state.put("executionError",profit.executionError());
+            state.put("funded",CapitalManager.INSTANCE.funded());state.put("fundingUnknown",CapitalManager.INSTANCE.fundingUnknown());
+            feedback.accept("Creating diagnostic bundle with the current GUI...");
+            boolean accepted=WORKER.submit(false,()->{
+                try {var file=LOG.export(state);mc.execute(()->feedback.accept("Saved diagnostics: "+file));}
+                catch(Exception failed){mc.execute(()->feedback.accept("Diagnostic export failed: "+failed.getClass().getSimpleName()));}
+                finally {exporting.set(false);}
+            });
+            if(!accepted){exporting.set(false);feedback.accept("Diagnostic queue full; retry export shortly.");return 0;}
+            return 1;
+        } catch(RuntimeException failed) {
+            exporting.set(false);feedback.accept("Diagnostic capture failed: "+failed.getClass().getSimpleName());return 0;
+        }
+    }
+
 }

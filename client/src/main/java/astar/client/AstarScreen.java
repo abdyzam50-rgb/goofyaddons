@@ -38,7 +38,7 @@ import net.minecraft.util.FormattedCharSequence;
  * and Inter for the text, at its own scale of whole screen pixels ({@link #px}), whatever the GUI
  * scale, so it stays sharp. Its controls are its own too ({@link El}), laid out every frame.
  */
-final class AstarScreen extends Screen {
+final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds.BindingCaptureScreen {
 
     // ---- Pages -----------------------------------------------------------------------------
 
@@ -290,6 +290,7 @@ final class AstarScreen extends Screen {
         field.live=()->draft.error(label)!=null?draft.raw(label):Integer.toString(value.getAsInt());return field.wide(72);
     }
     private net.minecraft.client.KeyMapping bindingCapture;
+    public boolean capturingTradingBinding() { return bindingCapture!=null; }
     private int bindingSlot;
     private void captureBinding(net.minecraft.client.KeyMapping binding,int slot) {
         if(!com.goofy.goofyaddons.features.FeatureManager.INSTANCE.canReloadConfig()) {
@@ -325,8 +326,8 @@ final class AstarScreen extends Screen {
         Card keys=card("Keybinds","Click Change, then press a key. Escape cancels. Bindings also appear in Minecraft Controls.");
         keys.row("Trading on / off",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey.getTranslatedKeyMessage().getString(),
             new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey,0),Button.PLAIN));
-        keys.row("Switch mode",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.modeKey.getTranslatedKeyMessage().getString(),
-            new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.modeKey,1),Button.PLAIN));
+        keys.row("Debug export",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.debugKey.getTranslatedKeyMessage().getString(),
+            new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.debugKey,1),Button.PLAIN));
         keys.row("Reload config",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.reloadKey.getTranslatedKeyMessage().getString(),
             new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.reloadKey,2),Button.PLAIN));
         keys.callout(()->Callout.INFO,()->tradingNote);
@@ -734,10 +735,10 @@ final class AstarScreen extends Screen {
                 int code=event.input();
                 if(client.routeKey.matches(event))throw new IllegalArgumentException("That key opens A* settings; choose another key.");
                 for(var other:List.of(com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey,
-                        com.goofy.goofyaddons.keybinds.GoofyKeybinds.modeKey,com.goofy.goofyaddons.keybinds.GoofyKeybinds.reloadKey)) {
+                        com.goofy.goofyaddons.keybinds.GoofyKeybinds.debugKey,com.goofy.goofyaddons.keybinds.GoofyKeybinds.reloadKey)) {
                     if(other!=binding && other.matches(event))throw new IllegalArgumentException("That key is already used by another trading action.");
                 }
-                switch(bindingSlot){case 0->cfg.toggleKey=code;case 1->cfg.modeKey=code;default->cfg.reloadKey=code;}
+                switch(bindingSlot){case 0->cfg.toggleKey=code;case 1->cfg.debugKey=code;default->cfg.reloadKey=code;}
                 com.goofy.goofyaddons.config.GoofyConfig.commitSettings(cfg);
                 binding.setKey(InputConstants.Type.KEYBOARD.getOrCreate(code));
                 net.minecraft.client.KeyMapping.resetMapping();minecraft.options.save();

@@ -64,3 +64,10 @@ The bulk implementation must:
 
 The detection, ownership, unknown-state and pre-purchase conflict tests pass.
 Cleanup and bulk GUI behavior are not implemented or live-tested yet.
+
+### Capture without closing the menu (0.2.26+)
+
+Press **Debug export** (default **F7**) with the compactor GUI open. Share the ZIP
+from `logs/goofyaddons/bundles/`; `current-menu.json` contains its visible controls
+and descriptions. The key can be reassigned in **G → Macros → Keybinds**.
+The focused inspect command remains available.

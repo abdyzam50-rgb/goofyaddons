@@ -94,6 +94,10 @@ public final class DiagnosticLog {
         try(var zip=new ZipOutputStream(Files.newOutputStream(target))) {
             zip.putNextEntry(new ZipEntry("snapshot.json"));
             zip.write(safeJson(snapshot).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            if(snapshot.get("currentMenu") instanceof Map<?,?> menu) {
+                zip.putNextEntry(new ZipEntry("current-menu.json"));
+                zip.write(safeJson(menu).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            }
             for(int i=0;i<=archives;i++) {
                 Path file=directory.resolve(i==0?"events.jsonl":"events."+i+".jsonl");
                 if(!Files.exists(file)) continue;

@@ -11,19 +11,19 @@ class LegacyKeysTest {
     @Test void existingTradingBindingsMigrateWithoutChangingMoneyOrOverwritingTheSource()throws Exception {
         var path=dir.resolve("goofyaddons.json");var gson=new Gson();
         var object=gson.toJsonTree(new GoofyConfig()).getAsJsonObject();object.remove("keyCodeSchema");object.remove("toggleKey");object.remove("reloadKey");
-        object.addProperty("startKey",74);object.addProperty("stopKey",75);object.addProperty("modeKey",77);
+        object.remove("debugKey");object.addProperty("startKey",74);object.addProperty("stopKey",75);object.addProperty("modeKey",77);
         object.addProperty("maxTradingCapital",154000000);object.addProperty("purseReserve",0);
         String old=gson.toJson(object);Files.writeString(path,old);GoofyConfig.load(path);
-        assertNull(GoofyConfig.loadError());assertEquals(63,GoofyConfig.INSTANCE.toggleKey);assertEquals(64,GoofyConfig.INSTANCE.modeKey);assertEquals(65,GoofyConfig.INSTANCE.reloadKey);
+        assertNull(GoofyConfig.loadError());assertEquals(63,GoofyConfig.INSTANCE.toggleKey);assertEquals(64,GoofyConfig.INSTANCE.debugKey);assertEquals(65,GoofyConfig.INSTANCE.reloadKey);
         assertEquals(154000000,GoofyConfig.INSTANCE.maxTradingCapital);assertEquals(0,GoofyConfig.INSTANCE.purseReserve);assertEquals(old,Files.readString(path));
         GoofyConfig.save(path);GoofyConfig.load(path);assertEquals(63,GoofyConfig.INSTANCE.toggleKey);assertEquals(2,GoofyConfig.INSTANCE.keyCodeSchema);
     }
     @Test void customizedLegacyStartBecomesToggleAndConflictingNewBindingsAreRejected()throws Exception {
         var gson=new Gson();var object=gson.toJsonTree(new GoofyConfig()).getAsJsonObject();
         object.remove("toggleKey");object.remove("keyCodeSchema");object.remove("reloadKey");
-        object.addProperty("startKey",290);object.addProperty("stopKey",75);object.addProperty("modeKey",77);
+        object.remove("debugKey");object.addProperty("startKey",290);object.addProperty("stopKey",75);object.addProperty("modeKey",77);
         Path file=dir.resolve("custom.json");Files.writeString(file,gson.toJson(object));GoofyConfig.load(file);
-        assertEquals(58,GoofyConfig.INSTANCE.toggleKey);assertEquals(64,GoofyConfig.INSTANCE.modeKey);
+        assertEquals(58,GoofyConfig.INSTANCE.toggleKey);assertEquals(64,GoofyConfig.INSTANCE.debugKey);
         var invalid=new GoofyConfig();invalid.reloadKey=invalid.toggleKey;
         assertThrows(IllegalArgumentException.class,invalid::validate);
     }
@@ -42,4 +42,13 @@ class LegacyKeysTest {
         assertThrows(java.io.IOException.class,()->GoofyConfig.commitSettings(new GoofyConfig(),blocked));
         assertSame(good,GoofyConfig.INSTANCE);assertEquals(saved,Files.readString(path));assertEquals("retained",Files.readString(blocked.resolve("keep")));
     }
+    @Test void currentModeBindingBecomesDebugAndSavesOnlyTheNewName()throws Exception {
+        var gson=new Gson();var root=gson.toJsonTree(new GoofyConfig()).getAsJsonObject();
+        root.remove("debugKey");root.addProperty("modeKey",66);
+        var file=dir.resolve("previous-release.json");Files.writeString(file,gson.toJson(root));
+        GoofyConfig.load(file);assertNull(GoofyConfig.loadError());assertEquals(66,GoofyConfig.INSTANCE.debugKey);
+        GoofyConfig.save(file);var saved=JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals(66,saved.get("debugKey").getAsInt());assertFalse(saved.has("modeKey"));
+    }
+
 }

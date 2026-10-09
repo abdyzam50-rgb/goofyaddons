@@ -2,7 +2,7 @@ plugins {
     id 'net.fabricmc.fabric-loom' version '1.17.21'
 }
 
-version = '0.2.25-BETA'
+version = '0.2.26-BETA'
 group = 'astar'
 
 base {

@@ -53,4 +53,15 @@ class DiagnosticLogTest {
         assertEquals(3,event.getAsJsonObject("data").getAsJsonObject("nested").get("count").getAsInt());
         assertTrue(event.has("writeTime"));
     }
+    @Test void exportIncludesCurrentMenuAndRedactsItsDescriptions() throws Exception {
+        var log=new DiagnosticLog(directory,100000,2);
+        var menu=Map.of("title","Personal Compactor","lore",List.of("apiKey=private-value"));
+        try(var zip=new ZipFile(log.export(Map.of("currentMenu",menu)).toFile())) {
+            var entry=zip.getEntry("current-menu.json");assertNotNull(entry);
+            String text=new String(zip.getInputStream(entry).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue(text.contains("Personal Compactor"));assertFalse(text.contains("private-value"));
+            assertNotNull(zip.getEntry("snapshot.json"));
+        }
+    }
+
 }

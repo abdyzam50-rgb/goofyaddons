@@ -13,14 +13,14 @@ public class GoofyKeybinds {
     );
 
     public static KeyMapping toggleKey;
-    public static KeyMapping modeKey;
+    public static KeyMapping debugKey;
     public static KeyMapping reloadKey;
 
     public static void register() {
         toggleKey=KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.goofyaddons.toggle",InputConstants.Type.KEYBOARD,GoofyConfig.INSTANCE.toggleKey,CATEGORY));
-        modeKey=KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.goofyaddons.mode",InputConstants.Type.KEYBOARD,GoofyConfig.INSTANCE.modeKey,CATEGORY));
+        debugKey=KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.goofyaddons.debug",InputConstants.Type.KEYBOARD,GoofyConfig.INSTANCE.debugKey,CATEGORY));
         reloadKey=KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.goofyaddons.reload",InputConstants.Type.KEYBOARD,GoofyConfig.INSTANCE.reloadKey,CATEGORY));
     }

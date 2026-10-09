@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.25-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.26-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -46,6 +46,12 @@ The 0.2.25 update detects Personal Compactor tiers and blocks conflicting active
 recipes before production uses their inputs. Automatic bulk configuration and
 cleanup remain pending; see [the implementation boundary](PERSONAL-COMPACTOR.md).
 
+The 0.2.26 update replaces the mode-switch shortcut with **Debug export** (F7
+by default). Change it in **G → Macros → Keybinds** or Minecraft Controls.
+It also works with an inventory/container GUI open and captures the screen before
+writing the bundle in the background. Choose trading mode in the settings GUI.
+An existing `modeKey` setting migrates to `debugKey`; customized bindings are retained.
+
 ## Installation and saved data
 
 Replace the standalone A* and GoofyAddons JARs with the combined JAR. Keep Fabric
@@ -64,7 +70,7 @@ The calculator's existing external data directory and collector settings remain
 compatible. There is no need to reenroll contributors or deploy Cloudflare again.
 
 Old GLFW keyboard bindings are migrated to Minecraft 26.3's SDL scancodes in
-memory. Old default J/K/M bindings become F6/F7/F8; customized start and mode keys are retained. The new `keyCodeSchema: 2` marker is written when
+memory. Old default J/K/M bindings become F6/F7/F8; customized start keys are retained and old mode keys become Debug export. The new `keyCodeSchema: 2` marker is written when
 settings are saved. Unsupported legacy keys stop config loading instead of
 silently changing bindings. The original file stays intact until an explicit save.
 
@@ -90,7 +96,7 @@ Settings edits validate before an atomic file replacement. A bad value or failed
 write preserves the last working settings. Editing requires stopping trading.
 Fresh installs still require reviewing the capital and reserve defaults; the
 **Save reviewed** control acknowledges them. Start closes the window before
-transaction menus open. F6 toggles trading on and off; F7 switches mode and F8 reloads the config.
+transaction menus open. F6 toggles trading on and off; F7 exports diagnostics and F8 reloads the config.
 
 Advanced limits, recipe selection and production commands remain available in
 the existing config and command system.
@@ -318,7 +324,7 @@ keys and Discord credentials are never included.
 
 ### Keybinds
 
-In **G → Macros → Keybinds**, click **Change** next to an action, then press its new key. Escape cancels. Changes are saved immediately while trading is stopped and also appear in Minecraft Controls. Defaults are F6 for trading on/off, F7 for switching mode, and F8 for reloading. Paused or recovering trading and armed rest schedules count as on: the toggle stops them. Starting requires a connected world with no menu open. Old default J/K/M controls migrate to the new defaults; a customized old start key becomes the toggle.
+In **G → Macros → Keybinds**, click **Change** next to an action, then press its new key. Escape cancels. Changes are saved immediately while trading is stopped and also appear in Minecraft Controls. Defaults are F6 for trading on/off, F7 for Debug export, and F8 for reloading. Paused or recovering trading and armed rest schedules count as on: the toggle stops them. Starting requires a connected world with no menu open. Old default J/K/M controls migrate to the new defaults; a customized old start key becomes the toggle.
 
 ### Unified commands
 
@@ -393,3 +399,24 @@ proxy or attempting protocol upgrades. Public API and download networking stays
 unchanged. A genuine occupied port still requires changing Calculator port or
 closing the program that owns it; an old unhealthy process is never terminated
 by the mod.
+
+## Debug export from a GUI
+
+Press **F7** (or your assigned **Debug export** key) while the target GUI is open.
+The GUI stays open. The equivalent command is `.a* goofyaddon debug export`.
+The resulting ZIP is saved in the Minecraft instance's
+`logs/goofyaddons/bundles/` directory; chat reports its full path.
+
+The ZIP includes `current-menu.json` with the menu title, slot numbers (including
+empty slots), item names, product IDs, hover descriptions, cursor stack, and
+visible Personal Compactor settings. It also includes `snapshot.json`, diagnostic
+events, trading and recovery state, profit/execution records, release versions,
+and bounded calculator log tails. Known credentials are redacted and raw item
+NBT/item UUIDs are excluded from the menu capture. No collection command sends
+chat to the server or clicks a menu control.
+
+This captures any currently observed GUI, including compactor, crafting, Bazaar,
+and Auction House menus. It does not scrape unopened menus or account data that
+hasn't been observed. When reporting a menu bug, export with the affected screen
+open and share the ZIP. The individual auction/compactor inspect commands remain
+available for focused captures.

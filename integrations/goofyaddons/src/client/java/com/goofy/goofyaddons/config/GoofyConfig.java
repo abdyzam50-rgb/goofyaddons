@@ -47,7 +47,8 @@ public class GoofyConfig {
     public com.goofy.goofyaddons.features.discord.DiscordSettings discord = new com.goofy.goofyaddons.features.discord.DiscordSettings();
     public TradingMode tradingMode = TradingMode.BOOKS;
     public int keyCodeSchema = 2;
-    public int modeKey = InputConstants.KEY_F7;
+    @com.google.gson.annotations.SerializedName(value="debugKey", alternate={"modeKey"})
+    public int debugKey = InputConstants.KEY_F7;
     public double maxTradingCapital = 300_000_000;
     public double purseReserve = 50_000_000;
     /** Lets a queued production run instant-buy missing inputs within spendable capital. Off until tested in game. */
@@ -113,7 +114,7 @@ public class GoofyConfig {
             if(legacyCodes) {
                 if(root.has("toggleKey"))parsed.toggleKey=LegacyKeys.fromGlfw(parsed.toggleKey);
                 if(root.has("reloadKey"))parsed.reloadKey=LegacyKeys.fromGlfw(parsed.reloadKey);
-                if(root.has("modeKey"))parsed.modeKey=LegacyKeys.fromGlfw(parsed.modeKey);
+                if(root.has("debugKey") || root.has("modeKey"))parsed.debugKey=LegacyKeys.fromGlfw(parsed.debugKey);
                 parsed.keyCodeSchema=2;
             }
             if(!root.has("toggleKey")) {
@@ -123,7 +124,7 @@ public class GoofyConfig {
                     if(legacyCodes)oldStart=LegacyKeys.fromGlfw(oldStart);
                     if(oldStart!=InputConstants.KEY_J)parsed.toggleKey=oldStart;
                 }
-                if(parsed.modeKey==InputConstants.KEY_M)parsed.modeKey=InputConstants.KEY_F7;
+                if(parsed.debugKey==InputConstants.KEY_M)parsed.debugKey=InputConstants.KEY_F7;
             }
             parsed.validate();
             INSTANCE = parsed;
@@ -155,7 +156,7 @@ public class GoofyConfig {
     public void validate() {
         if (keyCodeSchema!=2 || tradingMode == null || general == null || !Double.isFinite(maxTradingCapital)
                 || maxTradingCapital <= 0 || !Double.isFinite(purseReserve) || purseReserve < 0
-                || modeKey < 4 || modeKey > 511 || modeKey == toggleKey || modeKey == reloadKey) {
+                || debugKey < 4 || debugKey > 511 || debugKey == toggleKey || debugKey == reloadKey) {
             throw new IllegalArgumentException("Invalid mode or shared capital settings");
         }
         if(discord==null)throw new IllegalArgumentException("discord must be an object");
@@ -182,7 +183,7 @@ public class GoofyConfig {
         }
         if (toggleKey < 4 || toggleKey > 511 || reloadKey < 4
                 || reloadKey > 511 || toggleKey == reloadKey) {
-            throw new IllegalArgumentException("Toggle, mode and reload keys must be distinct valid keys");
+            throw new IllegalArgumentException("Toggle, debug and reload keys must be distinct valid keys");
         }
         if (firstPage == null || firstPage.isBlank() || secondPage == null || secondPage.isBlank()
                 || firstPage.startsWith("/") || secondPage.startsWith("/")) {
