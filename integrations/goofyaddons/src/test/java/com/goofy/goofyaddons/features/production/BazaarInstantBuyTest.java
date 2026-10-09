@@ -61,7 +61,44 @@ class BazaarInstantBuyTest {
         buy.tick(product(100),false,actions,5000,0);
         buy.tick(menu(2,"How many do you want?",SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,100);
         buy.tick(null,true,actions,5000,200);
-        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,buy.tick(menu(4,"Confirm Instant Buy"),false,actions,5000,300));
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(menu(4,"Confirm Instant Buy"),false,actions,5000,300));
+        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,buy.tick(menu(4,"Confirm Instant Buy"),false,actions,5000,20_000));
+        assertFalse(actions.serverEffects().contains("click:13"));
+    }
+
+    MenuSnapshot confirmation(int units,String price) {
+        return menu(4,"Confirm Instant Buy",SlotView.named(13,"Custom Amount",
+                List.of("Enchanted Coal","","Amount: "+units+"x","","Per unit: 100 coins","Price: "+price+" coins","","Click to buy now!")));
+    }
+
+    @Test void confirmsTheInstantBuyOnlyWhenItQuotesTheProductAmountAndAFittingTotal() {
+        var actions=new RecordingActions();var buy=buy(1100);
+        buy.tick(product(100),false,actions,5000,0);
+        buy.tick(menu(2,"Enchanted Coal \u279c Instant",SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,100);
+        buy.tick(null,true,actions,5000,200);
+        assertEquals(1,intents.size());
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(confirmation(10,"1,000"),false,actions,5000,300));
+        assertTrue(actions.serverEffects().contains("click:13"));
+        // The confirmation screen lingering after the click is not a second, unexpected one.
+        assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(confirmation(10,"1,000"),false,actions,5000,400));
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,buy.tick(menu(5,null,item(54,"ENCHANTED_COAL",10)),false,actions,4000,500));
+        assertEquals(1,actions.serverEffects().stream().filter(e->e.equals("click:13")).count());
+    }
+
+    @Test void aConfirmationAboveTheLimitOrForAnotherAmountIsNotClicked() {
+        var actions=new RecordingActions();var buy=buy(1100);
+        buy.tick(product(100),false,actions,5000,0);
+        buy.tick(menu(2,"Enchanted Coal \u279c Instant",SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,100);
+        buy.tick(null,true,actions,5000,200);
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,buy.tick(confirmation(10,"1,200"),false,actions,5000,300));
+        assertTrue(buy.failure().contains("above"),buy.failure());
+        var other=new RecordingActions();var wrong=buy(1100);
+        wrong.tick(product(100),false,other,5000,0);
+        wrong.tick(menu(2,"Enchanted Coal \u279c Instant",SlotView.named(16,"Custom Amount",List.of())),false,other,5000,100);
+        wrong.tick(null,true,other,5000,200);
+        assertEquals(BazaarInstantBuy.Result.WAITING,wrong.tick(confirmation(100,"10,000"),false,other,5000,300));
+        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,wrong.tick(confirmation(100,"10,000"),false,other,5000,20_000));
+        assertFalse(actions.serverEffects().contains("click:13")||other.serverEffects().contains("click:13"));
     }
 
     @Test void readsQuotedUnitPrices() {
@@ -135,9 +172,9 @@ class BazaarInstantBuyTest {
         assertEquals(List.of("click:10","click:10"),actions.serverEffects());
         assertEquals(1,intents.size());
         assertEquals(BazaarInstantBuy.Result.BOUGHT,one.tick(menu(3,null,item(54,"ENCHANTED_COAL",1)),false,actions,4514.4,200));
-        assertEquals(31_077.0,BazaarInstantBuy.presetTotal("Enchanted Coal\n\nAmount: 64x\n\nPer unit: 466.9 coins\nPrice: 31,077 coins","Enchanted Coal",64));
-        assertNull(BazaarInstantBuy.presetTotal("Enchanted Coal Block\nAmount: 1x\nPrice: 485.6 coins","Enchanted Coal",1));
-        assertNull(BazaarInstantBuy.presetTotal("Enchanted Coal\nAmount: 64x\nPrice: 31,077 coins","Enchanted Coal",1));
+        assertEquals(31_077.0,BazaarInstantBuy.quotedTotal("Enchanted Coal\n\nAmount: 64x\n\nPer unit: 466.9 coins\nPrice: 31,077 coins","Enchanted Coal",64));
+        assertNull(BazaarInstantBuy.quotedTotal("Enchanted Coal Block\nAmount: 1x\nPrice: 485.6 coins","Enchanted Coal",1));
+        assertNull(BazaarInstantBuy.quotedTotal("Enchanted Coal\nAmount: 64x\nPrice: 31,077 coins","Enchanted Coal",1));
         var stack=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",64,30_000,intents::add);
         var other=new RecordingActions();
         stack.tick(product(400),false,other,50_000,0);

@@ -20,7 +20,7 @@ public final class BazaarInstantBuy {
     public enum Result { WAITING, BOUGHT, BLOCKED, UNCERTAIN }
     /** Durably records the purchase intent; throws when it could not be saved. */
     @FunctionalInterface public interface Intent { void record(String reason) throws Exception; }
-    private enum Step { OPEN, PRODUCT, AMOUNT, SIGN, VERIFY, DONE }
+    private enum Step { OPEN, PRODUCT, AMOUNT, SIGN, CONFIRM, VERIFY, DONE }
 
     private final String productId, name;
     private final BazaarSearch search;
@@ -29,7 +29,7 @@ public final class BazaarInstantBuy {
     private final Intent intent;
     private Step step = Step.OPEN;
     private long started, stepAt, heldSince;
-    private int before = -1;
+    private int before = -1, confirmContainer = Integer.MIN_VALUE;
     private double purseBefore = Double.NaN, spent;
     private String failure;
 
@@ -85,19 +85,17 @@ public final class BazaarInstantBuy {
                 int custom = productControl(menu) < 0 ? menu.firstByHoverName("Custom Amount", true) : -1;
                 if (custom < 0)
                     return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy amount menu did not open") : Result.WAITING;
-                // "Buy only one!" and "Buy a stack!" buy on click and quote their exact total, so they
-                // skip the sign and are checked against the limit by their own price.
+                // "Buy only one!" and "Buy a stack!" quote their exact total, so they skip the sign and
+                // are checked against the limit by their own price.
                 int preset = amount == 1 ? menu.firstByHoverName("Buy only one!", true) : amount == 64 ? menu.firstByHoverName("Buy a stack!", true) : -1;
                 if (preset >= 0) {
-                    String lore = menu.slot(preset).lore();
-                    Double total = presetTotal(lore, name, amount);
+                    Double total = quotedTotal(menu.slot(preset).lore(), name, amount);
                     if (total == null) return block("Instant buy preset for " + name + " is unreadable");
-                    if (total > maximumCost + 1e-6) return block(String.format(java.util.Locale.ROOT,
-                            "Instant buy of %d %s would cost %,.0f coins, above the %,.0f limit", amount, name, total, maximumCost));
-                    if (!Double.isFinite(purse) || purse < total) return block("Purse cannot cover the instant buy");
+                    String refused = refuse(total, purse);
+                    if (refused != null) return block(refused);
                     try { intent.record("Instant buy intent: " + amount + " " + productId + " up to " + Math.round(maximumCost) + " coins"); }
                     catch (Exception journal) { return block("Instant buy intent could not be saved; nothing bought"); }
-                    step = Step.VERIFY; stepAt = now;
+                    step = Step.CONFIRM; stepAt = now;
                     actions.click(preset, false);
                     return Result.WAITING;
                 }
@@ -107,8 +105,30 @@ public final class BazaarInstantBuy {
                 if (!signOpen) return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy amount sign did not open") : Result.WAITING;
                 try { intent.record("Instant buy intent: " + amount + " " + productId + " up to " + Math.round(maximumCost) + " coins"); }
                 catch (Exception journal) { return block("Instant buy intent could not be saved; nothing bought"); }
-                step = Step.VERIFY; stepAt = now;
+                step = Step.CONFIRM; stepAt = now;
                 if (!actions.writeSign(Integer.toString(amount))) return uncertain("Instant buy amount could not be confirmed on the sign");
+            }
+            case CONFIRM -> {
+                // Hypixel asks on a "Confirm Instant Buy" screen whose one item quotes the product,
+                // amount and total. A purchase that completes without it is accepted on the same proof.
+                Result proven = proof(menu, purse);
+                if (proven != null) return proven;
+                if (menu == null || menu.title() == null || !Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).startsWith("confirm instant buy"))
+                    return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? uncertain("Instant buy confirmation for " + name + " did not open; check whether anything was bought") : Result.WAITING;
+                int quote = -1; Double total = null;
+                for (int i = 0; i < menu.slots().size(); i++) {
+                    var slot = menu.slot(i);
+                    if (slot == null || slot.empty() || slot.inPlayerInventory()) continue;
+                    Double quoted = quotedTotal(slot.lore(), name, amount);
+                    if (quoted == null) continue;
+                    if (quote >= 0) return uncertain("Instant buy confirmation for " + name + " shows more than one quote");
+                    quote = i; total = quoted;
+                }
+                if (quote < 0) return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? uncertain("Instant buy confirmation for " + name + " does not quote " + amount + " units") : Result.WAITING;
+                String refused = refuse(total, purse);
+                if (refused != null) return block(refused);
+                confirmContainer = menu.containerId(); step = Step.VERIFY; stepAt = now;
+                actions.click(quote, false);
             }
             default -> { }
         }
@@ -116,15 +136,28 @@ public final class BazaarInstantBuy {
     }
 
     private Result verify(MenuSnapshot menu, double purse, long now) {
-        if (menu != null && menu.title() != null && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
+        if (menu != null && menu.title() != null && menu.containerId() != confirmContainer
+                && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
             return uncertain("Unexpected instant buy confirmation screen; inspect it before continuing");
-        if (menu != null && Double.isFinite(purse)) {
-            int gained = count(menu) - before;
-            double spent = purseBefore - purse;
-            if (gained == amount && spent > 0 && spent <= maximumCost + 0.51) { this.spent = spent; step = Step.DONE; return Result.BOUGHT; }
-            if (gained > amount || spent > maximumCost + 0.51) return uncertain("Instant buy changed inventory or purse more than expected");
-        }
+        Result proven = proof(menu, purse);
+        if (proven != null) return proven;
         return now - stepAt > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant buy of " + name + " was not confirmed by inventory and purse") : Result.WAITING;
+    }
+
+    /** Bought when inventory and purse show exactly this purchase, review when they show more, else null. */
+    private Result proof(MenuSnapshot menu, double purse) {
+        if (menu == null || !Double.isFinite(purse)) return null;
+        int gained = count(menu) - before;
+        double spent = purseBefore - purse;
+        if (gained == amount && spent > 0 && spent <= maximumCost + 0.51) { this.spent = spent; step = Step.DONE; return Result.BOUGHT; }
+        if (gained > amount || spent > maximumCost + 0.51) return uncertain("Instant buy changed inventory or purse more than expected");
+        return null;
+    }
+
+    private String refuse(double total, double purse) {
+        if (total > maximumCost + 1e-6) return String.format(java.util.Locale.ROOT,
+                "Instant buy of %d %s would cost %,.0f coins, above the %,.0f limit", amount, name, total, maximumCost);
+        return !Double.isFinite(purse) || purse < total ? "Purse cannot cover the instant buy" : null;
     }
 
     private int productControl(MenuSnapshot menu) {
@@ -151,8 +184,8 @@ public final class BazaarInstantBuy {
         } catch (NumberFormatException invalid) { return null; }
     }
 
-    /** The quoted total of a preset amount button, when it names this product and amount. */
-    static Double presetTotal(String lore, String name, int amount) {
+    /** The quoted total of an amount button or confirmation item, when it names this product and amount. */
+    static Double quotedTotal(String lore, String name, int amount) {
         if (lore == null) return null;
         String text = Chat.strip(lore);
         if (!text.lines().map(String::strip).anyMatch(name::equalsIgnoreCase)) return null;
