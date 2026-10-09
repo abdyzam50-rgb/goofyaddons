@@ -88,6 +88,8 @@ public final class ProductionLoopFeature implements Feature {
         }
     }
 
+    private long nextAction;
+
     public void start() { running = true; paused = false; }
     public void resume() { paused = false; }
     public void pause() { paused = true; interrupt("Production paused"); }
@@ -108,8 +110,12 @@ public final class ProductionLoopFeature implements Feature {
     }
 
     private void step(boolean ownsMenu) {
+        long now = System.currentTimeMillis();
+        // Same randomised pacing as the flippers: one step per action delay, never one per tick.
+        if (now < nextAction) return;
+        nextAction = now + com.goofy.goofyaddons.utils.ActionDelay.next();
         try {
-            var result = run.tick(ownsMenu, System.currentTimeMillis());
+            var result = run.tick(ownsMenu, now);
             switch (result) {
                 case DONE -> {
                     new LiveActions().message("Production of " + RecipeCatalog.instance().name(run.output()) + " finished.");

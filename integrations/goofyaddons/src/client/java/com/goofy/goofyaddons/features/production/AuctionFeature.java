@@ -51,8 +51,13 @@ public final class AuctionFeature implements Feature {
         }catch(Exception failure){Diagnostics.failure("auction.journal_failed",failure);}
         executor=null;product=null;
     }
+    private long nextAction;
     public void onTick() {
         if(!needsMenu())return;
+        // Same randomised pacing as the flippers: one step per action delay, never one per tick.
+        long paced=System.currentTimeMillis();
+        if(paced<nextAction)return;
+        nextAction=paced+com.goofy.goofyaddons.utils.ActionDelay.next();
         var world=new LiveWorld();var live=world.menu();long now=world.now();
         try {
             var observed=live;
