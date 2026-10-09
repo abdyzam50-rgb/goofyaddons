@@ -10,7 +10,7 @@ test('manual calculator and fresh market work without an account snapshot or act
  collector.accept(snapshot);collector.accept({...snapshot,lastUpdated:now-1000});assert.equal(collector.market().lastUpdated,now);
  const server=createCompanion({collector,profileFetcher:async()=>Response.json({protocol:'goofy-profile/1',profiles:[],username:'Test'}),resourcesFetcher:async()=>Response.json({success:true,items:[]}),
   auctionToken:()=>'test-token-0123456789',
-  auctionFetcher:async (url,options)=>options?.headers?.Authorization!=='Bearer test-token-0123456789'?new Response(null,{status:401}):url.includes('/MISSING/')?new Response(null,{status:404}):url.includes('/BROKEN/')?Response.json({lowest:-1}):Response.json({lowest:5000,secondLowest:5200})});
+  auctionFetcher:async (url,options)=>options?.headers?.Authorization!=='Bearer test-token-0123456789'?new Response(null,{status:401}):url.includes('/MISSING/')?new Response(null,{status:404}):url.includes('/NONE/')?Response.json({lowest:0,uuid:null,secondLowest:0}):url.includes('/LONE/')?Response.json({lowest:700,uuid:'x',secondLowest:0}):url.includes('/BROKEN/')?Response.json({lowest:-1}):Response.json({lowest:5000,secondLowest:5200})});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>{server.close(r);server.closeAllConnections();}));
  const base=`http://127.0.0.1:${server.address().port}`;
  for(const path of ['/calculator/','/calculator/flips/craft','/calculator/flips/kat','/calculator/flips/fusion']) {
@@ -25,6 +25,8 @@ test('manual calculator and fresh market work without an account snapshot or act
  const ah=await (await fetch(base+'/v1/ah/price?item=GOLDEN_TOOTH')).json();
  assert.equal(ah.protocol,'goofy-ah-price/1');assert.equal(ah.lowest,5000);assert.equal(ah.secondLowest,5200);assert.equal(ah.source,'coflnet');
  assert.equal((await fetch(base+'/v1/ah/price?item=MISSING')).status,404);
+ assert.equal((await fetch(base+'/v1/ah/price?item=NONE')).status,404);
+ assert.equal((await (await fetch(base+'/v1/ah/price?item=LONE')).json()).secondLowest,null);
  assert.equal((await fetch(base+'/v1/ah/price?item=BROKEN')).status,502);
  assert.equal((await fetch(base+'/v1/ah/price?item=bad%20id')).status,400);
  assert.equal(coflnetToken({COFLNET_TOKEN:' abc.def-ghi_jkl0123456 '}),'abc.def-ghi_jkl0123456');

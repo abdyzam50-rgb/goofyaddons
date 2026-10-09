@@ -90,7 +90,9 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
         const r=await auctionFetcher(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000),headers:token?{Authorization:`Bearer ${token}`}:{}});
         if(r.status===404||r.status===204){send(404,{error:'No BIN auctions found for that item'});return;}
         const body=await r.json();
-        const lowest=Number(body?.lowest),second=body?.secondLowest==null?null:Number(body.secondLowest);
+        // Coflnet answers 200 with zeros when nothing is listed, and a zero second price for a lone listing.
+        const lowest=Number(body?.lowest),second=body?.secondLowest==null||Number(body.secondLowest)===0?null:Number(body.secondLowest);
+        if(r.ok&&lowest===0){send(404,{error:'No BIN auctions found for that item'});return;}
         if(!r.ok||!Number.isFinite(lowest)||lowest<1||lowest>1e13||(second!=null&&(!Number.isFinite(second)||second<lowest)))throw new Error();
         const price={protocol:'goofy-ah-price/1',item,lowest,secondLowest:second,source:'coflnet',fetchedAt:Date.now()};
         if(auctionPrices.size>500)auctionPrices.clear();
