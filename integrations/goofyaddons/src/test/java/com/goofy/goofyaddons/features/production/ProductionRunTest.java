@@ -178,6 +178,16 @@ class ProductionRunTest {
         assertEquals(BazaarInstantSell.Result.UNCERTAIN,confirm.tick(ProductionRunTest.menu("Confirm",item(54,"OUTPUT",1)),actions,1000,100));
     }
 
+    @Test void bazaarSaleKnowsTheProductByItsIconWhenTheControlDoesNotNameIt() {
+        var actions=new RecordingActions();
+        var sale=new BazaarInstantSell("OUTPUT","Output",1,900,r->{});
+        var page=ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Inventory: 1 item","","Amount: 1x","Total: 950 coins")),item(54,"OUTPUT",1));
+        sale.tick(page,actions,1000,0);
+        assertEquals(List.of("click:11"),actions.serverEffects());
+        assertEquals(950.0,BazaarInstantSell.quotedProceeds("Amount: 2x\nPrice per unit: 475 coins",2));
+        assertNull(BazaarInstantSell.quotedProceeds("Click to sell!",1));
+    }
+
     @Test void bazaarSaleClicksThroughTheSearchResults() {
         var actions=new RecordingActions();
         var sale=new BazaarInstantSell("OUTPUT","Output",1,900,r->{});

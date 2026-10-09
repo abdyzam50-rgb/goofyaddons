@@ -60,10 +60,10 @@ public final class BazaarInstantSell {
         int control = productControl(menu);
         if (control < 0) return Result.WAITING;
         if (count(menu) != amount) return block("Inventory holds a different amount of " + name + " than the run made; sell it by hand");
-        Double unit = BazaarInstantBuy.unitPrice(menu.slot(control).lore());
-        if (unit == null) return block("Instant sale price for " + name + " is unreadable");
-        if (unit * amount < minimumProceeds - 1e-6) return block(String.format(java.util.Locale.ROOT,
-                "Instant sale of %d %s would pay about %,.0f coins, below the %,.0f floor", amount, name, unit * amount, minimumProceeds));
+        Double quoted = quotedProceeds(menu.slot(control).lore(), amount);
+        if (quoted == null) return block("Instant sale price for " + name + " is unreadable: " + Chat.strip(menu.slot(control).lore()).replace('\n', ' '));
+        if (quoted < minimumProceeds - 1e-6) return block(String.format(java.util.Locale.ROOT,
+                "Instant sale of %d %s would pay about %,.0f coins, below the %,.0f floor", amount, name, quoted, minimumProceeds));
         if (!Double.isFinite(purse)) return block("Purse is unreadable; nothing sold");
         try { intent.record("Instant sale intent: " + amount + " " + productId + " for at least " + Math.round(minimumProceeds) + " coins"); }
         catch (Exception journal) { return block("Instant sale intent could not be saved; nothing sold"); }
@@ -85,7 +85,26 @@ public final class BazaarInstantSell {
         if (menu == null) return -1;
         int control = menu.firstByHoverName("Sell Instantly", true);
         if (control < 0) return -1;
-        return ProductIdentity.productPage(menu, productId, name, control) || ProductIdentity.truncatedProductPage(menu, name, control) ? control : -1;
+        if (ProductIdentity.productPage(menu, productId, name, control) || ProductIdentity.truncatedProductPage(menu, name, control)) return control;
+        // As in book cleanup's instant sale: "Sell Instantly" need not name the product in its lore,
+        // so the product icon alone identifies the page.
+        var icon = menu.slot(ProductIdentity.ICON_SLOT);
+        if (icon == null || icon.empty() || icon.inPlayerInventory()) return -1;
+        boolean named = icon.customId() != null && !icon.customId().isBlank() ? productId.equals(icon.customId()) : name.equals(Chat.strip(icon.hoverName()));
+        return named ? control : -1;
+    }
+
+    /** The sale's total from the control's lore: a unit price times the amount, or a quoted total. */
+    static Double quotedProceeds(String lore, int amount) {
+        Double unit = BazaarInstantBuy.unitPrice(lore);
+        if (unit != null) return unit * amount;
+        if (lore == null) return null;
+        var total = java.util.regex.Pattern.compile("(?im)^\\s*(?:total|price|you earn|earn):\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*coins").matcher(Chat.strip(lore));
+        if (!total.find()) return null;
+        try {
+            double value = Double.parseDouble(total.group(1).replace(",", ""));
+            return Double.isFinite(value) && value > 0 ? value : null;
+        } catch (NumberFormatException invalid) { return null; }
     }
 
     private int count(MenuSnapshot menu) {
