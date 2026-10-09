@@ -68,7 +68,7 @@ public class ScheduledReboot implements Failsafe {
     private void handleMessage(String message) {
         if (!FeatureManager.INSTANCE.isMacroRunning() || enabled) return;
         clock.stop();
-        FeatureManager.INSTANCE.pause();
+        FeatureManager.INSTANCE.pause(com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source.REBOOT);
         enabled = true;
         state = State.ISLAND;
     }

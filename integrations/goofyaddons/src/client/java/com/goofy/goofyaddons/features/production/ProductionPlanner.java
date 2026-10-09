@@ -9,6 +9,27 @@ public final class ProductionPlanner {
     public record Candidate(ProductionRecipe recipe,double inputCost,double expectedNetProceeds,double expectedProfit,
             boolean executable,String reason) {}
     private ProductionPlanner() {}
+
+    /**
+     * A ceiling for the BIN listing fee when the player gave none: the Auction House rate for the
+     * price (1% below 10M, 2% below 100M, 2.5% above) plus the largest duration fee. A quote above
+     * it sends the listing to review; nothing is published.
+     */
+    public static long listingFeeLimit(long price) {
+        if(price<1)throw new IllegalArgumentException("BIN price must be positive");
+        double rate=price<10_000_000L?0.01:price<100_000_000L?0.02:0.025;
+        return (long)Math.ceil(price*rate)+1_200;
+    }
+    /**
+     * Hypixel charges more than the order book for an instant buy: every "Instant Buy" quote seen
+     * in game totals 4% above its per-unit price times the amount (485.6 for one at 466.9).
+     */
+    static final double INSTANT_BUY_FEE=1.04;
+    /** Coins an instant buy of these units costs: the order book walked, plus Hypixel's fee. */
+    public static Double instantBuyCost(JsonObject product,int units) {
+        Double book=depth(product,"buy_summary",units);
+        return book==null?null:book*INSTANT_BUY_FEE;
+    }
     public static List<Candidate> bazaar(JsonObject market,List<ProductionRecipe> recipes,long now,double capital,double tax,
             double minimumProfit,int inventorySlots,Set<String> blocked,Set<String> verifiedUnlocks) {
         if(recipes==null || blocked==null || verifiedUnlocks==null || !Double.isFinite(minimumProfit) || minimumProfit<0
@@ -20,7 +41,7 @@ public final class ProductionPlanner {
             if(recipe.kind()==ProductionRecipe.Kind.KAT || blocked.contains(recipe.outputId()) || recipe.ingredients().keySet().stream().anyMatch(blocked::contains))continue;
             double cost=recipe.coins();int slots=0;boolean complete=true;
             for(var e:recipe.ingredients().entrySet()) {
-                Double price=depth(product(products,e.getKey()),"buy_summary",e.getValue());
+                Double price=instantBuyCost(product(products,e.getKey()),e.getValue());
                 if(price==null){complete=false;break;}cost+=price;slots+=(e.getValue()+63)/64;
             }
             if(!complete || cost<=0 || cost>capital || slots+1>inventorySlots)continue;
@@ -44,6 +65,20 @@ public final class ProductionPlanner {
             for(var level:levels){double price=level.get("pricePerUnit").getAsDouble(),amount=level.get("amount").getAsDouble();
                 if(!Double.isFinite(price) || price<=0 || !Double.isFinite(amount) || amount<0)return null;
                 int take=(int)Math.min(remaining,Math.floor(amount));cost+=take*price;remaining-=take;if(remaining==0)return Double.isFinite(cost)?cost:null;
+            }
+        }catch(RuntimeException invalid){return null;}
+        return null;
+    }
+    /** Coins from instantly selling these units into the buy orders ("sell_summary"), best bid first, before tax. */
+    static Double instantSellValue(JsonObject product,int units) {
+        if(product==null || units<1 || !product.has("sell_summary"))return null;
+        try {
+            var levels=new ArrayList<JsonObject>();for(var value:product.getAsJsonArray("sell_summary"))levels.add(value.getAsJsonObject());
+            levels.sort(Comparator.comparingDouble((JsonObject x)->x.get("pricePerUnit").getAsDouble()).reversed());
+            double value=0;int remaining=units;
+            for(var level:levels){double price=level.get("pricePerUnit").getAsDouble(),amount=level.get("amount").getAsDouble();
+                if(!Double.isFinite(price) || price<=0 || !Double.isFinite(amount) || amount<0)return null;
+                int take=(int)Math.min(remaining,Math.floor(amount));value+=take*price;remaining-=take;if(remaining==0)return Double.isFinite(value)?value:null;
             }
         }catch(RuntimeException invalid){return null;}
         return null;

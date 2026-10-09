@@ -14,14 +14,18 @@ public final class CraftingFeature implements Feature {
     private String jobId;
     private ProductionJobs jobs;
     private boolean running,paused,opening;
-    private long openedAt,nextCommand,localMismatchSince;
+    private long openedAt,nextCommand;
     public String name(){return "Crafting";}
     public boolean queued(){return recipe!=null;}
+    /** The journal id of the most recently queued job, for callers that follow it. */
+    public String jobId(){return jobId;}
     public String activity(){return recipe==null?"No craft queued":"Crafting "+recipe.outputId()+" · "+remaining+" batches remaining";}
     public Set<String> lockedProducts(){if(recipe==null)return Set.of();var ids=new HashSet<>(recipe.ingredients().keySet());ids.add(recipe.outputId());return Set.copyOf(ids);}
     private ProductionJobs jobs()throws java.io.IOException {
         if(jobs==null) {
-            jobs=new ProductionJobs(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("goofyaddons-production-jobs.json"));
+            var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+            if(storage.pinned()==null) {String reason=storage.prepare();if(reason!=null)throw new java.io.IOException(reason);}
+            jobs=new ProductionJobs(storage.path(com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_JOBS));
             String account=new LiveWorld().username();if(account!=null)jobs.recoverUncertain(account);
         }
         return jobs;
@@ -37,7 +41,7 @@ public final class CraftingFeature implements Feature {
         if(chosen.isEmpty()){new LiveActions().message("No supported recipe with enough unreserved inventory ingredients for "+output+".");return false;}
         String requirement=com.goofy.goofyaddons.features.access.RouteRequirements.craft(chosen.get().requirement(),FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks());
         if(requirement!=null){new LiveActions().message("Cannot queue craft: "+requirement+". Check Your Skills and wait for the account lookup.");return false;}
-        recipe=chosen.get();remaining=batches;jobId=UUID.randomUUID().toString();executor.reset();opening=false;localMismatchSince=0;
+        recipe=chosen.get();remaining=batches;jobId=UUID.randomUUID().toString();executor.reset();opening=false;
         try {
             jobs().put(new ProductionJobs.Job(jobId,recipe.key(),new LiveWorld().username(),ProductionJobs.State.PLANNED,batches,-1,0,0,null,null,null,null));
         }catch(Exception failure){recipe=null;Diagnostics.failure("production.journal_failed",failure);new LiveActions().message("Crafting journal could not be saved; no action performed.");return false;}
@@ -59,14 +63,19 @@ public final class CraftingFeature implements Feature {
         if(recipe==null)return;
         try {var old=jobs().find(jobId).orElseThrow();jobs().put(old.withState(old.state()==ProductionJobs.State.PLANNED?ProductionJobs.State.CANCELLED:ProductionJobs.State.REVIEW,"Crafting interrupted; inspect inventory, grid and cursor before requeueing"));}
         catch(Exception failure){Diagnostics.failure("production.journal_failed",failure);}
-        recipe=null;executor.reset();opening=false;localMismatchSince=0;
+        recipe=null;executor.reset();opening=false;
     }
     public void resume(){paused=false;}
     public boolean isRunning(){return running && !paused;}
     public boolean needsMenu(){return isRunning() && recipe!=null;}
     public boolean canYield(){return recipe==null;}
+    private long nextAction;
     public void onTick() {
         if(!needsMenu())return;
+        // Same randomised pacing as the flippers: one step per action delay, never one per tick.
+        long paced=System.currentTimeMillis();
+        if(paced<nextAction)return;
+        nextAction=paced+com.goofy.goofyaddons.utils.ActionDelay.next();
         var world=new LiveWorld();var actions=new LiveActions();var menu=world.menu();long now=world.now();
         try {
             if(!opening) {
@@ -83,15 +92,10 @@ public final class CraftingFeature implements Feature {
                 if(now>=nextCommand){nextCommand=now+8000;actions.command("craft");}return;
             }
             if(!"Craft Item".equals(Chat.strip(menu.title()))){fail("Crafting menu was replaced; inventory retained");return;}
-            var confirmed=com.goofy.goofyaddons.menu.ServerMenuMirror.read();
-            if(confirmed==null){if(now-openedAt>25000)fail("Crafting server inventory snapshot did not arrive");return;}
-            if(!CraftingExecutor.sameOwnedState(confirmed,menu)) {
-                if(localMismatchSince==0)localMismatchSince=now;
-                if(now-localMismatchSince>8000)fail("Local/server crafting inventory differs; awaiting authoritative updates");
-                return;
-            }
-            localMismatchSince=0;
-            var result=executor.tick(recipe,confirmed,actions,FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks(),now);
+            // Hypixel answers a click only when it disagrees with the client's prediction, so the
+            // client's menu is the state to act on; a rejected click reverts it, and the executor
+            // re-reads it after a settle delay before every next click.
+            var result=executor.tick(recipe,menu,actions,FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks(),now);
             if(result==CraftingExecutor.Result.BLOCKED){fail(executor.failure());return;}
             if(result==CraftingExecutor.Result.CRAFTED) {
                 jobs().put(jobs().find(jobId).orElseThrow().completedBatch());

@@ -113,12 +113,21 @@ or install anything system-wide. Runtime failures appear in the Macros page.
 
 Use **G → Macros → Market and account checks**:
 
-- **Background service** shows startup/download/running/failure status.
+- Settings on this page are a draft. Typing never saves the file or restarts the
+  calculator. **Unsaved changes** lists what changed, any field that needs fixing,
+  and which restart Apply will cause; **Apply** validates and saves everything at
+  once, and **Discard** drops the draft. A keybind or reload saved while a draft is
+  open is kept when the draft is applied.
+- **Background service** shows startup/download/running/failure status. When a
+  start fails, the status carries the exit code and the last line of
+  `companion-error.log`, and the detailed diagnostics export includes the last few
+  log lines with keys and tokens removed. If another calculator already answers on
+  the port with a different version, the status says so instead of using it silently.
 - **Dashboard** opens the local site in your browser.
 - **Retry / restart** retries startup or restarts the service owned by this mod.
 - **Calculator port** changes the local port for the service, dashboard, account
   lookup and trade feed together. If 8789 is occupied, stop trading, choose a free
-  port such as 8790, save settings, and use Retry / restart. The mod identifies
+  port such as 8790, and press Apply; the bundled calculator restarts once on the new port. The mod identifies
   unrelated listeners without stopping them or repeatedly launching a conflicting
   process. Existing history and private keys stay in the same data folder.
 - **Auto-start** can be disabled when you prefer a separately managed calculator.
@@ -167,14 +176,75 @@ An NPC outside loaded entities still requires coming into range. Whole-Hub
 landmark travel, Kat/Forge/AH physical access, and background wandering remain
 separate integration work.
 
+## Forecasts, decisions and capability labels
+
+Calculator reports carry one provenance block (`forecast`): quote and history
+times, the scoring order, the calibration model and how many personal and shared
+trades calibrated the rows, plus the mode, capital, inventory and slots the
+forecast assumed. Every row says whether the trader would run it (`AUTOMATIC`) or
+shows it for research only (`RESEARCH`). Every skipped route is counted under one
+reason in `filterReasons` (for example `minimum-margin`, `enchanting-level`,
+`not-in-automatic-catalog`), and routes you configured, or that the automatic
+catalog supports, are listed in `deferred` with their reason. Rankings are still
+computed against your total trading capital with one free slot per engine, so
+full position slots never hide them.
+
+When automatic selection hands a route to an engine, **Last route decision** on
+the Macros page says why: its coins/hour, its place among executable and all
+ranked routes, whether the estimate is calibrated, and which higher-scored routes
+were passed over and for what reason. The same record is in the detailed
+diagnostics export and the `market.automatic_decision` event. The engine still
+applies every live check; the decision explains, it does not authorize.
+
+**What runs automatically** on the Macros page lists each feature as Research,
+Queued or Automatic with the boundary that justifies the label. These labels come
+from one registry, so the screen, diagnostics and documentation cannot disagree.
+
+## Auction House prices (Coflnet)
+
+`production test` prices an Auction House item from Coflnet's lowest BIN through the
+bundled calculator. To use your Coflnet API token, put it on the first line of
+`coflnet-token.txt` in the calculator data folder (on Windows
+`%LOCALAPPDATA%\GoofyAddons\bazaar-calc\coflnet-token.txt`), or set the
+`COFLNET_TOKEN` environment variable before starting Minecraft. The token stays on your
+computer: it is sent only to sky.coflnet.com, never written to logs, and must never be
+committed or built into the mod, since anything in the repository or the jar is public.
+Without a token the public, rate-limited API is used.
+
 ## Production scope and validation
 
 Existing book/general trading, inventory crafting, opt-in BIN listing commands,
 saved arrays, scheduled rests and gameplay evidence collection are retained.
-Automatic craft/Kat/Forge/AH buy/process/sell route selection remains unfinished;
-the integration does not turn the previously research-only routes into executable
-ones. See the preserved production and auction guides under
-`integrations/goofyaddons/docs`.
+
+A production run chains the existing, separately tested steps into one loop: get
+the inputs, process them, wait for and claim a timed result, and optionally list
+the output as a BIN. Queue one, then use the trading toggle:
+
+| Command (under `.a* goofyaddon production`) | Loop |
+| --- | --- |
+| `run <ITEM> <batches> [binPrice maxFee]` | Inputs, craft, optional BIN listing |
+| `test <ITEM> [binPrice]` | Runs at once, without the trading toggle (traders stay off; the rest schedule and transfers do not gate it; the toggle or `stop` ends it). One craft batch end to end: buys missing inputs for this run only and crafts. With a price it lists the result as a BIN with a fee ceiling for that price; without one, a Bazaar product is sold instantly on the Bazaar (at no less than 97% of the fresh quote) and anything else is listed one coin under the live lowest BIN from Coflnet, unless that lowest BIN is under half the next one |
+| `forge <ITEM> <slot> [binPrice maxFee]` | Inputs, Forge submission once you open The Forge, wait, claim, optional listing |
+| `kat <PET;rarity>` | Kat upgrade once you open the Pet Sitter with the pet placed, wait, claim |
+| `claim <job> [binPrice maxFee]` | Claims a Forge or Kat job already waiting in `production jobs` |
+| `status` | The run's stage and what it waits on |
+
+- Inputs come from your inventory. **Production buys inputs** (Spending limits)
+  lets a run instant-buy only what is missing, within spendable capital and at most
+  3% above the fresh Bazaar depth quote. It is off by default; leave it off until
+  the in-game checklist passes. `test` buys missing inputs for its one run even
+  while the setting is off, with the same limits.
+- Every stage boundary is saved in the production journal. A buy, craft, submission,
+  claim or listing whose effect is not proven sends the run to review and pauses
+  trading. Nothing is ever repeated automatically, and a restart turns an
+  interrupted step into review, as for every other production job. A Forge or Kat
+  timer survives a restart; use `claim` to finish it.
+- A BIN price lists the whole output stack, so keep exactly one stack of the output.
+  Sale proceeds are not counted as profit until the sale is seen.
+- Choosing which item to produce stays with you: production recommendations are
+  still research only.
+
+See the preserved production and auction guides under `integrations/goofyaddons/docs`.
 
 The combined build runs the A* core/pathing/movement tests, the trader regression
 tests, keyboard migration/config-write tests, and a real Java-to-Node calculator
@@ -195,6 +265,22 @@ records the imported repository and commit. Its standalone Fabric descriptor is
 excluded from the combined resources. A*'s descriptor initializes the trader once,
 then A*, and registers the trader's packet mirror mixin. Both license notices are
 included in the JAR: A*'s PolyForm Noncommercial license and the trader's MIT notice.
+
+### Versions and support bundles
+
+One release manifest lists what an install is made of: the mod, Minecraft, Fabric,
+Java, the calculator protocol and bundle digest, the upstream calculator commit,
+the forecast contract, the saved-file layout and the journal and config schemas.
+The running calculator reports its bundle, upstream commit and forecast contract
+on `/health`, and the manifest lists every disagreement with what this mod bundled
+(for example an older calculator still answering on the port). See it with
+`.a* goofyaddon debug version` or **Versions** on the Macros page.
+
+`.a* goofyaddon debug export` now also carries the manifest, the calculator
+supervisor state and the last 40 lines of `companion.log` and
+`companion-error.log`. Keys, tokens, passwords and long secret-like strings are
+removed when the tails are read and again when the bundle is written; contributor
+keys and Discord credentials are never included.
 
 ### Keybinds
 

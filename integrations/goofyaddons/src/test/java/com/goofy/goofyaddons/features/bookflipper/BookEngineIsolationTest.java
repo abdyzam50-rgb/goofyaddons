@@ -129,7 +129,8 @@ class BookEngineIsolationTest {
         var task=new Task(BOOK,false,false,"confirmed-trade");task.setReservedUnitCost(100);
         task.setBookState(Task.BookState.SELECTED);
         field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"activeTask",task);
-        field(engine,"confirmationTask",task);field(engine,"confirmationSelectedAt",world.now());field(engine,"confirmationPrice",100.0);
+        var placement=BazaarFlipper.class.getDeclaredField("placement");placement.setAccessible(true);
+        ((BookPlacement)placement.get(engine)).priceSelected(task,100.0,false,world.now());
         var state=BazaarFlipper.class.getDeclaredField("state");state.setAccessible(true);
         state.set(engine,Enum.valueOf((Class)state.getType(),"BAZAAR_NAVIGATION"));
         services.capital.reserve("books",BOOK.id(),1600,services.purse());

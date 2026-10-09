@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 export const LEGACY_DIRECTORY=fileURLToPath(new URL('./data/',import.meta.url));
 const FILES=['live-history.json.gz','execution-history.json','collection-status.json','companion.log','companion-error.log','companion.log.previous','companion-error.log.previous',
- 'discord-settings.json','community-settings.json','community-identity.json','community-status.json','community-history.json'];
+ 'discord-settings.json','coflnet-token.txt','community-settings.json','community-identity.json','community-status.json','community-history.json'];
 export function resolveDataDirectory({platform=process.platform,env=process.env,home=homedir()}={}) {
   if(env.GOOFY_BAZAAR_DATA_DIR) {
     if(!isAbsolute(env.GOOFY_BAZAAR_DATA_DIR))throw new Error('GOOFY_BAZAAR_DATA_DIR must be an absolute path');

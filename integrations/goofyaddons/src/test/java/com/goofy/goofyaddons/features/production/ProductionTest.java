@@ -18,13 +18,14 @@ class ProductionTest {
             new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);}
     class Server implements GameActions {
         final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);final ProductionRecipe r;
-        int clicks;boolean discard,preview;String title="Craft Item";
+        int clicks;boolean discard,preview,quickCraft;String title="Craft Item";
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
         MenuSnapshot menu(){
             boolean ready=true;int[] grid={10,11,12,19,20,21,28,29,30};
             for(int i=0;i<9;i++){var need=r.grid().get(i);var slot=slots[grid[i]];
                 ready &= need==null?slot.empty():!slot.empty() && need.id().equals(slot.customId()) && need.count()==slot.count();}
             slots[23]=ready || preview?stack(23,"OUTPUT",1):stack(23,"",0);
+            if(quickCraft)slots[16]=stack(16,"OUTPUT",1);
             return new MenuSnapshot(77,title,cursor.empty(),Arrays.asList(slots.clone()),cursor);
         }
         public void click(int slot,boolean shift){clicks++;if(discard)return;
@@ -41,6 +42,12 @@ class ProductionTest {
             else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));slots[slot]=stack(slot,cursor.customId(),s.count()+1);cursor=stack(-1,cursor.customId(),cursor.count()-1);}
         }
         public void closeMenu(){}public void command(String text){}public void message(String text){}public boolean writeSign(String text){return false;}
+    }
+    @Test void hypixelsQuickCraftSuggestionIsNotMistakenForTheGridResult() {
+        var r=recipe(32);var server=new Server(r,64);server.quickCraft=true;var executor=new CraftingExecutor();
+        CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=150)result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals("OUTPUT",server.slots[56].customId());
     }
     @Test void craftingSelectionCannotConsumeRetainedPositionsAndReservesWholeBatchRequirements() {
         var r=recipe(5);var catalog=new RecipeCatalog(List.of(r),Map.of());

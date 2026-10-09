@@ -5,10 +5,15 @@ import com.goofy.goofyaddons.utils.Chat;
 import com.goofy.goofyaddons.features.access.ActionRequirements;
 import java.util.*;
 
-/** One exact recipe batch. Every cursor/grid mutation waits for a server observation. */
+/**
+ * One exact recipe batch. Every cursor/grid mutation waits until the menu shows it, then a settle
+ * delay in which a server that rejects the click reverts it, before the next step is chosen.
+ */
 public final class CraftingExecutor {
     public enum Result {WAITING,CRAFTED,BLOCKED}
     private static final int[] GRID={10,11,12,19,20,21,28,29,30};
+    private static final int RESULT=23;
+    private static final long SETTLE_MS=500;
     private ProductionRecipe recipe;
     private int container,source=-1;
     private Map<String,Integer> before;
@@ -50,7 +55,7 @@ public final class CraftingExecutor {
         inconsistentSince=0;
         if(submitted && completed(menu)){reset();return Result.CRAFTED;}
         if(sent!=null) {
-            if(!sameContents(sent,menu)) {sent=null;retries=0;next=now+100;}
+            if(!sameContents(sent,menu)) {sent=null;retries=0;next=now+SETTLE_MS;}
             else if(now-sentAt>=2000) {
                 if(retries>=2)return block("Crafting input was not acknowledged; grid and cursor retained");
                 // A duplicate is permitted only against the exact same cursor/grid/inventory.
@@ -85,8 +90,9 @@ public final class CraftingExecutor {
             var stack=available.stream().filter(s->s.count()==remaining || (s.count()+1)/2==remaining).findFirst().orElse(available.getFirst());
             source=stack.index();send(menu,actions,source,false,stack.count()!=remaining && (stack.count()+1)/2==remaining,now);return Result.WAITING;
         }
-        var outputs=menu.slots().stream().filter(s->!s.inPlayerInventory() && !s.empty() && recipe.outputId().equals(s.customId())
-                && Arrays.stream(GRID).noneMatch(i->i==s.index())).toList();
+        // Hypixel's Quick Crafting column (16, 25, 34) can show the same item before the grid is
+        // full; only the result slot holds the grid's output.
+        var outputs=menu.slots().stream().filter(s->s.index()==RESULT && !s.empty() && recipe.outputId().equals(s.customId())).toList();
         if(outputs.size()!=1 || outputs.getFirst().count()!=recipe.outputCount())return Result.WAITING;
         var output=outputs.getFirst();String reason=ActionRequirements.blocked(output.lore(),skills,ActionRequirements.Action.CRAFT);
         if(reason!=null)return block("Crafting requirement: "+reason);
@@ -124,6 +130,22 @@ public final class CraftingExecutor {
     private static int count(SlotView slot){return empty(slot)?0:slot.count();}
     private static boolean empty(SlotView slot){return slot==null || slot.empty();}
     public static boolean sameOwnedState(MenuSnapshot a,MenuSnapshot b){return a!=null && b!=null && sameContents(a,b);}
+    /** The first owned slot or cursor where the client and server copies differ, for the player to read. */
+    public static String difference(MenuSnapshot local,MenuSnapshot server){
+        if(local==null || server==null)return "a copy is missing";
+        if(local.containerId()!=server.containerId())return "menu id "+local.containerId()+" vs "+server.containerId();
+        if(local.cursorEmpty()!=server.cursorEmpty() || !sameItem(local.carried(),server.carried()))return "cursor "+describe(local.carried())+" vs "+describe(server.carried());
+        if(local.slots().size()!=server.slots().size())return "slot count "+local.slots().size()+" vs "+server.slots().size();
+        for(int i=0;i<local.slots().size();i++){var slot=local.slots().get(i);
+            if((slot.inPlayerInventory() || Arrays.stream(GRID).anyMatch(n->n==slot.index())) && !sameItem(slot,server.slots().get(i)))
+                return "slot "+i+" "+describe(slot)+" vs "+describe(server.slots().get(i));
+        }
+        return null;
+    }
+    private static String describe(SlotView slot){
+        if(empty(slot))return "empty";
+        return slot.count()+"x "+(slot.customId()==null?Chat.strip(slot.hoverName()):slot.customId())+(slot.metadata()==null?"":" "+slot.metadata().vanillaId());
+    }
     private static boolean sameContents(MenuSnapshot a,MenuSnapshot b){
         if(a.containerId()!=b.containerId() || a.cursorEmpty()!=b.cursorEmpty() || !sameItem(a.carried(),b.carried()) || a.slots().size()!=b.slots().size())return false;
         for(int i=0;i<a.slots().size();i++){var slot=a.slots().get(i);

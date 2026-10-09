@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -27,15 +26,7 @@ final class JsonGeneralOrderRepository implements GeneralOrderRepository {
         String json = GSON.toJson(positions);
         if (json.equals(persisted)) return;
         Path destination = path.get();
-        Path temp = null;
-        try {
-            Files.createDirectories(destination.getParent());
-            temp = Files.createTempFile(destination.getParent(), "general-orders-", ".tmp");
-            Files.writeString(temp, json);
-            Files.move(temp, destination, StandardCopyOption.REPLACE_EXISTING);
-            persisted = json; // Failed writes must never satisfy a later persist-before-click check.
-        } finally {
-            if (temp != null) try { Files.deleteIfExists(temp); } catch (Exception ignored) {}
-        }
+        com.goofy.goofyaddons.storage.AtomicFiles.replace(destination, json, "general-orders-");
+        persisted = json; // Failed writes must never satisfy a later persist-before-click check.
     }
 }

@@ -13,6 +13,8 @@ public final class AuctionFeature implements Feature {
     private long mismatchSince,missingSince;
     public String name(){return "Auction House";}
     public boolean queued(){return executor!=null;}
+    /** The journal id of the most recently queued job, for callers that follow it. */
+    public String jobId(){return jobId;}
     public String activity(){return queued()?"Preparing BIN listing for "+product:"No auction queued";}
     public Set<String> lockedProducts(){return product==null?Set.of():Set.of(product);}
     private ProductionJobs jobs()throws java.io.IOException{return FeatureManager.INSTANCE.crafting().productionJobs();}
@@ -49,8 +51,13 @@ public final class AuctionFeature implements Feature {
         }catch(Exception failure){Diagnostics.failure("auction.journal_failed",failure);}
         executor=null;product=null;
     }
+    private long nextAction;
     public void onTick() {
         if(!needsMenu())return;
+        // Same randomised pacing as the flippers: one step per action delay, never one per tick.
+        long paced=System.currentTimeMillis();
+        if(paced<nextAction)return;
+        nextAction=paced+com.goofy.goofyaddons.utils.ActionDelay.next();
         var world=new LiveWorld();var live=world.menu();long now=world.now();
         try {
             var observed=live;

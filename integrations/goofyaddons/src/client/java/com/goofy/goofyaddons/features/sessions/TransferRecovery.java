@@ -1,6 +1,7 @@
 package com.goofy.goofyaddons.features.sessions;
 
 import com.goofy.goofyaddons.features.FeatureManager;
+import com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.DisconnectedScreen;
 import net.minecraft.world.scores.DisplaySlot;
@@ -18,7 +19,7 @@ public final class TransferRecovery {
     public void worldChanged() {
         var manager=FeatureManager.INSTANCE;
         if(manager.canReloadConfig() || manager.hasSafetyBlock())return;
-        gate.begin(System.currentTimeMillis());manager.pause();
+        gate.begin(System.currentTimeMillis());manager.pause(Source.TRANSFER);
     }
     public static boolean skyblockReady(Minecraft mc) {
         if(mc.player==null || mc.level==null || !mc.player.containerMenu.getCarried().isEmpty())return false;
@@ -30,11 +31,11 @@ public final class TransferRecovery {
         var mc=Minecraft.getInstance();var manager=FeatureManager.INSTANCE;long now=System.currentTimeMillis();
         if(!gate.pending() && !manager.canReloadConfig() && !manager.hasSafetyBlock() && (mc.player==null || mc.level==null))worldChanged();
         if(!gate.pending())return false;
-        if(mc.gui.screen() instanceof DisconnectedScreen){gate.cancel();manager.stop();return true;}
+        if(mc.gui.screen() instanceof DisconnectedScreen){gate.cancel();manager.stop(Source.TRANSFER);return true;}
         var result=gate.observe(!manager.canReloadConfig(),manager.hasSafetyBlock(),skyblockReady(mc)&&mc.gui.screen()==null,now);
         switch(result) {
             case RESUME -> {manager.restartAfterTransfer();com.goofy.goofyaddons.features.discord.DiscordRemote.INSTANCE.event("transfer","Server transfer complete; rechecking saved inventory, storage and Bazaar orders before trading resumes.");}
-            case TIMED_OUT -> manager.safetyPause("Server transfer did not reach a readable SkyBlock world; reconnect or resume manually");
+            case TIMED_OUT -> manager.safetyPause(Source.TRANSFER,"Server transfer did not reach a readable SkyBlock world; reconnect or resume manually");
             default -> {}
         }
         return result!=TransferGate.Result.CANCELLED;

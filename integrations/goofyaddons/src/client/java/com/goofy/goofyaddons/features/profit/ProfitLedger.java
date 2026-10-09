@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 /** Confirmed acquisitions and claims only. Reporting resets never remove open lots. */
@@ -42,13 +41,21 @@ public final class ProfitLedger {
 
     /** Add only observed units absent from the persisted lots; legacy cost is unknown. */
     public boolean recoverHoldings(String id,String engine,String item,int observedUnits) {
+        int missing=missingUnits(id,engine,item,observedUnits);
+        if(missing==0)return false;
+        return acquire(id,engine,item,java.util.UUID.randomUUID().toString(),missing,null);
+    }
+
+    /** Observed units this trade has no lot for; recovering them records an unknown cost. */
+    public int missingUnits(String id,String engine,String item,int observedUnits) {
         if(observedUnits<0)throw new IllegalArgumentException("Invalid recovered quantity");
         Trade trade=trades.get(id);
         if(trade!=null && (!trade.engine.equals(engine) || !trade.item.equals(item)))throw new IllegalArgumentException("Trade identity changed");
         int recorded=trade==null?0:trade.lots.stream().mapToInt(lot->lot.units).sum();
-        if(recorded>=observedUnits)return false;
-        return acquire(id,engine,item,java.util.UUID.randomUUID().toString(),observedUnits-recorded,null);
+        return Math.max(0,observedUnits-recorded);
     }
+
+    public boolean hasEvent(String event) { return eventIds.contains(event); }
 
     public Double knownCost(String id,int units) {
         if(units<=0)return null;
@@ -144,12 +151,7 @@ public final class ProfitLedger {
         return ledger;
     }
     public void write(Path path) throws Exception {
-        Files.createDirectories(path.getParent());
-        Path temp=Files.createTempFile(path.getParent(),"profit-", ".tmp");
-        try {
-            Files.writeString(temp,new GsonBuilder().setPrettyPrinting().create().toJson(this));
-            Files.move(temp,path,StandardCopyOption.REPLACE_EXISTING);
-        } finally { Files.deleteIfExists(temp); }
+        com.goofy.goofyaddons.storage.AtomicFiles.replace(path,new GsonBuilder().setPrettyPrinting().create().toJson(this),"profit-");
     }
     private static void validateIdentity(String id,String engine,String item,String event,int units) {
         if (id==null || id.isBlank() || event==null || event.isBlank() || item==null || item.isBlank()

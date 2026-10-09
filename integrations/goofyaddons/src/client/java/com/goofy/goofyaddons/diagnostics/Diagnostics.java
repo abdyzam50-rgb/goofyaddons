@@ -65,10 +65,12 @@ public final class Diagnostics {
         Minecraft mc=Minecraft.getInstance();var manager=FeatureManager.INSTANCE;
         data.put("status",manager.status());data.put("mode",manager.modeLabel());data.put("action",manager.activity());data.put("item",manager.taskItem());
         data.put("connected",mc.player!=null && mc.level!=null);
-        if(detailed) data.put("calculator",Map.of(
-            "status",com.goofy.goofyaddons.features.companion.BundledCalculator.status(),
-            "autoStart",GoofyConfig.INSTANCE.marketAnalysis.autoStartCompanion,
-            "endpoint",GoofyConfig.INSTANCE.marketAnalysis.endpoint));
+        if(detailed) {
+            var calculator=new LinkedHashMap<String,Object>(com.goofy.goofyaddons.features.companion.BundledCalculator.diagnosticState());
+            calculator.put("autoStart",GoofyConfig.INSTANCE.marketAnalysis.autoStartCompanion);
+            calculator.put("endpoint",GoofyConfig.INSTANCE.marketAnalysis.endpoint);
+            data.put("calculator",calculator);
+        }
         data.put("screen",mc.gui.screen()==null?"none":mc.gui.screen().getClass().getSimpleName());
         if(mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) {
             data.put("menuTitle",mc.gui.screen().getTitle().getString());
@@ -162,7 +164,7 @@ public final class Diagnostics {
         LOG=new DiagnosticLog(FabricLoader.getInstance().getGameDir().resolve("logs/goofyaddons"),2*1024*1024,5);
         var versions=new TreeMap<String,String>();
         for(String id:List.of("goofyaddons","minecraft","fabricloader","fabric-api")) FabricLoader.getInstance().getModContainer(id).ifPresent(mod->versions.put(id,mod.getMetadata().getVersion().getFriendlyString()));
-        event("INFO","session.started",Map.of("versions",versions,"java",System.getProperty("java.version"),"os",System.getProperty("os.name")));
+        event("INFO","session.started",Map.of("versions",versions,"java",System.getProperty("java.version"),"os",System.getProperty("os.name"),"release",ReleaseInfo.manifest().diagnosticState()));
         registerCommands(versions);
         ClientLifecycleEvents.CLIENT_STOPPING.register(client->{try {event("INFO","session.stopping",snapshot());} catch(RuntimeException failed) {failure("session.snapshot_failed",failed);} finally {WORKER.shutdown();}try {WORKER.awaitTermination(2,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}});
     }
@@ -170,10 +172,19 @@ public final class Diagnostics {
     public static void registerCommands(java.util.Map<String,String> versions) {
         com.goofy.goofyaddons.commands.GoofyCommands.register(dispatcher->dispatcher.register(ClientCommands.literal("debug")
             .executes(context->{context.getSource().sendFeedback(Component.literal("Diagnostics: logs/goofyaddons | dropped: "+WORKER.totalDropped()+" | error: "+(error==null?"none":error)+" | .a* goofyaddon debug export"));return 1;})
+            .then(ClientCommands.literal("version").executes(context->{
+                var manifest=ReleaseInfo.manifest();
+                context.getSource().sendFeedback(Component.literal(manifest.summary()));
+                for(String mismatch:manifest.mismatches())context.getSource().sendFeedback(Component.literal("Mismatch: "+mismatch));
+                return 1;
+            }))
             .then(ClientCommands.literal("export").executes(context->{
                 var state=snapshot(true);var source=context.getSource();var mc=Minecraft.getInstance();
                 var profit=com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE;
                 state.put("versions",Map.copyOf(versions));
+                state.put("release",ReleaseInfo.manifest().diagnosticState());
+                // Bounded tails of both calculator logs; the export redacts every string again.
+                state.put("companionLogs",com.goofy.goofyaddons.features.companion.BundledCalculator.logTails());
                 state.put("profit",profit.summary());state.put("profitError",profit.error());
                 state.put("executions",profit.executionSamples());state.put("activeExecutions",profit.activeExecutions());
                 state.put("executionError",profit.executionError());

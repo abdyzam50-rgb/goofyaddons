@@ -26,7 +26,10 @@ public final class ServerMenuMirror {
         if(id==mc.player.containerMenu.containerId && index>=0 && index<mc.player.containerMenu.slots.size()) {
             var slot=mc.player.containerMenu.slots.get(index);
             STORE.slot(id,index,LiveMenu.view(index,slot.container==mc.player.getInventory(),slot.getContainerSlot(),item));
-        } else if(id==0 && index>=0 && index<mc.player.inventoryMenu.slots.size()) {
+        } else if(id==0 && index>=0 && index<mc.player.inventoryMenu.slots.size()
+                && (mc.player.containerMenu==mc.player.inventoryMenu || index>=36 && index<=45)) {
+            // Matches the client: with another menu open it applies window-0 updates to the hotbar
+            // and offhand only, so mirroring the rest would leave this copy holding items nobody sees.
             var slot=mc.player.inventoryMenu.slots.get(index);if(slot.container==mc.player.getInventory())inventory(slot.getContainerSlot(),item);
         }
     }

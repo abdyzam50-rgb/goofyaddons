@@ -1,9 +1,9 @@
 // Loopback calculator, account dashboard, market collector and optional paired Discord controls.
 import { DiscordBot } from './discord-bot.mjs';
 import { discordSettings } from './discord-config.mjs';
-import { dataDirectory } from './data-paths.mjs';
+import { dataDirectory, dataFile } from './data-paths.mjs';
 import { createServer } from 'node:http';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { DashboardForecast } from './dashboard-forecast.mjs';
@@ -11,7 +11,7 @@ import { DashboardState } from './dashboard-state.mjs';
 import { MarketCollector } from './collector.mjs';
 import { ExecutionHistory } from './execution-history.mjs';
 import { CommunitySync } from './community.mjs';
-import { recommend, PROTOCOL } from './adapter.mjs';
+import { recommend, PROTOCOL, FORECAST_CONTRACT } from './adapter.mjs';
 const history = JSON.parse(gunzipSync(readFileSync(new URL('./history.json.gz', import.meta.url))));
 const provenance = JSON.parse(readFileSync(new URL('./provenance.json', import.meta.url), 'utf8'));
 const assets = new Map([
@@ -32,9 +32,18 @@ function calculatorAssets(dir='calculator',prefix='/calculator/') {
  }
 }
 calculatorAssets();
-export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null, control = null, profileFetcher=fetch, resourcesFetcher=fetch, publishingFetcher=fetch } = {}) {
+/**
+ * The private Coflnet API token: COFLNET_TOKEN, else coflnet-token.txt in the data directory.
+ * It stays on this computer, is sent only to sky.coflnet.com and is never logged.
+ */
+export function coflnetToken(env=process.env) {
+  const value=env.COFLNET_TOKEN?.trim() || (()=>{try{const path=dataFile('coflnet-token.txt');return existsSync(path)?readFileSync(path,'utf8').trim():'';}catch{return '';}})();
+  return /^[A-Za-z0-9._-]{16,4096}$/.test(value)?value:null;
+}
+export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null, control = null, profileFetcher=fetch, resourcesFetcher=fetch, publishingFetcher=fetch, auctionFetcher=fetch, auctionToken=coflnetToken, bundle=null } = {}) {
   const forecasts=new DashboardForecast({provenance});
   let itemMetadata=null,itemMetadataAt=0,itemMetadataFlight=null;
+  const auctionPrices=new Map();
   const server = createServer(async (req, res) => {
     const host = req.headers.host?.split(':')[0];
     if (!['127.0.0.1','localhost'].includes(host)) { res.writeHead(403);res.end();return; }
@@ -69,6 +78,27 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       const market=collector?.market?.();
       if(!market){send(503,{error:'Waiting for a fresh Bazaar snapshot; the market collector must be running'});return;}
       send(200,market);return;
+    }
+    if(req.method==='GET'&&url.pathname==='/v1/ah/price') {
+      // Lowest BIN for one item from Coflnet, so listings are priced from the live market, not typed in.
+      const item=url.searchParams.get('item')??'';
+      if(!/^[A-Z0-9_:;\-]{1,64}$/.test(item)){send(400,{error:'Give a SkyBlock item ID'});return;}
+      const cached=auctionPrices.get(item);
+      if(cached&&Date.now()-cached.fetchedAt<60000){send(200,cached);return;}
+      try {
+        const token=auctionToken();
+        const r=await auctionFetcher(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000),headers:token?{Authorization:`Bearer ${token}`}:{}});
+        if(r.status===404||r.status===204){send(404,{error:'No BIN auctions found for that item'});return;}
+        const body=await r.json();
+        // Coflnet answers 200 with zeros when nothing is listed, and a zero second price for a lone listing.
+        const lowest=Number(body?.lowest),second=body?.secondLowest==null||Number(body.secondLowest)===0?null:Number(body.secondLowest);
+        if(r.ok&&lowest===0){send(404,{error:'No BIN auctions found for that item'});return;}
+        if(!r.ok||!Number.isFinite(lowest)||lowest<1||lowest>1e13||(second!=null&&(!Number.isFinite(second)||second<lowest)))throw new Error();
+        const price={protocol:'goofy-ah-price/1',item,lowest,secondLowest:second,source:'coflnet',fetchedAt:Date.now()};
+        if(auctionPrices.size>500)auctionPrices.clear();
+        auctionPrices.set(item,price);send(200,price);
+      }catch{send(502,{error:'Auction price service unavailable; give a price'});}
+      return;
     }
     if(req.method==='GET'&&url.pathname==='/v1/profiles') {
       const username=url.searchParams.get('username')??'';
@@ -125,7 +155,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       return;
     }
     if (req.method === 'GET' && req.url === '/health') {
-      send(200, { protocol: PROTOCOL, readOnly: !control, discord:control?.deliveryStatus?.()??{enabled:false}, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}, dataDirectory:dataDirectory() }); return;
+      send(200, { protocol: PROTOCOL, forecastContract: FORECAST_CONTRACT, bundle: bundle ?? undefined, readOnly: !control, discord:control?.deliveryStatus?.()??{enabled:false}, upstreamCommit: provenance.commit, historyAsOf: (collector?.history() ?? history).asOf, collector: collector?.status() ?? { enabled: false }, execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}, dataDirectory:dataDirectory() }); return;
     }
     if (req.method !== 'POST' || req.url !== '/v1/recommendations') { send(404, { error: 'Unknown endpoint' }); return; }
     if (req.headers['x-goofy-analysis'] !== 'shadow-v1' || req.headers['content-type'] !== 'application/json') { send(400, { error: 'Invalid request headers' }); return; }
@@ -153,7 +183,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let discord=null;
   try {const settings=process.argv.includes('--no-discord')?null:discordSettings();if(settings)discord=new DiscordBot(settings);}
   catch {console.error('Discord configuration invalid; Discord controls disabled.');}
-  const server = createCompanion({ collector,executions,community,control:discord?.control });
+  // The mod passes its bundle digest so it can tell its own calculator from an older one on the port.
+  const bundle=process.argv.find(arg=>arg.startsWith('--bundle='))?.slice('--bundle='.length).replace(/[^A-Za-z0-9]/g,'').slice(0,64)||null;
+  const server = createCompanion({ collector,executions,community,control:discord?.control,bundle });
   server.listen(port, '127.0.0.1', () => {
     console.log(`Bazaar Calc companion: http://127.0.0.1:${port}; continuous collection ${collector ? 'enabled (20s)' : 'disabled'}`);
     console.log(`Persistent data: ${dataDirectory()}`);

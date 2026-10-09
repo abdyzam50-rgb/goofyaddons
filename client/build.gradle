@@ -55,7 +55,7 @@ processResources {
     dependsOn tasks.named('bundleCalculator')
     from(tasks.named('bundleCalculator')) { into 'goofyaddons' }
     from('../integrations/goofyaddons/src/main/resources') { exclude 'fabric.mod.json' }
-    from('../tools/bazaar-calc') { include 'mutation-products.json', 'automatic-products.json'; into 'goofyaddons' }
+    from('../tools/bazaar-calc') { include 'mutation-products.json', 'automatic-products.json', 'provenance.json'; into 'goofyaddons' }
     from('../integrations/goofyaddons/LICENSE') { rename { 'LICENSE_goofyaddons' } }
     inputs.property 'version', project.version
     // The Dwarven Mines map, so /goto can plan across the Mines past the render distance.

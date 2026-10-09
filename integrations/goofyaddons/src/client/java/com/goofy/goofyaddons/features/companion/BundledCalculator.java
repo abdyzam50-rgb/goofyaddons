@@ -45,7 +45,7 @@ public final class BundledCalculator {
         java.util.concurrent.CompletableFuture.runAsync(()->{
             try {
                 contributor=ContributorSettings.save(companion.dataDirectory(),endpoint,repository,key,enabled,forgetKey);
-                boolean external=!GoofyConfig.INSTANCE.marketAnalysis.autoStartCompanion || companion.status().equals("Using existing calculator");
+                boolean external=!GoofyConfig.INSTANCE.marketAnalysis.autoStartCompanion || companion.state()==ManagedCompanion.State.EXTERNAL;
                 companion.retry();
                 contributorNote=external?"Saved. Restart your separately launched calculator to apply changes.":"Saved. The bundled calculator will restart to apply changes.";
             }catch(Exception failure){contributorNote=failure.getMessage();}
@@ -53,6 +53,9 @@ public final class BundledCalculator {
         });
     }
     public static String status(){return companion==null?unavailable:companion.status();}
+    public static java.util.Map<String,java.util.List<String>> logTails(){return companion==null?java.util.Map.of():companion.logTails();}
+    public static ManagedCompanion companion(){return companion;}
+    public static java.util.Map<String,Object> diagnosticState(){return companion==null?java.util.Map.of("state","UNAVAILABLE","status",unavailable):companion.diagnosticState();}
     public static void retry(){if(companion!=null)companion.retry();}
     public static void openDashboard(){if(companion!=null)open(companion.dashboard());}
     public static boolean discordSettingsReady(){return companion!=null && java.nio.file.Files.isRegularFile(companion.discordSettings());}

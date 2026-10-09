@@ -16,6 +16,9 @@ public interface GameWorld {
     /** The player's name, or null when unknown. Needed to tell a co-op order apart. */
     String username();
 
+    /** The player's account UUID, or null when unknown. Scopes saved positions to one account. */
+    default String playerId() { return null; }
+
     /**
      * The current time in milliseconds.
      *

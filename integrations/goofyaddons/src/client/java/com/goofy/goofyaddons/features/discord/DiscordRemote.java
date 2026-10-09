@@ -48,7 +48,7 @@ public final class DiscordRemote {
         if(kind==null || kind.equals("staff")&&!GoofyConfig.INSTANCE.discord.alertStaff || kind.equals("mention")&&!GoofyConfig.INSTANCE.discord.alertMentions)return;
         event(kind,text);
         if(GoofyConfig.INSTANCE.discord.pauseOnContact && !FeatureManager.INSTANCE.canReloadConfig()) {
-            contactAt=System.currentTimeMillis();logoutAt=loginAt=0;FeatureManager.INSTANCE.safetyPause("Player contact received; review the Discord alert and respond manually");
+            contactAt=System.currentTimeMillis();logoutAt=loginAt=0;FeatureManager.INSTANCE.safetyPause(com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source.REMOTE,"Player contact received; review the Discord alert and respond manually");
         }
     }
     public void tick() {
@@ -65,7 +65,7 @@ public final class DiscordRemote {
             var logout=PlayerCommandPolicy.logout(now,logoutAt,manager.canReloadConfig() || manager.canRest(),
                 mc.player==null || mc.player.containerMenu.getCarried().isEmpty());
             if(logout==PlayerCommandPolicy.Logout.DISCONNECT) {
-                logoutAt=0;SessionScheduler.INSTANCE.manualStop();mc.disconnect(new TitleScreen(),false);event("connection","Logged off by Discord request; saved positions retained.");
+                logoutAt=0;SessionScheduler.INSTANCE.manualStop(com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source.REMOTE);mc.disconnect(new TitleScreen(),false);event("connection","Logged off by Discord request; saved positions retained.");
             }else if(logout==PlayerCommandPolicy.Logout.TIMED_OUT) {
                 logoutAt=0;manager.safetyPause("Remote logout could not reach a verified transaction boundary");event("connection","Logout stopped at a safety pause; Minecraft remains connected.");
             }
@@ -75,7 +75,7 @@ public final class DiscordRemote {
             else if(mc.player!=null && mc.level!=null && mc.gui.screen()==null) {
                 if(com.goofy.goofyaddons.features.sessions.TransferRecovery.skyblockReady(mc)) {
                     if(readyAt==0)readyAt=now;
-                    if(now-readyAt>=5000){loginAt=0;SessionScheduler.INSTANCE.manualStart();event("connection","Reconnected; normal inventory and order recovery started.");}
+                    if(now-readyAt>=5000){loginAt=0;SessionScheduler.INSTANCE.manualStart(com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source.REMOTE);event("connection","Reconnected; normal inventory and order recovery started.");}
                 }else {
                     readyAt=0;
                     if(now-loginAt>8000 && joinAttempts<3 && now-lastJoin>15000){lastJoin=now;joinAttempts++;com.goofy.goofyaddons.diagnostics.Diagnostics.command(GoofyConfig.INSTANCE.restSchedule.joinCommand);}
@@ -123,13 +123,13 @@ public final class DiscordRemote {
             if(PlayerCommandPolicy.superseded(action,issuedAt,cancelledAt,contactAt))
                 throw new IllegalStateException("Cancelled by a newer local stop or contact alert; send a fresh request");
             result=switch(action) {
-                case "stop" -> {logoutAt=loginAt=0;SessionScheduler.INSTANCE.manualStop();yield "Trading and automatic reconnect stopped";}
-                case "start" -> {if(mc.player==null || mc.level==null || mc.gui.screen()!=null)throw new IllegalStateException("Connect to SkyBlock and close menus first");logoutAt=loginAt=0;SessionScheduler.INSTANCE.manualStart();yield "Start requested; current state: "+manager.status();}
+                case "stop" -> {logoutAt=loginAt=0;SessionScheduler.INSTANCE.manualStop(com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source.REMOTE);yield "Trading and automatic reconnect stopped";}
+                case "start" -> {if(mc.player==null || mc.level==null || mc.gui.screen()!=null)throw new IllegalStateException("Connect to SkyBlock and close menus first");logoutAt=loginAt=0;SessionScheduler.INSTANCE.manualStart(com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source.REMOTE);yield "Start requested; current state: "+manager.status();}
                 case "logout" -> {loginAt=0;logoutAt=now;yield "Waiting for the current transaction to finish before logging off";}
                 case "login" -> {
                     if(mc.player!=null || mc.getConnection()!=null || mc.gui.screen() instanceof ConnectScreen)throw new IllegalStateException("Already connected or connecting");
                     if(remembered==null)throw new IllegalStateException("Connect manually once in this Minecraft session first");
-                    SessionScheduler.INSTANCE.manualStop();loginAt=now;readyAt=lastJoin=0;joinAttempts=0;
+                    SessionScheduler.INSTANCE.manualStop(com.goofy.goofyaddons.features.lifecycle.TradingLifecycle.Source.REMOTE);loginAt=now;readyAt=lastJoin=0;joinAttempts=0;
                     ConnectScreen.startConnecting(new TitleScreen(),mc,ServerAddress.parseString(remembered.ip),remembered,false,null);yield "Reconnect requested";
                 }
                 case "chat" -> {

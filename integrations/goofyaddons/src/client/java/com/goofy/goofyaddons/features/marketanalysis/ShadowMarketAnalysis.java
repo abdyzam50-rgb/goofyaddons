@@ -139,7 +139,7 @@ public final class ShadowMarketAnalysis {
         catch(RuntimeException ignored) { /* Diagnostic reporting must never affect trading. */ }
     }
     public void stop() {
-        generation++;if(pending!=null) pending.cancel(true);pending=null;report=null;executionReport=null;pipeline=null;comparison=Map.of();status="STOPPED";lastError=null;nextPoll=0;
+        generation++;if(pending!=null) pending.cancel(true);pending=null;report=null;executionReport=null;pipeline=null;decision=null;comparison=Map.of();status="STOPPED";lastError=null;nextPoll=0;
     }
     public MarketAnalysisProtocol.Report latestReport() {
         return report!=null && env.config()==previousConfig && env.config().marketAnalysis.enabled
@@ -155,9 +155,19 @@ public final class ShadowMarketAnalysis {
         var fresh=executionReport;if(fresh==null || latestReport()==null || !TradingSafety.fresh(fresh.marketAt(),env.now()))return null;
         refreshPipeline();
         if(pipeline.next().isEmpty())return null;
-        return new MarketAnalysisProtocol.Report(fresh.marketAt(),fresh.dataAt(),fresh.generatedAt(),fresh.historyUsed(),
-                fresh.historyStatus(),fresh.upstreamCommit(),fresh.total(),fresh.counts(),List.of(pipeline.next().getFirst().route()));
+        recordDecision(ForecastDecision.explain(fresh,report,pipeline,env.now()));
+        return fresh.withRows(List.of(pipeline.next().getFirst().route()));
     }
+    private ForecastDecision decision;
+    /** Keeps the latest explanation; an event is written only when the chosen route changes. */
+    private void recordDecision(ForecastDecision next) {
+        if(next==null)return;
+        boolean changed=decision==null || !decision.kind().equals(next.kind()) || !decision.routeKey().equals(next.routeKey());
+        decision=next;
+        if(changed)try{events.accept("market.automatic_decision",Map.of("decision",next));}
+        catch(RuntimeException ignored){ /* Diagnostic reporting must never affect trading. */ }
+    }
+    public ForecastDecision lastDecision(){return decision;}
     public Map<String,Object> diagnosticState() {
         var result=new LinkedHashMap<String,Object>();
         boolean enabled=env.config()!=null && env.config().marketAnalysis.enabled;
@@ -166,6 +176,7 @@ public final class ShadowMarketAnalysis {
         result.put("automaticSelection",enabled && env.config().marketAnalysis.automaticSelection);
         if(lastError!=null)result.put("error",lastError);
         result.put("executionAuthority",false);result.put("comparison",comparison);
+        if(decision!=null)result.put("decision",decision);
         if(fresh) result.put("report",report);
         if(pipeline!=null)result.put("pipeline",pipeline.status().equals("READY") && pipeline.expiresAt()<env.now()?
                 PipelinePlanner.build(pipeline.account(),null,env.now()):pipeline);

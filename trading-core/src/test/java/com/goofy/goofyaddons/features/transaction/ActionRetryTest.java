@@ -1,14 +1,14 @@
-package com.goofy.goofyaddons.features.bookflipper.helper;
+package com.goofy.goofyaddons.features.transaction;
 
 import com.goofy.goofyaddons.menu.*;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-class BookActionRetryTest {
+class ActionRetryTest {
     private final MenuSnapshot menu=new MenuSnapshot(1,"Anvil",true,List.of(SlotView.named(22,"Anvil",List.of())));
     @Test void repeatedSlowdownsExtendCooldownWithoutAuthorizingImmediateClicks() {
-        var retry=new BookActionRetry();var actions=new RecordingActions();
+        var retry=new ActionRetry();var actions=new RecordingActions();
         retry.sent(22,false,1000);retry.slowdown(3900);
         retry.retry(menu,true,actions,4000);
         assertFalse(retry.retry(menu,true,actions,4800));
@@ -19,13 +19,13 @@ class BookActionRetryTest {
         assertEquals(List.of("click:22"),actions.serverEffects());
     }
     @Test void exhaustedRetriesNeverTurnIntoAnUnboundedClickLoop() {
-        var retry=new BookActionRetry();var actions=new RecordingActions();
+        var retry=new ActionRetry();var actions=new RecordingActions();
         retry.sent(22,false,1000);
         for(long now=1500;now<25000;now+=500) retry.retry(menu,true,actions,now);
         assertEquals(3,actions.serverEffects().size());assertEquals(3,retry.retries());
     }
     @Test void partialAcknowledgementResetsTheUnchangedObservationWindow() {
-        var retry=new BookActionRetry();var actions=new RecordingActions();
+        var retry=new ActionRetry();var actions=new RecordingActions();
         retry.sent(22,false,1000);retry.retry(menu,true,actions,4000);
         retry.retry(menu,false,actions,4500);
         assertFalse(retry.retry(menu,true,actions,5000));
@@ -34,10 +34,10 @@ class BookActionRetryTest {
         assertEquals(1,actions.serverEffects().size());
     }
     @Test void onlyServerStyleSlowdownNoticesAreRecognized() {
-        assertTrue(BookActionRetry.slowdownMessage("§cYou are clicking too fast! Slow down!"));
-        assertTrue(BookActionRetry.slowdownMessage("You're doing that too fast!"));
-        assertTrue(BookActionRetry.slowdownMessage("Please slow down!"));
-        assertFalse(BookActionRetry.slowdownMessage("[Player] please slow down"));
-        assertFalse(BookActionRetry.slowdownMessage("[Bazaar] Claimed items!"));
+        assertTrue(ActionRetry.slowdownMessage("§cYou are clicking too fast! Slow down!"));
+        assertTrue(ActionRetry.slowdownMessage("You're doing that too fast!"));
+        assertTrue(ActionRetry.slowdownMessage("Please slow down!"));
+        assertFalse(ActionRetry.slowdownMessage("[Player] please slow down"));
+        assertFalse(ActionRetry.slowdownMessage("[Bazaar] Claimed items!"));
     }
 }

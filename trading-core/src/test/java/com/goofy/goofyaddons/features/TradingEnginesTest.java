@@ -40,4 +40,14 @@ class TradingEnginesTest {
         assertEquals(List.of(books, general), engines.enabled(TradingMode.BOTH, false, false));
         assertThrows(IllegalArgumentException.class, () -> new TradingEngines(books, books, crafting, auction));
     }
+
+    @Test void queuedProductionRunComesFirstAndNeedsItsOwnImplementation() {
+        var books = new Engine(); var general = new Engine();
+        var crafting = new Engine(); var auction = new Engine(); var production = new Engine();
+        var engines = new TradingEngines(books, general, crafting, auction, production);
+        assertEquals(List.of(production, auction, crafting, books, general), engines.enabled(TradingMode.BOTH, true, true, true));
+        assertEquals(List.of(books, general), engines.enabled(TradingMode.BOTH, false, false, false));
+        assertEquals(List.of(books, general), new TradingEngines(books, general, crafting, auction).enabled(TradingMode.BOTH, true, false, false));
+        assertThrows(IllegalArgumentException.class, () -> new TradingEngines(books, general, crafting, auction, books));
+    }
 }
