@@ -70,6 +70,7 @@ public final class ProductionCommands {
         if(price>0 && menu!=null && menu.slots().stream().anyMatch(s->s.inPlayerInventory() && !s.empty() && id.equals(ProductionMenus.productId(s)))) {
             new LiveActions().message("Move the "+RecipeCatalog.instance().name(id)+" you already hold out of your inventory first, so the listing picks the crafted one.");return 0;
         }
+        if(price==0 && com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null){withBazaarQuotes(id);return 1;}
         if(price==0 && onBazaar(id))price=ProductionRun.SELL_ON_BAZAAR;
         else if(price==0){priceFromAuctions(id);return 1;}
         if(!FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true))return 0;
@@ -105,6 +106,17 @@ public final class ProductionCommands {
                     }
                 }));
         }catch(RuntimeException failure){actions.message("No automatic price: "+failure.getMessage()+". Use: production test "+id+" <price>");}
+    }
+    /** With traders off nothing keeps Bazaar quotes fresh; fetch them so a Bazaar product is not taken for an auction item. */
+    private static void withBazaarQuotes(String id){
+        var actions=new LiveActions();
+        actions.message("Fetching Bazaar prices…");
+        com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch().whenComplete((market,error)->new com.goofy.goofyaddons.menu.LiveWorld().onClientThread(()->{
+            if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null){
+                actions.message("Bazaar prices could not be fetched, so it is unknown whether "+RecipeCatalog.instance().name(id)+" sells there. Try again, or use: production test "+id+" <price>");return;
+            }
+            test(id,0);
+        }));
     }
     private static boolean onBazaar(String id){
         var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
