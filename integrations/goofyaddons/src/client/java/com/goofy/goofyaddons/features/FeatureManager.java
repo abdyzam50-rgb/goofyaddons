@@ -34,6 +34,7 @@ public class FeatureManager {
     public java.util.Map<String,Integer> observedSkills(){return com.goofy.goofyaddons.features.access.AccountUnlocks.combinedSkills(accountUnlocks.skills(now()),skillPreflight.skills());}
     public java.util.Map<String,Integer> observedUnlocks(){return accountUnlocks.current(System.currentTimeMillis());}
     public boolean accountRequirementsPending(){return accountUnlocks.pending();}
+    public String accountRequirementsStatus(){return accountUnlocks.status(now());}
     public void clearAccountRequirements(){skillPreflight.clear();accountUnlocks.clear();invalidateMarketReport();}
     public void navigationResumed(long elapsed){books.navigationResumed(elapsed);general.navigationResumed(elapsed);}
     private TradingMode mode = TradingMode.BOOKS;
@@ -43,6 +44,7 @@ public class FeatureManager {
 
     private String requirementAccount;
     private long profileTabAt;
+    private String lastRequirementStatus;
     /** A production test runs the production, crafting and auction features alone, outside the trading lifecycle. */
     private boolean productionTest;
     private final MenuScheduler testScheduler = new MenuScheduler();
@@ -81,6 +83,10 @@ public class FeatureManager {
         if(skillPreflight.observe(requirementWorld.menu())){accountUnlocks.clear();invalidateMarketReport();}
         var scope=accounts.current();
         accountUnlocks.poll(requirementWorld.username(),scope==null?null:scope.profile(),GoofyConfig.INSTANCE.marketAnalysis.endpoint,skillPreflight.skills(),requirementWorld.now());
+        String requirementStatus=accountRequirementsStatus();
+        if(!java.util.Objects.equals(lastRequirementStatus,requirementStatus)) {
+            lastRequirementStatus=requirementStatus;Diagnostics.event("INFO","account.requirements_status",accountUnlocks.diagnosticState(requirementWorld.now()));
+        }
         if(skillPreflight.pending() && accountUnlocks.skills(requirementWorld.now()).containsKey("enchanting")) {
             skillPreflight.cancel();
             com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(observedSkills());invalidateMarketReport();
@@ -324,7 +330,8 @@ public class FeatureManager {
     }
     public String modeLabel() { return (started() ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
     public java.util.Map<String,Object> diagnosticState() {
-        return java.util.Map.of("capabilities",com.goofy.goofyaddons.features.capability.Capabilities.diagnosticState(),"lifecycle",lifecycle.diagnosticState(),"marketAnalysis",marketAnalysis.diagnosticState(),"books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name());
+        return java.util.Map.of("capabilities",com.goofy.goofyaddons.features.capability.Capabilities.diagnosticState(),"lifecycle",lifecycle.diagnosticState(),"marketAnalysis",marketAnalysis.diagnosticState(),"books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name(),
+            "accountRequirements",accountUnlocks.diagnosticState(now()),"production",java.util.Map.of("queued",production.queued(),"activity",production.activity()));
     }
     public String taskItem() {
         if (!started() || paused()) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";

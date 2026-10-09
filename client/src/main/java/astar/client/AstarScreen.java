@@ -304,6 +304,7 @@ final class AstarScreen extends Screen {
         status.callout(()->manager.hasSafetyBlock()||com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?Callout.ERROR:Callout.INFO,
             ()->com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?com.goofy.goofyaddons.config.GoofyConfig.loadError():manager.status()+" · "+manager.activity());
         status.row("Current task",manager::taskItem);
+        status.row("Account prerequisites",manager::accountRequirementsStatus);
         status.row("Purse",()->{double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse();return purse<0?"Waiting for a SkyBlock balance":String.format(Locale.ROOT,"%,.0f coins",purse);});
         status.row("Confirmed profit",()->String.format(Locale.ROOT,"%,.1f coins",com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE.summary().profit()));
         status.row("Trading",()->"The toggle key starts and stops trading. Starting closes this window so transaction menus can open.",

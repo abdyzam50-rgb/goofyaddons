@@ -169,6 +169,7 @@ public final class ProductionLoopFeature implements Feature {
             public Map<String,Integer> skills() { return FeatureManager.INSTANCE.observedSkills(); }
             public Map<String,Integer> unlocks() { return FeatureManager.INSTANCE.observedUnlocks(); }
             public boolean requirementsPending() { return FeatureManager.INSTANCE.accountRequirementsPending(); }
+            public String requirementsStatus() { return FeatureManager.INSTANCE.accountRequirementsStatus(); }
             public Set<String> occupied() { return CapitalManager.INSTANCE.occupiedProducts(); }
             public boolean buyingAllowed() { return buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients; }
             public Double instantBuyCost(String id, int units) {

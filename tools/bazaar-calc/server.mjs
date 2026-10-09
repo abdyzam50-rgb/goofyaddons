@@ -1,4 +1,5 @@
 // Loopback calculator, account dashboard, market collector and optional paired Discord controls.
+import {profileFailure} from './profile-errors.mjs';
 import { DiscordBot } from './discord-bot.mjs';
 import { discordSettings } from './discord-config.mjs';
 import { dataDirectory, dataFile } from './data-paths.mjs';
@@ -107,8 +108,8 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
         const r=await profileFetcher(`https://goofy-gameplay-collector.abdyzam50.workers.dev/v1/profiles?username=${encodeURIComponent(username)}`,{signal:AbortSignal.timeout(15000)});
         const body=await r.json();
         if(r.ok && (body.protocol!=='goofy-profile/1'||!Array.isArray(body.profiles)||body.profiles.length>10))throw new Error();
-        send(r.ok?200:[400,429,503].includes(r.status)?r.status:502,r.ok?body:{error:'Profile lookup unavailable; check the shared Worker setup or use a manual budget'});
-      }catch{send(502,{error:'Profile service could not be reached; use a manual budget'});}
+        send(r.ok?200:[400,429,503].includes(r.status)?r.status:502,r.ok?body:profileFailure(r.status,body));
+      }catch{send(502,profileFailure(502,null));}
       return;
     }
     if(req.method==='GET'&&calculatorPage&&!assets.has(req.url)&&!url.pathname.split('/').at(-1).includes('.')) {

@@ -37,6 +37,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         Map<String,Integer> skills();
         default Map<String,Integer> unlocks() { return Map.of(); }
         default boolean requirementsPending() { return false; }
+        default String requirementsStatus() { return null; }
         /** Products owned by trader positions or other queued work. */
         Set<String> occupied();
         boolean buyingAllowed();
@@ -167,7 +168,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             }
         }
         var requirement=craftRequirement();
-        if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirement);
+        if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
         var missing = missing();
         if (missing.isEmpty()) return Outcome.DONE;
         for (String id : missing.keySet()) if (env.occupied().contains(id)) return Outcome.blocked(id + " belongs to a trader position; production will not use it");
@@ -189,7 +190,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if (kind == ProductionRecipe.Kind.CRAFT) {
             if (craftJob == null) {
                 var requirement=craftRequirement();
-                if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirement);
+                if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
                 craftJob = env.queueCraft(output, batches);
                 if (craftJob == null) return Outcome.blocked("Craft could not be queued; inputs changed or another production step is queued");
                 return Outcome.pending("Crafting");
@@ -326,6 +327,10 @@ public final class ProductionRun implements ProductionLoop.Ports {
             reason=blocked;
         }
         return reason;
+    }
+    private String requirementReason(String reason) {
+        String status=env.requirementsStatus();
+        return reason.contains("unobserved") && status!=null?reason+". "+status:reason;
     }
 
     private Map<String,Integer> held() {

@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.18-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.19-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -19,6 +19,9 @@ See [lookup, placement and verification notes](CRAFT-PREREQUISITES-AND-STACKS.md
 The 0.2.18 search fix selects Bazaar results by exact product ID, so duplicate
 display names cannot confuse plain and enchanted ingredients. Buy and sell
 navigation share this rule; conflicting product-page icons are rejected.
+
+The 0.2.19 prerequisite update shows profile failures (including Hypixel HTTP 403)
+in settings, production messages and diagnostics. See [fixing profile access](PROFILE-ACCESS.md).
 
 ## Installation and saved data
 

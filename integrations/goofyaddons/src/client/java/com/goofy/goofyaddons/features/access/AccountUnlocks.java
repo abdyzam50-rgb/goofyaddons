@@ -8,18 +8,58 @@ import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /** Private selected-profile lookup through the bundled companion; never enters shared telemetry. */
 public final class AccountUnlocks {
-    private final HttpClient http=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(Duration.ofSeconds(2));
+    record Response(int status,JsonObject body) {}
+    @FunctionalInterface interface Transport { CompletableFuture<Response> fetch(URI uri); }
+    private final Transport transport;
+    private final Consumer<Runnable> clientThread;
+    private final LongSupplier clock;
     private Map<String,Integer> unlocks=Map.of();
     private Map<String,Integer> apiSkills=Map.of();
     private String account,profile;
     private long next,expires;
     private int generation;
     private CompletableFuture<?> pending;
+    private String failureCode="NOT_STARTED",failure="Account lookup has not started";
+    private boolean collectionsAvailable;
+    public AccountUnlocks() { this(liveTransport(),task->new LiveWorld().onClientThread(task),System::currentTimeMillis); }
+    AccountUnlocks(Transport transport,Consumer<Runnable> clientThread,LongSupplier clock) {
+        this.transport=transport;this.clientThread=clientThread;this.clock=clock;
+    }
+    private static Transport liveTransport() {
+        var http=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(Duration.ofSeconds(2));
+        return uri->http.sendAsync(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build(),
+            HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofString(),256*1024))
+            .thenApply(response->new Response(response.statusCode(),JsonParser.parseString(response.body()).getAsJsonObject()));
+    }
     public boolean pending(){return pending!=null;}
-    public void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;unlocks=apiSkills=Map.of();account=profile=null;next=expires=0;}
+    public void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;unlocks=apiSkills=Map.of();account=profile=null;next=expires=0;collectionsAvailable=false;failureCode="NOT_STARTED";failure="Account lookup has not started";}
+    public String status(long now) {
+        if(profile==null)return "Waiting for the current SkyBlock profile";
+        if(pending())return "Fetching account prerequisites";
+        if(now<expires)return collectionsAvailable?"Account prerequisites verified":"Profile loaded; collection data is unpublished. Enable Collection API in SkyBlock API settings";
+        return failure!=null?failure:"Account prerequisite data expired; refreshing";
+    }
+    public Map<String,Object> diagnosticState(long now) {
+        return Map.of("status",status(now),"failureCode",failureCode,"pending",pending(),"skills",skills(now).size(),"unlocks",current(now).size(),
+            "collectionsAvailable",now<expires && collectionsAvailable,"expiresInMs",Math.max(0,expires-now),"retryInMs",Math.max(0,next-now));
+    }
+    private void fail(String code,String reason) {unlocks=apiSkills=Map.of();expires=0;collectionsAvailable=false;failureCode=code;failure=reason;}
+    static String serviceFailure(String code,int status) {
+        return switch(code) {
+            case "HYPIXEL_FORBIDDEN" -> "Hypixel rejected profile access (HTTP 403). Update the Worker HYPIXEL_API_KEY secret and check SkyBlock profile permissions";
+            case "HYPIXEL_UNAUTHORIZED" -> "Hypixel rejected profile access (HTTP 401). Update the Worker HYPIXEL_API_KEY secret";
+            case "PROFILE_NOT_CONFIGURED" -> "Worker profile lookup is not configured; check its API key and profile rate limiter";
+            case "PROFILE_RATE_LIMITED" -> "Account lookup is rate limited; retrying automatically";
+            case "USERNAME_NOT_FOUND" -> "Minecraft username could not be resolved";
+            case "USERNAME_SERVICE_UNAVAILABLE" -> "Minecraft username service is unavailable; retrying automatically";
+            default -> "Profile lookup failed (HTTP "+status+"); check the Worker. Retrying automatically";
+        };
+    }
     public Map<String,Integer> current(long now){return now<expires?unlocks:Map.of();}
     public Map<String,Integer> skills(long now){return now<expires?apiSkills:Map.of();}
     public static Map<String,Integer> combinedSkills(Map<String,Integer> api,Map<String,Integer> observed) {
@@ -29,24 +69,34 @@ public final class AccountUnlocks {
         if(!Objects.equals(account,username) || !Objects.equals(profile,profileName)){clear();account=username;profile=profileName;}
         if(username==null || !username.matches("[A-Za-z0-9_]{1,16}") || profileName==null || pending!=null || now<next)return;
         next=now+60000;int token=generation;
+        failure=null;failureCode="FETCHING";
         try {
             var settings=new MarketAnalysisSettings();settings.endpoint=endpoint;settings.validate();
             var uri=URI.create(endpoint).resolve("/v1/profiles?username="+username);
-            var request=HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build();
-            pending=http.sendAsync(request,HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofString(),256*1024))
-                .whenComplete((response,error)->new LiveWorld().onClientThread(()->{
+            var request=transport.fetch(uri);pending=request;
+            request.whenComplete((response,error)->clientThread.accept(()->{
                     if(token!=generation)return;pending=null;
                     try {
-                        if(error!=null || response.statusCode()!=200)throw new IllegalStateException("Profile lookup unavailable");
-                        long received=System.currentTimeMillis();var root=JsonParser.parseString(response.body()).getAsJsonObject();
+                        if(error!=null){fail("UNREACHABLE","Profile service could not be reached; check the calculator and Worker. Retrying automatically");return;}
+                        if(response.status()!=200) {
+                            String code=response.body().has("failureCode")?response.body().get("failureCode").getAsString():"PROFILE_SERVICE_UNAVAILABLE";
+                            fail(switch(code){case "HYPIXEL_FORBIDDEN","HYPIXEL_UNAUTHORIZED","PROFILE_NOT_CONFIGURED","PROFILE_RATE_LIMITED","USERNAME_NOT_FOUND","USERNAME_SERVICE_UNAVAILABLE"->code;default->"PROFILE_SERVICE_UNAVAILABLE";},serviceFailure(code,response.status()));return;
+                        }
+                        long received=clock.getAsLong();var root=response.body();
                         var parsed=parseProfile(root,username,profileName,skills,received);
                         unlocks=parsed.unlocks();apiSkills=parsed.skills();
                         expires=root.get("fetchedAt").getAsLong()+300000;next=expires;
-                    }catch(RuntimeException failure){unlocks=apiSkills=Map.of();expires=0;}
+                        collectionsAvailable=parsed.collectionsAvailable();failure=null;failureCode="VERIFIED";
+                    }catch(RuntimeException invalid){
+                        String reason=invalid.getMessage();
+                        String safe=Set.of("Account mismatch","Stale requirements","Current profile is unverified","Invalid skill level","Invalid unlock level").contains(reason==null?"":reason)?reason:
+                            reason!=null && reason.startsWith("Profile does not match observed")?"Published levels conflict with live skill observations":"Profile response is missing or has invalid progression fields";
+                        fail("INVALID_PROFILE",safe+"; waiting for verified account data");
+                    }
                 }));
-        }catch(RuntimeException failure){unlocks=apiSkills=Map.of();expires=0;}
+        }catch(RuntimeException invalid){pending=null;fail("UNREACHABLE","Account lookup could not start; check the calculator endpoint");}
     }
-    record ProfileRequirements(Map<String,Integer> skills,Map<String,Integer> unlocks) {}
+    record ProfileRequirements(Map<String,Integer> skills,Map<String,Integer> unlocks,boolean collectionsAvailable) {}
     static Map<String,Integer> parse(JsonObject root,String username,Map<String,Integer> skills,long now) {
         return parseProfile(root,username,null,skills,now).unlocks();
     }
@@ -73,13 +123,16 @@ public final class AccountUnlocks {
             levels.put(key,(int)value);
         }
         var result=new HashMap<String,Integer>();
-        if(!unknown.contains("collections"))copy(stats.getAsJsonObject("collections"),"",result);
+        if(!unknown.contains("collections")) {
+            copy(stats.getAsJsonObject("collections"),"",result);
+            if(stats.has("collectionIds"))copy(stats.getAsJsonObject("collectionIds"),"",result);
+        }
         if(!unknown.contains("slayers"))copy(stats.getAsJsonObject("slayers")," Slayer",result);
         if(!unknown.contains("faction reputation"))copy(stats.getAsJsonObject("reputation")," Reputation",result);
         if(!unknown.contains("Heart of the Mountain")) {
             int level=stats.get("hotmTier").getAsInt();result.put("heartofthemountain",level);result.put("hotm",level);
         }
-        return new ProfileRequirements(Map.copyOf(levels),Map.copyOf(result));
+        return new ProfileRequirements(Map.copyOf(levels),Map.copyOf(result),!unknown.contains("collections"));
     }
     private static void copy(JsonObject input,String suffix,Map<String,Integer> output) {
         for(var e:input.entrySet()) {

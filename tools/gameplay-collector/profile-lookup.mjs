@@ -17,7 +17,7 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
  for(const category of Object.values(resources?.collections??{}))for(const [id,item] of Object.entries(category.items??{}))collections.set(id,clean(item.name));
  return data.profiles.slice(0,10).flatMap(p=>{
   const member=p.members?.[uuid];if(!member)return [];
-  const unknown=[],skills={},slayers={},tiers={},reputation={};
+  const unknown=[],skills={},slayers={},tiers={},collectionIds={},reputation={};
   const experience=member.player_data?.experience;
   for(const name of ['farming','mining','combat','foraging','fishing','enchanting','alchemy','carpentry','taming']) {
    const xp=experience?.[`SKILL_${name.toUpperCase()}`]??member[`experience_skill_${name}`];
@@ -29,9 +29,10 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   const quick=member.mining_core?.nodes?.forge_time;
   if(!present(quick))unknown.push('Quick Forge');
   const unlocked=member.player_data?.unlocked_coll_tiers??member.unlocked_coll_tiers;
-  if(Array.isArray(unlocked)&&collections.size) {
+  if(Array.isArray(unlocked)) {
    for(const value of unlocked) {
     const m=typeof value==='string'&&/^(.+)_(\d+)$/.exec(value),name=m&&collections.get(m[1]);
+    if(m)collectionIds[m[1]]=Math.max(collectionIds[m[1]]??0,Number(m[2]));
     if(name)tiers[name]=Math.max(tiers[name]??0,Number(m[2]));
    }
   }else unknown.push('collections');
@@ -48,7 +49,7 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   const purse=member.currencies?.coin_purse??member.coin_purse;
   return [{id:clean(p.profile_id),name:clean(p.cute_name)||'Profile',selected:p.selected===true,gameMode:clean(p.game_mode)||'normal',
    purse:present(purse)&&purse<=1e13?purse:null,fetchedAt:now,unknown,
-   stats:{hotmTier:hotm??0,quickForgeLevel:present(quick)?Math.min(20,quick):0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,slayers,reputation,
+   stats:{hotmTier:hotm??0,quickForgeLevel:present(quick)?Math.min(20,quick):0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,collectionIds,slayers,reputation,
     xpLevels:0,ignoreRequirements:false,coleMoltenForge:false,quadTaxes:false,npcShoppingSpree:false}}];
  });
 }

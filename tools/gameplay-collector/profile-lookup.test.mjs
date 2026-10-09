@@ -28,6 +28,12 @@ test('craft prerequisites include published farming, mining, combat, fishing, al
  const [legacy]=summarizeProfiles(data({experience_skill_combat:175}),uuid,null,1234);
  assert.equal(legacy.stats.skills.Combat,2);
 });
+test('published collection IDs survive unavailable resource names and never infer private tiers',()=>{
+ const [p]=summarizeProfiles(data({...member,unlocked_coll_tiers:['GOLD_INGOT_4','GOLD_INGOT_3']}),uuid,null,1234);
+ assert.equal(p.stats.collectionIds.GOLD_INGOT,4);assert.deepEqual(p.stats.collections,{});assert.ok(!p.unknown.includes('collections'));
+ const [unpublished]=summarizeProfiles(data({}),uuid,null,1234);
+ assert.deepEqual(unpublished.stats.collectionIds,{});assert.ok(unpublished.unknown.includes('collections'));
+});
 test('private API key goes only to Hypixel profiles and is absent from the response',async()=>{
  const calls=[];const fetcher=async(url,options)=>{calls.push({url,options});return Response.json(url.includes('mojang')?{id:uuid,name:'Tester'}:url.includes('collections')?resources:data(member));};
  const body=await lookupProfiles('Tester','private-api-secret',fetcher,1234);
