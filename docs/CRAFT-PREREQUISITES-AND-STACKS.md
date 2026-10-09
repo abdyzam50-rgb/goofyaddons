@@ -48,3 +48,13 @@ Live Minecraft validation remains necessary for this branch's recipe menus.
 
 Validation passed: 968 Java tests (110 foundation, 851 client, 7 calculator
 integration) and 99 Node tests. Built client: `0.2.17-BETA`.
+
+## Duplicate Bazaar result names (0.2.18)
+
+Buy and sell search select the unique matching product ID before considering
+display names. A readable conflicting ID rejects that result even if its name
+matches. When a result lacks an ID, a unique exact name remains supported;
+multiple unresolved matches do not trigger a guessed click. Product-page checks
+retain that identity decision, including truncated titles. Regression scenarios
+cover Gold Ingot versus Enchanted Gold Ingot in either result order, missing IDs,
+ambiguous IDs, inventory exclusion, and a conflicting product page.

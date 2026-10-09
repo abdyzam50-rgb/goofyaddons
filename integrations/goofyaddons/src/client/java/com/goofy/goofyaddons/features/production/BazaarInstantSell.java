@@ -34,7 +34,7 @@ public final class BazaarInstantSell {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
                 || amount < 1 || amount > 71680 || !Double.isFinite(minimumProceeds) || minimumProceeds < 0 || intent == null)
             throw new IllegalArgumentException("Invalid instant sale");
-        this.productId = productId; this.name = name; search = new BazaarSearch(name); this.amount = amount; this.minimumProceeds = minimumProceeds; this.intent = intent;
+        this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.minimumProceeds = minimumProceeds; this.intent = intent;
     }
 
     public String failure() { return failure; }
@@ -85,7 +85,7 @@ public final class BazaarInstantSell {
         if (menu == null) return -1;
         int control = menu.firstByHoverName("Sell Instantly", true);
         if (control < 0) return -1;
-        if (ProductIdentity.productPage(menu, productId, name, control) || ProductIdentity.truncatedProductPage(menu, name, control)) return control;
+        if (ProductIdentity.productPage(menu, productId, name, control)) return control;
         // As in book cleanup's instant sale: "Sell Instantly" need not name the product in its lore,
         // so the product icon alone identifies the page.
         var icon = menu.slot(ProductIdentity.ICON_SLOT);

@@ -33,4 +33,8 @@ class ProductIdentityTest {
         assertFalse(ProductIdentity.productPage(page("Bazaar ➜ Enchanted Coal", "Enchanted Coal", "Enchanted Coal"),
                 "ENCHANTED_COAL", "Enchanted Coal", -1));
     }
+    @Test void fullTitleCannotOverrideAConflictingReadableIconName() {
+        assertFalse(ProductIdentity.productPage(page("Bazaar ➜ Gold Ingot", "Enchanted Gold Ingot", "Gold Ingot"),
+                "GOLD_INGOT", "Gold Ingot", 15));
+    }
 }

@@ -37,7 +37,7 @@ public final class BazaarInstantBuy {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
                 || amount < 1 || amount > 71680 || !Double.isFinite(maximumCost) || maximumCost <= 0 || intent == null)
             throw new IllegalArgumentException("Invalid instant buy");
-        this.productId = productId; this.name = name; search = new BazaarSearch(name); this.amount = amount; this.maximumCost = maximumCost; this.intent = intent;
+        this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.maximumCost = maximumCost; this.intent = intent;
     }
 
     public String failure() { return failure; }
@@ -167,7 +167,7 @@ public final class BazaarInstantBuy {
     private int productControl(MenuSnapshot menu) {
         int control = menu.firstByHoverName("Buy Instantly", true);
         if (control < 0) return -1;
-        return ProductIdentity.productPage(menu, productId, name, control) || ProductIdentity.truncatedProductPage(menu, name, control) ? control : -1;
+        return ProductIdentity.productPage(menu, productId, name, control) ? control : -1;
     }
 
     private int count(MenuSnapshot menu) {

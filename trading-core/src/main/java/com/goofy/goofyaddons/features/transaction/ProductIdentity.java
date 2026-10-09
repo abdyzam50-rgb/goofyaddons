@@ -31,7 +31,8 @@ public final class ProductIdentity {
             if (icon.customId() != null && !icon.customId().isBlank()) {
                 return id.equals(icon.customId()) && button.hasLoreLine(name);
             }
-            if (name.equals(Chat.strip(icon.hoverName())) && button.hasLoreLine(name)) return true;
+            if (icon.hoverName()!=null && !Chat.strip(icon.hoverName()).isBlank())
+                return name.equals(Chat.strip(icon.hoverName())) && button.hasLoreLine(name);
         }
         // Keep support for older layouts with full titles, but never contradict readable identity.
         return MenuText.titleContains(menu.title(), name) && (button.loreLines() == null || button.loreLines().isEmpty()
