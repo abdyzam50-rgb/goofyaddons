@@ -5,11 +5,15 @@ import com.goofy.goofyaddons.utils.Chat;
 import com.goofy.goofyaddons.features.access.ActionRequirements;
 import java.util.*;
 
-/** One exact recipe batch. Every cursor/grid mutation waits for a server observation. */
+/**
+ * One exact recipe batch. Every cursor/grid mutation waits until the menu shows it, then a settle
+ * delay in which a server that rejects the click reverts it, before the next step is chosen.
+ */
 public final class CraftingExecutor {
     public enum Result {WAITING,CRAFTED,BLOCKED}
     private static final int[] GRID={10,11,12,19,20,21,28,29,30};
     private static final int RESULT=23;
+    private static final long SETTLE_MS=500;
     private ProductionRecipe recipe;
     private int container,source=-1;
     private Map<String,Integer> before;
@@ -51,7 +55,7 @@ public final class CraftingExecutor {
         inconsistentSince=0;
         if(submitted && completed(menu)){reset();return Result.CRAFTED;}
         if(sent!=null) {
-            if(!sameContents(sent,menu)) {sent=null;retries=0;next=now+100;}
+            if(!sameContents(sent,menu)) {sent=null;retries=0;next=now+SETTLE_MS;}
             else if(now-sentAt>=2000) {
                 if(retries>=2)return block("Crafting input was not acknowledged; grid and cursor retained");
                 // A duplicate is permitted only against the exact same cursor/grid/inventory.

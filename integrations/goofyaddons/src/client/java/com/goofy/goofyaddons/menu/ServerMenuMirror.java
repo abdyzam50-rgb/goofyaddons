@@ -35,8 +35,6 @@ public final class ServerMenuMirror {
     }
     public static void inventory(int slot,ItemStack item){STORE.inventory(slot,LiveMenu.view(-1,true,slot,item));}
     public static void cursor(ItemStack item){STORE.cursor(LiveMenu.view(-1,false,-1,item));}
-    /** Replaces this copy with the client's own view; only for before any click, when the client holds no predictions. */
-    public static void adopt(MenuSnapshot local){if(local!=null && local.carried()!=null)STORE.content(local.containerId(),local.slots(),local.carried());}
     public static MenuSnapshot read(){
         var mc=Minecraft.getInstance();return mc.player==null?null:STORE.read(mc.player.containerMenu.containerId,mc.gui.screen()==null?null:mc.gui.screen().getTitle().getString());
     }
