@@ -15,6 +15,7 @@ public final class CraftingFeature implements Feature {
     private ProductionJobs jobs;
     private boolean running,paused,opening;
     private long openedAt,nextCommand,localMismatchSince;
+    private int reopens;
     public String name(){return "Crafting";}
     public boolean queued(){return recipe!=null;}
     /** The journal id of the most recently queued job, for callers that follow it. */
@@ -41,7 +42,7 @@ public final class CraftingFeature implements Feature {
         if(chosen.isEmpty()){new LiveActions().message("No supported recipe with enough unreserved inventory ingredients for "+output+".");return false;}
         String requirement=com.goofy.goofyaddons.features.access.RouteRequirements.craft(chosen.get().requirement(),FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks());
         if(requirement!=null){new LiveActions().message("Cannot queue craft: "+requirement+". Check Your Skills and wait for the account lookup.");return false;}
-        recipe=chosen.get();remaining=batches;jobId=UUID.randomUUID().toString();executor.reset();opening=false;localMismatchSince=0;
+        recipe=chosen.get();remaining=batches;jobId=UUID.randomUUID().toString();executor.reset();opening=false;localMismatchSince=0;reopens=0;
         try {
             jobs().put(new ProductionJobs.Job(jobId,recipe.key(),new LiveWorld().username(),ProductionJobs.State.PLANNED,batches,-1,0,0,null,null,null,null));
         }catch(Exception failure){recipe=null;Diagnostics.failure("production.journal_failed",failure);new LiveActions().message("Crafting journal could not be saved; no action performed.");return false;}
@@ -96,7 +97,14 @@ public final class CraftingFeature implements Feature {
             if(confirmed==null){if(now-openedAt>25000)fail("Crafting server inventory snapshot did not arrive");return;}
             if(!CraftingExecutor.sameOwnedState(confirmed,menu)) {
                 if(localMismatchSince==0)localMismatchSince=now;
-                if(now-localMismatchSince>8000)fail("Local/server crafting inventory differs; awaiting authoritative updates");
+                if(now-localMismatchSince>8000) {
+                    String difference=CraftingExecutor.difference(menu,confirmed);
+                    Diagnostics.event("WARN","production.craft_mirror_mismatch",Map.of("job",jobId,"difference",String.valueOf(difference),"reopens",reopens));
+                    // Before the first click nothing is at stake: reopening makes the server resend
+                    // the whole menu, which replaces a copy that missed an update.
+                    if(!executor.busy() && reopens<2){reopens++;localMismatchSince=0;openedAt=now;nextCommand=0;actions.closeMenu();return;}
+                    fail("Local/server crafting inventory differs ("+difference+"); awaiting authoritative updates");
+                }
                 return;
             }
             localMismatchSince=0;

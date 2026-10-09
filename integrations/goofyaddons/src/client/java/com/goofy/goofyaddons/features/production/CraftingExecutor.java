@@ -126,6 +126,22 @@ public final class CraftingExecutor {
     private static int count(SlotView slot){return empty(slot)?0:slot.count();}
     private static boolean empty(SlotView slot){return slot==null || slot.empty();}
     public static boolean sameOwnedState(MenuSnapshot a,MenuSnapshot b){return a!=null && b!=null && sameContents(a,b);}
+    /** The first owned slot or cursor where the client and server copies differ, for the player to read. */
+    public static String difference(MenuSnapshot local,MenuSnapshot server){
+        if(local==null || server==null)return "a copy is missing";
+        if(local.containerId()!=server.containerId())return "menu id "+local.containerId()+" vs "+server.containerId();
+        if(local.cursorEmpty()!=server.cursorEmpty() || !sameItem(local.carried(),server.carried()))return "cursor "+describe(local.carried())+" vs "+describe(server.carried());
+        if(local.slots().size()!=server.slots().size())return "slot count "+local.slots().size()+" vs "+server.slots().size();
+        for(int i=0;i<local.slots().size();i++){var slot=local.slots().get(i);
+            if((slot.inPlayerInventory() || Arrays.stream(GRID).anyMatch(n->n==slot.index())) && !sameItem(slot,server.slots().get(i)))
+                return "slot "+i+" "+describe(slot)+" vs "+describe(server.slots().get(i));
+        }
+        return null;
+    }
+    private static String describe(SlotView slot){
+        if(empty(slot))return "empty";
+        return slot.count()+"x "+(slot.customId()==null?Chat.strip(slot.hoverName()):slot.customId())+(slot.metadata()==null?"":" "+slot.metadata().vanillaId());
+    }
     private static boolean sameContents(MenuSnapshot a,MenuSnapshot b){
         if(a.containerId()!=b.containerId() || a.cursorEmpty()!=b.cursorEmpty() || !sameItem(a.carried(),b.carried()) || a.slots().size()!=b.slots().size())return false;
         for(int i=0;i<a.slots().size();i++){var slot=a.slots().get(i);
