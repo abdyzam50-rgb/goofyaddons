@@ -9,6 +9,7 @@ import java.util.*;
 public final class CraftingExecutor {
     public enum Result {WAITING,CRAFTED,BLOCKED}
     private static final int[] GRID={10,11,12,19,20,21,28,29,30};
+    private static final int RESULT=23;
     private ProductionRecipe recipe;
     private int container,source=-1;
     private Map<String,Integer> before;
@@ -85,8 +86,9 @@ public final class CraftingExecutor {
             var stack=available.stream().filter(s->s.count()==remaining || (s.count()+1)/2==remaining).findFirst().orElse(available.getFirst());
             source=stack.index();send(menu,actions,source,false,stack.count()!=remaining && (stack.count()+1)/2==remaining,now);return Result.WAITING;
         }
-        var outputs=menu.slots().stream().filter(s->!s.inPlayerInventory() && !s.empty() && recipe.outputId().equals(s.customId())
-                && Arrays.stream(GRID).noneMatch(i->i==s.index())).toList();
+        // Hypixel's Quick Crafting column (16, 25, 34) can show the same item before the grid is
+        // full; only the result slot holds the grid's output.
+        var outputs=menu.slots().stream().filter(s->s.index()==RESULT && !s.empty() && recipe.outputId().equals(s.customId())).toList();
         if(outputs.size()!=1 || outputs.getFirst().count()!=recipe.outputCount())return Result.WAITING;
         var output=outputs.getFirst();String reason=ActionRequirements.blocked(output.lore(),skills,ActionRequirements.Action.CRAFT);
         if(reason!=null)return block("Crafting requirement: "+reason);
