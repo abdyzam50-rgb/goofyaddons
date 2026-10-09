@@ -1,6 +1,6 @@
 # Trading inside A*
 
-The combined **A* with GoofyAddons 0.2.16-BETA** targets Minecraft **26.3**,
+The combined **A* with GoofyAddons 0.2.17-BETA** targets Minecraft **26.3**,
 Fabric Loader **0.19.5 or newer**, Fabric API **0.161.0+26.3**, and Java **25**.
 It includes the trader from GoofyAddons 1.3.57 in one client JAR.
 
@@ -11,6 +11,10 @@ order files retain their format and paths. See the [foundation notes](../trading
 The 0.2.16 book-engine refactor adds the same dependency separation, replaces raw
 game-slot reads with captured menu observations, and retains the book journal's
 existing record fields. See the [book refactor log](BOOK-ENGINE-REFACTOR.md).
+
+The 0.2.17 craft update imports current-profile prerequisites through the website
+service and picks up full ingredient stacks before splitting 32s inside the grid.
+See [lookup, placement and verification notes](CRAFT-PREREQUISITES-AND-STACKS.md).
 
 ## Installation and saved data
 

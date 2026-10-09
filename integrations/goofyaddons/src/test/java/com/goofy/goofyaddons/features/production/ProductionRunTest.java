@@ -28,6 +28,7 @@ class ProductionRunTest {
         ProductionJobs jobs;MenuSnapshot menu=ProductionRunTest.menu(null);boolean sign,buying,craftQueued,listingQueued;
         double purse=10_000;final RecordingActions actions=new RecordingActions();final List<String> crafts=new ArrayList<>(),listings=new ArrayList<>();
         Set<String> occupied=Set.of();
+        Map<String,Integer> unlocks=Map.of();boolean requirementsPending;
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
         public String account(){return "account";}
@@ -37,6 +38,8 @@ class ProductionRunTest {
         public double purse(){return purse;}
         public double spendable(){return purse;}
         public Map<String,Integer> skills(){return Map.of();}
+        public Map<String,Integer> unlocks(){return unlocks;}
+        public boolean requirementsPending(){return requirementsPending;}
         public Set<String> occupied(){return occupied;}
         public boolean buyingAllowed(){return buying;}
         public Double instantBuyCost(String id,int units){return units*100.0;}
@@ -53,6 +56,22 @@ class ProductionRunTest {
         }
         public boolean listingQueued(){return listingQueued;}
         void finish(String id,ProductionJobs.State state)throws Exception{jobs.put(jobs.find(id).orElseThrow().withState(state,null));}
+    }
+
+    @Test void craftingPrerequisitesAreCheckedBeforeBuyingAnyIngredients()throws Exception {
+        var env=new Env();env.buying=true;env.requirementsPending=true;
+        var base=catalog().forOutput("OUTPUT").getFirst();
+        var recipe=new ProductionRecipe(base.key(),base.kind(),base.outputId(),base.outputCount(),base.ingredients(),base.grid(),0,0,"Diamond IV",null);
+        var run=ProductionRun.start(env,new RecipeCatalog(List.of(recipe),Map.of()),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertEquals(com.goofy.goofyaddons.features.production.ProductionLoop.Step.PENDING,run.tick(true,1000));
+        assertTrue(env.actions.serverEffects().isEmpty());assertTrue(run.reason().contains("prerequisites"));
+        env.requirementsPending=false;env.unlocks=Map.of("diamond",3);
+        assertEquals(com.goofy.goofyaddons.features.production.ProductionLoop.Step.BLOCKED,run.tick(true,2000));
+        assertTrue(env.actions.serverEffects().isEmpty());assertTrue(run.reason().contains("Diamond"));
+        env.unlocks=Map.of("diamond",4);
+        assertEquals(com.goofy.goofyaddons.features.production.ProductionLoop.Step.PENDING,run.tick(true,3000));
+        assertTrue(run.reason().contains("Buying"));
+        run.tick(true,4000);assertFalse(env.actions.serverEffects().isEmpty());
     }
 
     @Test void craftRunFromHeldInputsCraftsThenListsAndRecordsEveryBoundary()throws Exception {

@@ -15,7 +15,7 @@ public final class CraftingExecutor {
     private static final int RESULT=23;
     private static final long SETTLE_MS=500;
     private ProductionRecipe recipe;
-    private int container,source=-1;
+    private int container,source=-1,splitTarget=-1;
     private Map<String,Integer> before;
     private MenuSnapshot sent;
     private long sentAt,started,next,inconsistentSince;
@@ -24,7 +24,7 @@ public final class CraftingExecutor {
     private String failure;
     public String failure(){return failure;}
     public boolean busy(){return recipe!=null;}
-    public void reset(){recipe=null;sent=null;before=null;submitted=false;source=-1;failure=null;inconsistentSince=0;}
+    public void reset(){recipe=null;sent=null;before=null;submitted=false;source=splitTarget=-1;failure=null;inconsistentSince=0;}
     private Result block(String reason){failure=reason;return Result.BLOCKED;}
     public Result tick(ProductionRecipe wanted,MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,long now) {
         return tick(wanted,menu,actions,skills,Map.of(),now);
@@ -64,6 +64,16 @@ public final class CraftingExecutor {
         }
         if(now<next)return Result.WAITING;
         if(submitted)return Result.WAITING;
+        if(splitTarget>=0) {
+            var expected=recipe.grid().get(splitTarget);var donor=menu.slot(GRID[splitTarget]);
+            if(!empty(donor) && expected.id().equals(donor.customId()) && donor.count()==expected.count()*2 && menu.cursorEmpty()) {
+                // Pick up half from the grid, leaving the required half in this cell.
+                send(menu,actions,GRID[splitTarget],false,true,now);return Result.WAITING;
+            }
+            if(!empty(donor) && expected.id().equals(donor.customId()) && donor.count()==expected.count()
+                    && !menu.cursorEmpty() && expected.id().equals(menu.carried().customId()) && menu.carried().count()==expected.count())splitTarget=-1;
+            else return block("Crafting stack split changed unexpectedly; grid and cursor retained");
+        }
         int target=-1;
         for(int i=0;i<9;i++) {
             var expected=recipe.grid().get(i);var actual=menu.slot(GRID[i]);
@@ -76,6 +86,10 @@ public final class CraftingExecutor {
             if(cursor==null || cursor.empty() || cursor.customId()==null)return block("Unreadable crafting cursor");
             if(target>=0 && recipe.grid().get(target).id().equals(cursor.customId())) {
                 int remaining=recipe.grid().get(target).count()-count(menu.slot(GRID[target]));
+                if(empty(menu.slot(GRID[target])) && cursor.count()==64 && remaining==32) {
+                    // Always take the whole inventory stack; split its 64 into 32s inside the grid.
+                    splitTarget=target;send(menu,actions,GRID[target],false,false,now);return Result.WAITING;
+                }
                 send(menu,actions,GRID[target],false,cursor.count()>remaining,now);return Result.WAITING;
             }
             var origin=menu.slot(source);
@@ -84,11 +98,11 @@ public final class CraftingExecutor {
             send(menu,actions,source,false,false,now);return Result.WAITING;
         }
         if(target>=0) {
-            var need=recipe.grid().get(target);int remaining=need.count()-count(menu.slot(GRID[target]));
+            var need=recipe.grid().get(target);
             var available=menu.slots().stream().filter(s->s.inPlayerInventory() && s.containerSlot()<36 && !s.empty() && need.id().equals(s.customId())).toList();
             if(available.isEmpty())return block("Ingredient moved out of accessible inventory");
-            var stack=available.stream().filter(s->s.count()==remaining || (s.count()+1)/2==remaining).findFirst().orElse(available.getFirst());
-            source=stack.index();send(menu,actions,source,false,stack.count()!=remaining && (stack.count()+1)/2==remaining,now);return Result.WAITING;
+            var stack=available.stream().max(Comparator.comparingInt(SlotView::count)).orElseThrow();
+            source=stack.index();send(menu,actions,source,false,false,now);return Result.WAITING;
         }
         // Hypixel's Quick Crafting column (16, 25, 34) can show the same item before the grid is
         // full; only the result slot holds the grid's output.

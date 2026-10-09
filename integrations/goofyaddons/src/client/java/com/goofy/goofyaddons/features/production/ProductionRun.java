@@ -35,6 +35,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
         /** Coins the capital manager allows a new purchase to spend. */
         double spendable();
         Map<String,Integer> skills();
+        default Map<String,Integer> unlocks() { return Map.of(); }
+        default boolean requirementsPending() { return false; }
         /** Products owned by trader positions or other queued work. */
         Set<String> occupied();
         boolean buyingAllowed();
@@ -164,6 +166,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 default -> { return Outcome.PENDING; }
             }
         }
+        var requirement=craftRequirement();
+        if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirement);
         var missing = missing();
         if (missing.isEmpty()) return Outcome.DONE;
         for (String id : missing.keySet()) if (env.occupied().contains(id)) return Outcome.blocked(id + " belongs to a trader position; production will not use it");
@@ -184,6 +188,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
     @Override public Outcome process(long now) {
         if (kind == ProductionRecipe.Kind.CRAFT) {
             if (craftJob == null) {
+                var requirement=craftRequirement();
+                if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirement);
                 craftJob = env.queueCraft(output, batches);
                 if (craftJob == null) return Outcome.blocked("Craft could not be queued; inputs changed or another production step is queued");
                 return Outcome.pending("Crafting");
@@ -296,6 +302,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 : catalog.forOutput(output).stream().filter(r -> r.kind() == kind).toList();
         Map<String,Integer> best = null;double bestCost = Double.POSITIVE_INFINITY;
         for (var option : options) {
+            if(kind==ProductionRecipe.Kind.CRAFT && com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks())!=null)continue;
             var need = new LinkedHashMap<String,Integer>();
             for (var e : new TreeMap<>(option.ingredients()).entrySet()) {
                 if (e.getKey().equals(option.inputPet())) continue;
@@ -308,6 +315,17 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if (best == null || cost < bestCost) { best = need; bestCost = cost; }
         }
         return best == null ? Map.of() : best;
+    }
+
+    private String craftRequirement() {
+        if(kind!=ProductionRecipe.Kind.CRAFT)return null;
+        String reason="No verified crafting recipe for "+output;
+        for(var option:catalog.forOutput(output))if(option.kind()==kind) {
+            var blocked=com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks());
+            if(blocked==null)return null;
+            reason=blocked;
+        }
+        return reason;
     }
 
     private Map<String,Integer> held() {

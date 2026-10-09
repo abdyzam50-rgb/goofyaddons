@@ -19,7 +19,7 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   const member=p.members?.[uuid];if(!member)return [];
   const unknown=[],skills={},slayers={},tiers={},reputation={};
   const experience=member.player_data?.experience;
-  for(const name of ['enchanting','taming','foraging']) {
+  for(const name of ['farming','mining','combat','foraging','fishing','enchanting','alchemy','carpentry','taming']) {
    const xp=experience?.[`SKILL_${name.toUpperCase()}`]??member[`experience_skill_${name}`];
    const level=xpLevel(xp,LEVELS.leveling_xp,LEVELS.leveling_caps[name]);
    if(level===null)unknown.push(name);else skills[name[0].toUpperCase()+name.slice(1)]=level;

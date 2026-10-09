@@ -18,7 +18,8 @@ class ProductionTest {
             new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);}
     class Server implements GameActions {
         final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);final ProductionRecipe r;
-        int clicks;boolean discard,preview,quickCraft;String title="Craft Item";
+        int clicks;boolean discard,preview,quickCraft,ignoreSplitOnce;String title="Craft Item";
+        final List<String> inputs=new ArrayList<>();
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
         MenuSnapshot menu(){
             boolean ready=true;int[] grid={10,11,12,19,20,21,28,29,30};
@@ -28,7 +29,7 @@ class ProductionTest {
             if(quickCraft)slots[16]=stack(16,"OUTPUT",1);
             return new MenuSnapshot(77,title,cursor.empty(),Arrays.asList(slots.clone()),cursor);
         }
-        public void click(int slot,boolean shift){clicks++;if(discard)return;
+        public void click(int slot,boolean shift){clicks++;inputs.add((shift?"shift:":"left:")+slot);if(discard)return;
             if(shift && slot==23){
                 assertEquals("OUTPUT",slots[23].customId());int[] grid={10,11,12,19,20,21,28,29,30};
                 for(int i:grid)slots[i]=stack(i,"",0);slots[56]=stack(56,"OUTPUT",1);return;
@@ -37,7 +38,8 @@ class ProductionTest {
             else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));
                 slots[slot]=stack(slot,cursor.customId(),s.count()+cursor.count());cursor=stack(-1,"",0);}
         }
-        public void rightClick(int slot){clicks++;if(discard)return;
+        public void rightClick(int slot){clicks++;inputs.add("right:"+slot);if(discard)return;
+            if(ignoreSplitOnce && slot==10 && cursor.empty()){ignoreSplitOnce=false;return;}
             if(cursor.empty()){var s=slots[slot];int half=(s.count()+1)/2;cursor=stack(-1,s.customId(),half);slots[slot]=stack(slot,s.customId(),s.count()-half);}
             else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));slots[slot]=stack(slot,cursor.customId(),s.count()+1);cursor=stack(-1,cursor.customId(),cursor.count()-1);}
         }
@@ -84,11 +86,32 @@ class ProductionTest {
             assertEquals(0,server.clicks);assertEquals(64,server.slots[54].count());assertTrue(server.cursor.empty());
         }
     }
-    @Test void halfStackOptimizationAvoidsThirtyTwoIndividualPlacements() {
+    @Test void fullStackIsPickedUpThenSplitInsideGridAndOutputIsShiftClicked() {
         var r=recipe(32);var server=new Server(r,64);var executor=new CraftingExecutor();
         CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
         for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=150)result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
-        assertEquals(CraftingExecutor.Result.CRAFTED,result);assertTrue(server.clicks<=5);assertEquals(32,server.slots[54].count());
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertTrue(server.clicks<=7);assertEquals(32,server.slots[54].count());
+        assertEquals(List.of("left:54","left:10","right:10","left:54"),server.inputs.subList(0,4));
+        assertEquals("shift:23",server.inputs.getLast());assertFalse(server.inputs.contains("right:54"));
+    }
+    @Test void gridHalvesAreReusedForFiveThirtyTwoItemCellsWithExactRemainder() {
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,null));
+        for(int i=0;i<5;i++)grid.set(i,new ProductionRecipe.Ingredient("INPUT",32));
+        var r=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",160),grid,0,0,"Collection II",null);
+        var server=new Server(r,64);server.slots[57]=stack(57,"INPUT",64);server.slots[58]=stack(58,"INPUT",64);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000 && result==CraftingExecutor.Result.WAITING;now+=150)result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
+        assertEquals(3,server.inputs.stream().filter(s->s.startsWith("right:")).count());
+        assertTrue(server.inputs.stream().noneMatch(s->s.equals("right:54") || s.equals("right:57") || s.equals("right:58")));
+        assertEquals(32,server.slots[58].count());assertTrue(server.cursor.empty());assertEquals("OUTPUT",server.slots[56].customId());
+    }
+    @Test void ignoredGridSplitRetriesOnlyWhileTheSameFullStackRemains() {
+        var r=recipe(32);var server=new Server(r,64);server.ignoreSplitOnce=true;var executor=new CraftingExecutor();
+        CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000 && result==CraftingExecutor.Result.WAITING;now+=150)result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(32,server.slots[54].count());
+        assertEquals(2,server.inputs.stream().filter("right:10"::equals).count());assertTrue(server.cursor.empty());
     }
     @Test void ignoredPickupRetriesBoundedlyWithoutRepeatedFastClicks() {
         var r=recipe(5);var server=new Server(r,64);server.discard=true;var executor=new CraftingExecutor();

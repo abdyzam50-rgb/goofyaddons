@@ -167,6 +167,8 @@ public final class ProductionLoopFeature implements Feature {
             public double purse() { return new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(); }
             public double spendable() { double purse = purse(); return Double.isFinite(purse) && purse >= 0 ? CapitalManager.INSTANCE.available(purse) : 0; }
             public Map<String,Integer> skills() { return FeatureManager.INSTANCE.observedSkills(); }
+            public Map<String,Integer> unlocks() { return FeatureManager.INSTANCE.observedUnlocks(); }
+            public boolean requirementsPending() { return FeatureManager.INSTANCE.accountRequirementsPending(); }
             public Set<String> occupied() { return CapitalManager.INSTANCE.occupiedProducts(); }
             public boolean buyingAllowed() { return buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients; }
             public Double instantBuyCost(String id, int units) {

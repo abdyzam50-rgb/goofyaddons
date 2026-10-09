@@ -37,8 +37,14 @@ public final class CraftingFeature implements Feature {
         var counts=new HashMap<String,Integer>();
         for(var slot:menu.slots())if(slot.inPlayerInventory() && slot.containerSlot()<36 && !slot.empty() && slot.customId()!=null)
             counts.merge(slot.customId(),slot.count(),Integer::sum);
-        var chosen=selectRecipe(RecipeCatalog.instance(),output,batches,counts,CapitalManager.INSTANCE.occupiedProducts());
-        if(chosen.isEmpty()){new LiveActions().message("No supported recipe with enough unreserved inventory ingredients for "+output+".");return false;}
+        var manager=FeatureManager.INSTANCE;
+        var chosen=selectRecipe(RecipeCatalog.instance(),output,batches,counts,CapitalManager.INSTANCE.occupiedProducts(),manager.observedSkills(),manager.observedUnlocks());
+        if(chosen.isEmpty()) {
+            var held=selectRecipe(RecipeCatalog.instance(),output,batches,counts,CapitalManager.INSTANCE.occupiedProducts());
+            String reason=held.map(r->com.goofy.goofyaddons.features.access.RouteRequirements.craft(r.requirement(),manager.observedSkills(),manager.observedUnlocks())).orElse(null);
+            new LiveActions().message(reason==null?"No supported recipe with enough unreserved inventory ingredients for "+output+".":
+                "Cannot queue craft: "+reason+(manager.accountRequirementsPending()?". Account lookup is in progress; retry once it finishes.":". Check the account lookup or open Your Skills."));return false;
+        }
         String requirement=com.goofy.goofyaddons.features.access.RouteRequirements.craft(chosen.get().requirement(),FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks());
         if(requirement!=null){new LiveActions().message("Cannot queue craft: "+requirement+". Check Your Skills and wait for the account lookup.");return false;}
         recipe=chosen.get();remaining=batches;jobId=UUID.randomUUID().toString();executor.reset();opening=false;
@@ -53,6 +59,11 @@ public final class CraftingFeature implements Feature {
         return catalog.forOutput(output).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT)
             .filter(r->!occupied.contains(r.outputId()) && r.ingredients().keySet().stream().noneMatch(occupied::contains))
             .filter(r->r.ingredients().entrySet().stream().allMatch(e->inventory.getOrDefault(e.getKey(),0)>=(long)e.getValue()*batches)).findFirst();
+    }
+    static Optional<ProductionRecipe> selectRecipe(RecipeCatalog catalog,String output,int batches,Map<String,Integer> inventory,Set<String> occupied,Map<String,Integer> skills,Map<String,Integer> unlocks){
+        var eligible=new RecipeCatalog(catalog.forOutput(output).stream()
+            .filter(r->com.goofy.goofyaddons.features.access.RouteRequirements.craft(r.requirement(),skills,unlocks)==null).toList(),Map.of());
+        return selectRecipe(eligible,output,batches,inventory,occupied);
     }
     public ProductionJobs productionJobs()throws java.io.IOException{return jobs();}
     public List<ProductionJobs.Job> journal()throws java.io.IOException{return jobs().all();}

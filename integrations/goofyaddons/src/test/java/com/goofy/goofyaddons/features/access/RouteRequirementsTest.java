@@ -40,4 +40,25 @@ class RouteRequirementsTest {
         root.getAsJsonArray("profiles").add(root.getAsJsonArray("profiles").get(0).deepCopy());
         assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parse(root,"Tester",skills,1000000));
     }
+    @Test void liveProfileIdentityUnlocksApiSkillsAndCollectionsWithoutSkillsGui() {
+        var root=profile();var p=root.getAsJsonArray("profiles").get(0).getAsJsonObject();p.addProperty("name","Mango");
+        p.addProperty("selected",false);p.getAsJsonObject("stats").getAsJsonObject("skills").addProperty("Fishing",35);
+        var parsed=AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000);
+        assertEquals(35,parsed.skills().get("fishing"));assertEquals(33,parsed.skills().get("enchanting"));
+        assertNull(RouteRequirements.craft("Diamond IV & Fishing XXXV & Zombie Slayer 3",parsed.skills(),parsed.unlocks()));
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Apple",Map.of(),1000000));
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of("fishing",34),1000000));
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1300000));
+        root.getAsJsonArray("profiles").add(p.deepCopy());
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000));
+    }
+    @Test void unpublishedProgressionStaysUnknownAndLiveSkillsOverrideApi() {
+        var root=profile();var p=root.getAsJsonArray("profiles").get(0).getAsJsonObject();p.addProperty("name","Mango");
+        p.getAsJsonArray("unknown").add("enchanting");p.getAsJsonArray("unknown").add("collections");
+        var parsed=AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000);
+        assertFalse(parsed.skills().containsKey("enchanting"));assertFalse(parsed.unlocks().containsKey("diamond"));
+        assertEquals(Map.of("enchanting",34,"fishing",35),AccountUnlocks.combinedSkills(Map.of("enchanting",33,"fishing",35),Map.of("enchanting",34)));
+        p.getAsJsonObject("stats").getAsJsonObject("skills").addProperty("Fishing",35.5);
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000));
+    }
 }

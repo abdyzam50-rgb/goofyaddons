@@ -31,7 +31,7 @@ public class FeatureManager {
     private final MenuScheduler scheduler = new MenuScheduler();
     private final com.goofy.goofyaddons.features.access.SkillPreflight skillPreflight = new com.goofy.goofyaddons.features.access.SkillPreflight();
     private final com.goofy.goofyaddons.features.access.AccountUnlocks accountUnlocks=new com.goofy.goofyaddons.features.access.AccountUnlocks();
-    public java.util.Map<String,Integer> observedSkills(){return skillPreflight.skills();}
+    public java.util.Map<String,Integer> observedSkills(){return com.goofy.goofyaddons.features.access.AccountUnlocks.combinedSkills(accountUnlocks.skills(now()),skillPreflight.skills());}
     public java.util.Map<String,Integer> observedUnlocks(){return accountUnlocks.current(System.currentTimeMillis());}
     public boolean accountRequirementsPending(){return accountUnlocks.pending();}
     public void clearAccountRequirements(){skillPreflight.clear();accountUnlocks.clear();invalidateMarketReport();}
@@ -79,13 +79,19 @@ public class FeatureManager {
         if(accounts.current()==null && requirementWorld.now()-profileTabAt>=1000){profileTabAt=requirementWorld.now();accounts.tabList(requirementWorld.tabList());}
         if(!java.util.Objects.equals(requirementAccount,requirementWorld.username())){clearAccountRequirements();requirementAccount=requirementWorld.username();if(started())skillPreflight.begin();}
         if(skillPreflight.observe(requirementWorld.menu())){accountUnlocks.clear();invalidateMarketReport();}
-        if(!skillPreflight.pending() && !observedSkills().isEmpty())accountUnlocks.poll(requirementWorld.username(),GoofyConfig.INSTANCE.marketAnalysis.endpoint,observedSkills(),requirementWorld.now());
+        var scope=accounts.current();
+        accountUnlocks.poll(requirementWorld.username(),scope==null?null:scope.profile(),GoofyConfig.INSTANCE.marketAnalysis.endpoint,skillPreflight.skills(),requirementWorld.now());
+        if(skillPreflight.pending() && accountUnlocks.skills(requirementWorld.now()).containsKey("enchanting")) {
+            skillPreflight.cancel();
+            com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(observedSkills());invalidateMarketReport();
+        }
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);
         marketAnalysis.poll(started()?mode:GoofyConfig.INSTANCE.tradingMode);
         if (productionTest && !started()) { tickProductionTest(); return; }
         if (!started() || paused()) return;
         if(com.goofy.goofyaddons.features.access.BazaarNpcAccess.tick())return;
         if(skillPreflight.pending()) {
+            if(accountUnlocks.pending())return; // Fast profile request first; Skills remains the fallback.
             try {skillPreflight.tick(new com.goofy.goofyaddons.menu.LiveWorld().menu(),new com.goofy.goofyaddons.menu.LiveActions(),System.currentTimeMillis());
                 if(!skillPreflight.pending()){com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(observedSkills());invalidateMarketReport();}}
             catch(RuntimeException failure){safetyPause("Account prerequisite check failed; close the current menu and review inventory");}
@@ -146,7 +152,7 @@ public class FeatureManager {
         if(started() && paused() && books.recoveryPending()) {lifecycle.running();books.restartRecovery();return;}
         if (started() && paused()) { resume(source); return; }
         if (started()) return;
-        skillPreflight.clear();accountUnlocks.clear();invalidateMarketReport();
+        skillPreflight.clear();invalidateMarketReport(); // Reuse fresh, profile-scoped API evidence across starts.
         if(GoofyConfig.INSTANCE.access.checkSkills || mode!=TradingMode.GENERAL || crafting.queued() || production.queued())skillPreflight.begin();
         else com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(java.util.Map.of());
         crafting.start();

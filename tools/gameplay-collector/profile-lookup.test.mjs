@@ -19,6 +19,15 @@ test('unpublished purse and skills remain unknown; legacy profiles are supported
  const [nested]=summarizeProfiles(data({player_data:{unlocked_coll_tiers:['DIAMOND_5']}}),uuid,resources);assert.equal(nested.stats.collections.Diamond,5);
  assert.deepEqual(summarizeProfiles(data(member),'c'.repeat(32),resources),[]);
 });
+test('craft prerequisites include published farming, mining, combat, fishing, alchemy and carpentry levels',()=>{
+ const experience=Object.fromEntries(['FARMING','MINING','COMBAT','FISHING','ALCHEMY','CARPENTRY'].map(name=>[`SKILL_${name}`,175]));
+ const [p]=summarizeProfiles(data({...member,player_data:{experience}}),uuid,resources,1234);
+ for(const name of ['Farming','Mining','Combat','Fishing','Alchemy','Carpentry'])assert.equal(p.stats.skills[name],2);
+ assert.ok(p.unknown.includes('enchanting'));
+ assert.equal(p.stats.skills.Enchanting,undefined);
+ const [legacy]=summarizeProfiles(data({experience_skill_combat:175}),uuid,null,1234);
+ assert.equal(legacy.stats.skills.Combat,2);
+});
 test('private API key goes only to Hypixel profiles and is absent from the response',async()=>{
  const calls=[];const fetcher=async(url,options)=>{calls.push({url,options});return Response.json(url.includes('mojang')?{id:uuid,name:'Tester'}:url.includes('collections')?resources:data(member));};
  const body=await lookupProfiles('Tester','private-api-secret',fetcher,1234);
