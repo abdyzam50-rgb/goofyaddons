@@ -22,6 +22,6 @@ test('upstream errors cannot invent craft prices and unavailable Bazaar stops AH
 test('Worker loads the catalog from its own assets and prices outputs outside discovery',async()=>{
  const catalog={recipes:[{kind:'CRAFT',outputId:'RESULT',ingredients:{COAL:1,COMPONENT:1}}]};
  const service=createPublicCrafts({now:()=>now,fetchImpl:async url=>url.includes('hypixel')?Response.json({success:true,lastUpdated:now,products:{COAL:{}}}):url.endsWith('profit')?Response.json([]):Response.json({lowest:10000})});
- const response=await service(request,{ASSETS:{fetch:async r=>{assert.equal(new URL(r.url).pathname,'/calculator/data/production-recipes.json');return Response.json(catalog);}}});
+ const response=await service(request,{ASSETS:{fetch:async r=>{const path=new URL(r.url).pathname;return path==='/data/production-recipes.json'?Response.json(catalog):new Response('Missing asset',{status:404});}}});
  const b=await response.json();assert.deepEqual(b.rows.map(r=>r.item),['RESULT','COMPONENT']);assert.ok(b.rows.every(r=>r.quote));
 });

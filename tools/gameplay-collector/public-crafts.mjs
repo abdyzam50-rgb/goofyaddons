@@ -7,7 +7,7 @@ export function createPublicCrafts({fetchImpl=fetch,now=Date.now,cache=globalThi
  return async function publicCrafts(request,env={}) {
   const url=new URL(request.url),item=url.searchParams.get('item')??'';url.search='';
   if(!catalog&&env.ASSETS){
-   const r=await env.ASSETS.fetch(new Request(new URL('/calculator/data/production-recipes.json',url)));
+   const r=await env.ASSETS.fetch(new Request(new URL('/data/production-recipes.json',url)));
    if(!r.ok)return Response.json({error:'Craft catalog unavailable'},{status:503});
    catalog=await r.json();if(!Array.isArray(catalog.recipes))return Response.json({error:'Invalid craft catalog'},{status:503});
   }

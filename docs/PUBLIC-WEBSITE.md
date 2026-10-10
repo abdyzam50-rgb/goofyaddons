@@ -188,3 +188,16 @@ Use "Show 100 more crafts" to browse beyond the first page. Unknown AH demand,
 stale prices, missing unlocks and untradable components remain conservative blocks.
 The bundled local calculator receives the same calculation changes in mod
 `astar-client-0.2.40-BETA.jar`.
+
+### Worker asset-path correction (0.2.41)
+
+The 0.2.40 craft endpoint requested `/calculator/data/production-recipes.json`
+from `env.ASSETS`, but that binding is rooted at the calculator directory and
+requires `/data/production-recipes.json`. The external website URL keeps its
+`/calculator/` prefix; only the internal asset request changes. This caused
+`Craft catalog unavailable` before any Coflnet collection could run.
+
+Existing 0.2.40 deployments only need the latest `public-crafts.mjs` copied into
+`tools/gameplay-collector` followed by `npx wrangler@4.147.0 deploy`. No mod update,
+new token, database migration or settings reset is needed. The corrected public
+package is `dist/goofyaddons-public-website-craft-0.2.41.zip`.

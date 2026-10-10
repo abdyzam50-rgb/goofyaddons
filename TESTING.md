@@ -172,3 +172,12 @@ or calculator UI; no additional Java test run is required for its final scope.
 - Coflnet direct connectivity from this environment returned a proxy HTTP 403;
   AH price behavior was verified with deterministic provider fixtures, not a live
   purchase or listing. In-game execution was not exercised for this UI update.
+
+### Public craft collector asset path 0.2.41
+
+Live deployed `/v1/crafts/market` returned HTTP 503, `Craft catalog unavailable`,
+while the external catalog URL returned HTTP 200. Corrected the direct asset
+binding path to `/data/production-recipes.json`. The Worker test now uses a
+binding fixture that returns HTTP 404 for other paths and verifies catalog-only
+outputs and AH components receive quotes. Collector and craft market tests pass.
+Redeploying the user's Worker is required; it was not deployed from this workspace.
