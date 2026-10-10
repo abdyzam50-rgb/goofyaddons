@@ -46,6 +46,15 @@ public final class ProductionBazaarOrders {
         boolean done=p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY;
         return new Result(done,engine.productionFailed(),p.productionBuy && p.completed?0:p.quantity,p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,engine.activity());
     }
+    public boolean recoverBuy(){bind();return engine.recoverProductionBuy();}
+    public com.goofy.goofyaddons.features.production.ProductionJobs.Job recoveryEvidence(String account) {
+        var p=engine.productionPosition();
+        if(p==null || !p.productionBuy || !p.purchasePriceKnown || !(p.completed || p.stage==GeneralPosition.Stage.INVENTORY))
+            throw new IllegalStateException("Claim/cancellation has not been verified");
+        return new com.goofy.goofyaddons.features.production.ProductionJobs.Job(p.tradeId,"recovered:bazaar:"+p.item.id(),account,
+            com.goofy.goofyaddons.features.production.ProductionJobs.State.REVIEW,1,-1,0,0,p.completed?0:p.cost(),null,null,
+            "Verified buy-order recovery: "+(p.completed?0:p.quantity)+" units in inventory at "+p.unitCost+" coins/unit; outstanding order removed. Inspect these inputs before acknowledging; no sale or profit assumed.");
+    }
     public void poll(){bind();if(engine.hasRetainedPositions())engine.poll();}
     public boolean needsMenu(){return engine.needsMenu();}
     public Map<String,Object> diagnosticState(){return engine.diagnosticState();}

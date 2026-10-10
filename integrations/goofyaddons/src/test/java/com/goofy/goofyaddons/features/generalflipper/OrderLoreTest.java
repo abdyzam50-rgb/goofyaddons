@@ -69,4 +69,24 @@ class OrderLoreTest {
         assertNull(OrderLore.fill("Filled: 9999999999999999/256"));
         assertNull(OrderLore.fill("Loading..."));
     }
+    @Test void abbreviatedDenominatorUsesExactOrderAmountWithoutRoundingOwnership() {
+        String observed="Order amount: 1,280x\nFilled: 7/1.3k (0.5%)\nYou have 7 items to claim!";
+        assertEquals(1280,OrderLore.total(observed));
+        assertEquals(new OrderLore.Fill(7,1280),OrderLore.fill(observed));
+        assertEquals(7,OrderLore.claimable(observed,0));
+        assertEquals(4096,OrderLore.total("Offer amount: 4,096x\nFilled: 512/4.1k (12.5%)"));
+        assertNull(OrderLore.total("Filled: 7/1.3k"));
+        assertNull(OrderLore.total("Order amount: 1,280x\nFilled: 7/1.4k"));
+        assertNull(OrderLore.total("Order amount: 1,280x\nFilled: 1,281/1.3k"));
+        assertNull(OrderLore.total("Order amount: 1,280x\nFilled: 7/1.3kabcd"));
+    }
+    @Test void abbreviatedFilledCountsNeverInventClaimQuantityOrFullSaleProof() {
+        String observed="Order amount: 1,280x\nFilled: 1.2k/1.3k (93.7%)";
+        assertEquals(1280,OrderLore.total(observed));assertNull(OrderLore.fill(observed));
+        assertEquals(0,OrderLore.claimable(observed,0));
+        assertEquals(1201,OrderLore.claimable(observed+"\nYou have 1,201 items to claim!",0));
+        assertNull(OrderLore.fill("Order amount: 1,280x\nFilled: 1.3k/1.3k (100%)"));
+        assertNull(OrderLore.total("Order amount: 1,280x\nFilled: 1.4k/1.3k"));
+    }
+
 }

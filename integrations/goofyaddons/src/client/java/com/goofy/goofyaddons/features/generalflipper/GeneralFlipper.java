@@ -94,6 +94,7 @@ public class GeneralFlipper implements Feature {
     private GeneralTrade trade = new GeneralTrade();
     private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
     private String lastBlockedItem;
+    private String lastFailure;
     @Override public void navigationResumed(long elapsed){stepSince+=elapsed;nextAction+=elapsed;navigationRetry.reset();}
     private long stepSince;
     private long nextAction;
@@ -152,6 +153,7 @@ public class GeneralFlipper implements Feature {
     }
     /** Pure reader: the HUD calls this every frame, so it must not recompute or mutate. */
     public String activity() {
+        if(lastFailure!=null && (paused||blocked))return lastFailure;
         if (active != null) return "General: " + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
         if (!snapshotFresh) return "Waiting for price data";
         if (!positions.isEmpty()) return "Waiting for general orders";
@@ -175,7 +177,7 @@ public class GeneralFlipper implements Feature {
         if (blocked) { actions.message("General flipper is blocked; resolve the logged order-state error first."); return; }
         running = true;
         paused = false;
-        lastBlockedItem=null;
+        lastBlockedItem=null;lastFailure=null;
         nextPoll = 0;
         for (GeneralPosition position : positions) {
             position.checkedAt = 0;
@@ -630,6 +632,7 @@ public class GeneralFlipper implements Feature {
         finishWork();
     }
     private void fail(String message) {
+        lastFailure=message;
         services.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",services.diagnosticContext()));
         actions.message(message);
         LOGGER.error(message);
@@ -711,6 +714,19 @@ public class GeneralFlipper implements Feature {
     boolean consumeProduction(){
         var p=productionPosition();if(p==null||!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY))return false;
         positions.remove(p);if(!save()){positions.add(p);return false;}capital.release(OWNER,p.item.id());return true;
+    }
+    boolean recoverProductionBuy() {
+        restoreBudget();
+        if(!services.productionOnly() || blocked || positions.size()!=1)return false;
+        var p=productionPosition();
+        if(!p.productionBuy || !p.purchasePriceKnown || p.stage==Stage.PLANNED && !p.submitted)return false;
+        start();
+        if(!p.completed && p.stage!=Stage.INVENTORY) {
+            // The existing claim/cancel engine verifies live ownership, inventory and refunds.
+            p.cancelRequested=true;p.checkedAt=0;
+            if(!save()){running=false;return false;}
+        }
+        return true;
     }
     boolean productionFailed(){return blocked||paused;}
 

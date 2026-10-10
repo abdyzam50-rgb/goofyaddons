@@ -45,4 +45,54 @@ class ProductionOrderHandoffTest {
         String trade=engine.productionPosition().tradeId;
         assertFalse(engine.enqueueProduction("OTHER","Other",1,50,true,55));assertEquals(trade,engine.productionPosition().tradeId);
     }
+    @Test void recoveryCancelsOnlyARetainedVerifiedIngredientOrderWithoutQueueingPurchases()throws Exception {
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
+        var p=new GeneralPosition();p.item=new GeneralItem("INPUT","Input");p.quantity=1280;p.unitCost=11717.8;
+        p.stage=GeneralPosition.Stage.BUY_ORDER;p.productionBuy=true;p.maximumBuyPrice=12000;p.purchasePriceKnown=true;p.submitted=true;p.tradeId="retained";
+        repo.save(List.of(p));var actions=new RecordingActions();
+        var engine=new GeneralFlipper(new FakeWorld().showing(inventory("INPUT",0)),actions,repo,services());
+        assertTrue(engine.recoverProductionBuy());
+        assertTrue(repo.load().getFirst().cancelRequested);assertEquals("retained",engine.productionPosition().tradeId);
+        assertTrue(actions.serverEffects().isEmpty());
+    }
+    @Test void recoveryRefusesUnsubmittedPurchasesUnknownCostsAndSellOrders()throws Exception {
+        for(int variant=0;variant<3;variant++) {
+            var path=dir.resolve("orders-"+variant+".json");
+            var repo=new JsonGeneralOrderRepository(()->path);
+            var p=new GeneralPosition();p.item=new GeneralItem("INPUT","Input");p.quantity=2;p.unitCost=100;p.maximumBuyPrice=103;
+            p.stage=variant==0?GeneralPosition.Stage.PLANNED:variant==1?GeneralPosition.Stage.BUY_ORDER:GeneralPosition.Stage.SELL_ORDER;
+            p.productionBuy=variant!=2;p.purchasePriceKnown=variant!=1;p.tradeId="retained";repo.save(List.of(p));
+            var actions=new RecordingActions();var engine=new GeneralFlipper(new FakeWorld().showing(inventory("INPUT",0)),actions,repo,services());
+            assertFalse(engine.recoverProductionBuy());assertFalse(repo.load().getFirst().cancelRequested);assertTrue(actions.serverEffects().isEmpty());
+        }
+    }
+
+    @Test void recoveryVerifiesRoundedOrderOwnershipAndRefundBeforeReleasingTheChild()throws Exception {
+        var services=services();GoofyConfig.INSTANCE.general.maxReprices=0;
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
+        var p=new GeneralPosition();p.item=new GeneralItem("INPUT","Input");p.quantity=1280;p.unitCost=100;
+        p.stage=GeneralPosition.Stage.BUY_ORDER;p.productionBuy=true;p.maximumBuyPrice=103;p.purchasePriceKnown=true;p.submitted=true;p.tradeId="retained";
+        var world=new FakeWorld();p.placedAt=world.clock();repo.save(List.of(p));
+        var slots=new ArrayList<SlotView>();for(int i=0;i<54;i++)slots.add(SlotView.empty(i,false,i));
+        for(int i=0;i<36;i++)slots.add(SlotView.empty(54+i,true,i));
+        slots.set(49,SlotView.named(49,"Close",List.of()));
+        slots.set(11,SlotView.named(11,"BUY Input",List.of("Order amount: 1,280x","Filled: 0/1.3k (0%)","Click to view options!")));
+        world.showing(new MenuSnapshot(42,"Your Bazaar Orders",true,slots));
+        var actions=new RecordingActions();var engine=new GeneralFlipper(world,actions,repo,services);
+        assertTrue(engine.recoverProductionBuy());drive(engine,world,1400);
+        assertFalse(engine.productionFailed());assertTrue(actions.serverEffects().contains("click:11"),actions.performed().toString());
+        var options=new ArrayList<>(slots);options.set(11,SlotView.empty(11,false,11));options.set(13,SlotView.named(13,"Cancel Order",List.of()));
+        world.showing(new MenuSnapshot(43,"Buy Order Options",true,options));drive(engine,world,180);
+        assertFalse(engine.productionPosition().completed);
+        engine.onNotice("[Bazaar] Cancelled! Refunded 128,000 coins from cancelling Buy Order!");
+        var empty=new ArrayList<>(slots);empty.set(11,SlotView.empty(11,false,11));
+        world.showing(new MenuSnapshot(44,"Your Bazaar Orders",true,empty));drive(engine,world,1800);
+        assertFalse(engine.productionFailed());assertTrue(engine.productionPosition().completed);
+        assertTrue(repo.load().getFirst().completed,"Evidence stays durable until parent/manual-review handoff");
+        assertTrue(engine.consumeProduction());assertTrue(repo.load().isEmpty());
+    }
+    private void drive(GeneralFlipper engine,FakeWorld world,long millis) {
+        for(long n=0;n<millis;n+=60){engine.poll();engine.onTick();world.advance(60);}
+    }
+
 }

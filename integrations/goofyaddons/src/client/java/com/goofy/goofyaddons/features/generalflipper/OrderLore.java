@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 
 public final class OrderLore {
     public record Fill(int filled, int total) {}
-    private static final Pattern FILLED = Pattern.compile("Filled:\\s*([\\d,]+)\\s*/\\s*([\\d,]+)");
+    private static final Pattern FILLED = Pattern.compile("Filled:\\s*([\\d,]+(?:\\.\\d+)?[kKmMbB]?)\\s*/\\s*([\\d,]+(?:\\.\\d+)?[kKmMbB]?)(?=\\s|\\(|$)");
     private static final Pattern TOTAL = Pattern.compile("(?im)^\\s*(?:Order amount|Offer amount|Amount|Quantity):\\s*([\\d,]+)(?:x|\\s|$)");
     private static final Pattern CLAIMABLE = Pattern.compile("You have\\s+([\\d,]+)\\s+(?:items?|units?)", Pattern.CASE_INSENSITIVE);
 
@@ -19,8 +19,10 @@ public final class OrderLore {
             return quantity!=null && noFillField && noClaimHint && text.contains("Click to view options!") ? new Fill(0,quantity) : null;
         }
         try {
+            Integer totalValue = fractionTotal(match.group(2),explicitTotal(clean(lore)));
+            if(totalValue==null || !match.group(1).matches("[\\d,]+"))return null;
             int filled = number(match.group(1));
-            int total = number(match.group(2));
+            int total = totalValue;
             return total > 0 && filled <= total ? new Fill(filled, total) : null;
         } catch (NumberFormatException ignored) { return null; }
     }
@@ -67,11 +69,46 @@ public final class OrderLore {
     }
     public static Integer total(String lore) {
         Fill fill=fill(lore);
-        if(FILLED.matcher(clean(lore)).find() && fill==null) return null;
+        Matcher fraction=FILLED.matcher(clean(lore));
+        boolean hasFraction=fraction.find();
+        if(!hasFraction && Pattern.compile("(?im)^\\s*Filled:[^\\r\\n]*/").matcher(clean(lore)).find())return null;
+        if(hasFraction && fill==null) {
+            Integer exact=explicitTotal(clean(lore));
+            // Rounded filled counts cannot prove a claim; exact total still proves ownership.
+            if(exact==null || fractionTotal(fraction.group(2),exact)==null || !roundedWithinTotal(fraction.group(1),exact))return null;
+        }
         Integer explicit=explicitTotal(clean(lore));
         if(TOTAL.matcher(clean(lore)).find() && explicit==null) return null;
         if(fill!=null && explicit!=null && fill.total()!=explicit) return null;
         return explicit!=null ? explicit : fill==null ? null : fill.total();
+    }
+    private static Integer fractionTotal(String token,Integer explicit) {
+        if(token.matches("[\\d,]+")) {
+            try {int n=number(token);return n>0 && (explicit==null || explicit==n)?n:null;}
+            catch(NumberFormatException bad){return null;}
+        }
+        return explicit!=null && roundedMatches(token,explicit)?explicit:null;
+    }
+    private static boolean roundedWithinTotal(String token,int exact) {
+        if(!token.matches("[\\d,]+(?:\\.\\d+)?[kKmMbB]"))return false;
+        try {
+            char suffix=Character.toLowerCase(token.charAt(token.length()-1));
+            int scale=suffix=='k'?1000:suffix=='m'?1000000:1000000000;
+            var shown=new java.math.BigDecimal(token.substring(0,token.length()-1).replace(",",""));
+            var halfStep=java.math.BigDecimal.valueOf(5).scaleByPowerOfTen(-shown.scale()-1);
+            return shown.signum()>0 && shown.subtract(halfStep).multiply(java.math.BigDecimal.valueOf(scale))
+                    .compareTo(java.math.BigDecimal.valueOf(exact))<=0;
+        }catch(NumberFormatException bad){return false;}
+    }
+    private static boolean roundedMatches(String token,int exact) {
+        if(!token.matches("[\\d,]+(?:\\.\\d+)?[kKmMbB]"))return false;
+        try {
+            char suffix=Character.toLowerCase(token.charAt(token.length()-1));
+            int scale=suffix=='k'?1000:suffix=='m'?1000000:1000000000;
+            var displayed=new java.math.BigDecimal(token.substring(0,token.length()-1).replace(",",""));
+            return displayed.signum()>0 && java.math.BigDecimal.valueOf(exact).divide(java.math.BigDecimal.valueOf(scale))
+                    .setScale(displayed.scale(),java.math.RoundingMode.HALF_UP).compareTo(displayed)==0;
+        }catch(NumberFormatException bad){return false;}
     }
     private static Integer explicitTotal(String text) {
         Matcher match=TOTAL.matcher(text);Integer total=null;

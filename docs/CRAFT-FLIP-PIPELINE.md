@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.56
+# Craft flip discovery and execution — 0.2.57
 
 ## Shipped behavior
 
@@ -718,3 +718,30 @@ block acknowledgement until reconciled. A failed save rolls back every change.
 After acknowledgement, press B to resume. Discovery clears its old blocker status
 when a new calculation succeeds. Existing 0.2.55 installations support individual
 IDs only; bulk acknowledgement requires this release.
+
+
+### 0.2.57 rounded Bazaar fills and ingredient-order recovery
+
+The 1,280-unit Fine Amber Gemstone order showed `Order amount: 1,280x` but
+`Filled: 7/1.3k (0.5%)`. Previously the denominator parser consumed `1` from
+`1.3k`, conflicting with the exact total and pausing production. Order lore now
+uses the exact amount and checks that the abbreviated denominator rounds from
+that amount. Without an exact amount, rounded totals cannot establish ownership.
+Rounded filled counts cannot establish an exact claim quantity or a fully sold
+position; an explicit claim count remains usable. Conflicting totals, malformed
+suffixes and fills above the owned quantity are rejected. Failure messages retain
+the actual cause instead of reporting only “Waiting for general orders”.
+
+A failed production run with a live ingredient order must reconcile that order
+before REVIEW acknowledgement. With trading stopped, run
+`.a* goofyaddon production recoverorders`. This runs only the retained ingredient
+buy's existing claim/cancel/refund sequence: no route selection, new purchases or
+sales. Unsubmitted buys, sell orders, unknown cost and unreadable journals are
+refused. The command verifies order ownership, any claimed inventory, cancellation
+and applicable refund evidence. It then saves known input quantity/cost to a
+REVIEW job before consuming the child order journal. Failure to save keeps the
+child's ownership. Recovery pauses when finished; stop with B, inspect recovered
+inventory and other leftovers, then run `production acknowledge all` and restart.
+Stopping recovery retains the order for a later attempt. If live evidence differs
+from the tracked order, recovery pauses for manual inspection rather than clearing
+ownership. This release does not automatically resume interrupted production runs.

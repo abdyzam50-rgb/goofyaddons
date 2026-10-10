@@ -13,6 +13,7 @@ import java.util.*;
  */
 public final class ProductionLoopFeature implements Feature {
     private ProductionRun run;
+    private boolean recoveringOrders;
     private final CraftFlipSelection selection=new CraftFlipSelection();
     private double automaticBudget;
     private long nextSelection;
@@ -53,11 +54,12 @@ public final class ProductionLoopFeature implements Feature {
     private String lastReason;
 
     public String name() { return "Production"; }
-    public boolean queued() { return run != null; }
+    public boolean queued() { return run != null || recoveringOrders; }
     public String discoveryStatus() {
         return "Craft discovery · "+(selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes · ":"")+discoveryReason();
     }
     public String activity() {
+        if(recoveringOrders)return "Recovering craft ingredient order · "+orders.diagnosticState().get("step");
         if (run == null) return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?discoveryStatus():"No production run queued";
         return "Production " + run.output() + " · " + run.stage().name().toLowerCase(Locale.ROOT) + (run.reason() == null ? "" : " · " + run.reason());
     }
@@ -76,7 +78,7 @@ public final class ProductionLoopFeature implements Feature {
     }
     public boolean queue(String output, ProductionRecipe.Kind kind, int batches, int forgeSlot, long binPrice, double maximumFee, boolean buyInputs,boolean marketPricing) {
         var actions = new LiveActions();
-        if (run != null || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
+        if (queued() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
             actions.message("Finish the queued production work first."); return false;
         }
         try {
@@ -102,7 +104,7 @@ public final class ProductionLoopFeature implements Feature {
     /** Claims a Forge or Kat job that is waiting in the journal, optionally listing the result. */
     public boolean claim(String jobPrefix, long binPrice, double maximumFee) {
         var actions = new LiveActions();
-        if (run != null || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
+        if (queued() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
             actions.message("Finish the queued production work first."); return false;
         }
         try {
@@ -140,13 +142,43 @@ public final class ProductionLoopFeature implements Feature {
     public void pause() { paused = true; interrupt("Production paused"); }
     public void stop() { running = false; paused = false; interrupt("Production stopped"); }
     public boolean isRunning() { return running && !paused; }
-    public boolean needsMenu() { return isRunning() && run != null && run.wantsMenu(); }
-    public boolean canYield() { return run == null || !run.wantsMenu(); }
+    public boolean needsMenu() { return isRunning() && (recoveringOrders ? orders.needsMenu() : run != null && run.wantsMenu()); }
+    public boolean canYield() { return recoveringOrders ? !orders.needsMenu() : run == null || !run.wantsMenu(); }
+
+    /** Cancel a retained ingredient order and claim its filled inputs; never select another craft. */
+    public boolean recoverOrders() {
+        if(queued() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued())return false;
+        if(!orders.recoverBuy()){new LiveActions().message("No recoverable ingredient buy order, or the order journal is unreadable. Evidence preserved.");return false;}
+        recoveringOrders=true;
+        new LiveActions().message("Recovering the retained ingredient order: claim filled inputs, cancel/refund the remainder, then retain the inputs for manual review. No new purchases or sales.");
+        return true;
+    }
+    private void recoverOrderStep(boolean ownsMenu) {
+        try {
+            var result=orders.tick(ownsMenu);
+            if(result.failed()) {
+                recoveringOrders=false;orders.stop();
+                FeatureManager.INSTANCE.safetyPause("Craft order recovery needs review: "+result.reason());return;
+            }
+            if(!result.done())return;
+            var evidence=orders.recoveryEvidence(new LiveWorld().username());
+            // Preserve known input cost before releasing the child's ownership, also after a crash.
+            FeatureManager.INSTANCE.crafting().productionJobs().put(evidence);
+            if(!orders.acknowledge())throw new java.io.IOException("Could not save the recovered order handoff");
+            recoveringOrders=false;orders.stop();
+            Diagnostics.event("INFO","production.order_recovered",Map.of("job",evidence.id(),"reason",evidence.reason()));
+            FeatureManager.INSTANCE.safetyPause("Ingredient order recovered. Inspect inventory, then use production acknowledge all before restarting crafts.");
+        }catch(Exception failed) {
+            recoveringOrders=false;orders.stop();Diagnostics.failure("production.order_recovery_failed",failed);
+            FeatureManager.INSTANCE.safetyPause("Craft order recovery could not be saved; evidence retained");
+        }
+    }
 
     /** Steps that need no menu (delegated crafts and listings, timers) advance here. */
     @Override public void poll() {
         if(!isRunning())return;
         orders.poll();
+        if(recoveringOrders){recoverOrderStep(false);return;}
         if(run==null)selectAutomatic();
         if(run==null||run.wantsMenu())return;
         step(false);
@@ -154,6 +186,7 @@ public final class ProductionLoopFeature implements Feature {
 
     @Override public void onTick() {
         if (!needsMenu()) return;
+        if(recoveringOrders){recoverOrderStep(true);return;}
         step(true);
     }
 
@@ -199,7 +232,7 @@ public final class ProductionLoopFeature implements Feature {
 
     /** A stop never guesses: unstarted runs are cancelled, waiting timers are kept, anything else goes to review. */
     private void interrupt(String why) {
-        if(run==null){automaticBudget=0;return;}
+        if(run==null){orders.stop();recoveringOrders=false;automaticBudget=0;return;}
         try {
             var jobs = FeatureManager.INSTANCE.crafting().productionJobs();
             var job = jobs.find(run.jobId()).orElse(null);

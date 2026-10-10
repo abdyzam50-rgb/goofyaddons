@@ -42,6 +42,12 @@ public final class ProductionCommands {
                         for(var job:jobs)new LiveActions().message(job.id().substring(0,Math.min(8,job.id().length()))+" · "+job.recipeKey()+" · "+job.state()+(job.reason()==null?"":" · "+job.reason()));
                     }catch(Exception failure){new LiveActions().message("Production journal unreadable; file preserved.");}return 1;
                 }))
+                .then(ClientCommands.literal("recoverorders").executes(c->{
+                    var manager=FeatureManager.INSTANCE;
+                    if(!manager.prepareCrafting()){new LiveActions().message("Stop trading before recovering craft orders.");return 0;}
+                    if(!manager.production().recoverOrders())return 0;
+                    return manager.startProductionTest()?1:0;
+                }))
                 .then(ClientCommands.literal("acknowledge").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
                     var manager=FeatureManager.INSTANCE;var actions=new LiveActions();
                     if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()){actions.message("Stop production/trading before acknowledging a reviewed job.");return 0;}

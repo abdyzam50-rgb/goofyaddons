@@ -362,3 +362,11 @@ The 0.2.56 recovery update passes 1,097 Java tests via
 preserves cost/reason evidence, leaves foreign accounts and non-REVIEW states
 untouched, survives reload and rolls back all in-memory changes on a failed save.
 Minecraft chat/HUD and live inventory reconciliation require an in-game check.
+
+
+The 0.2.57 order-lore/recovery update passes 1,102 Java tests through
+`./gradlew -p client test build`. Tests cover the reported 7/1.3k fill with an exact
+1,280-unit order total, rounded numerator limits, missing/conflicting totals,
+malformed suffixes, recovery refusal for unsubmitted buys/unknown costs/sells,
+and live-style cancellation/refund verification before the durable child handoff.
+In-game command/scheduler and partial claim/refund behavior still need live testing.
