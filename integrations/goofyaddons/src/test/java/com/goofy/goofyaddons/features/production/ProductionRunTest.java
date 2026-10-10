@@ -444,4 +444,19 @@ class ProductionRunTest {
         assertEquals(1,env.actions.serverEffects().stream().filter(e->e.startsWith("sign:")).count());
     }
 
+    @Test void bazaarSaleWaitsForAnObservedBalanceBeforeSubmittingOrCountingProceeds() {
+        var actions=new RecordingActions();var intents=new ArrayList<String>();
+        var sale=new BazaarInstantSell("OUTPUT","Output",1,900,1000,intents::add);
+        var page=ProductionRunTest.menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",
+            List.of("Output","Price per unit: 950 coins")),item(54,"OUTPUT",1));
+        assertEquals(BazaarInstantSell.Result.WAITING,sale.tick(page,actions,-1,1000));
+        assertTrue(actions.serverEffects().isEmpty());assertTrue(intents.isEmpty());
+        assertEquals(BazaarInstantSell.Result.WAITING,sale.tick(page,actions,1000,1100));
+        assertEquals(List.of("click:11"),actions.serverEffects());
+        assertEquals(BazaarInstantSell.Result.WAITING,sale.tick(ProductionRunTest.menu(null),actions,-1,1200));
+        assertEquals(BazaarInstantSell.Result.SOLD,sale.tick(ProductionRunTest.menu(null),actions,1950,1300));
+        assertEquals(950,sale.proceeds());assertEquals(1,intents.size());
+        assertEquals(List.of("click:11"),actions.serverEffects());
+    }
+
 }

@@ -195,4 +195,35 @@ class BazaarInstantBuyTest {
         assertTrue(stack.failure().contains("above"),stack.failure());
         assertEquals(List.of("click:10"),other.serverEffects());
     }
+    @Test void unreadablePurseAfterPresetPurchaseWaitsAndNeverRepeatsTheBuy() {
+        var actions=new RecordingActions();
+        var one=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",1,600,intents::add);
+        one.tick(product(485.6),false,actions,5000,1000);
+        one.tick(menu(2,"Enchanted Coal → Instant Buy",SlotView.named(10,"Buy only one!",
+            List.of("Enchanted Coal","Amount: 1x","Price: 485.6 coins")),
+            SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,1100);
+        var arrived=menu(2,"Enchanted Coal → Instant Buy",item(54,"ENCHANTED_COAL",1));
+        int effects=actions.serverEffects().size();
+        for(double unknown:new double[]{-1,Double.NaN,Double.POSITIVE_INFINITY}) {
+            assertEquals(BazaarInstantBuy.Result.WAITING,one.tick(arrived,false,actions,unknown,1200));
+            assertNull(one.failure());assertEquals(0,one.spent());
+        }
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,one.tick(arrived,false,actions,4514.4,1300));
+        assertEquals(485.6,one.spent(),0.0001);assertEquals(effects,actions.serverEffects().size());
+        assertEquals(1,intents.size());
+    }
+    @Test void unreadablePurseAfterConfirmationWaitsButRealExcessSpendingStillRequiresReview() {
+        var actions=new RecordingActions();var purchase=buy(1100);
+        purchase.tick(product(100),false,actions,5000,1000);
+        purchase.tick(menu(2,"Amount",SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,1100);
+        purchase.tick(null,true,actions,5000,1200);
+        purchase.tick(confirmation(10,"1,000"),false,actions,5000,1300);
+        var arrived=menu(4,null,item(54,"ENCHANTED_COAL",10));
+        int effects=actions.serverEffects().size();
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(arrived,false,actions,-1,1400));
+        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,purchase.tick(arrived,false,actions,3800,1500));
+        assertTrue(purchase.failure().contains("more than expected"));
+        assertEquals(effects,actions.serverEffects().size());
+    }
+
 }

@@ -19,7 +19,7 @@ public final class ProductionLoopFeature implements Feature {
     public void refreshSelection(){selection.refresh();}
     public Map<String,Object> craftPlan(){
         var view=new LinkedHashMap<String,Object>(selection.view());view.put("queued",queued());view.put("activity",activity());
-        view.put("selectionStatus",discoveryReason());view.put("eligibleRoutes",selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count());view.put("plannedBudget",automaticBudget);view.put("spent",run==null?0:run.spent());return view;
+        view.put("selectionStatus",discoveryReason());view.put("eligibleRoutes",selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count():null);view.put("plannedBudget",automaticBudget);view.put("spent",run==null?0:run.spent());return view;
     }
     public void showCraftPlans(){
         selection.refresh();var actions=new LiveActions();
@@ -53,8 +53,11 @@ public final class ProductionLoopFeature implements Feature {
 
     public String name() { return "Production"; }
     public boolean queued() { return run != null; }
+    public String discoveryStatus() {
+        return "Craft discovery · "+(selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes · ":"")+discoveryReason();
+    }
     public String activity() {
-        if (run == null) return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?"Craft discovery · "+selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes · "+discoveryReason():"No production run queued";
+        if (run == null) return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?discoveryStatus():"No production run queued";
         return "Production " + run.output() + " · " + run.stage().name().toLowerCase(Locale.ROOT) + (run.reason() == null ? "" : " · " + run.reason());
     }
     public Set<String> lockedProducts() { return run == null ? Set.of() : run.lockedProducts(); }

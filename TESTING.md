@@ -316,3 +316,19 @@ Minecraft rendering and clicks are not claimed as tested.
 Final 0.2.53 validation: 1,087 Java tests, zero failures/errors/skips;
 `test calculatorIntegrationTest build` succeeds. Release JAR includes the Pixel
 controls and the bundled calculator.
+
+### 0.2.54 purchase proof and craft refresh
+
+Regression replays cover preset purchase → unreadable purse (-1/NaN/infinity) →
+readable debit with exactly one purchase intent; confirmation purchase → unknown
+purse → genuinely excessive debit still enters review. A sale replay rejects an
+unknown initial balance without a click, then confirms exactly one sale once both
+inventory and purse support it. CraftRankingRefreshTest covers a late first
+Bazaar response before the periodic deadline, new source timestamps, saved-setting
+changes and account resets. ProductionReviewTest covers persistent evidence and
+foreign/active/ambiguous/short-prefix rejection. Live Hypixel timing still needs
+the user's in-game test.
+
+Release validation: Java tests, calculator integration tests and the mod build
+passed; 1,094 tests, zero failures, errors or skips. The 0.2.54 JAR includes the
+bundled calculator and integrated GUI. No public Worker deployment is required.

@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.client.command.v2.*;
 import com.mojang.brigadier.arguments.*;
 import com.goofy.goofyaddons.features.FeatureManager;
 import com.goofy.goofyaddons.menu.LiveActions;
+import com.goofy.goofyaddons.menu.LiveWorld;
 
 public final class ProductionCommands {
     private ProductionCommands() {}
@@ -37,6 +38,17 @@ public final class ProductionCommands {
                         for(var job:jobs)new LiveActions().message(job.id().substring(0,Math.min(8,job.id().length()))+" · "+job.recipeKey()+" · "+job.state());
                     }catch(Exception failure){new LiveActions().message("Production journal unreadable; file preserved.");}return 1;
                 }))
+                .then(ClientCommands.literal("acknowledge").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
+                    var manager=FeatureManager.INSTANCE;var actions=new LiveActions();
+                    if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()){actions.message("Stop production/trading before acknowledging a reviewed job.");return 0;}
+                    try {
+                        String account=new LiveWorld().username();
+                        if(!new LiveWorld().inWorld())throw new IllegalArgumentException("Join the account whose job you reviewed");
+                        var job=manager.crafting().productionJobs().acknowledgeReview(StringArgumentType.getString(c,"job"),account);
+                        actions.message("Review acknowledged for "+job.id().substring(0,8)+". Journal evidence is retained; no item, purchase, sale or profit was assumed.");
+                        com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id()));return 1;
+                    }catch(Exception failure){actions.message("Review was not acknowledged: "+failure.getMessage());return 0;}
+                })))
                 .then(ClientCommands.literal("run").then(ClientCommands.argument("output",StringArgumentType.string())
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,16))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,0,0))

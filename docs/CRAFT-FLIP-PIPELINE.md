@@ -626,3 +626,32 @@ stone-frame styling and corrected SDL mouse-button handling. Keybind capture,
 private-key masking and the existing autosave hooks are preserved. Body text and
 input values retain their original case for readability. See GUI-INTEGRATION.md
 for the source branch and the in-game validation procedure.
+
+### 0.2.54 transient purse proof and ranking refresh
+
+The 0.2.53 export records a successful one-diamond receipt followed by an
+unparseable purse line. ScoreboardUtils reports that state as -1. Instant-buy
+proof incorrectly subtracted this sentinel from the previous balance and stopped
+as though the entire purse had been spent. Proof now waits for a finite,
+nonnegative balance; the submitted purchase is never replayed. Real excess debit
+still requires REVIEW. Instant sales also require an observed initial balance
+and wait through unreadable updates before confirming proceeds. Deadlines remain
+bounded.
+
+Craft discovery now recalculates when a new Bazaar snapshot or saved settings
+arrive, even before its periodic deadline. A requested Bazaar fetch also schedules
+a ranking update on completion. Pending calculations are labeled as waiting,
+with no numeric eligible count until a calculation finishes. Ranking events record
+source timestamp, candidate/exclusion counts and budget for subsequent diagnosis.
+This is a refresh fix; zero remains possible when actual prices or requirements
+exclude every supported route.
+
+The failed test remains in the durable journal as REVIEW. After manually checking
+inventory, workstation and listings, use `.a* goofyaddon production jobs` to
+inspect IDs, then `.a* goofyaddon production acknowledge <job-prefix>` to release
+one reviewed job. The prefix must have at least eight characters and identify
+exactly one REVIEW job in the current account. Active work cannot be acknowledged.
+The job becomes CANCELLED with its prior evidence retained; this command performs
+no transaction and records no profit. It is never run automatically. For the
+provided export the root job prefix is `429960e1`; the purchase receipt was
+1 Enchanted Diamond for 1,314.8 coins.

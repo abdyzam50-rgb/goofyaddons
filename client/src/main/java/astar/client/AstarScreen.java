@@ -448,7 +448,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         crafts.row("Minimum net profit",()->"Require this profit after depth, taxes and price movement allowance before buying.",tradingNumber("Craft profit",()->draft.view().craftFlips.minimumProfit,(cfg,v)->cfg.craftFlips.minimumProfit=v));
         crafts.row("Maximum batches",()->"1–16; planning reduces the batch to fit money, depth, volume and inventory.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,16,(cfg,v)->cfg.craftFlips.maxBatches=v));
         crafts.row("Inspect ranking",()->"Account requirements and route reasons appear in the local dashboard.",new Button("Best crafts",()->manager.production().showCraftPlans(),Button.PLAIN));
-        crafts.row("Current plan",manager.production()::activity);
+        crafts.row("Current plan",manager.production()::discoveryStatus);
         Card auctionTests=card("Auction House tests","Craft and list one BIN. Automatic sale and claim tracking is still pending.");
         String[] testItem={"ASPECT_OF_THE_END"};
         Field ahTestItem=new Field(testItem[0],120,"ASPECT_OF_THE_END",v->testItem[0]=v,c->Character.isLetterOrDigit(c)||c=='_').wide(200);

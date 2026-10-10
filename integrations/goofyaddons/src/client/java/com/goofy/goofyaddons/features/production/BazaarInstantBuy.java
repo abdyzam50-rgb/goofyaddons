@@ -160,7 +160,8 @@ public final class BazaarInstantBuy {
 
     /** Bought when inventory and purse show exactly this purchase, review when they show more, else null. */
     private Result proof(MenuSnapshot menu, double purse) {
-        if (menu == null || !Double.isFinite(purse)) return null;
+        // ScoreboardUtils uses -1 for a temporarily unreadable balance. It is not a debit.
+        if (menu == null || !Double.isFinite(purse) || purse < 0) return null;
         int gained = count(menu) - before;
         double spent = purseBefore - purse;
         if (gained == amount && spent > 0 && spent <= maximumCost + 0.51) { this.spent = spent; step = Step.DONE; return Result.BOUGHT; }

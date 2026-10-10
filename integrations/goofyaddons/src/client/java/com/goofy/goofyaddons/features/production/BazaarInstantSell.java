@@ -68,7 +68,7 @@ public final class BazaarInstantSell {
         if (quoted == null) return block("Instant sale price for " + name + " is unreadable: " + Chat.strip(menu.slot(control).lore()).replace('\n', ' '));
         if (quoted < minimumProceeds - 1e-6) return block(String.format(java.util.Locale.ROOT,
                 "Instant sale of %d %s would pay about %,.0f coins, below the %,.0f floor", amount, name, quoted, minimumProceeds));
-        if (!Double.isFinite(purse)) return block("Purse is unreadable; nothing sold");
+        if (!Double.isFinite(purse) || purse < 0) return Result.WAITING;
         try { intent.record("Instant sale intent: " + amount + " " + productId + " for at least " + Math.round(minimumProceeds) + " coins"); }
         catch (Exception journal) { return block("Instant sale intent could not be saved; nothing sold"); }
         purseBefore = purse; step = Step.VERIFY; stepAt = now;
@@ -79,7 +79,7 @@ public final class BazaarInstantSell {
     private Result verify(MenuSnapshot menu, double purse, long now) {
         if (menu != null && menu.title() != null && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
             return uncertain("Unexpected instant sale confirmation screen; inspect it before continuing");
-        if (menu != null && Double.isFinite(purse) && count(menu) == 0 && purse > purseBefore) {
+        if (menu != null && Double.isFinite(purse) && purse >= 0 && count(menu) == 0 && purse > purseBefore) {
             double delta=purse-purseBefore;
             if(delta+0.51<minimumProceeds||delta>maximumProceeds+0.51)return uncertain("Sale purse delta is outside the quoted range; profit is unverified");
             proceeds=delta;step=Step.DONE;return Result.SOLD;

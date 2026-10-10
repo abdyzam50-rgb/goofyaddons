@@ -51,6 +51,16 @@ public final class ProductionJobs {
         var previous=jobs.put(job.id,job);
         try {save();}catch(java.io.IOException failed){if(previous==null)jobs.remove(job.id);else jobs.put(job.id,previous);throw failed;}
     }
+    /** Explicit player acknowledgement after inspecting an uncertain job; retains its evidence. */
+    public Job acknowledgeReview(String prefix,String account)throws java.io.IOException {
+        if(prefix==null || prefix.length()<8)throw new IllegalArgumentException("Use at least eight characters of the job ID");
+        var matches=all().stream().filter(j->j.account().equals(account) && j.id().startsWith(prefix)).toList();
+        if(matches.size()!=1 || matches.getFirst().state()!=State.REVIEW)
+            throw new IllegalArgumentException("Name exactly one REVIEW job belonging to this account");
+        var job=matches.getFirst();
+        var acknowledged=job.withState(State.CANCELLED,"Player acknowledged manual inventory/workstation/listing review; no sale or profit assumed. Previous: "+job.reason());
+        put(acknowledged);return acknowledged;
+    }
     public boolean occupies(ProductionRecipe.Kind kind,int slot,RecipeCatalog catalog,String account) {
         return jobs.values().stream().anyMatch(j->j.account.equals(account) && j.workstationSlot==slot && j.state!=State.DONE && j.state!=State.CANCELLED
                 && catalog.byKey(j.recipeKey).map(r->r.kind()==kind).orElse(false));
