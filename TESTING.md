@@ -370,3 +370,16 @@ The 0.2.57 order-lore/recovery update passes 1,102 Java tests through
 malformed suffixes, recovery refusal for unsubmitted buys/unknown costs/sells,
 and live-style cancellation/refund verification before the durable child handoff.
 In-game command/scheduler and partial claim/refund behavior still need live testing.
+
+
+The 0.2.58 concurrent craft portfolio passes 1,115 Java tests via
+`./gradlew -p client test build`. Regression coverage includes a craft completing
+while a sibling waits, parent-scoped order persistence and claim consumption,
+failure attribution, duplicate/legacy parent handling, whole-recipe capital versus
+liquid-purse reservations, claimed versus future inventory slots, the shared claim
+buffer, foreground menu leases and delegated craft priority. Old craft settings
+default to three active jobs and reject concurrency limits outside 1–4.
+Compilation covers the new Settings row and HUD/debug queue data. Multiple real
+Hypixel orders and GUI timing remain untested in Minecraft; test with a small
+capital limit and inspect the active queue in a debug export. Automatic AH craft
+settlement remains gated, and interrupted legacy ownership still requires recovery.

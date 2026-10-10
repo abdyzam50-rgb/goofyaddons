@@ -95,6 +95,7 @@ public class GeneralFlipper implements Feature {
     private final com.goofy.goofyaddons.features.MenuSettle ordersSettle=new com.goofy.goofyaddons.features.MenuSettle();
     private String lastBlockedItem;
     private String lastFailure;
+    private String lastFailureParent;
     @Override public void navigationResumed(long elapsed){stepSince+=elapsed;nextAction+=elapsed;navigationRetry.reset();}
     private long stepSince;
     private long nextAction;
@@ -139,6 +140,7 @@ public class GeneralFlipper implements Feature {
             details.put("stage",position.stage);details.put("cost",position.cost());details.put("sellPrice",position.sellPrice);
             details.put("purchasePriceKnown",position.purchasePriceKnown);
             details.put("settlementPending",position.settlementPending);
+            details.put("parent",position.productionParent==null?"legacy":position.productionParent);
             details.put("submitted",position.submitted);details.put("cancelRequested",position.cancelRequested);details.put("reprices",position.reprices);
             retained.add(details);
         }
@@ -177,7 +179,7 @@ public class GeneralFlipper implements Feature {
         if (blocked) { actions.message("General flipper is blocked; resolve the logged order-state error first."); return; }
         running = true;
         paused = false;
-        lastBlockedItem=null;lastFailure=null;
+        lastBlockedItem=null;lastFailure=null;lastFailureParent=null;
         nextPoll = 0;
         for (GeneralPosition position : positions) {
             position.checkedAt = 0;
@@ -632,7 +634,7 @@ public class GeneralFlipper implements Feature {
         finishWork();
     }
     private void fail(String message) {
-        lastFailure=message;
+        lastFailure=message;lastFailureParent=active==null?null:active.productionParent;
         services.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",services.diagnosticContext()));
         actions.message(message);
         LOGGER.error(message);
@@ -699,29 +701,48 @@ public class GeneralFlipper implements Feature {
         instantPosition=null;instantBuying=null;instantSelling=null;clearSnapshot();
     }
     boolean enqueueProduction(String id,String name,int units,double unitPrice,boolean buy,double limit) {
+        return enqueueProduction(null,id,name,units,unitPrice,buy,limit);
+    }
+    boolean enqueueProduction(String parent,String id,String name,int units,double unitPrice,boolean buy,double limit) {
         restoreBudget();observe();
-        if(blocked||paused||!positions.isEmpty()||units<1||units>4096||unitPrice<=0||!Double.isFinite(unitPrice))return false;
+        if(parent!=null && (!services.productionOnly() || !parent.matches("[A-Za-z0-9_-]{8,80}")))return false;
+        if(blocked||paused||(parent==null?!positions.isEmpty():positions.size()>=8 || positions.stream().anyMatch(p->java.util.Objects.equals(p.productionParent,parent)))||units<1||units>4096||unitPrice<=0||!Double.isFinite(unitPrice))return false;
         if(buy && itemCount(id)>0 || !buy && itemCount(id)!=units || capital.occupied(id))return false;
         if(buy && !capital.reserve(OWNER,id,units*unitPrice,services.purse()))return false;
         if(!buy)capital.restore(OWNER,id,units*unitPrice,false);
         var p=new GeneralPosition();p.item=new GeneralItem(id,name);p.quantity=units;p.unitCost=unitPrice;p.sellPrice=unitPrice;
-        p.stage=buy?Stage.PLANNED:Stage.INVENTORY;p.productionBuy=buy;p.tradeId=java.util.UUID.randomUUID().toString();
+        p.stage=buy?Stage.PLANNED:Stage.INVENTORY;p.productionBuy=buy;p.productionParent=parent;p.tradeId=java.util.UUID.randomUUID().toString();
         p.purchasePriceKnown=buy;p.maximumBuyPrice=limit;p.minimumSellPrice=limit;positions.add(p);
         if(!buy){capital.purchased(OWNER,id);capital.funding(OWNER,id,null);}
         return save();
     }
     GeneralPosition productionPosition(){return positions.isEmpty()?null:positions.getFirst();}
-    boolean consumeProduction(){
-        var p=productionPosition();if(p==null||!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY))return false;
+    GeneralPosition productionPosition(String parent){return positions.stream().filter(p->java.util.Objects.equals(p.productionParent,parent)).findFirst().orElse(null);}
+    boolean consumeProduction(){return consumeProduction(productionPosition());}
+    boolean consumeProduction(String parent){return consumeProduction(productionPosition(parent));}
+    private boolean consumeProduction(GeneralPosition p){if(p==null||!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY))return false;
         positions.remove(p);if(!save()){positions.add(p);return false;}capital.release(OWNER,p.item.id());return true;
     }
+    String productionMenuParent() {
+        if(active!=null)return active.productionParent;
+        return positions.stream().filter(p->workDue(p,world.now())).map(p->p.productionParent==null?"legacy":p.productionParent).findFirst().orElse(null);
+    }
+    double productionCommitment(String parent) {
+        var p=productionPosition(parent);return p==null||p.completed?0:p.cost();
+    }
+    double productionBuyCommitment(String parent) {
+        var p=productionPosition(parent);return p==null||p.completed||!p.productionBuy?0:p.cost();
+    }
+    boolean orphanProductionOrders(java.util.Set<String> parents) {
+        restoreBudget();return blocked || positions.stream().anyMatch(p->p.productionParent==null || !parents.contains(p.productionParent));
+    }
+    boolean productionFailed(String parent){return blocked || paused && java.util.Objects.equals(lastFailureParent,parent);}
     boolean recoverProductionBuy() {
         restoreBudget();
-        if(!services.productionOnly() || blocked || positions.size()!=1)return false;
-        var p=productionPosition();
-        if(!p.productionBuy || !p.purchasePriceKnown || p.stage==Stage.PLANNED && !p.submitted)return false;
+        if(!services.productionOnly() || blocked || positions.isEmpty())return false;
+        if(positions.stream().anyMatch(p->!p.productionBuy || !p.purchasePriceKnown || p.stage==Stage.PLANNED && !p.submitted))return false;
         start();
-        if(!p.completed && p.stage!=Stage.INVENTORY) {
+        for(var p:positions)if(!p.completed && p.stage!=Stage.INVENTORY) {
             // The existing claim/cancel engine verifies live ownership, inventory and refunds.
             p.cancelRequested=true;p.checkedAt=0;
             if(!save()){running=false;return false;}

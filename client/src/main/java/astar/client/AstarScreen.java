@@ -446,6 +446,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             v->v,v->editTrading("Craft sale market",cfg->cfg.craftFlips.venue=v)));
         crafts.row("Batch capital",()->"Maximum coins per craft run; zero uses spendable funds.",tradingNumber("Craft capital",()->draft.view().craftFlips.maximumCapital,(cfg,v)->cfg.craftFlips.maximumCapital=v));
         crafts.row("Minimum net profit",()->"Require this profit after depth, taxes and price movement allowance before buying.",tradingNumber("Craft profit",()->draft.view().craftFlips.minimumProfit,(cfg,v)->cfg.craftFlips.minimumProfit=v));
+        crafts.row("Active crafts",()->"1–4 independent jobs. Wait on orders in parallel; GUI actions remain sequential.",tradingWhole("Active crafts",()->draft.view().craftFlips.maxActiveCrafts,1,4,(cfg,v)->cfg.craftFlips.maxActiveCrafts=v));
         crafts.row("Maximum batches",()->"1–16; planning reduces the batch to fit money, depth, volume and inventory.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,16,(cfg,v)->cfg.craftFlips.maxBatches=v));
         crafts.row("Inspect ranking",()->"Account requirements and route reasons appear in the local dashboard.",new Button("Best crafts",()->manager.production().showCraftPlans(),Button.PLAIN));
         crafts.row("Current plan",manager.production()::discoveryStatus);

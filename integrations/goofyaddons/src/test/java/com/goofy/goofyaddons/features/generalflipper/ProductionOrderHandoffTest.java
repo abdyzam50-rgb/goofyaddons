@@ -95,4 +95,50 @@ class ProductionOrderHandoffTest {
         for(long n=0;n<millis;n+=60){engine.poll();engine.onTick();world.advance(60);}
     }
 
+    @Test void multipleCraftParentsKeepSeparateDurableOrdersAndConsumeOnlyTheirOwnClaim()throws Exception {
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
+        var world=new FakeWorld().showing(inventory("INPUT_A",0));var actions=new RecordingActions();
+        var engine=new GeneralFlipper(world,actions,repo,services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-first","INPUT_A","Input A",2,100,true,103));
+        assertTrue(engine.enqueueProduction("parent-second","INPUT_B","Input B",3,100,true,103));
+        assertFalse(engine.enqueueProduction("parent-first","INPUT_C","Input C",1,100,true,103));
+        assertFalse(engine.enqueueProduction("parent-third","INPUT_A","Input A",1,100,true,103));
+        assertFalse(engine.enqueueProduction("bad!","INPUT_C","Input C",1,100,true,103));
+        assertEquals(500,engine.productionCommitment("parent-first")+engine.productionCommitment("parent-second"));
+        var saved=repo.load();for(var p:saved){p.stage=GeneralPosition.Stage.BUY_ORDER;p.submitted=true;}repo.save(saved);
+        var restored=new GeneralFlipper(world,actions,repo,services());restored.restoreBudget();
+        assertFalse(restored.orphanProductionOrders(Set.of("parent-first","parent-second")));
+        assertTrue(restored.orphanProductionOrders(Set.of("parent-first")));
+        var second=restored.productionPosition("parent-second");second.stage=GeneralPosition.Stage.INVENTORY;
+        assertFalse(restored.consumeProduction("parent-first"));
+        assertTrue(restored.consumeProduction("parent-second"));
+        assertEquals(1,repo.load().size());assertEquals("parent-first",repo.load().getFirst().productionParent);
+        assertNull(restored.productionPosition("parent-second"));assertNotNull(restored.productionPosition("parent-first"));
+        assertTrue(actions.serverEffects().isEmpty());
+    }
+    @Test void aFailedSiblingCannotBeReportedAsTheOtherCraftsFailedClaim()throws Exception {
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
+        var engine=new GeneralFlipper(new FakeWorld().showing(inventory("INPUT",0)),new RecordingActions(),repo,services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-first","INPUT_A","Input A",2,100,true,103));
+        assertTrue(engine.enqueueProduction("parent-second","INPUT_B","Input B",2,100,true,103));
+        var active=GeneralFlipper.class.getDeclaredField("active");active.setAccessible(true);active.set(engine,engine.productionPosition("parent-second"));
+        var field=GeneralFlipper.class.getDeclaredField("session");field.setAccessible(true);((GeneralContext)field.get(engine)).fail("Uncertain second claim");
+        assertTrue(engine.productionFailed("parent-second"));assertFalse(engine.productionFailed("parent-first"));
+        assertEquals("Uncertain second claim",engine.activity());
+    }
+
+    @Test void corruptDuplicateParentLinksAreRejectedAndLegacyOrdersRemainOrphans()throws Exception {
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
+        var engine=new GeneralFlipper(new FakeWorld().showing(inventory("INPUT",0)),new RecordingActions(),repo,services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-first","INPUT_A","Input A",2,100,true,103));
+        assertTrue(engine.enqueueProduction("parent-second","INPUT_B","Input B",2,100,true,103));
+        var saved=repo.load();saved.get(1).productionParent="parent-first";
+        assertThrows(IllegalArgumentException.class,()->GeneralPosition.validated(saved));
+        var legacy=saved.getFirst();legacy.productionParent=null;
+        assertDoesNotThrow(()->GeneralPosition.validated(List.of(legacy)));
+        repo.save(List.of(legacy));
+        var restored=new GeneralFlipper(new FakeWorld().showing(inventory("INPUT",0)),new RecordingActions(),repo,services());
+        assertTrue(restored.orphanProductionOrders(Set.of("parent-first")));
+    }
+
 }

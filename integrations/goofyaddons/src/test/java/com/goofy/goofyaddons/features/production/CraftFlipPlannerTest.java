@@ -85,4 +85,17 @@ class CraftFlipPlannerTest {
         assertEquals("order → offer",route.describe(catalog).get("buySell"));
     }
 
+    @Test void anotherCraftsReservedWorkspaceCanReduceBatchSizeOrExcludeTheRoute() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",2,"")),Map.of());
+        var empty=ProductionRunTest.menu(null);
+        var clear=CraftFlipPlanner.rank(catalog,market(10000),null,empty,Map.of(),Map.of(),Set.of(),1000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),0);
+        assertTrue(clear.stream().anyMatch(CraftFlipPlanner.Route::eligible));
+        assertTrue(clear.getFirst().inventorySlots()>=2);
+        var reserved=CraftFlipPlanner.rank(catalog,market(10000),null,empty,Map.of(),Map.of(),Set.of(),1000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),35);
+        assertTrue(reserved.stream().noneMatch(CraftFlipPlanner.Route::eligible));
+        assertTrue(reserved.getFirst().reason().contains("inventory"));
+        var conflicting=CraftFlipPlanner.rank(catalog,market(10000),null,empty,Map.of(),Map.of(),Set.of("INPUT"),1000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),0);
+        assertTrue(conflicting.stream().noneMatch(CraftFlipPlanner.Route::eligible));
+    }
+
 }

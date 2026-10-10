@@ -15,6 +15,7 @@ public final class GeneralPosition {
     long heldSince;
     long checkedAt;
     String tradeId;
+    String productionParent;
     String saleEvent;
     boolean purchasePriceKnown;
     com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast;
@@ -32,6 +33,7 @@ public final class GeneralPosition {
     static java.util.List<GeneralPosition> validated(java.util.List<GeneralPosition> positions) {
         if (positions == null) throw new IllegalArgumentException("Missing order state");
         var ids = new java.util.HashSet<String>();
+        var parents=new java.util.HashSet<String>();
         for (GeneralPosition position : positions) {
             if (position == null || position.item == null || position.item.id() == null || position.item.name() == null
                     || position.quantity <= 0 || position.quantity > 4096 || !Double.isFinite(position.unitCost)
@@ -45,6 +47,7 @@ public final class GeneralPosition {
                     || !Double.isFinite(position.minimumSellPrice) || position.minimumSellPrice<0
                     || position.productionBuy && position.maximumBuyPrice<=0
                     || position.verifiedProceeds!=null && (!Double.isFinite(position.verifiedProceeds)||position.verifiedProceeds<0)
+                    || position.productionParent!=null && (!position.productionParent.matches("[A-Za-z0-9_-]{8,80}") || position.instantBuy || position.instantSell || !parents.add(position.productionParent))
                     || position.stage == null || !ids.add(position.item.id())) {
                 throw new IllegalArgumentException("Invalid saved order position");
             }

@@ -9,13 +9,13 @@ import java.util.*;
 /** Recompute whole craft batches from verified grids, depth, fees, capacity and account evidence. */
 final class CraftFlipPlanner {
     record Route(ProductionRecipe recipe,int batches,String venue,double capital,double profit,long binPrice,
-            double fee,double score,String reason,BazaarStrategy strategy) {
+            double fee,double score,String reason,BazaarStrategy strategy,int inventorySlots) {
         boolean eligible(){return reason==null;}
         Map<String,Object> describe(RecipeCatalog catalog) {
             var row=new LinkedHashMap<String,Object>();
             row.put("recipeKey",recipe.key());row.put("output",recipe.outputId());row.put("name",catalog.name(recipe.outputId()));
             row.put("batches",batches);row.put("outputUnits",recipe.outputCount()*batches);row.put("venue",venue);
-            row.put("strategy",strategy.name());row.put("buySell",strategy.label());row.put("capital",capital);row.put("profit",profit);row.put("rankingScore",score);row.put("eligible",eligible());
+            row.put("inventorySlots",inventorySlots);row.put("strategy",strategy.name());row.put("buySell",strategy.label());row.put("capital",capital);row.put("profit",profit);row.put("rankingScore",score);row.put("eligible",eligible());
             row.put("reason",reason);row.put("requirement",recipe.requirement());row.put("ingredients",recipe.ingredients());
             return row;
         }
@@ -28,6 +28,11 @@ final class CraftFlipPlanner {
     static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
             Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
             double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded) {
+        return rank(catalog,market,ah,menu,skills,unlocks,blocked,budget,minimumProfit,bazaarTax,maxBatches,venue,now,excluded,0);
+    }
+    static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
+            Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
+            double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded,int reservedSlots) {
         excluded.clear();
         if(menu==null){exclude(excluded,"Player inventory unavailable");return List.of();}
         if(!menu.cursorEmpty()){exclude(excluded,"Clear the item held on the cursor");return List.of();}
@@ -71,7 +76,7 @@ final class CraftFlipPlanner {
                     slots=Math.max(slots,1+(intermediate.outputCount()*craft.batches()+63)/64+
                         intermediate.ingredients().entrySet().stream().mapToInt(e->(e.getValue()*craft.batches()+63)/64).sum());
                 }
-                if(slots>menu.emptyInventorySlots())reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
+                if(slots>Math.max(0,menu.emptyInventorySlots()-reservedSlots))reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;
                 if(bz) {
                     var product=products.getAsJsonObject(recipe.outputId());
@@ -100,7 +105,7 @@ final class CraftFlipPlanner {
                 if(capital>budget)reason="Whole batch exceeds spendable budget";
                 double seconds=(strategy.instantBuy?0:180)+(strategy.instantSell?0:180)+60+preparation.purchases().size()*20+preparation.crafts().size()*15+batches*3;
                 double score=profit/seconds*liquidity;
-                var route=new Route(recipe,batches,sale,capital,profit,price,fee,score,reason,strategy);
+                var route=new Route(recipe,batches,sale,capital,profit,price,fee,score,reason,strategy,slots);
                 var old=best.get(recipe.outputId());
                 if(old==null||route.eligible()&&!old.eligible()||route.eligible()==old.eligible()&&route.score()>old.score())best.put(recipe.outputId(),route);
             }catch(RuntimeException malformed){/* Invalid quotes/unsupported grids never authorize a route. */}

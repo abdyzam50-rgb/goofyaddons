@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.57
+# Craft flip discovery and execution — 0.2.58
 
 ## Shipped behavior
 
@@ -745,3 +745,51 @@ inventory and other leftovers, then run `production acknowledge all` and restart
 Stopping recovery retains the order for a later attempt. If live evidence differs
 from the tracked order, recovery pauses for manual inspection rather than clearing
 ownership. This release does not automatically resume interrupted production runs.
+
+
+### 0.2.58 concurrent craft portfolio
+
+CRAFT mode maintains up to three independent production jobs by default. Set
+**Craft flips → Active crafts** to 1–4. A job waiting for ingredient orders or a
+sell offer yields while other jobs procure, craft or sell. The client performs
+one menu transaction at a time and keeps its lease through quantity/price/sign/
+confirmation screens. Delegated crafting and AH listing work has priority over
+parent jobs, so another order cannot interrupt an open craft grid. Fresh discovery
+runs while jobs wait and chooses another profitable route when resources fit.
+
+Every new production Bazaar order persists its parent job ID in the existing
+craft-order journal. Results and claim handoffs are looked up by that parent;
+claiming one job cannot consume another's position, cost or sale receipt. Unknown
+or duplicate parent links fail validation. Legacy orders with no parent ID remain
+retained work requiring recovery rather than being assigned to an arbitrary job.
+A failure is attributed to its actual parent before uncertainty pauses the portfolio.
+
+Discovery splits available funds among remaining job slots, with the per-run
+batch-capital limit applied afterward. The portfolio reserves the rest of each
+recipe even before its next order is placed. Capital and liquid coins use separate
+calculations: held inputs still count against the capital limit, while spent coins
+are not deducted from the current purse twice. Live child escrow is not also
+reserved as an entirely new batch. Every purchase rechecks its own budget and
+excludes funds reserved for other jobs.
+
+Jobs reserve peak input/intermediate/output inventory slots. Slots already occupied
+by their own items replace that future reservation rather than counting twice.
+Other jobs are planned against the remaining empty slots, retaining the claim
+engine's shared four-slot buffer. Once a craft reaches selling, only its output
+space remains reserved. Concurrent recipes must
+have disjoint outputs, inputs and preparation dependencies; sharing ingredient
+stacks is deliberately excluded until allocation can be proven. If fewer viable
+independent recipes fit the purse or workspace, fewer jobs run.
+
+The HUD task reports queue occupancy, and debug exports include every active job's
+ID, output, stage, reason, budget, spend and reserved slots plus parent links on
+orders. Manual Forge/Kat/AH tests remain single queued runs, and automatic AH
+crafts remain gated on sale/expiry/claim reconciliation.
+
+Stopping or an uncertain transaction preserves unfinished parent jobs and child
+orders. This update does not silently adopt or resume older interrupted runs.
+`production recoverorders` can reconcile multiple retained verified ingredient
+buys in sequence, preserving each known claim/cost before releasing its child
+journal; then inspect leftovers and acknowledge REVIEW entries. Retained sell
+orders still require manual reconciliation. New concurrency does not bypass an
+existing unresolved ownership block.

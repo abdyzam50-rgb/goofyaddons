@@ -80,8 +80,9 @@ final class CraftFlipSelection {
         var observedMarket=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
         rankingRefresh.attempted(now,observedMarket==null?0:observedMarket.get("lastUpdated").getAsLong(),cfg);
         var blocked=new HashSet<>(CapitalManager.INSTANCE.occupiedProducts());
+        blocked.addAll(manager.production().lockedProducts());
         try {
-            if(!manager.production().queued() && manager.production().hasRetainedOrders()){
+            if(manager.production().hasOrphanOrders()){
                 routes=List.of();excluded.clear();generatedAt=0;error="Resolve retained craft Bazaar orders before starting another production run";return;
             }
             var journal=manager.crafting().journal();
@@ -98,10 +99,10 @@ final class CraftFlipSelection {
             }
             var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
             if(market==null){routes=List.of();excluded.clear();generatedAt=0;error="Waiting for fresh Hypixel Bazaar data";return;}
-            double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(),budget=CapitalManager.INSTANCE.available(purse);
+            double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(),budget=manager.production().selectionBudget(purse);
             if(cfg.craftFlips.maximumCapital>0)budget=Math.min(budget,cfg.craftFlips.maximumCapital);
             routes=CraftFlipPlanner.rank(RecipeCatalog.instance(),market,ah,world.menu(),manager.observedSkills(),manager.observedUnlocks(),blocked,
-                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded);
+                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded,manager.production().reservedInventorySlots(world.menu()));
             generatedAt=now;lastMarketSource=market.get("lastUpdated").getAsLong();
             if(error!=null && (error.startsWith("Waiting for") || error.contains("REVIEW jobs remain")
                     || error.startsWith("Resolve retained craft Bazaar orders") || error.equals("Production journal or account data unavailable")))error=null;

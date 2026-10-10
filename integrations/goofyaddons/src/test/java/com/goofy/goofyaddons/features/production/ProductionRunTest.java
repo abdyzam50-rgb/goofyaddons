@@ -494,4 +494,27 @@ class ProductionRunTest {
         assertEquals(ProductionJobs.State.REVIEW,env.jobs.find(run.jobId()).orElseThrow().state());
     }
 
+    @Test void oneCraftCanFinishWhileAnotherWaitsWithoutConsumingItsOrderOrCost()throws Exception {
+        var first=new Env();first.buying=true;
+        var second=new Env();second.jobs=first.jobs;second.buying=true;
+        var aRecipe=CraftFlipPlannerTest.recipe("OUTPUT_A","INPUT_A",2,"");
+        var bRecipe=CraftFlipPlannerTest.recipe("OUTPUT_B","INPUT_B",2,"");
+        var catalog=new RecipeCatalog(List.of(aRecipe,bRecipe),Map.of());
+        var a=ProductionRun.startCraft(first,catalog,aRecipe,1,0,0,BazaarStrategy.ORDER_INSTANT);
+        var b=ProductionRun.startCraft(second,catalog,bRecipe,1,0,0,BazaarStrategy.ORDER_INSTANT);
+        a.tick(true,1000);b.tick(true,1100);
+        first.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,2,100,null,"waiting");
+        second.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,2,100,null,"claimed");
+        second.menu=menu(null,item(54,"INPUT_B",2));
+        a.tick(false,1200);b.tick(false,1200);b.tick(false,1300);b.tick(false,1400);
+        assertEquals(List.of("OUTPUT_Bx1"),second.crafts);assertTrue(first.crafts.isEmpty());
+        second.craftQueued=false;second.finish("craft-0",ProductionJobs.State.OUTPUT_READY);
+        second.menu=menu(null,item(54,"OUTPUT_B",1));
+        assertEquals(Step.DONE,b.tick(false,1500));
+        assertEquals(Stage.PROCURE,a.stage());assertEquals(0,first.orderAcknowledgements);
+        assertEquals(100,b.spent());assertEquals(0,a.spent());
+        assertEquals(ProductionJobs.State.DONE,first.jobs.find(b.jobId()).orElseThrow().state());
+        assertEquals(ProductionJobs.State.BUYING,first.jobs.find(a.jobId()).orElseThrow().state());
+    }
+
 }

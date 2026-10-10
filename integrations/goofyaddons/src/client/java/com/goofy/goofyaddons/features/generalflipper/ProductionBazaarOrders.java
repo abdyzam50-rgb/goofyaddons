@@ -39,6 +39,23 @@ public final class ProductionBazaarOrders {
     public boolean queue(String id,String name,int units,double price,boolean buy,double limit){
         bind();engine.start();return engine.enqueueProduction(id,name,units,price,buy,limit);
     }
+    public boolean queue(String parent,String id,String name,int units,double price,boolean buy,double limit){
+        bind();engine.start();return engine.enqueueProduction(parent,id,name,units,price,buy,limit);
+    }
+    public Result tick(String parent,boolean ownsMenu){
+        engine.poll();
+        if(ownsMenu && needsMenu(parent))engine.onTick();
+        var p=engine.productionPosition(parent);
+        if(p==null)return new Result(false,true,0,0,null,"Production order for "+parent+" is missing");
+        boolean done=p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY;
+        return new Result(done,engine.productionFailed(parent),p.productionBuy && p.completed?0:p.quantity,
+            p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,engine.activity());
+    }
+    public boolean needsMenu(String parent){return engine.needsMenu() && java.util.Objects.equals(parent,engine.productionMenuParent());}
+    public boolean acknowledge(String parent){return engine.consumeProduction(parent);}
+    public double commitment(String parent){return engine.productionCommitment(parent);}
+    public double buyCommitment(String parent){return engine.productionBuyCommitment(parent);}
+    public boolean orphaned(Set<String> activeParents){if(AccountStorage.INSTANCE.pinned()==null)return false;bind();return engine.orphanProductionOrders(activeParents);}
     public Result tick(boolean ownsMenu){
         engine.poll();if(ownsMenu && engine.needsMenu())engine.onTick();
         var p=engine.productionPosition();
