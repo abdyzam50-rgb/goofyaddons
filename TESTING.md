@@ -88,3 +88,14 @@ fee-debit checks. Recipe tests verify Aspect of the End's exact sword grid and
 Ender Pearl VIII requirement; AH test input rejects unknown or multi-output
 recipes. The 0.2.32 mod JAR built and its version/classes were checked. Live
 Minecraft GUI execution and Coflnet requests were not available here.
+
+0.2.33 validation: 1,058 Java tests passed with no failures, including
+shipped-calculator integration checks. Selling now validates fresh Coflnet prices
+and delegates directly to the existing Create Auction executor. Price tests
+reject mismatched products, stale quotes and an explicit price outside the band.
+The supplied underlying browser controls reproduce the expected search-sign
+transition; search and BIN price signs are written once despite a transient
+carried control, while a cursor still occupied on return blocks selection or
+publication. Co-op creation, compact confirmation, own-listing identity and fee
+receipt checks remain covered. The 0.2.33 JAR built and its version was checked.
+Live Hypixel execution and live Coflnet responses remain for user testing.

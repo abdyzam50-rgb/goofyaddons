@@ -47,6 +47,14 @@ public final class BinListingExecutor {
             if(started==0)started=now;
             if(now-started>=90000)return review(job,"BIN preparation timed out; inspect the item and sell slot");
             if(menu==null)return Result.WAITING;
+            // Expected sign submission moves no items. Hypixel can leave a transient
+            // carried control while its sign editor is open; verify cursor/item on return.
+            if(step==Step.SIGN&&signOpen) {
+                if(signWritten)return Result.WAITING;
+                navigation.reset();
+                if(!actions.writeSign(Long.toString(price)))return review(job,"BIN price sign could not be written");
+                signWritten=true;actionAt=now;return Result.WAITING;
+            }
             if(!menu.cursorEmpty())return review(job,"Auction cursor is occupied; item movement stopped");
             if(navigation.pending()) {
                 var result=navigation.observe(menu,signOpen,actions,now);
@@ -55,11 +63,6 @@ public final class BinListingExecutor {
             }
             String title=Chat.strip(menu.title());
             if(step==Step.SIGN) {
-                if(signOpen) {
-                    if(signWritten)return Result.WAITING;
-                    if(!actions.writeSign(Long.toString(price)))return review(job,"BIN price sign could not be written");
-                    signWritten=true;actionAt=now;return Result.WAITING;
-                }
                 if(signWritten && "Create BIN Auction".equals(title)){step=Step.VERIFY;return Result.WAITING;}
                 if(now-actionAt>=10000)return review(job,"BIN price sign/return was not acknowledged");
                 return Result.WAITING;

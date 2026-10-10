@@ -64,21 +64,21 @@ public final class ProductionLoopFeature implements Feature {
     public boolean queue(String output, ProductionRecipe.Kind kind, int batches, int forgeSlot, long binPrice, double maximumFee, boolean buyInputs) {
         return queue(output,kind,batches,forgeSlot,binPrice,maximumFee,buyInputs,false);
     }
-    public boolean queue(String output, ProductionRecipe.Kind kind, int batches, int forgeSlot, long binPrice, double maximumFee, boolean buyInputs,boolean guiPricing) {
+    public boolean queue(String output, ProductionRecipe.Kind kind, int batches, int forgeSlot, long binPrice, double maximumFee, boolean buyInputs,boolean marketPricing) {
         var actions = new LiveActions();
         if (run != null || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
             actions.message("Finish the queued production work first."); return false;
         }
         try {
             automaticBudget=0;
-            run = ProductionRun.start(environment(buyInputs,guiPricing), RecipeCatalog.instance(), output, kind, batches, forgeSlot, binPrice, maximumFee);
+            run = ProductionRun.start(environment(buyInputs,marketPricing), RecipeCatalog.instance(), output, kind, batches, forgeSlot, binPrice, maximumFee);
             lastReason = null;
             FeatureManager.INSTANCE.invalidateMarketReport();
             boolean buys = buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients;
             actions.message("Queued production of " + RecipeCatalog.instance().name(output) + "."
                     + (buyInputs ? " Running it now as a test; the trading toggle or stop ends it." : " Use the trading toggle to run.")
                     + (buys ? " Missing inputs will be bought instantly within spendable capital." : " Inputs must already be in your inventory.")
-                    + (binPrice > 0 ? guiPricing?" The BIN sale price is checked in /ah and validated with Coflnet.":" The result is then listed as a BIN at " + binPrice + " coins."
+                    + (binPrice > 0 ? marketPricing?" The BIN sale price is checked with Coflnet before opening Create Auction.":" The result is then listed as a BIN at " + binPrice + " coins."
                     : binPrice == ProductionRun.SELL_ON_BAZAAR ? " The result is then sold instantly on the Bazaar." : ""));
             return true;
         } catch (IllegalArgumentException invalid) {
@@ -198,7 +198,7 @@ public final class ProductionLoopFeature implements Feature {
     private ProductionRun.Environment environment(boolean buyInputs) throws java.io.IOException {
         return environment(buyInputs,false);
     }
-    private ProductionRun.Environment environment(boolean buyInputs,boolean guiPricing) throws java.io.IOException {
+    private ProductionRun.Environment environment(boolean buyInputs,boolean marketPricing) throws java.io.IOException {
         var jobs = FeatureManager.INSTANCE.crafting().productionJobs();
         return new ProductionRun.Environment() {
             public ProductionJobs jobs() { return jobs; }
@@ -248,7 +248,7 @@ public final class ProductionLoopFeature implements Feature {
             public boolean craftQueued() { return FeatureManager.INSTANCE.crafting().queued(); }
             public String queueListing(String product, long price, double maximumFee) {
                 var auction = FeatureManager.INSTANCE.auction();
-                return (guiPricing?auction.queueMarket(product,price,true,maximumFee):auction.queue(product,price,true,maximumFee)) ? auction.jobId() : null;
+                return (marketPricing?auction.queueMarket(product,price,true,maximumFee):auction.queue(product,price,true,maximumFee)) ? auction.jobId() : null;
             }
             public boolean listingQueued() { return FeatureManager.INSTANCE.auction().queued(); }
             public void outputConfirmed(String id,String output,int units,Double cost) {

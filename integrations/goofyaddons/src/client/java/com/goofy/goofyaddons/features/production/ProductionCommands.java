@@ -81,13 +81,13 @@ public final class ProductionCommands {
      * One craft batch end to end for testing: missing inputs are instant-bought for this run only.
      * With a price the result is listed as a BIN with a fee ceiling for that price; without one, a
      * Bazaar product is sold instantly on the Bazaar and anything else is listed one coin under
-     * the matching lowest BIN observed in /ah, validated with Coflnet.
+     * a fresh lowest BIN supplied and validated by Coflnet.
      */
     private static int test(String output,long price){
         return test(output,price,false);
     }
-    private static int test(String output,long price,boolean guiPricing){
-        return test(output,price,guiPricing,false);
+    private static int test(String output,long price,boolean marketPricing){
+        return test(output,price,marketPricing,false);
     }
     public static int testAuction(String output){return test(output,0,false,true);}
     static String testItem(String output,boolean auctionOnly) {
@@ -97,7 +97,7 @@ public final class ProductionCommands {
         if(auctionOnly&&recipes.stream().anyMatch(r->r.outputCount()!=1))throw new IllegalArgumentException("AH tests require a recipe producing one item per batch");
         return id;
     }
-    private static int test(String output,long price,boolean guiPricing,boolean auctionOnly){
+    private static int test(String output,long price,boolean marketPricing,boolean auctionOnly){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before queueing production.");return 0;}
         String id;
         try{id=testItem(output,auctionOnly);}catch(IllegalArgumentException invalid){new LiveActions().message(invalid.getMessage());return 0;}
@@ -109,11 +109,11 @@ public final class ProductionCommands {
         if(price==0 && com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null){withBazaarQuotes(id);return 1;}
         if(price==0 && onBazaar(id))price=ProductionRun.SELL_ON_BAZAAR;
         else if(price==0){priceFromAuctions(id,false);return 1;}
-        if(!FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true,guiPricing))return 0;
+        if(!FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true,marketPricing))return 0;
         FeatureManager.INSTANCE.startProductionTest();return 1;
     }
     private static final java.net.http.HttpClient AUCTION_HTTP=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(java.time.Duration.ofSeconds(2));
-    /** Gets a price-only reference for fee budgeting; the automatic sale price is observed in /ah. */
+    /** Gets a price-only reference for fee budgeting; a fresh Coflnet price is rechecked before listing. */
     private static void priceFromAuctions(String id,boolean auctionOnly){
         var actions=new LiveActions();
         try {
@@ -134,7 +134,7 @@ public final class ProductionCommands {
                                 ?"the calculator does not offer auction prices; restart Minecraft so it updates":body.get("error").getAsString());
                         var quote=AuctionPricing.parse(body,id,System.currentTimeMillis());
                         long price=AuctionPricing.listingPrice(quote);
-                        actions.message(String.format(java.util.Locale.ROOT,"Coflnet reference %,d coins%s. The sale price will come from matching BINs observed in /ah.",quote.lowest(),
+                        actions.message(String.format(java.util.Locale.ROOT,"Coflnet reference %,d coins%s. The fresh price is rechecked before opening Create Auction.",quote.lowest(),
                                 quote.secondLowest()==null?"":String.format(java.util.Locale.ROOT,", next %,d",quote.secondLowest())));
                         test(id,price,true,auctionOnly);
                     }catch(RuntimeException failure){

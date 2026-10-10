@@ -252,10 +252,11 @@ item per batch. Move any matching output already held before testing another
 craft; existing seller listings do not themselves prevent a new test.
 
 `testah` always chooses the Auction House. With no price supplied, Coflnet provides
-a price-only reference, then `/ah` browsing verifies BIN Only, Lowest Price and
-matching item identity before the listing is priced one coin below the observed
-BIN. The explicit-price form is `production testah <productId> <price>`; it still
-passes the GUI and Coflnet validity checks. The original `production test` keeps
+a price-only reference, refreshed again after crafting before the listing is
+priced one coin below the fresh lowest BIN. Selling navigates `/ah` directly to
+Create Auction or Manage Auctions, without opening the Auctions Browser. The
+explicit-price form is `production testah <productId> <price>`; it still passes
+the GUI and Coflnet validity checks. The original `production test` keeps
 its automatic Bazaar/AH choice. Unknown recipes are rejected before price lookup.
 
 Four sanitized live AH captures now cover **Co-op Auction House**, the empty
@@ -272,3 +273,23 @@ Publication can finish at the observed own **BIN Auction View**, as well as
 Manage Auctions. Both still require the exact item identity and price, no item
 left in inventory and the exact fee debit. The view must explicitly say it is
 the player's own auction. No buy/cancel controls are clicked to prove receipt.
+
+## Direct auction selling and sign-editor transitions (0.2.33)
+
+The latest diagnostic shows AOTE crafting completed, then selling entered the
+Auctions Browser for a market-price check and paused as its search sign opened.
+Sales now fetch only a fresh Coflnet price, validate item ID, age, outlier and
+price bounds, and start BinListingExecutor directly. At Co-op Auction House this
+clicks the observed Create Auction control, rather than Auctions Browser. The
+existing creation-form identity/price, fee ceiling, confirmation, own-listing
+and receipt checks remain required. No API auction IDs are used. Pausing or
+finishing clears the queued price-check/item state.
+
+BIN purchases still use normal browser navigation. Expected search and price
+signs are write-only steps, so their handler runs before checking the underlying
+container cursor. Hypixel's sign transition can temporarily expose a carried
+control; after return, the empty-cursor and exact-item checks apply again before
+any item movement, selection or publication. Each expected sign is written once.
+An unexpected sign or a cursor still occupied after return blocks the operation.
+The regression uses the supplied browser's actual Search (48), Sort (50) and
+BIN Filter (52) controls; the fixture excludes auction items and seller details.

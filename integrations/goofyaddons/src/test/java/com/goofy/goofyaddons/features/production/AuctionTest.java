@@ -166,6 +166,27 @@ class AuctionTest {
             assertFalse(actions.serverEffects().contains("click:11"));
         }
     }
+    @Test void expectedPriceSignIsWrittenOnceBeforeCheckingTheReturnedFormCursor()throws Exception {
+        var executor=new BinListingExecutor(expected(),1000,jobs(),"sell");var actions=new RecordingActions();
+        var blank=menu(1,"Create BIN Auction",expected());
+        advance(executor,actions,blank,1000);advance(executor,actions,blank,1100);advance(executor,actions,blank,1200);
+        advance(executor,actions,form(1,500),1500);advance(executor,actions,form(1,500),1600);
+        var sign=new MenuSnapshot(1,"Edit Sign Message",false,form(1,500).slots());
+        assertEquals(BinListingExecutor.Result.WAITING,executor.tick(sign,true,actions,"account",10000,10000,1700));
+        executor.tick(sign,true,actions,"account",10000,10000,1800);
+        assertEquals(List.of("shiftclick:54","click:31","sign:1000"),actions.serverEffects());
+        var returned=new MenuSnapshot(1,"Create BIN Auction",false,form(1,1000).slots());
+        assertEquals(BinListingExecutor.Result.BLOCKED,executor.tick(returned,false,actions,"account",10000,10000,2000));
+        assertFalse(actions.performed().contains("click:29"));
+    }
+    @Test void salePriceUsesFreshCoflnetReferenceOrValidatesTheExplicitPriceBeforeCreating() {
+        var quote=new AuctionPricing.Quote("ASPECT_OF_THE_END",56000,57000L,1000);
+        assertEquals(55999,AuctionFeature.salePrice(quote,"ASPECT_OF_THE_END",1,true,1100));
+        assertEquals(56000,AuctionFeature.salePrice(quote,"ASPECT_OF_THE_END",56000,false,1100));
+        assertThrows(IllegalArgumentException.class,()->AuctionFeature.salePrice(quote,"OTHER",56000,true,1100));
+        assertThrows(IllegalArgumentException.class,()->AuctionFeature.salePrice(quote,"ASPECT_OF_THE_END",56000,true,400000));
+        assertThrows(IllegalArgumentException.class,()->AuctionFeature.salePrice(quote,"ASPECT_OF_THE_END",1,false,1100));
+    }
     @Test void restartedListingIntentOrUnrelatedAccountCannotReplayPlacement()throws Exception {
         var journal=jobs();journal.put(journal.find("sell").orElseThrow().withState(ProductionJobs.State.LISTING,"Interrupted"));
         var actions=new RecordingActions();var executor=new BinListingExecutor(expected(),1000,journal,"sell");

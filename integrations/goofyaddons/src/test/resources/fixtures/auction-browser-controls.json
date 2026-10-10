@@ -1,0 +1,412 @@
+{
+  "title": "Auctions Browser",
+  "cursorEmpty": true,
+  "source": "Underlying browser controls captured with Edit Sign Message open",
+  "slots": [
+    {
+      "slot": 0,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 1,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 2,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 3,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 4,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 5,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 6,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 7,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 8,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 9,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 10,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 11,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 12,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 13,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 14,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 15,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 16,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 17,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 18,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 19,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 20,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 21,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 22,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 23,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 24,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 25,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 26,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 27,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 28,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 29,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 30,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 31,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 32,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 33,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 34,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 35,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 36,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 37,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 38,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 39,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 40,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 41,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 42,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 43,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 44,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 45,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 46,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 47,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 48,
+      "empty": false,
+      "count": 1,
+      "name": "Search",
+      "lore": [
+        "Find items by name, type, lore, or",
+        "enchants.",
+        "",
+        "Filtered: ",
+        "",
+        "Right-Click to clear!",
+        "Click to edit filter!"
+      ]
+    },
+    {
+      "slot": 49,
+      "empty": false,
+      "count": 1,
+      "name": "Go Back",
+      "lore": [
+        "To Co-op Auction House"
+      ]
+    },
+    {
+      "slot": 50,
+      "empty": false,
+      "count": 1,
+      "name": "Sort",
+      "lore": [
+        "",
+        "   Highest Price",
+        "\u25b6 Lowest Price",
+        "   Ending soon",
+        "   Random",
+        "",
+        "Right-click to go backwards!",
+        "Click to switch sort!"
+      ]
+    },
+    {
+      "slot": 51,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 52,
+      "empty": false,
+      "count": 1,
+      "name": "BIN Filter",
+      "lore": [
+        "",
+        "  Show All",
+        "\u25b6 BIN Only",
+        "  Auctions Only",
+        "",
+        "Right-Click to go backwards!",
+        "Click to switch filter!"
+      ]
+    },
+    {
+      "slot": 53,
+      "empty": true,
+      "count": 0,
+      "name": "",
+      "lore": []
+    }
+  ]
+}

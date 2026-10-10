@@ -43,6 +43,17 @@ class AuctionBrowserNavigationTest {
         assertFalse(AuctionBrowserNavigation.selected(filter,"BIN Only"));
         assertNull(AuctionBrowserNavigation.binPrice(item(10,"TARGET","Starting bid: 1,000 coins")));
     }
+    @Test void expectedSearchSignCanBeWrittenWithTransientCarriedControlButResultCursorIsStillChecked()throws Exception {
+        var b=browser();var a=new RecordingActions();
+        var ready=CompactorClearanceTest.captured("auction-browser-controls.json");
+        b.tick(ready,false,a,1000);
+        var sign=new MenuSnapshot(1,"Edit Sign Message",false,ready.slots());
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(sign,true,a,1100));
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(sign,true,a,1200));
+        assertEquals(List.of("click:48","sign:Target"),a.serverEffects());
+        assertEquals(AuctionBrowserNavigation.Result.BLOCKED,b.tick(new MenuSnapshot(1,"Auctions Browser",false,ready.slots()),false,a,1300));
+        assertNull(b.selected());
+    }
     @Test void coflnetIsAPriceGuardRatherThanASourceOfAuctionIds() {
         var q=new AuctionPricing.Quote("TARGET",1000,1100L,1000);
         assertDoesNotThrow(()->AuctionPricing.validateObserved(q,"TARGET",999,1100));

@@ -369,7 +369,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         String[] testItem={"ASPECT_OF_THE_END"};
         Field ahTestItem=new Field(testItem[0],120,"ASPECT_OF_THE_END",v->testItem[0]=v,c->Character.isLetterOrDigit(c)||c=='_').wide(200);
         crafts.row("AH test item",()->"Craft one item and publish one BIN. Stop trading first; missing ingredients are bought within your spending limits.",ahTestItem);
-        crafts.row("Test AH craft",()->"Uses /ah to observe matching lowest BINs, validates with Coflnet, then crafts and lists one item. Listing is not a confirmed sale.",
+        crafts.row("Test AH craft",()->"Checks the selling price with Coflnet, then crafts and opens Create Auction to list one item. Listing is not a confirmed sale.",
             new Button("Run one test",()->{
                 client.cancelRouteForTrading();
                 net.minecraft.client.Minecraft.getInstance().gui.setScreen(null);

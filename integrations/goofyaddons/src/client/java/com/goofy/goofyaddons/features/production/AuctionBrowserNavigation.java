@@ -29,12 +29,12 @@ public final class AuctionBrowserNavigation {
     public Result tick(MenuSnapshot menu,boolean signOpen,GameActions actions,long now) {
         if(started<0)started=now;
         if(now-started>90000)return block("Auction browsing timed out; no purchase or listing submitted");
-        if(menu==null || !menu.cursorEmpty())return block("Auction browsing needs a readable menu and empty cursor");
         if(searchOpened && signOpen) {
             retry.reset();
             if(!searchWritten){if(!actions.writeSign(query))return block("Auction search sign could not be written");searchWritten=true;signAt=now;}
             return Result.WAITING;
         }
+        if(menu==null || !menu.cursorEmpty())return block("Auction browsing needs a readable menu and empty cursor");
         if(signOpen)return block("Unexpected sign during auction browsing");
         String title=Chat.strip(menu.title());
         if(retry.pending()) {
