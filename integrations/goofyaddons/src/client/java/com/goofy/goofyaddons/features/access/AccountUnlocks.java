@@ -2,7 +2,6 @@ package com.goofy.goofyaddons.features.access;
 
 import com.google.gson.*;
 import com.goofy.goofyaddons.menu.LiveWorld;
-import com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings;
 import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
@@ -11,8 +10,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
-/** Private selected-profile lookup through the bundled companion; never enters shared telemetry. */
+/** Private selected-profile lookup directly through the public website service; never enters shared telemetry. */
 public final class AccountUnlocks {
+    private static final URI PROFILE_SERVICE=URI.create("https://goofy-gameplay-collector.abdyzam50.workers.dev/v1/profiles");
     record Response(int status,JsonObject body) {}
     @FunctionalInterface interface Transport { CompletableFuture<Response> fetch(URI uri); }
     private final Transport transport;
@@ -32,7 +32,7 @@ public final class AccountUnlocks {
         this.transport=transport;this.clientThread=clientThread;this.clock=clock;
     }
     private static Transport liveTransport() {
-        var http=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(Duration.ofSeconds(2));
+        var http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).version(HttpClient.Version.HTTP_1_1).build();
         return uri->http.sendAsync(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build(),
             HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofString(),256*1024))
             .thenApply(response->new Response(response.statusCode(),JsonParser.parseString(response.body()).getAsJsonObject()));
@@ -47,18 +47,18 @@ public final class AccountUnlocks {
     }
     public Map<String,Object> diagnosticState(long now) {
         return Map.of("status",status(now),"failureCode",failureCode,"pending",pending(),"skills",skills(now).size(),"unlocks",current(now).size(),
-            "collectionsAvailable",now<expires && collectionsAvailable,"expiresInMs",Math.max(0,expires-now),"retryInMs",Math.max(0,next-now));
+            "collectionsAvailable",now<expires && collectionsAvailable,"source","PUBLIC_WEBSITE","expiresInMs",Math.max(0,expires-now),"retryInMs",Math.max(0,next-now));
     }
     private void fail(String code,String reason) {unlocks=apiSkills=Map.of();expires=0;collectionsAvailable=false;failureCode=code;failure=reason;}
     private void connectionFailure(Throwable error) {
         while(error instanceof java.util.concurrent.CompletionException && error.getCause()!=null)error=error.getCause();
         if(error instanceof JsonParseException || error instanceof IllegalStateException) {
-            connectionFailures=0;fail("INVALID_RESPONSE","Calculator returned an invalid profile response; retrying automatically");return;
+            connectionFailures=0;fail("INVALID_RESPONSE","Account service returned an invalid profile response; retrying automatically");return;
         }
         long delay=switch(++connectionFailures){case 1->5000;case 2->15000;case 3->30000;default->60000;};
         next=clock.getAsLong()+delay;
         if(error instanceof java.net.ConnectException)
-            fail("CALCULATOR_UNREACHABLE","Local calculator connection failed; retrying automatically in "+delay/1000+" seconds");
+            fail("ACCOUNT_SERVICE_UNREACHABLE","Website account service connection failed; retrying automatically in "+delay/1000+" seconds");
         else if(error instanceof HttpTimeoutException)
             fail("PROFILE_TIMEOUT","Account lookup timed out; retrying automatically in "+delay/1000+" seconds");
         else fail("UNREACHABLE","Profile connection failed; retrying automatically in "+delay/1000+" seconds");
@@ -79,14 +79,13 @@ public final class AccountUnlocks {
     public static Map<String,Integer> combinedSkills(Map<String,Integer> api,Map<String,Integer> observed) {
         var result=new HashMap<>(api);result.putAll(observed);return Map.copyOf(result);
     }
-    public void poll(String username,String profileName,String endpoint,Map<String,Integer> skills,long now) {
+    public void poll(String username,String profileName,Map<String,Integer> skills,long now) {
         if(!Objects.equals(account,username) || !Objects.equals(profile,profileName)){clear();account=username;profile=profileName;}
         if(username==null || !username.matches("[A-Za-z0-9_]{1,16}") || profileName==null || pending!=null || now<next)return;
         next=now+60000;int token=generation;
         failure=null;failureCode="FETCHING";
         try {
-            var settings=new MarketAnalysisSettings();settings.endpoint=endpoint;settings.validate();
-            var uri=URI.create(endpoint).resolve("/v1/profiles?username="+username);
+            var uri=URI.create(PROFILE_SERVICE+"?username="+username);
             var request=transport.fetch(uri);pending=request;
             request.whenComplete((response,error)->clientThread.accept(()->{
                     if(token!=generation)return;pending=null;
@@ -109,7 +108,7 @@ public final class AccountUnlocks {
                         fail("INVALID_PROFILE",safe+"; waiting for verified account data");
                     }
                 }));
-        }catch(RuntimeException invalid){pending=null;fail("UNREACHABLE","Account lookup could not start; check the calculator endpoint");}
+        }catch(RuntimeException invalid){pending=null;fail("UNREACHABLE","Account lookup could not start; check the website account service");}
     }
     record ProfileRequirements(Map<String,Integer> skills,Map<String,Integer> unlocks,boolean collectionsAvailable) {}
     static Map<String,Integer> parse(JsonObject root,String username,Map<String,Integer> skills,long now) {

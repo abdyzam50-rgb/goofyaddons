@@ -43,3 +43,18 @@ tests with no failures or errors. It also covers exact non-power-of-two loading
 (47 items), the widened held-input craft command limit, and one-step intermediate
 preparation before the final craft. The release JAR's version and crafting class
 were checked. Live Hypixel behavior is not validated by these simulated tests.
+
+0.2.29 account/startup checks cover direct fixed-HTTPS profile lookup without a
+localhost request, Ender Pearl VI eligibility, unknown/expired/wrong-profile
+rejection, service error/backoff and cancellation on profile changes. Node tests
+prove the health port opens without reading website assets, and requested files
+are cached after one read. A shipped-bundle integration fixture delays Node
+startup for eight seconds, beyond the former roughly six-second window, then
+checks it reaches READY without a failed launch. No real Minecraft inventory or
+live Hypixel profile is used by these tests.
+The final 0.2.29 run passed 1035 Java tests, 114 Node tests, and desktop/mobile
+calculator and dashboard Chromium checks. The shipped resource ZIP and direct
+profile-service URL were checked in the 0.2.29 JAR. The user's original Node
+startup failure still requires its current diagnostics to identify precisely;
+these tests validate the removed dependency and cold-start fixes, not access to
+the user's live account or Cloudflare deployment.

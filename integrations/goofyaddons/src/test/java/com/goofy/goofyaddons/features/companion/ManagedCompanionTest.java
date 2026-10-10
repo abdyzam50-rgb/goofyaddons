@@ -17,6 +17,22 @@ class ManagedCompanionTest {
     ManagedCompanion manager(Path data) throws Exception {
         return new ManagedCompanion(bundle(),data,folder.resolve("config"),(cache,status)->"node",Map.of(),List.of("--no-collect","--no-community","--no-discord"));
     }
+    @Test void coldCalculatorStartupIsNotKilledByTheOldSixSecondWindow() throws Exception {
+        var bytes=new java.io.ByteArrayOutputStream();
+        try(var input=new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(bundle()));var output=new java.util.zip.ZipOutputStream(bytes)) {
+            java.util.zip.ZipEntry entry;
+            while((entry=input.getNextEntry())!=null) {
+                output.putNextEntry(new java.util.zip.ZipEntry(entry.getName()));
+                if(entry.getName().equals("server.mjs"))output.write("await new Promise(resolve=>setTimeout(resolve,8000));\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                input.transferTo(output);output.closeEntry();
+            }
+        }
+        try(var service=new ManagedCompanion(bytes.toByteArray(),folder.resolve("slow-data"),folder.resolve("config"),(cache,status)->"node",Map.of(),List.of("--no-collect","--no-community","--no-discord"))) {
+            service.configure(true,port());service.reconcile();
+            assertEquals(ManagedCompanion.State.READY,service.state(),service.status());
+            assertEquals(0,service.diagnosticState().get("failures"));
+        }
+    }
     @Test void shippedBundleStartsRestartsAndStopsWithLocalPairingAndHistoryPreserved() throws Exception {
         Path data=folder.resolve("data");Files.createDirectories(data);Files.writeString(data.resolve("collection-status.json"),"user history");
         int port=port();
@@ -50,7 +66,7 @@ class ManagedCompanionTest {
     }
     @Test void disabledStartupDoesNotDownloadOrExtractAnything() throws Exception {
         try(var service=new ManagedCompanion(bundle(),folder.resolve("data"),folder.resolve("config"),(cache,status)->{throw new AssertionError("Disabled");},Map.of())) {
-            service.configure(false,port());service.reconcile();assertEquals("Auto-start off",service.status());assertFalse(Files.exists(folder.resolve("data")));
+            service.configure(false,port());service.reconcile();assertEquals("Auto-start off",service.status());assertTrue(service.sharingStatus().contains("Auto-start off"));assertFalse(Files.exists(folder.resolve("data")));
         }
     }
     @Test void unrelatedListenerReportsPortConflictAndChangingPortStartsCalculatorWithoutStoppingListener() throws Exception {
@@ -60,6 +76,7 @@ class ManagedCompanionTest {
         try(var service=manager(data)) {
             service.configure(true,server.getAddress().getPort());service.reconcile();
             assertTrue(service.status().contains("occupied by another service"),service.status());
+            assertTrue(service.sharingStatus().contains("occupied by another service"),"Sync status must explain the startup failure, not wait silently");
             assertFalse(Files.exists(data),"Port conflict must not launch or unpack another calculator");
             service.configure(true,port());service.reconcile();
             assertTrue(service.status().startsWith("Running"),service.status());

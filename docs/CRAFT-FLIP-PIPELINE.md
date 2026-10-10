@@ -151,3 +151,33 @@ validation with the downloadable mod.
 
 `.a* goofyaddon craft OUTPUT_ID 64` can queue up to 64 uses from held ingredients;
 start it with the usual trading toggle. Smaller requested quantities stay exact.
+
+## Account lookup and cold startup (0.2.29)
+
+Craft prerequisites no longer depend on the localhost calculator being available.
+The mod calls the same fixed HTTPS `/v1/profiles?username=...` service as the public
+website, using the normal Java HTTP proxy policy rather than the loopback-only
+client. It needs no player API key or contributor key. Account/profile identity,
+live-skill agreement, unknown collection handling and the five-minute freshness
+limit remain enforced before spending. An unavailable service, a missing unlock,
+wrong profile or expired response still blocks purchases. Service failures retain
+bounded backoff and clear error codes; diagnostics identify `PUBLIC_WEBSITE` as
+the source. No account profile is uploaded to the shared gameplay dataset.
+
+This separates progression verification from the calculator's market/feed/upload
+process. Automatic market selection, the local dashboard and shared learning still
+need that process. The calculator now registers its bundled website allowlist but
+reads each static file only on first request, rather than reading more than 5,000
+files before opening its port. The supervisor allows up to 45 seconds for cold
+startup, off the game thread, while still noticing an immediate Node exit. It
+continues to preserve pairing keys, saved history and existing configuration.
+
+The screenshot's `Local calculator connection failed` proves the old prerequisite
+request could not reach the local server; it does not identify the Node process's
+original startup error. If the dashboard/feed still waits after this update,
+export F7 diagnostics. Its supervisor state, last exit code and redacted
+`companion-error.log` tail are needed to identify that separate runtime failure.
+No public website redeployment is necessary for this mod-side account fix.
+The shared-learning Sync status now includes the supervisor's reason when the
+calculator is unavailable (auto-start off, port conflict, preparing or failed),
+rather than displaying an indefinite generic wait with no explanation.

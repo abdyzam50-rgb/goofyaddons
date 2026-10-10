@@ -83,7 +83,7 @@ public class FeatureManager {
         if(!java.util.Objects.equals(requirementAccount,requirementWorld.username())){clearAccountRequirements();requirementAccount=requirementWorld.username();if(started())skillPreflight.begin();}
         if(skillPreflight.observe(requirementWorld.menu())){accountUnlocks.clear();invalidateMarketReport();}
         var scope=accounts.current();
-        accountUnlocks.poll(requirementWorld.username(),scope==null?null:scope.profile(),GoofyConfig.INSTANCE.marketAnalysis.endpoint,skillPreflight.skills(),requirementWorld.now());
+        accountUnlocks.poll(requirementWorld.username(),scope==null?null:scope.profile(),skillPreflight.skills(),requirementWorld.now());
         String requirementStatus=accountRequirementsStatus();
         if(!java.util.Objects.equals(lastRequirementStatus,requirementStatus)) {
             lastRequirementStatus=requirementStatus;Diagnostics.event("INFO","account.requirements_status",accountUnlocks.diagnosticState(requirementWorld.now()));

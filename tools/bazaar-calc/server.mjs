@@ -29,11 +29,13 @@ function calculatorAssets(dir='calculator',prefix='/calculator/') {
   if(entry.isDirectory())calculatorAssets(`${dir}/${entry.name}`,`${prefix}${entry.name}/`);
   else {
    const type=entry.name.endsWith('.html')?'text/html; charset=utf-8':entry.name.endsWith('.js')?'text/javascript; charset=utf-8':entry.name.endsWith('.css')?'text/css; charset=utf-8':entry.name.endsWith('.json')?'application/json':entry.name.endsWith('.svg')?'image/svg+xml':'application/octet-stream';
-   assets.set(`${prefix}${entry.name}`,{data:readFileSync(new URL(`${dir}/${entry.name}`,import.meta.url)),type});
+   assets.set(`${prefix}${entry.name}`,{file:new URL(`${dir}/${entry.name}`,import.meta.url),type});
   }
  }
 }
 calculatorAssets();
+// Register the bundled allowlist at startup; read website/history assets only when requested.
+function assetBytes(asset){return asset.data??=readFileSync(asset.file);}
 /**
  * The private Coflnet API token: COFLNET_TOKEN, else coflnet-token.txt in the data directory.
  * It stays on this computer, is sent only to sky.coflnet.com and is never logged.
@@ -119,7 +121,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       return;
     }
     if(req.method==='GET'&&calculatorPage&&!assets.has(req.url)&&!url.pathname.split('/').at(-1).includes('.')) {
-      const a=assets.get('/calculator/index.html');res.writeHead(200,{'Content-Type':a.type,'Cache-Control':'no-store'});res.end(a.data);return;
+      const a=assets.get('/calculator/index.html');res.writeHead(200,{'Content-Type':a.type,'Cache-Control':'no-store'});res.end(assetBytes(a));return;
     }
     if(req.url==='/v1/control/exchange' && req.method==='POST') {
       if(!control || !control.authorized(req.headers['x-goofy-control'])) {send(403,{error:'Control pairing required'});return;}
@@ -131,7 +133,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       }catch {send(400,{error:'Invalid or conflicting control session'});}
       return;
     }
-    if(req.method==='GET' && assets.has(req.url)) {const asset=assets.get(req.url);res.writeHead(200,{'Content-Type':asset.type,'Cache-Control':'no-store'});res.end(asset.data);return;}
+    if(req.method==='GET' && assets.has(req.url)) {const asset=assets.get(req.url);res.writeHead(200,{'Content-Type':asset.type,'Cache-Control':'no-store'});res.end(assetBytes(asset));return;}
     if(req.method==='GET' && req.url==='/v1/dashboard') {const view=dashboard.view(collector);send(200,{...view,...forecasts.view(view,collector?.history()??history,executions),execution:executions.status(),community:community?.status()??{sharingEnabled:false,downloadsEnabled:false}});return;}
     if(req.method==='POST' && req.url==='/v1/executions') {
       if(req.headers['x-goofy-dashboard']!=='local-v1' || req.headers['content-type']!=='application/json') {send(400,{error:'Invalid execution headers'});return;}

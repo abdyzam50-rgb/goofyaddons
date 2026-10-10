@@ -77,7 +77,7 @@ public final class ManagedCompanion implements AutoCloseable {
     }
     public void retry(){restart=true;}
     public String status(){return status;}
-    public String sharingStatus(){return sharingStatus;}
+    public String sharingStatus(){return state==State.READY || state==State.EXTERNAL?sharingStatus:"Waiting for calculator · "+status;}
     public Path dataDirectory(){return data;}
     public Path discordSettings(){return data.resolve("discord-settings.json");}
     public String dashboard(){return "http://127.0.0.1:"+port+"/";}
@@ -155,7 +155,10 @@ public final class ManagedCompanion implements AutoCloseable {
             Process candidate=process(arguments.toArray(String[]::new)).start();
             owned=candidate;state=State.STARTING;lastExitCode=null;
             // Stop on EOF if Minecraft crashes, and gracefully close on normal Minecraft exit.
-            for(int attempt=0;attempt<30 && !closed && enabled && candidate.isAlive();attempt++) {
+            // Cold disk/antivirus scans can exceed the old ~6s window. This wait is
+            // off the game thread and still exits immediately if Node terminates.
+            long startupDeadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(45);
+            for(;System.nanoTime()<startupDeadline && !closed && enabled && candidate.isAlive();) {
                 if(healthy(launchPort)) {
                     if(externalBundle!=null && !externalBundle.equals(bundleId()))throw new IOException("Port "+launchPort+" answered with a different calculator version");
                     status="Running · live market collection";failures=0;state=State.READY;
