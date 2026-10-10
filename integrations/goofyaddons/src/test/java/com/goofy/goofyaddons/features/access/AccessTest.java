@@ -9,6 +9,19 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AccessTest {
+    @Test void essenceExclusionsRefreshWithDungeonLevelAndMutationControlsBlockAnalysisLocks() {
+        var access=new BazaarAccess(dir.resolve("essence.json"));
+        assertTrue(access.excluded(Map.of("catacombs",19)).contains("ESSENCE_DRAGON"));
+        assertFalse(access.excluded(Map.of("catacombs",20)).contains("ESSENCE_DRAGON"));
+        assertTrue(access.excluded(Map.of("catacombs",50)).containsAll(BazaarAccess.MUTATIONS));
+        assertNotNull(BazaarAccess.unmet("You must first analyze this crop!"));
+        assertNotNull(BazaarAccess.unmet("This mutation is not analyzed"));
+        assertNull(BazaarAccess.unmet("Analyzed crops give Farming Fortune"));
+        assertNotNull(ActionRequirements.blocked("Requires Catacombs Level XX",Map.of(),Map.of("catacombs",19),ActionRequirements.Action.BUY));
+        assertNull(ActionRequirements.blocked("Requires Catacombs Level XX",Map.of(),Map.of("catacombs",20),ActionRequirements.Action.BUY));
+        assertNotNull(ActionRequirements.blocked("Requires Master Mode The Catacombs Floor VII\nCompletion.",Map.of(),Map.of("catacombsfloor7completed",1),ActionRequirements.Action.CRAFT));
+    }
+
     @TempDir Path dir;
     MenuSnapshot menu(int id,String title,boolean cursor,SlotView... controls) {
         var slots=new ArrayList<SlotView>();

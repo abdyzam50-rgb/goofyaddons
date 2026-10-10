@@ -10,6 +10,17 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
+    @Test void mutationAndEssenceInputsBlockBeforeProcurementDespiteEmptyRecipeText()throws Exception {
+        for(String input:List.of("CHORUS_FRUIT","ESSENCE_WITHER")) {
+            var env=new Env();env.buying=true;env.unlocks=Map.of("catacombs",19);
+            var grid=Arrays.asList(new ProductionRecipe.Ingredient(input,1),null,null,null,null,null,null,null,null);
+            var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of(input,1),grid,0,0,"",null);
+            var run=ProductionRun.start(env,new RecipeCatalog(List.of(recipe),Map.of()),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+            assertEquals(Step.BLOCKED,run.tick(true,1000));assertTrue(run.reason().contains(input),run.reason());
+            assertTrue(env.actions.serverEffects().isEmpty());assertTrue(env.crafts.isEmpty());
+        }
+    }
+
     @TempDir Path dir;
     @Test void activeCompactorConflictStopsBeforeBuyingAnyRawIngredients()throws Exception {
         var env=new Env();env.buying=true;env.unlocks=Map.of("goldingot",4);

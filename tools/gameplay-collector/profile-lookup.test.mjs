@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {LEVELS} from './profile-levels.mjs';
 import {summarizeProfiles,lookupProfiles,handleProfileLookup} from './profile-lookup.mjs';
 const uuid='a'.repeat(32),profileId='b'.repeat(32);
 const resources={collections:{MINING:{items:{DIAMOND:{name:'Diamond'}}}}};
@@ -111,4 +112,15 @@ test('HotM and all Slayer XP boundaries are imported without turning missing dat
 test('published Slayer reward claims limit usable recipe levels',()=>{
  const [p]=summarizeProfiles(data({slayer_bosses:{wolf:{xp:1000000,claimed_levels:{level_1:true,level_2:true,level_3:true,level_9:false}},zombie:{xp:200,claimed_levels:{}}}}),uuid,null,1234);
  assert.equal(p.stats.slayers.Wolf,3);assert.equal(p.stats.slayers.Zombie,0);
+});
+
+test('Dungeon XP and published normal/master floor clears are imported separately; mutation evidence is unknown',()=>{
+ const xp=LEVELS.catacombs.slice(0,20).reduce((a,b)=>a+b,0);
+ const [p]=summarizeProfiles(data({...member,dungeons:{dungeon_types:{catacombs:{experience:xp,tier_completions:{'7':1}},master_catacombs:{experience:99999999,tier_completions:{'6':2,'7':0}}}}}),uuid,resources);
+ assert.equal(p.stats.catacombsLevel,20);assert.equal(p.stats.dungeonCompletions['Catacombs Floor 7'],1);
+ assert.equal(p.stats.dungeonCompletions['Master Catacombs Floor 7'],0);assert.equal(p.stats.dungeonCompletions['Master Catacombs Floor 6'],1);
+ assert.ok(p.unknown.includes('Garden mutation inspections'));assert.ok(p.unknown.includes('Crop Analyzer Milestone'));
+ const [missing]=summarizeProfiles(data(member),uuid,resources);assert.equal(missing.stats.catacombsLevel,null);assert.deepEqual(missing.stats.dungeonCompletions,{});
+ const [bad]=summarizeProfiles(data({...member,dungeons:{dungeon_types:{catacombs:{experience:-1,tier_completions:{'7':-1}},master_catacombs:{tier_completions:{'7':1.5}}}}}),uuid,resources);
+ assert.equal(bad.stats.catacombsLevel,null);assert.equal(bad.stats.dungeonCompletions['Catacombs Floor 7'],undefined);assert.equal(bad.stats.dungeonCompletions['Master Catacombs Floor 7'],undefined);
 });

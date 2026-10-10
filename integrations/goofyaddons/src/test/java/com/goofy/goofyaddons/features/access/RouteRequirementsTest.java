@@ -6,6 +6,36 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RouteRequirementsTest {
+    @Test void essenceAndMutationRequirementsAreIndependentOfQuotesAndBudget() {
+        assertNotNull(RouteRequirements.product("ESSENCE_WITHER",Map.of()));
+        assertNotNull(RouteRequirements.product("ESSENCE_WITHER",Map.of("catacombs",19)));
+        assertNull(RouteRequirements.product("ESSENCE_WITHER",Map.of("catacombs",20)));
+        assertNotNull(RouteRequirements.products(java.util.List.of("CHORUS_FRUIT","BLAZE_POWDER"),Map.of("catacombs",50)));
+        assertNull(RouteRequirements.product("CHORUS_FRUIT",Map.of("mutationchorusfruit",1)));
+        assertNull(RouteRequirements.product("BLAZE_POWDER",Map.of()));
+        assertNotNull(RouteRequirements.craft("Crop Analyzer Milestone V",Map.of(),Map.of()));
+        assertNull(RouteRequirements.craft("Crop Analyzer Milestone V",Map.of(),Map.of("cropanalyzermilestone",5)));
+    }
+    @Test void dungeonLevelAndNormalMasterFloorClearsAreDifferentFacts() {
+        assertNull(RouteRequirements.craft("Cata XX",Map.of(),Map.of("catacombs",20)));
+        assertNotNull(RouteRequirements.craft("The Catacombs Floor VII Completion",Map.of(),Map.of("catacombs",50)));
+        assertNull(RouteRequirements.craft("The Catacombs Floor VII Completion",Map.of(),Map.of("catacombsfloor7completed",1)));
+        assertNotNull(RouteRequirements.craft("Master Mode The Catacombs Floor VII Completion",Map.of(),Map.of("catacombsfloor7completed",1)));
+        assertNull(RouteRequirements.craft("Master Mode The Catacombs Floor VII Completion",Map.of(),Map.of("mastercatacombsfloor7completed",1)));
+    }
+    @Test void profileImportsDungeonFactsWithBoundsAndUnknownHandling() {
+        var root=profile();var p=root.getAsJsonArray("profiles").get(0).getAsJsonObject();p.addProperty("name","Apple");
+        var stats=p.getAsJsonObject("stats");stats.addProperty("catacombsLevel",20);
+        stats.add("dungeonCompletions",JsonParser.parseString("{\"Catacombs Floor 7\":1,\"Master Catacombs Floor 7\":0}"));
+        var parsed=AccountUnlocks.parseProfile(root,"Tester","Apple",Map.of(),1000000);
+        assertEquals(20,parsed.unlocks().get("catacombs"));assertEquals(1,parsed.unlocks().get("catacombsfloor7completed"));
+        p.getAsJsonArray("unknown").add("Catacombs");p.getAsJsonArray("unknown").add("Master Catacombs floor completions");
+        parsed=AccountUnlocks.parseProfile(root,"Tester","Apple",Map.of(),1000000);
+        assertFalse(parsed.unlocks().containsKey("catacombs"));assertFalse(parsed.unlocks().containsKey("mastercatacombsfloor7completed"));
+        p.getAsJsonArray("unknown").remove(p.getAsJsonArray("unknown").size()-2);stats.addProperty("catacombsLevel",51);
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Apple",Map.of(),1000000));
+    }
+
     @Test void bookMinimumIsInclusiveAndUnknownIsNotZero() {
         assertNotNull(RouteRequirements.book("ENCHANTMENT_OVERLOAD",Map.of("enchanting",32)));
         assertNull(RouteRequirements.book("ENCHANTMENT_OVERLOAD",Map.of("enchanting",33)));

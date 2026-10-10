@@ -18,6 +18,7 @@ public final class ShadowMarketAnalysis {
         CapitalManager capital(); void onClientThread(Runnable work);
         default void refreshQuotes() {}
         default Map<String,Integer> skills(){return Map.of();}
+        default Map<String,Integer> unlocks(){return Map.of();}
         default Set<String> excludedProducts() { return Set.of(); }
         default Set<String> rankingExclusions() { return excludedProducts(); }
     }
@@ -41,9 +42,10 @@ public final class ShadowMarketAnalysis {
             private boolean refreshing;
             @Override public GoofyConfig config() { return GoofyConfig.INSTANCE; }
             @Override public Map<String,Integer> skills(){return FeatureManager.INSTANCE.observedSkills();}
-            @Override public Set<String> rankingExclusions() { return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded(); }
+            @Override public Map<String,Integer> unlocks(){return FeatureManager.INSTANCE.observedUnlocks();}
+            @Override public Set<String> rankingExclusions() { return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded(FeatureManager.INSTANCE.observedUnlocks()); }
             @Override public Set<String> excludedProducts() {
-                var excluded=new java.util.HashSet<>(com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded());
+                var excluded=new java.util.HashSet<>(com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded(FeatureManager.INSTANCE.observedUnlocks()));
                 excluded.addAll(com.goofy.goofyaddons.features.FeatureManager.INSTANCE.retiredBookProducts());
                 return Set.copyOf(excluded);
             }
@@ -95,6 +97,9 @@ public final class ShadowMarketAnalysis {
                 account.bookSlots(),account.generalSlots(),excluded,env.skills());
         JsonObject rankingRequest=MarketAnalysisProtocol.request(request.get("requestId").getAsString(),market,cfg,TradingMode.BOTH,
                 rankingBudget,32,1,1,env.rankingExclusions(),env.skills());
+        var unlocks=env.unlocks();
+        request.getAsJsonObject("constraints").add("accountUnlocks",new com.google.gson.Gson().toJsonTree(unlocks));
+        rankingRequest.getAsJsonObject("constraints").add("accountUnlocks",new com.google.gson.Gson().toJsonTree(unlocks));
         request.add("rankingConstraints",rankingRequest.get("constraints"));
         var context=new LinkedHashMap<String,Object>();
         context.put("mode",mode.name());context.put("availableCapital",available);context.put("inventoryCapacity",capacity);

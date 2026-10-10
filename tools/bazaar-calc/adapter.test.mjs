@@ -182,3 +182,11 @@ test('reports carry one forecast provenance block and an honest capability per r
  assert.deepEqual(run(b).filterReasons,r.filterReasons);
  r.rows[0].assumptions.push('local');assert.equal(r.rows[1].assumptions.length,3);
 });
+
+test('essence recommendations require observed Catacombs XX, including ranked portfolio candidates',()=>{
+ const b=packet();b.constraints.mode='GENERAL';b.market.products={ESSENCE_WITHER:product(100,140)};b.constraints.configuredGeneralItems=['ESSENCE_WITHER'];
+ assert.equal(run(b).rows.length,0);
+ b.constraints.accountUnlocks={catacombs:19};assert.equal(run(b).rows.length,0);
+ b.constraints.accountUnlocks={catacombs:20};assert.equal(run(b).rows.length,1);
+ b.constraints.accountUnlocks={catacombs:20.5};assert.throws(()=>run(b),/Invalid account unlocks/);
+});

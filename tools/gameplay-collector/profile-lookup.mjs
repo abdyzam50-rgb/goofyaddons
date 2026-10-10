@@ -26,6 +26,22 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   }
   const hotm=xpLevel(member.mining_core?.experience,LEVELS.HOTM);
   if(hotm===null)unknown.push('Heart of the Mountain');
+  const dungeon=member.dungeons?.dungeon_types?.catacombs;
+  const catacombsLevel=xpLevel(dungeon?.experience,LEVELS.catacombs,50);
+  if(catacombsLevel===null)unknown.push('Catacombs');
+  const dungeonCompletions={};
+  for(const [type,label] of [['catacombs','Catacombs'],['master_catacombs','Master Catacombs']]) {
+   const completed=member.dungeons?.dungeon_types?.[type]?.tier_completions;
+   if(!completed||typeof completed!=='object'||Array.isArray(completed)){unknown.push(`${label} floor completions`);continue;}
+   for(let floor=0;floor<=7;floor++) {
+    const count=completed[String(floor)];
+    // Omitted counters in a published completion map mean no clears; XP never proves a clear.
+    if(count===undefined)dungeonCompletions[`${label} Floor ${floor}`]=0;
+    else if(Number.isSafeInteger(count)&&count>=0)dungeonCompletions[`${label} Floor ${floor}`]=count>0?1:0;
+   }
+  }
+  // The profiles endpoint does not establish individual mutation analysis or analyzer rewards.
+  unknown.push('Garden mutation inspections','Crop Analyzer Milestone');
   const quick=member.mining_core?.nodes?.forge_time;
   if(!present(quick))unknown.push('Quick Forge');
   const unlocked=member.player_data?.unlocked_coll_tiers??member.unlocked_coll_tiers;
@@ -57,7 +73,7 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   const purse=member.currencies?.coin_purse??member.coin_purse;
   return [{id:clean(p.profile_id),name:clean(p.cute_name)||'Profile',selected:p.selected===true,gameMode:clean(p.game_mode)||'normal',
    purse:present(purse)&&purse<=1e13?purse:null,fetchedAt:now,unknown,
-   stats:{hotmTier:hotm??0,quickForgeLevel:present(quick)?Math.min(20,quick):0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,collectionIds,slayers,reputation,
+   stats:{catacombsLevel,dungeonCompletions,hotmTier:hotm??0,quickForgeLevel:present(quick)?Math.min(20,quick):0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,collectionIds,slayers,reputation,
     xpLevels:0,ignoreRequirements:false,coleMoltenForge:false,quadTaxes:false,npcShoppingSpree:false}}];
  });
 }

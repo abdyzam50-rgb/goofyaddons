@@ -61,6 +61,7 @@ public final class ProductionCommands {
                 .then(ClientCommands.literal("requirements").executes(c->{
                     var manager=FeatureManager.INSTANCE;var actions=new LiveActions();var unlocks=manager.observedUnlocks();
                     actions.message(manager.accountRequirementsStatus());
+                    actions.message("Catacombs: "+(unlocks.containsKey("catacombs")?unlocks.get("catacombs"):"unobserved")+" · Mutation inspection and Crop Analyzer milestones need verified evidence");
                     actions.message("Heart of the Mountain: "+(unlocks.containsKey("hotm")?unlocks.get("hotm"):"unobserved"));
                     var names=java.util.List.of("Zombie","Spider","Wolf","Enderman","Blaze","Vampire");
                     actions.message("Slayers: "+names.stream().map(name->name+" "+(unlocks.containsKey(name.toLowerCase(java.util.Locale.ROOT)+"slayer")?unlocks.get(name.toLowerCase(java.util.Locale.ROOT)+"slayer"):"unobserved")).collect(java.util.stream.Collectors.joining(" · ")));return 1;

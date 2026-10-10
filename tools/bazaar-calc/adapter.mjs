@@ -2,6 +2,7 @@
 import { assembleMarket, quotesFromBazaar, buyLeg, sellLeg, evaluate, DEFAULT_SETTINGS, DEFAULT_PROFILE,
   enchantRules, booksNeeded, combineXpCost, parseBookId, actionSeconds, curve, at, seriousFlags } from './engine.mjs';
 import mutationCatalog from './mutation-products.json' with { type: 'json' };
+import productRequirements from './product-requirements.json' with { type: 'json' };
 import automaticCatalog from './automatic-products.json' with { type: 'json' };
 export const PROTOCOL = 'goofy-bazaar-shadow/1';
 /** Additive report fields (filterReasons, deferred, forecast, row capability) under the same protocol. */
@@ -46,6 +47,10 @@ export function recommend(body, history, provenance, now = Date.now(), execution
     if (!Array.isArray(c[key]) || c[key].length > 4096 || c[key].some(x => typeof x !== 'string' || x.length > 160))
       throw new Error(`Invalid ${key}`);
   const excluded = new Set([...c.excludedProducts,...mutationCatalog.products]), configuredBooks = new Set(c.configuredBookRoutes), configuredGeneral = new Set(c.configuredGeneralItems);
+  const unlocks=c.accountUnlocks??{};
+  if(!object(unlocks)||Object.keys(unlocks).length>4096||Object.values(unlocks).some(v=>!Number.isSafeInteger(v)||v<0||v>1e6))throw new Error('Invalid account unlocks');
+  for(const [id,requirement] of Object.entries(productRequirements.products))
+    if(requirement==='Requires Catacombs 20' && !(unlocks.catacombs>=20))excluded.add(id);
   const dataAt = Number.isFinite(history?.asOf) ? history.asOf : 0;
   const historyUsed = dataAt > 0 && dataAt <= now + 5000 && now - dataAt <= maxHistoryAgeHours * 3600000;
   const historyStatus = historyUsed ? 'FRESH' : dataAt > 0 ? 'STALE' : 'MISSING';

@@ -34,7 +34,7 @@ public final class GeneralTraderFactory {
             @Override public double purse() {return new ScoreboardUtils().getPurse();}
             @Override public JsonObject latestQuotes() {return BazaarApi.latestFresh();}
             @Override public CompletableFuture<JsonObject> fetchQuotes() {return BazaarApi.fetch();}
-            @Override public Set<String> excludedProducts() {return BazaarAccess.instance().excluded();}
+            @Override public Set<String> excludedProducts() {return BazaarAccess.instance().excluded(manager.get().observedUnlocks());}
             @Override public Map<String,Integer> skillLevels() {return manager.get().observedSkills();}
             @Override public void excludeProduct(String id,String reason) {
                 BazaarAccess.instance().deny(id,reason);manager.get().invalidateMarketReport();

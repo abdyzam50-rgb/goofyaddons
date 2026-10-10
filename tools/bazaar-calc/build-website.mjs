@@ -59,7 +59,9 @@ patch('packages/web/src/pages/Flips.tsx','noFlags: true } })','noFlags: true, re
 patch('packages/web/src/pages/Planner.tsx','import { Fragment, useState }','import { Fragment, useEffect, useState }');
 patch('packages/web/src/pages/Planner.tsx','  const [requireMet, setRequireMet] = useState(!profile.ignoreRequirements);','  const [requireMet, setRequireMet] = useState(!profile.ignoreRequirements);\n  useEffect(()=>setRequireMet(!profile.ignoreRequirements),[profile.ignoreRequirements]);');
 const plannerFile=join(web,'src/pages/Planner.tsx');writeFileSync(plannerFile,readFileSync(plannerFile,'utf8').replace('options: { kinds, requireMet: !profile.ignoreRequirements || requireMet }','options: { kinds, requireMet }'));
-patch('packages/shared/src/rules/requirements.ts','return reqs.filter(r => isMet(r, p) === false);','return reqs.filter(r => isMet(r, p) !== true);');
+cpSync(join(root,'website-src/requirements.ts'),join(checkout,'packages/shared/src/rules/requirements.ts'));
+patch('packages/shared/src/calc/engine.ts','import { BAZAAR,','import { tradeRequirements, BAZAAR,');
+patch('packages/shared/src/calc/engine.ts','const reqs = dedupeRequirements(route.requirements);','const reqs = dedupeRequirements([...route.requirements,...[route.outputId,...route.buys.map(b=>b.item)].flatMap(tradeRequirements)]);');
 execFileSync('pnpm',['--filter','@bc/shared','build'],{cwd:checkout,stdio:'inherit'});
 execFileSync('pnpm',['--filter','@bc/web','build'],{cwd:checkout,stdio:'inherit',env:{...process.env,VITE_STATIC:'1',VITE_REPO:'abdyzam50-rgb/goofyaddons'}});
 execFileSync('pnpm',['exec','vite','build','--base','/calculator/','--outDir',join(root,'calculator'),'--emptyOutDir'],{cwd:web,stdio:'inherit',env:{...process.env,VITE_STATIC:'1',VITE_REPO:'abdyzam50-rgb/goofyaddons'}});

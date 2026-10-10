@@ -156,6 +156,19 @@ public final class AccountUnlocks {
             if(!Double.isFinite(value) || value<0 || value>10 || value!=Math.floor(value))throw new IllegalArgumentException("Invalid Heart of the Mountain tier");
             int level=(int)value;result.put("heartofthemountain",level);result.put("hotm",level);
         }
+        if(!unknown.contains("Catacombs") && stats.has("catacombsLevel") && !stats.get("catacombsLevel").isJsonNull()) {
+            double level=stats.get("catacombsLevel").getAsDouble();
+            if(!Double.isFinite(level)||level<0||level>50||level!=Math.floor(level))throw new IllegalArgumentException("Invalid Catacombs level");
+            result.put("catacombs",(int)level);
+        }
+        if(stats.has("dungeonCompletions"))for(var e:stats.getAsJsonObject("dungeonCompletions").entrySet()) {
+            if(!e.getKey().matches("(?:Master )?Catacombs Floor [0-7]"))continue;
+            String type=e.getKey().startsWith("Master ")?"Master Catacombs":"Catacombs";
+            if(unknown.contains(type+" floor completions"))continue;
+            double completed=e.getValue().getAsDouble();
+            if(completed!=0&&completed!=1)throw new IllegalArgumentException("Invalid dungeon completion");
+            result.put(RouteRequirements.normalize(e.getKey()+" completed"),(int)completed);
+        }
         return new ProfileRequirements(Map.copyOf(levels),Map.copyOf(result),!unknown.contains("collections"));
     }
     private static void copy(JsonObject input,String suffix,Map<String,Integer> output) {

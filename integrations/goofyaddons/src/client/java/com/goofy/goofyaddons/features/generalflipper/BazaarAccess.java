@@ -40,6 +40,12 @@ public final class BazaarAccess {
     public Set<String> excluded() {
         var all=new TreeSet<>(MUTATIONS);all.addAll(denied.keySet());return Set.copyOf(all);
     }
+    public Set<String> excluded(Map<String,Integer> unlocks) {
+        var all=new TreeSet<>(excluded());
+        for(String id:com.goofy.goofyaddons.features.access.RouteRequirements.productIds())
+            if(com.goofy.goofyaddons.features.access.RouteRequirements.product(id,unlocks)!=null)all.add(id);
+        return Set.copyOf(all);
+    }
     public void deny(String id,String reason) {
         if(!id.matches("[A-Z0-9_]+"))throw new IllegalArgumentException("Invalid product ID");
         denied.put(id,reason.substring(0,Math.min(500,reason.length())));
@@ -70,8 +76,9 @@ public final class BazaarAccess {
             String lower=line.trim().toLowerCase(Locale.ROOT);
             if(lower.matches("(?:common|uncommon|rare|epic|legendary|mythic|divine|special|very special) mutation"))
                 return "Farming > Garden > Mutations is excluded";
-            if(lower.matches(".*\\b(?:not unlocked|not discovered|not inspected|haven't unlocked|have not unlocked|haven't discovered|have not discovered|haven't inspected|have not inspected)\\b.*")
-                    || lower.matches(".*\\b(?:you must|you need to|required to|requires you to) (?:first )?(?:inspect|discover|unlock)\\b.*")
+            if(lower.matches(".*\\b(?:complete|finish) .*(?:beth|visitor).*quest.*(?:analy[sz]e|inspect).*"))return line.trim();
+            if(lower.matches(".*\\b(?:not analyzed|not analysed|not unlocked|not discovered|not inspected|haven't unlocked|have not unlocked|haven't discovered|have not discovered|haven't inspected|have not inspected)\\b.*")
+                    || lower.matches(".*\\b(?:you must|you need to|required to|requires you to) (?:first )?(?:inspect|analy[sz]e|discover|unlock)\\b.*")
                     || lower.matches(".*\\byou (?:do not|don't) meet (?:the |this )?requirements?\\b.*")
                     || lower.matches(".*\\byou (?:need|require) .+ to (?:buy|purchase|trade|use the bazaar)\\b.*"))
                 return line.trim();

@@ -367,3 +367,31 @@ Use `.a* goofyaddon production requirements` to inspect profile status, HotM and
 all six Slayer levels. Install the new JAR for local execution checks. Redeploy
 the 0.2.36 public website ZIP for the updated Worker profile import and website
 Slayer summary; existing secrets and deployment configuration are retained.
+
+## Essence, Dungeon and mutation gates (0.2.37)
+
+The selected-profile import now reports Catacombs level from dungeon XP and
+normal/Master Catacombs floor completions as separate facts. A high level never
+implies a cleared floor. Missing or invalid progression stays unobserved.
+
+All eight Bazaar essence types require Catacombs XX. The mod excludes them
+from general selection and rankings below that level or without fresh account
+evidence. The local adapter checks the same gate, and craft procurement checks
+its output and ingredient product gates before navigation or spending.
+
+The shared product catalog covers all 40 Garden mutations in the current NEU
+snapshot. Mutation-dependent recipes need verified inspection/analysis evidence;
+mutation sacks also retain their Crop Analyzer Milestone gates. The profiles
+endpoint does not establish either fact, so these routes remain blocked as
+unverified. This release preserves the prior general-trading mutation exclusion;
+it does not automate crop analysis or infer it from collection tiers. Explicit
+unmet analysis/inspection text on purchase controls blocks the transaction.
+
+Recipe text and action controls can require Catacombs levels and normal/Master
+floor completions. Equipment-use lore is not added as a crafting prerequisite:
+being unable to equip a dungeon item does not prove that crafting it is forbidden.
+Server crafting controls remain authoritative for additional requirements.
+
+`.a* goofyaddon production requirements` now includes Catacombs and explains
+mutation evidence. Install the 0.2.37 JAR and redeploy its public website ZIP for
+the profile-import and website changes. Existing deployment secrets are retained.

@@ -129,3 +129,13 @@ claims, pre-purchase Forge access/slot/recipe gates and confirmation controls.
 Desktop/mobile Chromium checks passed for profile import, ingredient preparation,
 Bazaar/AH filters and quote refresh/expiry. Live Hypixel crafting and Forge
 submission remain for user testing.
+
+0.2.37 validation: 1,074 Java tests, 120 Node tests and 6 Python importer tests
+passed with no failures/errors. The complete Java suite, shipped-calculator
+integration tests and release build passed. New cases cover Catacombs boundaries,
+normal/Master floor identity, unknown/invalid API data, all 48 product gates,
+website requirement parsing, essence rankings and pre-purchase ingredient locks.
+Desktop/mobile Chromium checks passed. Packaged catalogs and profile modules
+match the source files. Live Hypixel transactions remain for user testing;
+mutation analysis/analyzer reward evidence is unavailable from the profile API
+and remains blocked rather than assumed.

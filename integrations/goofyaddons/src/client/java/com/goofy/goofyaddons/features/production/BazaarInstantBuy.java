@@ -76,6 +76,8 @@ public final class BazaarInstantBuy {
                 if (menu == null) return Result.WAITING;
                 int control = productControl(menu);
                 if (control < 0) return Result.WAITING;
+                String unmet=com.goofy.goofyaddons.features.generalflipper.BazaarAccess.unmet(menu.slot(control).lore());
+                if(unmet!=null)return block("Cannot buy "+name+": "+unmet);
                 Double unit = unitPrice(menu.slot(control).lore());
                 if (unit == null) return block("Instant buy price for " + name + " is unreadable");
                 if (unit * amount > maximumCost + 1e-6) return block(String.format(java.util.Locale.ROOT,

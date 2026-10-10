@@ -146,7 +146,11 @@ def build(source, baseline, enchants, extra=None):
                      for k in ('outputId','outputCount','ingredients','grid'))), None)
         if match:
             retained.append({**old_recipe, 'requirement': merge_requirements(old_recipe.get('requirement'), match['requirement'])})
+    gates=json.loads((ROOT/'tools/bazaar-calc/product-requirements.json').read_text())['products']
     recipes = sorted(recipes + retained, key=lambda r: r['key'])
+    for recipe in recipes:
+        requirements=[gates[id] for id in sorted({recipe['outputId'],*recipe['ingredients']}) if id in gates]
+        recipe['requirement']=merge_requirements(recipe.get('requirement'),*requirements)
     if len({r['key'] for r in recipes}) != len(recipes):
         raise ValueError('Duplicate recipe keys')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip()

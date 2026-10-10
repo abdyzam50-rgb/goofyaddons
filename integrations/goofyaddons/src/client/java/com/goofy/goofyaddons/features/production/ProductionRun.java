@@ -386,6 +386,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
     }
 
     private String productionRequirement() {
+        String outputRequirement=com.goofy.goofyaddons.features.access.RouteRequirements.product(output,env.unlocks());
+        if(outputRequirement!=null)return outputRequirement;
         if(kind==ProductionRecipe.Kind.FORGE) {
             Integer hotm=env.unlocks().get("hotm");
             String access=com.goofy.goofyaddons.features.access.RouteRequirements.threshold("Heart of the Mountain",2,hotm);
@@ -395,6 +397,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         String reason="No verified production recipe for "+output;
         for(var option:recipe==null?catalog.forOutput(output):List.of(recipe))if(option.kind()==kind) {
             var blocked=com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks());
+            if(blocked==null)blocked=com.goofy.goofyaddons.features.access.RouteRequirements.products(option.ingredients().keySet(),env.unlocks());
             if(blocked==null)return null;
             reason=blocked;
         }

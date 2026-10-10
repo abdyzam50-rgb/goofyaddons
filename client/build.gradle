@@ -2,7 +2,7 @@ plugins {
     id 'net.fabricmc.fabric-loom' version '1.17.21'
 }
 
-version = '0.2.36-BETA'
+version = '0.2.37-BETA'
 group = 'astar'
 
 base {
@@ -46,7 +46,7 @@ tasks.register('bundleCalculator', Zip) {
     reproducibleFileOrder = true
     preserveFileTimestamps = false
     from('../tools/bazaar-calc') {
-        include '*.mjs', 'automatic-products.json', 'mutation-products.json', 'provenance.json', 'history.json.gz', 'dashboard/**', 'calculator/**', 'licenses/**'
+        include '*.mjs', 'automatic-products.json', 'mutation-products.json', 'product-requirements.json', 'provenance.json', 'history.json.gz', 'dashboard/**', 'calculator/**', 'licenses/**'
         exclude '*.test.mjs', '*-browser-check.mjs', 'build-engine.mjs', 'build-website.mjs', 'build-requirements.mjs', 'update-history.mjs'
     }
 }

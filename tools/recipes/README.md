@@ -56,3 +56,10 @@ Requirement import normalizes NEU Slayer codes (`WOLF_3`, `EMAN_6`, etc.) and
 reputation codes before deduplication. Structured HotM requirements become
 `HotM N`. Numeric and Roman tiers share the same gate. Unknown requirements
 remain visible and block execution rather than silently enabling a route.
+
+Product prerequisite rules live in `tools/bazaar-calc/product-requirements.json`
+and the matching mod resource. Import attaches these gates to recipe outputs and
+ingredients, including all 40 mutations and the eight essence types. Generic
+equipment-use lore is deliberately separate from crafting unlocks. Dungeon floor
+completion and Crop Analyzer Milestone gates are parsed when explicitly required;
+unknown mutation analysis and analyzer rewards keep routes blocked.
