@@ -181,3 +181,19 @@ No public website redeployment is necessary for this mod-side account fix.
 The shared-learning Sync status now includes the supervisor's reason when the
 calculator is unavailable (auto-start off, port conflict, preparing or failed),
 rather than displaying an indefinite generic wait with no explanation.
+
+## Reusing the crafting GUI (0.2.30)
+
+Ingredient preparation and final crafting in a craft production run now reuse the
+same clean Craft Item menu. Child jobs leave it open only after the executor
+verifies the outputs and an empty grid/cursor. The parent retains menu ownership
+between child jobs, then hands it directly to the next crafter; ordinary traders
+cannot take that GUI during the handoff. Metadata-only handoffs use 50 ms pacing
+instead of the normal trading action delay. Recipe and journal checks still run
+for every child job, including a reused menu.
+
+A standalone craft closes its menu on completion as before. A production run
+closes its retained menu when it finishes without a sale, or when it needs to
+switch to Auction House listing. Bazaar navigation replaces it with the required
+product menu. Forge/Kat preparation keeps the former standalone-close behavior.
+No occupied cursor or unfinished grid is adopted for the next recipe.

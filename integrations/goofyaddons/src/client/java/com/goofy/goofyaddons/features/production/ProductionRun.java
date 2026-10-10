@@ -142,6 +142,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     public String reason() { return loop.reason(); }
     public boolean finished() { return loop.finished(); }
     public String output() { return output; }
+    public boolean isCraftRun(){return kind==ProductionRecipe.Kind.CRAFT;}
 
     /** Products this run must keep away from traders. */
     public Set<String> lockedProducts() {
@@ -152,14 +153,16 @@ public final class ProductionRun implements ProductionLoop.Ports {
         return Set.copyOf(ids);
     }
 
-    /** True while the current step has to click in a menu. */
+    public boolean hasReusableCraftMenu(){return kind==ProductionRecipe.Kind.CRAFT && CraftingExecutor.reusableMenu(env.menu());}
+
+    /** True while this step owns a menu, including a verified craft-to-craft handoff. */
     public boolean wantsMenu() {
         if (finished()) return false;
         return switch (loop.stage()) {
-            case PROCURE -> ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty());
-            case PROCESS -> kind != ProductionRecipe.Kind.CRAFT && workstationMenuOpen();
+            case PROCURE -> !env.craftQueued() && (hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
+            case PROCESS -> kind==ProductionRecipe.Kind.CRAFT ? !env.craftQueued() && hasReusableCraftMenu() : workstationMenuOpen();
             case CLAIM -> workstationMenuOpen();
-            case SELL -> binPrice == SELL_ON_BAZAAR;
+            case SELL -> binPrice == SELL_ON_BAZAAR || hasReusableCraftMenu() && !env.listingQueued();
             default -> false;
         };
     }
@@ -286,6 +289,10 @@ public final class ProductionRun implements ProductionLoop.Ports {
     @Override public Outcome sell(long now) {
         if (binPrice == SELL_ON_BAZAAR) return sellOnBazaar(now);
         if (listingJob == null) {
+            if(hasReusableCraftMenu()) {
+                if(!ownsMenu)return Outcome.pending("Waiting to leave crafting for Auction House");
+                env.actions().closeMenu();return Outcome.pending("Crafting complete; opening Auction House next");
+            }
             if (env.craftQueued() || env.listingQueued()) return Outcome.pending("Waiting for other production work");
             listingJob = env.queueListing(output, binPrice, maximumFee);
             if (listingJob == null) return Outcome.blocked("BIN listing could not be queued; keep exactly one stack of " + env.name(output));

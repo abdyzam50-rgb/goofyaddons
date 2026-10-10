@@ -17,7 +17,7 @@ class ProductionTest {
     SlotView stack(int index,String id,int count){return count==0?SlotView.empty(index,index>=54,index>=54?index-54:index):
             new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);}
     class Server implements GameActions {
-        final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);final ProductionRecipe r;
+        final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);ProductionRecipe r;
         int clicks;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime;String title="Craft Item";
         final List<String> inputs=new ArrayList<>();
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
@@ -89,6 +89,18 @@ class ProductionTest {
         for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(r,47,server.menu(),server,Map.of(),Map.of("collection",2),now);
         assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(47,executor.completedBatches());assertEquals(17,server.slots[54].count());
         assertTrue(server.clicks<30,"47 exact inputs should use a half-stack plus remainder, not 47 placements");
+    }
+    @Test void consecutivePowderAndEyeCraftsUseTheSameContainerWithoutReopening() {
+        var powder=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();var eye=RecipeCatalog.instance().forOutput("ENCHANTED_EYE_OF_ENDER").getFirst();
+        var server=new Server(powder,0);server.slots[54]=stack(54,"BLAZE_ROD",32);server.slots[55]=stack(55,"ENCHANTED_ENDER_PEARL",16);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        long now=1000;
+        for(;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(powder,32,server.menu(),server,Map.of(),Map.of(),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+        int container=server.menu().containerId();server.r=eye;result=CraftingExecutor.Result.WAITING;
+        for(;now<40000&&result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(eye,1,server.menu(),server,Map.of(),Map.of("enderpearl",6),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(container,server.menu().containerId());assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+        assertEquals(1,Arrays.stream(server.slots).filter(v->!v.empty()&&eye.outputId().equals(v.customId())).mapToInt(SlotView::count).sum());
     }
     @Test void hypixelsQuickCraftSuggestionIsNotMistakenForTheGridResult() {
         var r=recipe(32);var server=new Server(r,64);server.quickCraft=true;var executor=new CraftingExecutor();

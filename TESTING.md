@@ -58,3 +58,13 @@ profile-service URL were checked in the 0.2.29 JAR. The user's original Node
 startup failure still requires its current diagnostics to identify precisely;
 these tests validate the removed dependency and cold-start fixes, not access to
 the user's live account or Cloudflare deployment.
+
+0.2.30 adds a same-container blaze-powder → enchanted-eye crafting simulation and
+a parent/child menu-ownership test. Both check verified output and handoff without
+closing or reopening Craft Item. Existing transaction and shipped-calculator
+integration checks remain required.
+
+0.2.30 validation: 1,038 Java tests passed, including the shipped-calculator
+integration suite and the owned Craft Item → Auction House transition. The release
+JAR built successfully. These are simulated menu checks; live Hypixel execution
+was not available in this workspace.

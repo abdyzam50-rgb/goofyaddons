@@ -147,13 +147,16 @@ public final class ProductionLoopFeature implements Feature {
 
     private void step(boolean ownsMenu) {
         long now = System.currentTimeMillis();
-        // Same randomised pacing as the flippers: one step per action delay, never one per tick.
+        // Reusing a clean craft menu advances metadata-only handoffs on the next tick.
+        // Transactions outside the craft chain keep their configured action pacing.
         if (now < nextAction) return;
-        nextAction = now + com.goofy.goofyaddons.utils.ActionDelay.next();
+        nextAction = now + (run.hasReusableCraftMenu() && (run.stage()==ProductionLoop.Stage.PROCURE || run.stage()==ProductionLoop.Stage.PROCESS)
+                ?50:com.goofy.goofyaddons.utils.ActionDelay.next());
         try {
             var result = run.tick(ownsMenu, now);
             switch (result) {
                 case DONE -> {
+                    if(run.hasReusableCraftMenu())new LiveActions().closeMenu();
                     new LiveActions().message("Production of " + RecipeCatalog.instance().name(run.output()) + " finished.");
                     Diagnostics.event("INFO", "production.run_finished", Map.of("job", run.jobId(), "output", run.output()));
                     run=null;automaticBudget=0;FeatureManager.INSTANCE.invalidateMarketReport();
@@ -236,10 +239,10 @@ public final class ProductionLoopFeature implements Feature {
             public String name(String id) { return RecipeCatalog.instance().name(id); }
             public String queueCraft(String output, int batches) {
                 var crafting = FeatureManager.INSTANCE.crafting();
-                return crafting.queue(output, batches) ? crafting.jobId() : null;
+                return (run!=null && run.isCraftRun()?crafting.queueForProduction(output,batches,null):crafting.queue(output,batches))?crafting.jobId():null;
             }
             public String queueCraftRecipe(String output,int batches,String key) {
-                var crafting=FeatureManager.INSTANCE.crafting();return crafting.queue(output,batches,key)?crafting.jobId():null;
+                var crafting=FeatureManager.INSTANCE.crafting();return (run!=null && run.isCraftRun()?crafting.queueForProduction(output,batches,key):crafting.queue(output,batches,key))?crafting.jobId():null;
             }
             public boolean craftQueued() { return FeatureManager.INSTANCE.crafting().queued(); }
             public String queueListing(String product, long price, double maximumFee) {

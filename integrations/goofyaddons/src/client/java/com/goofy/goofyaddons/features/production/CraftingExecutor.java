@@ -202,6 +202,11 @@ public final class CraftingExecutor {
     private static void add(Map<String,Integer> counts,SlotView slot){if(!empty(slot) && slot.customId()!=null)counts.merge(slot.customId(),slot.count(),Integer::sum);}
     private static int count(SlotView slot){return empty(slot)?0:slot.count();}
     private static boolean empty(SlotView slot){return slot==null || slot.empty();}
+    public static boolean reusableMenu(MenuSnapshot menu) {
+        if(menu==null || !"Craft Item".equals(Chat.strip(menu.title())) || !menu.cursorEmpty())return false;
+        for(int slot:GRID)if(!empty(menu.slot(slot)))return false;
+        return true;
+    }
     public static boolean sameOwnedState(MenuSnapshot a,MenuSnapshot b){return a!=null && b!=null && sameContents(a,b);}
     /** The first owned slot or cursor where the client and server copies differ, for the player to read. */
     public static String difference(MenuSnapshot local,MenuSnapshot server){

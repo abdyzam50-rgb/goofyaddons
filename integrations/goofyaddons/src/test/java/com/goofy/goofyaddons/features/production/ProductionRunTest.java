@@ -96,6 +96,30 @@ class ProductionRunTest {
         run.tick(false,1);run.tick(false,2);assertEquals(List.of("BLAZE_POWDERx32"),env.crafts);assertEquals(Stage.PROCESS,run.stage());
         run.tick(false,3);assertEquals("ENCHANTED_EYE_OF_ENDERx1",env.crafts.getLast());assertTrue(env.actions.serverEffects().isEmpty());
     }
+    @Test void cleanCraftMenuStaysOwnedAcrossIntermediateAndFinalRecipeHandoffs() throws Exception {
+        var env=new Env();env.unlocks=Map.of("enderpearl",6);
+        env.menu=menu("Craft Item",item(54,"BLAZE_ROD",32),item(55,"ENCHANTED_ENDER_PEARL",16));
+        var run=ProductionRun.start(env,RecipeCatalog.instance(),"ENCHANTED_EYE_OF_ENDER",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertTrue(run.wantsMenu());run.tick(true,0);assertFalse(run.wantsMenu(),"The active child crafter must own the menu");
+        env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);
+        env.menu=menu("Craft Item",item(55,"ENCHANTED_ENDER_PEARL",16),item(56,"BLAZE_POWDER",64));
+        assertTrue(run.wantsMenu(),"Retain the clean menu while verifying the child");run.tick(true,1);run.tick(true,2);
+        assertEquals(Stage.PROCESS,run.stage());assertTrue(run.wantsMenu(),"Retain it until the final craft is queued");run.tick(true,3);
+        assertFalse(run.wantsMenu());assertEquals(List.of("BLAZE_POWDERx32","ENCHANTED_EYE_OF_ENDERx1"),env.crafts);
+        assertTrue(env.actions.performed().isEmpty(),"A recipe handoff must not close or reopen the crafting GUI");
+    }
+    @Test void reusedCraftMenuClosesBeforeAuctionListingOnlyWithOwnership()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"INPUT",2));
+        var run=ProductionRun.start(env,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,5000,100);
+        run.tick(false,0);run.tick(false,1);
+        env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);
+        env.menu=menu("Craft Item",item(54,"OUTPUT",1));run.tick(true,2);
+        assertEquals(Stage.SELL,run.stage());assertTrue(run.wantsMenu());
+        run.tick(false,3);assertTrue(env.actions.performed().isEmpty());
+        run.tick(true,4);assertEquals(List.of("close"),env.actions.performed());assertTrue(env.listings.isEmpty());
+        env.menu=menu(null,item(54,"OUTPUT",1));run.tick(false,5);
+        assertEquals(List.of("OUTPUT@5000"),env.listings);
+    }
     @Test void occupiedBaseIngredientsCannotBeConsumedByPreparation()throws Exception {
         var env=new Env();env.occupied=Set.of("BLAZE_ROD");
         env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",1));
