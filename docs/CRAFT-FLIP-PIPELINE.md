@@ -433,3 +433,17 @@ request. No XP feature, live XP hook or extra settings were added. The existing
 API cannot establish that value, and no skill XP is substituted for it.
 This patch changes the hosted collector only; the 0.2.38 mod remains compatible.
 The profile endpoint reports `parserVersion: "2026-10-10-unlock-completeness"`.
+
+## Heart of the Forest audit
+
+The current NEU snapshot (`c4f7d4757641f3a11c74d3d77cec76c100abaf98`) declares
+no crafting requirement containing HotF or Heart of the Forest. Relevant Fig
+recipes use collection tiers instead: Enchanted Fig Log requires Fig Log II and
+Fig Axe requires Fig Log IV. Existing collection import/gates handle these.
+No HotF restriction is added without a declared crafting prerequisite. This is
+a catalog audit, not a claim about every NPC shop or equipment-use unlock.
+
+For future HotF gates, current progression is `skill_tree.experience.foraging`
+(SkyCrypt-Backend `5252bf6`, stats/foraging.go); the NEU `HOTF` XP-cost table
+contains eight tiers. Live official wiki retrieval returned HTTP 403 during
+this audit, so additional wiki-only prerequisites could not be verified.
