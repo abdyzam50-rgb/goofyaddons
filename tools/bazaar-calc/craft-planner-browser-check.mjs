@@ -55,5 +55,16 @@ try {
   await evaluate(`Date.now=()=>${Date.now()+65000}`);await new Promise(r=>setTimeout(r,1300));
   assert.equal(await evaluate(`document.querySelector('tbody').children.length`),0,'Expired prices still recommend crafts');
  }
- assert.deepEqual(errors,[]);console.log('Public craft planner: desktop/mobile, profile unlocks, base preparations, BZ/AH filters, price refresh and stale-price removal passed.');
+ for (const width of [1440,390]) {
+  await send('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:width<600});
+  for (const [route,expected] of [['timing','Refresh and retention'],['api-docs','Hosted endpoints'],['contribute','From the mod'],['status','Persistent Auction House market history'],['about','Auction House prices']]) {
+   await send('Page.navigate',{url:base+'/calculator/'+route});await new Promise(r=>setTimeout(r,1200));
+   const body=await evaluate('document.body.innerText');assert.ok(body.includes(expected),route+': '+body);
+   assert.ok(!body.includes('This site has no server')&&!body.includes('No auction or NPC flips')&&!body.includes('Sign in with Discord'),route+' contains obsolete instructions');
+   const layout=await evaluate('({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})');assert.ok(layout.scroll<=layout.width+1,route+' overflow at '+width);
+   if(route==='api-docs')for(const path of ['/v1/market','/v1/crafts/history','/calculator/data/production-recipes.json']){assert.equal((await fetch(base+path)).status,200,path);}
+   if(route==='about')assert.equal((await fetch(base+'/calculator/licenses/NEU-CATALOG-LICENSE.txt')).status,200);
+  }
+ }
+ assert.deepEqual(errors,[]);console.log('Public craft planner: desktop/mobile, profile unlocks, base preparations, BZ/AH filters, price refresh, stale-price removal and all five reference pages passed.');
 }finally{ws?.close();chrome.kill();await once(chrome,'exit');await new Promise(r=>{server.close(r);server.closeAllConnections();});await rm(profile,{recursive:true,force:true});}

@@ -515,3 +515,12 @@ preserved. Deploy the full public package, including the two new runtime modules
 and website assets. The corrected local mod includes the same history-aware UI and
 proxies the public history endpoints. No separate account-specific data collector
 or new contributor key is required for public market observations.
+
+### 0.2.46 — current calculator reference documentation
+
+Replaced the obsolete upstream static contribution/API documentation with a
+maintained overlay for Timing & limits, Data files, Contribute, Data status and
+Sources. Descriptions now match scheduled AH history, independent gameplay
+publishing, real Worker endpoints, key privacy, provenance and the distinction
+between live quotes and bundled chart history. Timing is explicitly a model;
+historical AH references remain research only pending fresh verification.

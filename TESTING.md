@@ -231,3 +231,11 @@ The final Chromium desktop/mobile run also verified a missing live AH quote fall
 back to a visibly labelled historical estimate. Mod and public ZIP contents were
 verified, including both new Worker runtime modules and config preservation.
 Java result files report 1,075 tests with zero failures, errors or skips.
+
+### 0.2.46 reference-page refresh
+
+The Chromium craft planner check also navigates all five Reference pages at
+1440px and 390px, checks current instructions and absence of obsolete
+serverless/Discord/manual contribution claims, verifies page widths, and reads
+the linked market/history/catalog/license endpoints. TypeScript/Vite compilation
+and the bundled calculator integration build verify the maintained overlay.

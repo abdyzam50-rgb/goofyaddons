@@ -17,11 +17,9 @@ patch('packages/web/src/pages/Flips.tsx','// Flip tables',"import { CraftPlanner
 patch('packages/web/src/pages/Flips.tsx','  return (\n    <>\n      <div className="pagehead">','  return (\n    <>\n      {kind === "craft" && <CraftPlanner />}\n      <div className="pagehead">');
 cpSync(join(root,'website-src/ProfileLookup.tsx'),join(web,'src/components/ProfileLookup.tsx'));
 cpSync(join(root,'website-src/CommunityStatus.tsx'),join(web,'src/components/CommunityStatus.tsx'));
-patch('packages/web/src/pages/Static.tsx','import { useQuery }',"import { CommunityStatus } from '../components/CommunityStatus';\nimport { useQuery }");
-patch('packages/web/src/pages/Static.tsx','Live prices come from Hypixel in your browser. History comes from contributed data, rebuilt each time a contribution is approved.','Live Bazaar prices refresh from Hypixel through the collector. Historical charts use the bundled reference snapshot. Gameplay publishing status is tracked separately below.');
-patch('packages/web/src/pages/Static.tsx','      {m && q.data && <>','      <CommunityStatus />\n      {m && q.data && <>');
-patch('packages/web/src/pages/Static.tsx','straight from Hypixel; updates every minute while a page is open','live Hypixel prices; refresh about every 20 seconds while visible');
-patch('packages/web/src/pages/Static.tsx','rebuilt on every approved contribution and every scanner push · recipes: NEU','bundled history snapshot; changes when the website is rebuilt and deployed · recipes: NEU');
+cpSync(join(root,'website-src/Reference.tsx'),join(web,'src/pages/Reference.tsx'));
+patch('packages/web/src/main.tsx','import { About, ApiDocs, Contribute, Status, Timing } from "./pages/Info";', 'import { ApiDocs, Contribute, Status } from "./pages/Info";\nimport { About, Timing, ApiDocsStatic, ContributeStatic, StatusStatic } from "./pages/Reference";');
+const mainFile=join(web,'src/main.tsx');writeFileSync(mainFile,readFileSync(mainFile,'utf8').replace('import { ApiDocsStatic, ContributeStatic, StatusStatic } from "./pages/Static";',''));
 patch('packages/web/src/live.ts','"orders-book", "alerts", "paper"','"orders-book", "alerts", "paper", "outlook", "events", "events-now", "ah", "rules-bazaar"');
 patch('packages/web/src/components/Live.tsx','const label = l.mode === "live"','const label = l.error ? "UNAVAILABLE" : age != null && age > 60_000 ? "STALE" : l.mode === "live"');
 patch('packages/web/src/components/Live.tsx','age < 90_000','age < 60_000');

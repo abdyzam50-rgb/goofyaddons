@@ -291,3 +291,21 @@ The craft page labels historical estimates and requires fresh prices before a
 route is feasible. Historical provider volume is not proof of realized profit or
 a guaranteed daily sales rate. Local calculator users can install
 `dist/astar-client-0.2.45-BETA.jar` to receive this history-aware UI too.
+
+### Reference pages (0.2.46)
+
+All five Reference pages now come from the maintained `website-src/Reference.tsx`
+overlay. Timing & limits distinguishes the calculator's action model from mod
+craft batching and actual lag. Data files lists the real hosted Worker endpoints,
+bundled catalog files and the two independent GitHub datasets. Contribute
+explains owner-approved private keys and automatic anonymized mod uploads;
+obsolete browser collectors, manual inbox PRs and Discord signup instructions
+are removed. Data status separates live collection/publishing from bundled
+Bazaar chart coverage. Sources links Hypixel, Coflnet, NEU, wiki references,
+upstream code and build provenance, with the current research limitations.
+
+Deploy the complete public ZIP into the existing folder, preserving
+`wrangler.jsonc`; the reference pages are built assets, so updating only Worker
+JavaScript does not update these pages. This release requires no new secrets or
+database migration. Market/gameplay commits do not automatically rebuild
+bundled Bazaar charts or timing samples.
