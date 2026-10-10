@@ -39,6 +39,17 @@ class BazaarInstantBuyTest {
         assertEquals(effects,actions.serverEffects().size());
     }
 
+    @Test void ignoredProductAndCustomAmountClicksRecoverBeforeAnyPurchaseIntent() {
+        var a=new RecordingActions();var b=buy(1100);var product=product(100);
+        b.tick(product,false,a,5000,1000);b.tick(product,false,a,5000,2000);b.tick(product,false,a,5000,4000);
+        assertEquals(List.of("click:10","click:10"),a.serverEffects());assertTrue(intents.isEmpty());
+        var amount=menu(2,"How many do you want?",SlotView.named(16,"Custom Amount",List.of()));
+        b.tick(amount,false,a,5000,4100);b.tick(amount,false,a,5000,5000);b.tick(amount,false,a,5000,7200);
+        assertEquals(List.of("click:10","click:10","click:16","click:16"),a.serverEffects());assertTrue(intents.isEmpty());
+        b.tick(amount,true,a,5000,7300);
+        assertEquals(1,intents.size());assertEquals(1,a.serverEffects().stream().filter(x->x.startsWith("sign:")).count());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,b.tick(menu(3,null,item(54,"ENCHANTED_COAL",10)),false,a,4000,7400));
+    }
     @Test void priceAboveTheLimitStopsBeforeAnyClick() {
         var actions=new RecordingActions();var buy=buy(900);
         assertEquals(BazaarInstantBuy.Result.BLOCKED,buy.tick(product(100),false,actions,5000,0));

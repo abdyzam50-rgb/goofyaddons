@@ -35,7 +35,8 @@ class AuctionBrowserNavigationTest {
     }
     @Test void unverifiedControlsDoNotSelectOrBuyAnything() {
         var a=new RecordingActions();var b=browser();
-        assertEquals(AuctionBrowserNavigation.Result.BLOCKED,b.tick(menu(1,"Auctions Browser",item(10,"TARGET","Buy it now: 1 coins")),false,a,1000));
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(menu(1,"Auctions Browser",item(10,"TARGET","Buy it now: 1 coins")),false,a,1000));
+        assertEquals(AuctionBrowserNavigation.Result.BLOCKED,b.tick(menu(1,"Auctions Browser"),false,a,16000));
         assertTrue(a.serverEffects().isEmpty());assertNull(b.selected());
     }
     @Test void inactiveBinOptionInLoreIsNotMistakenForSelectedBinMode() {
@@ -51,8 +52,22 @@ class AuctionBrowserNavigationTest {
         assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(sign,true,a,1100));
         assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(sign,true,a,1200));
         assertEquals(List.of("click:48","sign:Target"),a.serverEffects());
-        assertEquals(AuctionBrowserNavigation.Result.BLOCKED,b.tick(new MenuSnapshot(1,"Auctions Browser",false,ready.slots()),false,a,1300));
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(new MenuSnapshot(1,"Auctions Browser",false,ready.slots()),false,a,1300));
+        assertEquals(AuctionBrowserNavigation.Result.BLOCKED,b.tick(new MenuSnapshot(1,"Auctions Browser",false,ready.slots()),false,a,16300));
         assertNull(b.selected());
+    }
+    @Test void delayedBrowserControlsAndResultsRecoverWithoutSelectingPlaceholders()throws Exception {
+        var b=browser();var a=new RecordingActions();
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(null,false,a,1000));
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(menu(1,"Auctions Browser"),false,a,2000));
+        assertTrue(a.serverEffects().isEmpty());
+        var ready=CompactorClearanceTest.captured("auction-browser-controls.json");
+        b.tick(ready,false,a,5000);b.tick(ready,true,a,5100);
+        b.tick(ready,false,a,5200);
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(ready,false,a,6000));
+        var slots=new ArrayList<>(ready.slots());slots.set(10,item(10,"TARGET","Buy it now: 1,000 coins"));
+        assertEquals(AuctionBrowserNavigation.Result.READY,b.tick(new MenuSnapshot(2,ready.title(),true,slots),false,a,9000));
+        assertEquals(List.of("click:48","sign:Target"),a.serverEffects());
     }
     @Test void coflnetIsAPriceGuardRatherThanASourceOfAuctionIds() {
         var q=new AuctionPricing.Quote("TARGET",1000,1100L,1000);

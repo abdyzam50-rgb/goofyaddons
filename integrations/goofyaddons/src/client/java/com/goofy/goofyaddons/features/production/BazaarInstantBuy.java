@@ -24,6 +24,7 @@ public final class BazaarInstantBuy {
 
     private final String productId, name;
     private final BazaarSearch search;
+    private final NavigationRetry navigation=new NavigationRetry();
     private final int amount;
     private final double maximumCost;
     private final Intent intent;
@@ -51,6 +52,11 @@ public final class BazaarInstantBuy {
         if (started == 0) started = now;
         if (stepAt == 0) stepAt = now;
         if (step == Step.VERIFY) return verify(menu, purse, now);
+        if(navigation.pending()) {
+            var acknowledgement=navigation.observe(menu,signOpen,actions,now);
+            if(acknowledgement==NavigationRetry.Result.EXHAUSTED)return block("Bazaar navigation was not acknowledged; nothing bought");
+            if(acknowledgement!=NavigationRetry.Result.READY)return Result.WAITING;
+        }
         // The overall deadline covers reaching the amount; the sign and confirmation have their own.
         if ((step == Step.OPEN || step == Step.PRODUCT || step == Step.AMOUNT) && now - started > 45_000)
             return block("Instant buy of " + name + " did not reach the amount sign; nothing bought");
@@ -77,7 +83,7 @@ public final class BazaarInstantBuy {
                 if (!Double.isFinite(purse) || purse < unit * amount) return block("Purse cannot cover the instant buy");
                 if (menu.emptyInventorySlots() * 64 < amount) return block("Not enough inventory space for " + amount + " " + name);
                 before = count(menu); purseBefore = purse;
-                actions.click(control, false); step = Step.AMOUNT; stepAt = now;
+                actions.click(control, false); navigation.sent(menu,control,now); step = Step.AMOUNT; stepAt = now;
             }
             case AMOUNT -> {
                 if (signOpen) { step = Step.SIGN; stepAt = now; return tick(menu, true, actions, purse, now); }
@@ -101,7 +107,7 @@ public final class BazaarInstantBuy {
                     actions.click(preset, false);
                     return Result.WAITING;
                 }
-                actions.click(custom, false); step = Step.SIGN; stepAt = now;
+                actions.click(custom, false); navigation.sent(menu,custom,now); step = Step.SIGN; stepAt = now;
             }
             case SIGN -> {
                 if (!signOpen) return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy amount sign did not open") : Result.WAITING;

@@ -99,3 +99,11 @@ carried control, while a cursor still occupied on return blocks selection or
 publication. Co-op creation, compact confirmation, own-listing identity and fee
 receipt checks remain covered. The 0.2.33 JAR built and its version was checked.
 Live Hypixel execution and live Coflnet responses remain for user testing.
+
+
+0.2.34 validation: 1,061 Java tests passed, zero failures/errors, with the full
+test suite, shipped-calculator integration checks and release build. Added
+regressions cover ignored Bazaar amount/sign navigation, delayed AH creation
+and confirmation controls, delayed browser controls/results, and bounded waits
+for transient cursor state. Existing duplicate-transfer/publication and wrong
+item/price/fee checks pass. Actual Minecraft server lag remains for live testing.

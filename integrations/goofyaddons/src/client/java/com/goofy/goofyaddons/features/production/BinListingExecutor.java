@@ -20,6 +20,7 @@ public final class BinListingExecutor {
     private int opens;
     private boolean inserted,signWritten;
     private String failure;
+    private final MenuLoadGrace loading=new MenuLoadGrace();
     private Double purseBefore,quotedFee;
     private int oldListingCount=-1;
     private MenuSnapshot verifiedForm;
@@ -55,7 +56,8 @@ public final class BinListingExecutor {
                 if(!actions.writeSign(Long.toString(price)))return review(job,"BIN price sign could not be written");
                 signWritten=true;actionAt=now;return Result.WAITING;
             }
-            if(!menu.cursorEmpty())return review(job,"Auction cursor is occupied; item movement stopped");
+            if(!menu.cursorEmpty())return loading.expired("cursor",now)?review(job,"Auction cursor is occupied; item movement stopped"):Result.WAITING;
+            loading.clear("cursor");
             if(navigation.pending()) {
                 var result=navigation.observe(menu,signOpen,actions,now);
                 if(result==NavigationRetry.Result.EXHAUSTED)return review(job,"Auction navigation was not acknowledged");
@@ -114,6 +116,7 @@ public final class BinListingExecutor {
                         return review(job,"BIN sell item no longer matches the owned item");
                     if(ProductionMenus.binCreation(menu,expected,price)){step=Step.VERIFY;return Result.WAITING;}
                     var control=menu.slot(31);
+                    if(control==null || control.empty())return loading.expired("price",now)?review(job,"BIN price control did not load"):Result.WAITING;
                     if(control==null || control.empty() || control.inPlayerInventory()
                             || !Chat.strip(control.hoverName()).startsWith("Item price:"))return review(job,"BIN price control is unverified");
                     actionAt=now;step=Step.SIGN;
@@ -134,6 +137,8 @@ public final class BinListingExecutor {
                     }
                     var create=menu.slot(29);
                     var duration=menu.slot(33);
+                    if(create==null || create.empty() || duration==null || duration.empty())
+                        return loading.expired("form",now)?review(job,"BIN creation controls did not load"):Result.WAITING;
                     if(create==null || create.inPlayerInventory() || create.empty()
                             || !Set.of("Create BIN Auction","Create Auction").contains(Chat.strip(create.hoverName())))
                         return review(job,"BIN creation control is not verified");
@@ -148,6 +153,8 @@ public final class BinListingExecutor {
                         if(now-actionAt>=10000)return review(job,"BIN creation was not acknowledged; no duplicate create action");
                         return Result.WAITING;
                     }
+                    if("Confirm BIN Auction".equals(title) && menu.slots().stream().noneMatch(s->!s.inPlayerInventory()&&!s.empty()&&Set.of("Confirm","Confirm BIN Auction").contains(Chat.strip(s.hoverName()))))
+                        return loading.expired("confirmation",now)?review(job,"Final BIN confirmation did not load"):Result.WAITING;
                     if(!ProductionMenus.binPublication(menu,expected,price)&&!ProductionMenus.compactBinPublication(menu,expected,price,verifiedForm))
                         return review(job,"Final BIN confirmation item/price/title is unverified: "+title);
                     var controls=menu.slots().stream().filter(s->!s.inPlayerInventory() && !s.empty()
@@ -185,7 +192,9 @@ public final class BinListingExecutor {
     }
     private Result navigate(MenuSnapshot menu,GameActions actions,long now,Set<String> names) {
         var targets=menu.slots().stream().filter(s->!s.inPlayerInventory() && !s.empty() && names.contains(Chat.strip(s.hoverName()))).toList();
-        if(targets.size()!=1)return block("Auction navigation control is missing or ambiguous");
+        if(targets.isEmpty())return loading.expired("navigation:"+menu.title(),now)?block("Auction navigation control did not load"):Result.WAITING;
+        if(targets.size()!=1)return block("Auction navigation control is ambiguous");
+        loading.reset();
         actions.click(targets.getFirst().index(),false);navigation.sent(menu,targets.getFirst().index(),now);return Result.WAITING;
     }
     private boolean matches(SlotView item){return sameIdentity(expected,item) && item.count()==expected.count();}

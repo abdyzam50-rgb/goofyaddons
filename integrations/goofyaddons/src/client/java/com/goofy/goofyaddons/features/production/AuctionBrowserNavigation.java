@@ -18,6 +18,7 @@ public final class AuctionBrowserNavigation {
     private SlotView selected;
     private double price;
     private String failure;
+    private final MenuLoadGrace loading=new MenuLoadGrace();
     public AuctionBrowserNavigation(String query,Predicate<SlotView> matches) {
         if(query==null || query.isBlank() || query.length()>80)throw new IllegalArgumentException("Invalid auction search");
         this.query=query;this.matches=matches;
@@ -34,7 +35,8 @@ public final class AuctionBrowserNavigation {
             if(!searchWritten){if(!actions.writeSign(query))return block("Auction search sign could not be written");searchWritten=true;signAt=now;}
             return Result.WAITING;
         }
-        if(menu==null || !menu.cursorEmpty())return block("Auction browsing needs a readable menu and empty cursor");
+        if(menu==null || !menu.cursorEmpty())return waitFor("Auction browsing needs a readable menu and empty cursor",now);
+        loading.clear("Auction browsing needs a readable menu and empty cursor");
         if(signOpen)return block("Unexpected sign during auction browsing");
         String title=Chat.strip(menu.title());
         if(retry.pending()) {
@@ -48,13 +50,13 @@ public final class AuctionBrowserNavigation {
         if(ProductionMenus.auctionHouse(title))return click(menu,actions,now,control(menu,"Auctions Browser","Auction Browser","Browse Auctions"));
         if(!Set.of("Auctions Browser","Auction Browser").contains(title))return block("Unexpected auction browser screen: "+title);
         var type=control(menu,"BIN Filter","Auction Type","Auction Type Filter");
-        if(type==null)return block("Auction BIN filter control is unverified; capture the menu");
+        if(type==null)return waitFor("Auction BIN filter control is unverified; capture the menu",now);
         if(!selected(type,"BIN Only","BIN only","BIN"))return click(menu,actions,now,type);
         var sort=control(menu,"Sort","Sort By","Sort Order");
-        if(sort==null)return block("Auction sort control is unverified; capture the menu");
+        if(sort==null)return waitFor("Auction sort control is unverified; capture the menu",now);
         if(!selected(sort,"Lowest Price"))return click(menu,actions,now,sort);
         if(!searchOpened) {
-            var search=control(menu,"Search");if(search==null)return block("Auction search control is unverified");
+            var search=control(menu,"Search");if(search==null)return waitFor("Auction search control is unverified",now);
             searchOpened=true;signAt=now;return click(menu,actions,now,search);
         }
         if(!searchWritten){if(now-signAt>10000)return block("Auction search sign did not open");return Result.WAITING;}
@@ -63,13 +65,15 @@ public final class AuctionBrowserNavigation {
         var candidates=menu.slots().stream().filter(s->!s.inPlayerInventory() && !s.empty()
                 && s.index()>=10 && s.index()<=43 && s.index()%9>=1 && s.index()%9<=7 && matches.test(s))
             .filter(s->binPrice(s)!=null).sorted(Comparator.comparingDouble(s->binPrice(s))).toList();
-        if(candidates.isEmpty())return block("No readable matching BIN results; no item selected");
+        if(candidates.isEmpty())return waitFor("No readable matching BIN results; no item selected",now);
         selected=candidates.getFirst();price=binPrice(selected);return Result.READY;
     }
     private Result click(MenuSnapshot menu,GameActions actions,long now,SlotView slot) {
-        if(slot==null)return block("Auction navigation control is missing or ambiguous");
+        if(slot==null)return waitFor("Auction navigation control is missing or ambiguous",now);
+        loading.reset();
         actions.click(slot.index(),false);retry.sent(menu,slot.index(),now);sent=menu;clicked=slot.index();return Result.WAITING;
     }
+    private Result waitFor(String reason,long now){return loading.expired(reason,now)?block(reason):Result.WAITING;}
     private static SlotView control(MenuSnapshot menu,String... names) {
         var found=menu.slots().stream().filter(s->!s.inPlayerInventory() && !s.empty())
             .filter(s->{String n=Chat.strip(s.hoverName()).trim();return Arrays.stream(names).anyMatch(w->n.equals(w)||n.startsWith(w+":"));}).toList();

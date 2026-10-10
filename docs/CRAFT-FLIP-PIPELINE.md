@@ -293,3 +293,27 @@ any item movement, selection or publication. Each expected sign is written once.
 An unexpected sign or a cursor still occupied after return blocks the operation.
 The regression uses the supplied browser's actual Search (48), Sort (50) and
 BIN Filter (52) controls; the fixture excludes auction items and seller details.
+
+
+## Navigation lag recovery (0.2.34)
+
+Auction browsing and BIN creation wait up to 15 seconds for missing controls,
+search results, confirmation controls and transient cursor state. Deadlines are
+tracked by missing evidence, so polling cannot restart them indefinitely. No
+placeholder is clicked. Ambiguous creation buttons, wrong items, changed prices
+and excessive fees still block; a permanently missing control ends with a
+specific failure and no guessed transaction.
+
+The production Bazaar buyer now uses NavigationRetry for Buy Instantly (opening
+the amount screen) and Custom Amount (opening the sign). An unchanged, verified
+control must remain stable for 750 ms; retries start after 3 seconds and stop
+after three retries or 15 seconds. Changed screens and sign editors acknowledge
+navigation. These retries precede purchase intent and never replay a preset buy,
+amount submission or purchase confirmation. Bazaar search already reopens after
+an unacknowledged product selection; the crafting executor already retries
+verified grid inputs with conservation checks and adaptive pacing.
+
+Item transfer, auction creation and final publication remain single submissions.
+Uncertain transactions require reconciliation rather than blind replay. This
+release improves recoverable menu lag; it does not automatically resume a run
+whose inventory or coin evidence cannot establish what happened.

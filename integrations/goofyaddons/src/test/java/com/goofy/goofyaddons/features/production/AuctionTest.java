@@ -38,6 +38,19 @@ class AuctionTest {
         advance(executor,actions,blank,1600);advance(executor,actions,blank,1800);
         assertEquals(List.of("click:15","shiftclick:54"),actions.serverEffects());
     }
+    @Test void delayedCreateControlAndConfirmationLoadWithoutRepeatingTheTransfer()throws Exception {
+        var executor=new BinListingExecutor(expected(),1000,jobs(),"sell",true,50);var a=new RecordingActions();
+        var loading=menu(1,"Auction House",expected());
+        advance(executor,a,loading,1000);advance(executor,a,loading,1100);
+        assertTrue(a.serverEffects().isEmpty());
+        advance(executor,a,menu(1,"Auction House",expected(),SlotView.named(15,"Create BIN Auction",List.of())),4000);
+        var blank=menu(2,"Create BIN Auction",expected());
+        advance(executor,a,blank,5000);advance(executor,a,blank,5100);
+        advance(executor,a,form(2,1000),5200);advance(executor,a,form(2,1000),5300);advance(executor,a,form(2,1000),5400);
+        assertEquals(BinListingExecutor.Result.WAITING,executor.tick(menu(3,"Confirm BIN Auction"),false,a,"account",10000,10000,5500));
+        advance(executor,a,confirmation("Confirm BIN Auction",1000,50),8000);
+        assertEquals(List.of("click:15","shiftclick:54","click:29","click:11"),a.serverEffects());
+    }
     @Test void capturedCompactConfirmationBindsToVerifiedFormAndOwnBinViewProvesPublication()throws Exception {
         var target=new SlotView(54,true,0,false,"Aspect of the End","Aspect of the End",List.of(),"ASPECT_OF_THE_END",Map.of(),1,1,identity);
         var journal=new ProductionJobs(dir.resolve("aote.json"));journal.put(new ProductionJobs.Job("aote","auction:prepare:ASPECT_OF_THE_END","account",ProductionJobs.State.OUTPUT_READY,1,-1,0,0,null,null,null,null));
@@ -176,7 +189,8 @@ class AuctionTest {
         executor.tick(sign,true,actions,"account",10000,10000,1800);
         assertEquals(List.of("shiftclick:54","click:31","sign:1000"),actions.serverEffects());
         var returned=new MenuSnapshot(1,"Create BIN Auction",false,form(1,1000).slots());
-        assertEquals(BinListingExecutor.Result.BLOCKED,executor.tick(returned,false,actions,"account",10000,10000,2000));
+        assertEquals(BinListingExecutor.Result.WAITING,executor.tick(returned,false,actions,"account",10000,10000,2000));
+        assertEquals(BinListingExecutor.Result.BLOCKED,executor.tick(returned,false,actions,"account",10000,10000,17000));
         assertFalse(actions.performed().contains("click:29"));
     }
     @Test void salePriceUsesFreshCoflnetReferenceOrValidatesTheExplicitPriceBeforeCreating() {
@@ -214,7 +228,8 @@ class AuctionTest {
         advance(executor,actions,blank,1000);advance(executor,actions,blank,1100);advance(executor,actions,blank,1200);
         var missing=menu(1,"Create BIN Auction",item(13,false,"OUTPUT",1),SlotView.named(31,"Item price: 1000 coins",List.of()),SlotView.named(29,"Create BIN Auction",List.of()));
         advance(executor,actions,missing,1500);advance(executor,actions,missing,1600);
-        assertEquals(BinListingExecutor.Result.BLOCKED,executor.tick(missing,false,actions,"account",10000,10000,1700));
+        assertEquals(BinListingExecutor.Result.WAITING,executor.tick(missing,false,actions,"account",10000,10000,1700));
+        assertEquals(BinListingExecutor.Result.BLOCKED,executor.tick(missing,false,actions,"account",10000,10000,16700));
         assertFalse(actions.serverEffects().contains("click:29"));
     }
     @Test void unacknowledgedPublicationCannotProduceAnotherFinalClickOrASaleReceipt()throws Exception {
