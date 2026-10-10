@@ -317,3 +317,32 @@ Item transfer, auction creation and final publication remain single submissions.
 Uncertain transactions require reconciliation rather than blind replay. This
 release improves recoverable menu lag; it does not automatically resume a run
 whose inventory or coin evidence cannot establish what happened.
+
+## Full craft catalog coverage (0.2.35)
+
+The catalog increases from 2,259 to 2,529 craft rows, adding 270 rows. The importer
+uses NEU revision `c4f7d4757641f3a11c74d3d77cec76c100abaf98` and accounts for all
+2,561 distinct source grids, including top-level grids on items also offering
+NPC trades. Of those, 2,528 are validated and imported; one prior duplicate key
+is preserved for saved jobs. All prior crafting keys remain available.
+
+Legacy item variants now use Hypixel's colon IDs, and recognized enchantment
+books use `ENCHANTMENT_NAME_LEVEL` IDs. Counts, nine-cell totals, yields and
+collection/skill/slayer/reputation gates remain validated. New recipes include
+bait sacks, Hotspot accessories, colored/wood variants and enchanted books.
+
+The 33 remaining source grids are recorded with exact source grids and reasons:
+32 pet/shard variants require exact identity and yield handling, and one
+conversion consumes its own output ID. They are not enabled for automatic
+crafting. The website shows this coverage and searchable exclusion list. The
+reproducible importer and maintenance workflow are in `tools/recipes/README.md`.
+Prices, component availability, unlocks and spending limits still filter routes;
+this release does not add AH-component purchases or automatic AH settlement.
+
+Use `.a* goofyaddon production recipes` for catalog totals, or
+`.a* goofyaddon production recipes SMALL_BAIT_SACK` for a recipe's inputs/gates.
+Quote IDs containing punctuation, for example
+`.a* goofyaddon production recipes "WOOD:1"` or
+`.a* goofyaddon production recipes "ZOMBIE;0"` (an excluded pet recipe).
+The public website ZIP must be redeployed to update an existing Worker; installing
+the new JAR updates its bundled local calculator automatically.

@@ -23,6 +23,8 @@ export function CraftPlanner(){
   <div className="spread" style={{flexWrap:'wrap',gap:8}}><div><span className="eyebrow">Craft production</span><h2>Live craft plans</h2></div><button onClick={()=>{void market.refetch();void ah.refetch();}}>Refresh craft prices</button></div>
   <p>Buy base inputs → prepare ingredients → craft whole batches → sell on Bazaar or list a BIN. Uses the mod’s verified recipe catalog, your calculator budget, and imported or manually confirmed unlocks.</p>
   <p role="status">Spendable budget {coins(settings.coins)} · {rows.filter(r=>r.eligible).length} feasible routes · Bazaar {fresh(at,now)?`updated ${Math.max(0,Math.floor((now-at)/1000))}s ago`:'waiting for fresh prices'}. Refreshes every 20 seconds while visible.</p>
+  {catalog.data?.coverage&&<p className="small muted">Catalog: {num(catalog.data.recipes.filter(r=>r.kind==='CRAFT').length)} crafting routes · {num(catalog.data.coverage.sourceCraftRows)} source grids checked · {num(catalog.data.coverage.unsupportedCraftRows)} require additional identity support.</p>}
+  {!!catalog.data?.unsupportedCrafts?.length&&<details style={{overflowWrap:'anywhere'}}><summary>Recipes awaiting identity support</summary><ul>{catalog.data.unsupportedCrafts.filter(r=>`${r.name} ${r.outputId}`.toLowerCase().includes(search.toLowerCase())).map(r=><li key={r.key}>{r.name} ({r.outputId}): {r.reason}</li>)}</ul></details>}
   {(market.error||catalog.error)&&<p role="alert">{(market.error??catalog.error)?.message}</p>}
   {(ah.error||ah.data?.error)&&<p role="alert">AH discovery: {ah.error?.message??ah.data.error}. Bazaar plans continue independently.</p>}
   <div className="row" style={{flexWrap:'wrap',gap:12}}>

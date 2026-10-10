@@ -1,7 +1,8 @@
 {
   "repository": "https://github.com/Goofythesecond/bazaar-calc",
   "commit": "85cc23d621cd7194b163abf3d55ea76b682fcc2a",
-  "neu": "NotEnoughUpdates-REPO 777a3aae04ff462ea20ea9b346e9208d7ce9adc5",
+  "neu": "NotEnoughUpdates-REPO c4f7d4757641f3a11c74d3d77cec76c100abaf98",
   "overlay": "build-website.mjs + website-src (profile, status, live craft planner)",
-  "researchOnly": true
+  "researchOnly": true,
+  "productionRecipes": "https://github.com/NotEnoughUpdates/NotEnoughUpdates-REPO/tree/c4f7d4757641f3a11c74d3d77cec76c100abaf98"
 }

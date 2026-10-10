@@ -10,7 +10,7 @@ public final class ProductionCommands {
     public static void register() {
         com.goofy.goofyaddons.commands.GoofyCommands.register(dispatcher-> {
             dispatcher.register(ClientCommands.literal("craft")
-                .then(ClientCommands.argument("output",StringArgumentType.word())
+                .then(ClientCommands.argument("output",StringArgumentType.string())
                     .executes(c->queue(StringArgumentType.getString(c,"output"),1))
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
                         .executes(c->queue(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"))))));
@@ -37,19 +37,19 @@ public final class ProductionCommands {
                         for(var job:jobs)new LiveActions().message(job.id().substring(0,Math.min(8,job.id().length()))+" · "+job.recipeKey()+" · "+job.state());
                     }catch(Exception failure){new LiveActions().message("Production journal unreadable; file preserved.");}return 1;
                 }))
-                .then(ClientCommands.literal("run").then(ClientCommands.argument("output",StringArgumentType.word())
+                .then(ClientCommands.literal("run").then(ClientCommands.argument("output",StringArgumentType.string())
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,16))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,0,0))
                         .then(sale((c,price,fee)->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,price,fee))))))
-                .then(ClientCommands.literal("test").then(ClientCommands.argument("output",StringArgumentType.word())
+                .then(ClientCommands.literal("test").then(ClientCommands.argument("output",StringArgumentType.string())
                     .executes(c->test(StringArgumentType.getString(c,"output"),0))
                     .then(ClientCommands.argument("binPrice",LongArgumentType.longArg(1,1_000_000_000_000L))
                         .executes(c->test(StringArgumentType.getString(c,"output"),LongArgumentType.getLong(c,"binPrice"))))))
-                .then(ClientCommands.literal("testah").then(ClientCommands.argument("output",StringArgumentType.word())
+                .then(ClientCommands.literal("testah").then(ClientCommands.argument("output",StringArgumentType.string())
                     .executes(c->testAuction(StringArgumentType.getString(c,"output")))
                     .then(ClientCommands.argument("binPrice",LongArgumentType.longArg(1,1_000_000_000_000L))
                         .executes(c->test(StringArgumentType.getString(c,"output"),LongArgumentType.getLong(c,"binPrice"),false,true)))))
-                .then(ClientCommands.literal("forge").then(ClientCommands.argument("output",StringArgumentType.word())
+                .then(ClientCommands.literal("forge").then(ClientCommands.argument("output",StringArgumentType.string())
                     .then(ClientCommands.argument("slot",IntegerArgumentType.integer(1,7))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.FORGE,1,IntegerArgumentType.getInteger(c,"slot")-1,0,0))
                         .then(sale((c,price,fee)->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.FORGE,1,IntegerArgumentType.getInteger(c,"slot")-1,price,fee))))))
@@ -59,10 +59,18 @@ public final class ProductionCommands {
                     .executes(c->claim(StringArgumentType.getString(c,"job"),0,0))
                     .then(sale((c,price,fee)->claim(StringArgumentType.getString(c,"job"),price,fee)))))
                 .then(ClientCommands.literal("status").executes(c->{new LiveActions().message(FeatureManager.INSTANCE.production().activity());return 1;}))
-                .then(ClientCommands.literal("recipes").then(ClientCommands.argument("output",StringArgumentType.word()).executes(c->{
+                .then(ClientCommands.literal("recipes").executes(c->{
+                    var catalog=RecipeCatalog.instance();
+                    new LiveActions().message(catalog.recipes().stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).count()+" craft routes · "+catalog.unsupportedCrafts().size()+" source recipes await exact identity support. Use production recipes ITEM_ID for details.");return 1;
+                }).then(ClientCommands.argument("output",StringArgumentType.string()).executes(c->{
                     var rows=RecipeCatalog.instance().forOutput(StringArgumentType.getString(c,"output").toUpperCase(java.util.Locale.ROOT));
                     for(var row:rows)new LiveActions().message(row.key()+" · "+row.ingredients()+" · "+row.requirement());
-                    if(rows.isEmpty())new LiveActions().message("No supported recipes for that product ID.");return 1;
+                    if(rows.isEmpty()) {
+                        String id=StringArgumentType.getString(c,"output").toUpperCase(java.util.Locale.ROOT);
+                        var unsupported=RecipeCatalog.instance().unsupportedCrafts().stream().filter(r->r.outputId().equals(id)).toList();
+                        if(unsupported.isEmpty())new LiveActions().message("No supported recipes for that product ID.");
+                        else for(var row:unsupported)new LiveActions().message(row.outputId()+" · "+row.reason());
+                    }return 1;
                 }))));
         });
     }

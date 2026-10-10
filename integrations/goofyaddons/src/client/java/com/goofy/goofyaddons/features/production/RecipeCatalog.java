@@ -7,7 +7,11 @@ public final class RecipeCatalog {
     private static final class Holder {static final RecipeCatalog INSTANCE=load();}
     private final List<ProductionRecipe> recipes;
     private final Map<String,String> names;
-    public RecipeCatalog(List<ProductionRecipe> recipes,Map<String,String> names){this.recipes=List.copyOf(recipes);this.names=Map.copyOf(names);}
+    public record UnsupportedCraft(String key,String outputId,String reason) {}
+    private final List<UnsupportedCraft> unsupported;
+    public RecipeCatalog(List<ProductionRecipe> recipes,Map<String,String> names){this(recipes,names,List.of());}
+    private RecipeCatalog(List<ProductionRecipe> recipes,Map<String,String> names,List<UnsupportedCraft> unsupported){this.recipes=List.copyOf(recipes);this.names=Map.copyOf(names);this.unsupported=List.copyOf(unsupported);}
+    public List<UnsupportedCraft> unsupportedCrafts(){return unsupported;}
     public static RecipeCatalog instance(){return Holder.INSTANCE;}
     public List<ProductionRecipe> recipes(){return recipes;}
     public List<ProductionRecipe> forOutput(String id){return recipes.stream().filter(r->r.outputId().equals(id)).toList();}
@@ -28,7 +32,12 @@ public final class RecipeCatalog {
                 String key=r.get("key").getAsString();if(!keys.add(key))throw new IllegalArgumentException("Duplicate recipe");
                 recipes.add(new ProductionRecipe(key,ProductionRecipe.Kind.valueOf(r.get("kind").getAsString()),r.get("outputId").getAsString(),r.get("outputCount").getAsInt(),ingredients,grid,r.get("durationSeconds").getAsLong(),r.get("coins").getAsDouble(),r.get("requirement").getAsString(),r.get("inputPet").isJsonNull()?null:r.get("inputPet").getAsString()));
             }
-            return new RecipeCatalog(recipes,names);
+            var unsupported=new ArrayList<UnsupportedCraft>();
+            if(root.has("unsupportedCrafts"))for(var value:root.getAsJsonArray("unsupportedCrafts")) {
+                var row=value.getAsJsonObject();
+                unsupported.add(new UnsupportedCraft(row.get("key").getAsString(),row.get("outputId").getAsString(),row.get("reason").getAsString()));
+            }
+            return new RecipeCatalog(recipes,names,unsupported);
         } catch(java.io.IOException failed){throw new IllegalStateException("Cannot load production catalog",failed);}
     }
 }

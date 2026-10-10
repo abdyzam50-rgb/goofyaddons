@@ -88,7 +88,7 @@ for(const file of readdirSync(join(neu,'items')).filter(f=>f.endsWith('.json')))
 }
 writeFileSync(join(out,'data/recipes.json'),JSON.stringify(recipes));writeFileSync(join(out,'data/items.json'),JSON.stringify(items));
 const manifest=JSON.parse(readFileSync(join(out,'data/manifest.json'),'utf8'));
-manifest.recipesVersion='NotEnoughUpdates-REPO 777a3aae04ff462ea20ea9b346e9208d7ce9adc5';
+manifest.recipesVersion='NotEnoughUpdates-REPO '+execFileSync('git',['rev-parse','HEAD'],{cwd:neu,encoding:'utf8'}).trim();
 writeFileSync(join(out,'data/manifest.json'),JSON.stringify(manifest));
 }
 // Source maps are build diagnostics, not a runtime dependency.
@@ -97,5 +97,5 @@ mkdirSync(join(out,'licenses'),{recursive:true});cpSync(join(checkout,'LICENSE')
 if(neu)cpSync(join(neu,'LICENSE'),join(out,'licenses/NEU-LICENSE'));
 else cpSync(join(out,'licenses/NEU-CATALOG-LICENSE.txt'),join(out,'licenses/NEU-LICENSE'));
 const manifest=JSON.parse(readFileSync(join(out,'data/manifest.json'),'utf8'));
-writeFileSync(join(out,'provenance.json'),JSON.stringify({repository:'https://github.com/Goofythesecond/bazaar-calc',commit:COMMIT,neu:manifest.recipesVersion,overlay:'build-website.mjs + website-src (profile, status, live craft planner)',researchOnly:true},null,2));
+writeFileSync(join(out,'provenance.json'),JSON.stringify({repository:'https://github.com/Goofythesecond/bazaar-calc',commit:COMMIT,neu:manifest.recipesVersion,overlay:'build-website.mjs + website-src (profile, status, live craft planner)',researchOnly:true,productionRecipes:JSON.parse(readFileSync(join(out,'data/production-recipes.json'),'utf8')).source},null,2));
 console.log('Embedded full calculator with live verified craft plans');

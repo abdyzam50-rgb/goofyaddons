@@ -28,5 +28,5 @@ public record ProductionRecipe(String key,Kind kind,String outputId,int outputCo
         if(kind==Kind.KAT && (!validId(inputPet) || !inputPet.contains(";") || ingredients.getOrDefault(inputPet,0)!=1))
             throw new IllegalArgumentException("Kat requires one exact pet variant");
     }
-    public static boolean validId(String value){return value!=null && value.matches("[A-Z0-9_]+(?:;[0-6])?");}
+    public static boolean validId(String value){return value!=null && value.matches("[A-Z0-9_]+(?::[0-9]{1,2}|;[0-6])?");}
 }

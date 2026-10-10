@@ -107,3 +107,16 @@ regressions cover ignored Bazaar amount/sign navigation, delayed AH creation
 and confirmation controls, delayed browser controls/results, and bounded waits
 for transient cursor state. Existing duplicate-transfer/publication and wrong
 item/price/fee checks pass. Actual Minecraft server lag remains for live testing.
+
+0.2.35 validation: 1,063 Java tests, 114 Node tests and 5 Python importer tests
+passed with zero failures. The full Java suite, shipped-calculator integration
+checks and release build passed. Catalog coverage checks account for every
+source grid; new variants/books/collection gates and saved keys are verified.
+Importer tests cover quantities, identity exclusions, unknown gates, removed
+recipes, numeric/Roman gate deduplication and repeatable generation. Reimporting
+the real source snapshot produced identical bytes. Desktop/mobile Chromium
+checks passed for profile import, filters, quote refresh and expiry; the new
+exclusion list wraps long IDs without horizontal overflow. The mod resource,
+embedded calculator ZIP, website files and public website deployment ZIP contain
+identical catalogs. Live crafting of all imported routes was not possible here;
+server GUI evidence and account/market checks remain necessary during execution.
