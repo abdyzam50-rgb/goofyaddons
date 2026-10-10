@@ -66,7 +66,7 @@ public final class SessionScheduler {
             ChatUtils.clientMessage("Scheduled sessions armed: "+status());
             Diagnostics.event("INFO","sessions.armed",java.util.Map.of("zone",settings().zone().getId()));
         }catch(RuntimeException | java.io.IOException failure){
-            FeatureManager.INSTANCE.safetyPause(Source.SCHEDULE,"Cannot arm scheduled sessions; check settings and schedule seed file");
+            FeatureManager.INSTANCE.safetyPause(Source.SCHEDULE,"Scheduled session start failed; check diagnostics before rearming");
             Diagnostics.failure("sessions.arm_failed",failure);
         }
     }

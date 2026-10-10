@@ -14,7 +14,9 @@ public final class ScheduledRestScreen extends Screen {
     }
     @Override public void onClose(){SessionScheduler.INSTANCE.manualStop();}
     @Override public void extractRenderState(GuiGraphicsExtractor graphics,int x,int y,float delta) {
-        extractBackground(graphics,x,y,delta);
+        // The loading overlay may extract this screen in a frame that already has
+        // blur. A rest screen needs only a dark backdrop, never a second blur pass.
+        graphics.fill(0,0,width,height,0xff101820);
         graphics.centeredText(font,title,width/2,height/2-45,0xffffff);
         graphics.centeredText(font,SessionScheduler.INSTANCE.status(),width/2,height/2-15,0xa2f5ff);
         graphics.centeredText(font,"Keep Minecraft and your PC running to reconnect.",width/2,height/2+5,0xaaaaaa);

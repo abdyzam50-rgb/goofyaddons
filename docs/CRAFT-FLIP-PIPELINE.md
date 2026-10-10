@@ -579,3 +579,20 @@ still available for validated listings. This release does not claim shared
 craft-trade calibration: the community evidence protocol currently accepts
 book and general trades. Craft actual profits are tracked locally only when
 cost and sale receipts can be verified.
+
+### 0.2.51 — scheduled-rest render failure when pressing the trading toggle
+
+The provided 0.2.50 diagnostics identify `sessions.arm_failed` during B's
+`manualStart → armForRest → disconnect` path, before craft execution. The cause
+is `IllegalStateException: Can only blur once per frame` when AstarLoading
+extracts ScheduledRestScreen behind its overlay. This produced the reported
+corrupted/frozen-looking frame and latched a schedule safety block. No craft
+ranking/threading change is part of this fix.
+
+ScheduledRestScreen now draws a solid dark background without requesting the
+Screen blur pass. Countdown, cancellation and scheduled reconnect behavior
+remain present. Scheduler startup failures now point to diagnostics instead of
+incorrectly suggesting every failure is a settings/seed-file problem. The
+existing schedule tests verify that starting in an offline window disconnects
+and waits instead of starting a craft. Disable the rest schedule when testing
+crafts immediately outside a scheduled online window.

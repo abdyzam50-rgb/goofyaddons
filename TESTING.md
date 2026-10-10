@@ -278,3 +278,15 @@ runs the macro in game.
 Final 0.2.50 validation: 1,081 Java tests, zero failures/errors/skips; Gradle
 `test calculatorIntegrationTest build` succeeds. The open-amount-editor regression
 also proves a market block causes no close or submit action until prices recover.
+
+### 0.2.51 scheduled-rest rendering fix
+
+The user's exported diagnostics reproduce the exact stack path:
+AstarLoading.extractRenderState → ScheduledRestScreen.extractRenderState →
+Screen.extractBackground → GuiRenderState.blurBeforeThisStratum, with
+"Can only blur once per frame" during scheduled disconnect on B.
+The rest screen no longer requests blur and instead submits a plain rectangle.
+Compile/build and existing schedule/craft tests cover API compatibility and
+unchanged scheduling behavior. Rendering under a real Minecraft loading overlay
+still requires the user's in-game confirmation; no live graphics session is
+available in this environment.
