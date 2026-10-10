@@ -78,3 +78,13 @@ filter/inventory changes, saved-metadata verification and a production purchase
 blocked until clearance finishes. The release JAR built successfully. Live
 Hypixel opening/removal execution was not available in this workspace; keep
 compactors in the hotbar for automatic opening. Bulk compaction remains disabled.
+
+0.2.32 validation: 1,055 Java tests passed with no failures, including
+the shipped-calculator integration suite. Four sanitized user AH GUI captures
+validate co-op root navigation, empty BIN item insertion, compact fee/name
+confirmation bound to the exact previously verified form, and receipt at the
+player's own BIN view. Negative cases retain price/name/inventory/identity and
+fee-debit checks. Recipe tests verify Aspect of the End's exact sword grid and
+Ender Pearl VIII requirement; AH test input rejects unknown or multi-output
+recipes. The 0.2.32 mod JAR built and its version/classes were checked. Live
+Minecraft GUI execution and Coflnet requests were not available here.

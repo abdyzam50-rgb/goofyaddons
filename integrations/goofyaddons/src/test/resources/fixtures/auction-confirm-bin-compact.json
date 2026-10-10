@@ -1,0 +1,200 @@
+{
+  "title": "Confirm BIN Auction",
+  "cursorEmpty": true,
+  "slots": [
+    {
+      "slot": 0,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 1,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 2,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 3,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 4,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 5,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 6,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 7,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 8,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 9,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 10,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 11,
+      "empty": false,
+      "count": 1,
+      "name": "Confirm BIN Auction",
+      "lore": [
+        "Selling: Aspect of the End",
+        "Cost: 605 coins",
+        "",
+        "Click to confirm!"
+      ]
+    },
+    {
+      "slot": 12,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 13,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 14,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 15,
+      "empty": false,
+      "count": 1,
+      "name": "Cancel",
+      "lore": []
+    },
+    {
+      "slot": 16,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 17,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 18,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 19,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 20,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 21,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 22,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 23,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 24,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 25,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 26,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    }
+  ]
+}

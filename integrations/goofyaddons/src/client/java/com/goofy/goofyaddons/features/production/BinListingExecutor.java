@@ -22,6 +22,7 @@ public final class BinListingExecutor {
     private String failure;
     private Double purseBefore,quotedFee;
     private int oldListingCount=-1;
+    private MenuSnapshot verifiedForm;
     public BinListingExecutor(SlotView expected,long price,ProductionJobs journal,String jobId) {
         this(expected,price,journal,jobId,false,0);
     }
@@ -70,12 +71,12 @@ public final class BinListingExecutor {
                         if(now>=nextCommand){if(opens++>=3)return block("Auction House did not open");nextCommand=now+8000;actions.command("ah");}
                         return Result.WAITING;
                     }
-                    if(!Set.of("Auction House","Manage Auctions","Create Auction","Create BIN Auction").contains(title))
+                    if(!ProductionMenus.auctionHouse(title)&&!Set.of("Manage Auctions","Create Auction","Create BIN Auction").contains(title))
                         return block("Close the unrelated menu before auction preparation");
                     step=Step.NAVIGATE;return Result.WAITING;
                 }
                 case NAVIGATE -> {
-                    if("Auction House".equals(title))return navigate(menu,actions,now,Set.of("Manage Auctions","Create Auction","Create BIN Auction"));
+                    if(ProductionMenus.auctionHouse(title))return navigate(menu,actions,now,Set.of("Manage Auctions","Create Auction","Create BIN Auction"));
                     if("Manage Auctions".equals(title)) {
                         if(oldListingCount<0)oldListingCount=listingCount(menu);
                         return navigate(menu,actions,now,Set.of("Create Auction","Create BIN Auction"));
@@ -136,6 +137,7 @@ public final class BinListingExecutor {
                     if(duration==null || duration.inPlayerInventory() || ProductionMenus.auctionDuration(duration.hoverName()+"\n"+duration.lore())==null)
                         return review(job,"Auction duration is unverified; no create action performed");
                     journal.put(job.withState(ProductionJobs.State.LISTING,"Opening final BIN confirmation; never repeat the create action"));
+                    verifiedForm=menu;
                     actionAt=now;step=Step.CONFIRM;actions.click(create.index(),false);return Result.WAITING;
                 }
                 case CONFIRM -> {
@@ -143,7 +145,8 @@ public final class BinListingExecutor {
                         if(now-actionAt>=10000)return review(job,"BIN creation was not acknowledged; no duplicate create action");
                         return Result.WAITING;
                     }
-                    if(!ProductionMenus.binPublication(menu,expected,price))return review(job,"Final BIN confirmation item/price/title is unverified: "+title);
+                    if(!ProductionMenus.binPublication(menu,expected,price)&&!ProductionMenus.compactBinPublication(menu,expected,price,verifiedForm))
+                        return review(job,"Final BIN confirmation item/price/title is unverified: "+title);
                     var controls=menu.slots().stream().filter(s->!s.inPlayerInventory() && !s.empty()
                         && Set.of("Confirm","Confirm BIN Auction").contains(Chat.strip(s.hoverName()))).toList();
                     if(controls.size()!=1)return review(job,"BIN confirmation control is ambiguous");
@@ -163,7 +166,7 @@ public final class BinListingExecutor {
                 case RECEIPT -> {
                     // A button acknowledgement is insufficient. Require a new matching seller listing,
                     // the item absent from inventory, and the exact fee debit. Never publish twice.
-                    if("Manage Auctions".equals(title) && listingCount(menu)==oldListingCount+1 && ownedCount(menu)==0
+                    if(("Manage Auctions".equals(title) && listingCount(menu)==oldListingCount+1 || ownListingView(menu)) && ownedCount(menu)==0
                             && purseBefore!=null && Double.isFinite(purse) && Math.abs(purseBefore-purse-quotedFee)<=0.51) {
                         journal.put(new ProductionJobs.Job(job.id(),job.recipeKey(),job.account(),ProductionJobs.State.SELLING,
                             job.batches(),job.workstationSlot(),now,job.readyAt(),job.costBasis()==null?null:job.costBasis()+quotedFee,
@@ -188,6 +191,11 @@ public final class BinListingExecutor {
             && Objects.equals(expected.metadata(),actual.metadata()) && Objects.equals(expected.enchantments(),actual.enchantments());
     }
     private int ownedCount(MenuSnapshot menu){return menu.slots().stream().filter(s->s.inPlayerInventory() && s.containerSlot()<36 && sameIdentity(expected,s)).mapToInt(SlotView::count).sum();}
+    private boolean ownListingView(MenuSnapshot menu) {
+        var item=menu.slot(13);
+        return "BIN Auction View".equals(Chat.strip(menu.title()))&&matches(item)&&item.hasLoreLine("This is your own auction!")
+            &&Objects.equals(AuctionBrowserNavigation.binPrice(item),(double)price);
+    }
     private int listingCount(MenuSnapshot menu){return (int)menu.slots().stream().filter(s->!s.inPlayerInventory() && matches(s)
         && Objects.equals(ProductionMenus.exactCoins(s.lore()),(double)price)).count();}
     private Result block(String reason){failure=reason;return Result.BLOCKED;}

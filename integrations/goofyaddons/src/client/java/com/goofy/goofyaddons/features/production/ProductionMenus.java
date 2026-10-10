@@ -121,6 +121,35 @@ public final class ProductionMenus {
         }
         return prices.size()==1 && prices.contains(price);
     }
+    public static boolean auctionHouse(String title){return Set.of("Auction House","Co-op Auction House").contains(title==null?"":Chat.strip(title));}
+
+    /** Live compact confirmation shows name and fee, so bind it to the exact previously verified form. */
+    static boolean compactBinPublication(MenuSnapshot menu,SlotView expected,long price,MenuSnapshot form) {
+        if(menu==null||expected==null||expected.count()!=1||!menu.cursorEmpty()||!"Confirm BIN Auction".equals(Chat.strip(menu.title()))
+            ||form==null||menu.containerId()==form.containerId()||!binCreation(form,expected,price))return false;
+        var before=new HashMap<Integer,SlotView>();var after=new HashMap<Integer,SlotView>();
+        for(var s:form.slots())if(s.inPlayerInventory()&&s.containerSlot()>=0&&s.containerSlot()<36)before.put(s.containerSlot(),s);
+        for(var s:menu.slots())if(s.inPlayerInventory()&&s.containerSlot()>=0&&s.containerSlot()<36)after.put(s.containerSlot(),s);
+        if(before.size()!=36||!before.keySet().equals(after.keySet()))return false;
+        for(int index:before.keySet()) {
+            var a=before.get(index);var b=after.get(index);
+            if(a.empty()!=b.empty()||a.count()!=b.count()||!a.empty()&&!BinListingExecutor.sameIdentity(a,b))return false;
+        }
+        var controls=menu.slots().stream().filter(s->!s.inPlayerInventory()&&!s.empty()
+            &&"Confirm BIN Auction".equals(Chat.strip(s.hoverName()))).toList();
+        if(controls.size()!=1||!controls.getFirst().hasLoreLine("Selling: "+Chat.strip(expected.hoverName()))
+            ||!controls.getFirst().hasLoreLine("Click to confirm!"))return false;
+        int selling=0;
+        for(var s:menu.slots())if(!s.inPlayerInventory()&&!s.empty()) {
+            if(s.customId()!=null&&!s.customId().isBlank())return false;
+            for(String raw:(s.hoverName()+"\n"+s.lore()).split("\\R")) {
+                String line=Chat.strip(raw).trim();
+                if(line.startsWith("Selling:"))selling++;
+                if(line.matches("(?:Item price|Price|BIN Price|Buy it now):.*"))return false;
+            }
+        }
+        return selling==1;
+    }
     public static Long auctionDuration(String text) {
         var matcher=Pattern.compile("(?im)^Duration: ([0-9]+) (hours?|days?)[!.]?$").matcher(Chat.strip(text));Long found=null;
         while(matcher.find()) {

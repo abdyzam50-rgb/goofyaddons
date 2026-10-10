@@ -45,7 +45,7 @@ public final class AuctionBrowserNavigation {
             if(state!=NavigationRetry.Result.READY)return Result.WAITING;
         }
         if(menu.title()==null){if(now>=nextCommand){actions.command("ah");nextCommand=now+8000;}return Result.WAITING;}
-        if("Auction House".equals(title))return click(menu,actions,now,control(menu,"Auctions Browser","Auction Browser","Browse Auctions"));
+        if(ProductionMenus.auctionHouse(title))return click(menu,actions,now,control(menu,"Auctions Browser","Auction Browser","Browse Auctions"));
         if(!Set.of("Auctions Browser","Auction Browser").contains(title))return block("Unexpected auction browser screen: "+title);
         var type=control(menu,"BIN Filter","Auction Type","Auction Type Filter");
         if(type==null)return block("Auction BIN filter control is unverified; capture the menu");

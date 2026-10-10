@@ -1,0 +1,287 @@
+{
+  "title": "Co-op Auction House",
+  "cursorEmpty": true,
+  "slots": [
+    {
+      "slot": 0,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 1,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 2,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 3,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 4,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 5,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 6,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 7,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 8,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 9,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 10,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 11,
+      "empty": false,
+      "count": 1,
+      "name": "Auctions Browser",
+      "lore": [
+        "Find items for sale by players",
+        "across Hypixel SkyBlock!",
+        "",
+        "Items offered here are for auction,",
+        "meaning you have to place the top",
+        "bid to acquire them!",
+        "",
+        "Click to browse!"
+      ]
+    },
+    {
+      "slot": 12,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 13,
+      "empty": false,
+      "count": 1,
+      "name": "Manage Bids",
+      "lore": [
+        "View and manage your bids.",
+        "",
+        "Click to view!"
+      ]
+    },
+    {
+      "slot": 14,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 15,
+      "empty": false,
+      "count": 1,
+      "name": "Create Auction",
+      "lore": [
+        "Set your own items on auction for",
+        "other players to purchase.",
+        "",
+        "Auctions in co-op are shared!",
+        "",
+        "Click to become rich!"
+      ]
+    },
+    {
+      "slot": 16,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 17,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 18,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 19,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 20,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 21,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 22,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 23,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 24,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 25,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 26,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 27,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 28,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 29,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 30,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 31,
+      "empty": false,
+      "count": 1,
+      "name": "Close",
+      "lore": []
+    },
+    {
+      "slot": 32,
+      "empty": false,
+      "count": 1,
+      "name": "Auction Stats",
+      "lore": [
+        "View various statistics about you and",
+        "the Auction House.",
+        "",
+        "Per-Item Bid Limit: 25,000,000,000 Coins",
+        "Increase your bid limit by achieving",
+        "a higher SkyBlock Level!",
+        "",
+        "Click to view!"
+      ]
+    },
+    {
+      "slot": 33,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 34,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 35,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    }
+  ]
+}

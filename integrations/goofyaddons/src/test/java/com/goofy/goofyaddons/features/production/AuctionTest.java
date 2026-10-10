@@ -26,6 +26,61 @@ class AuctionTest {
             SlotView.named(29,"Create BIN Auction",List.of()),SlotView.named(33,"Duration: 2 days",List.of()));
     }
     void advance(BinListingExecutor executor,RecordingActions actions,MenuSnapshot menu,long at){executor.tick(menu,false,actions,"account",10000,10000,at);}
+    MenuSnapshot captured(String name,int id)throws Exception {
+        var raw=CompactorClearanceTest.captured(name);
+        return menu(id,raw.title(),raw.slots().toArray(SlotView[]::new));
+    }
+    @Test void capturedCoopRootAndEmptyBinFormNavigateAndInsertOnce()throws Exception {
+        var actions=new RecordingActions();var executor=new BinListingExecutor(expected(),1000,jobs(),"sell");
+        var root=captured("auction-coop-root.json",1);var slots=new ArrayList<>(root.slots());slots.set(54,expected());root=new MenuSnapshot(1,root.title(),true,slots);
+        advance(executor,actions,root,1000);advance(executor,actions,root,1100);
+        var blank=captured("auction-create-bin-empty.json",2);slots=new ArrayList<>(blank.slots());slots.set(54,expected());blank=new MenuSnapshot(2,blank.title(),true,slots);
+        advance(executor,actions,blank,1600);advance(executor,actions,blank,1800);
+        assertEquals(List.of("click:15","shiftclick:54"),actions.serverEffects());
+    }
+    @Test void capturedCompactConfirmationBindsToVerifiedFormAndOwnBinViewProvesPublication()throws Exception {
+        var target=new SlotView(54,true,0,false,"Aspect of the End","Aspect of the End",List.of(),"ASPECT_OF_THE_END",Map.of(),1,1,identity);
+        var journal=new ProductionJobs(dir.resolve("aote.json"));journal.put(new ProductionJobs.Job("aote","auction:prepare:ASPECT_OF_THE_END","account",ProductionJobs.State.OUTPUT_READY,1,-1,0,0,null,null,null,null));
+        var executor=new BinListingExecutor(target,56000,journal,"aote",true,605);var actions=new RecordingActions();
+        var blank=menu(1,"Create BIN Auction",target);
+        advance(executor,actions,blank,1000);advance(executor,actions,blank,1100);advance(executor,actions,blank,1200);
+        var sell=new SlotView(13,false,13,false,target.hoverName(),target.hoverName(),List.of(),target.customId(),target.enchantments(),1,1,identity);
+        var form=menu(1,"Create BIN Auction",sell,SlotView.named(31,"Item price: 56,000 coins",List.of()),
+            SlotView.named(29,"Create BIN Auction",List.of()),SlotView.named(33,"Duration: 6 Hours",List.of()));
+        advance(executor,actions,form,1500);advance(executor,actions,form,1600);advance(executor,actions,form,1700);
+        var confirmation=captured("auction-confirm-bin-compact.json",2);
+        advance(executor,actions,confirmation,2000);assertEquals(ProductionJobs.State.LISTING,journal.find("aote").orElseThrow().state());
+        assertEquals(List.of("shiftclick:54","click:29","click:11"),actions.serverEffects());
+        var view=captured("auction-own-bin-view.json",3);var actual=view.slot(13);var slots=new ArrayList<>(view.slots());
+        slots.set(13,new SlotView(13,false,13,false,actual.hoverName(),actual.hoverName(),actual.loreLines(),actual.customId(),Map.of(),1,1,identity));
+        view=new MenuSnapshot(3,view.title(),true,slots);
+        assertEquals(BinListingExecutor.Result.WAITING,executor.tick(view,false,actions,"account",10000,10000,2400));
+        var wrongSlots=new ArrayList<>(view.slots());var listed=view.slot(13);
+        wrongSlots.set(13,new SlotView(13,false,13,false,listed.hoverName(),listed.hoverName(),listed.loreLines(),listed.customId(),Map.of(),1,1,
+            new ItemMetadata("different-uuid",null,null,null,null,null,null,"minecraft:diamond_sword")));
+        assertEquals(BinListingExecutor.Result.WAITING,executor.tick(new MenuSnapshot(3,view.title(),true,wrongSlots),false,actions,"account",9395,9395,2500));
+        wrongSlots=new ArrayList<>(view.slots());wrongSlots.set(13,new SlotView(13,false,13,false,listed.hoverName(),listed.hoverName(),
+            List.of("Buy it now: 56,000 coins"),listed.customId(),Map.of(),1,1,identity));
+        assertEquals(BinListingExecutor.Result.WAITING,executor.tick(new MenuSnapshot(3,view.title(),true,wrongSlots),false,actions,"account",9395,9395,2600));
+        assertEquals(BinListingExecutor.Result.LISTED,executor.tick(view,false,actions,"account",9395,9395,2700));
+        assertEquals(ProductionJobs.State.SELLING,journal.find("aote").orElseThrow().state());assertNull(journal.find("aote").orElseThrow().costBasis());
+        assertEquals(List.of("shiftclick:54","click:29","click:11"),actions.serverEffects());
+    }
+    @Test void compactConfirmationCannotOverrideWrongNamePriceOrChangedInventory()throws Exception {
+        var target=new SlotView(54,true,0,false,"Aspect of the End","Aspect of the End",List.of(),"ASPECT_OF_THE_END",Map.of(),1,1,identity);
+        var sell=new SlotView(13,false,13,false,target.hoverName(),target.hoverName(),List.of(),target.customId(),Map.of(),1,1,identity);
+        var form=menu(1,"Create BIN Auction",sell,SlotView.named(31,"Item price: 56,000 coins",List.of()));
+        var confirm=captured("auction-confirm-bin-compact.json",2);
+        assertTrue(ProductionMenus.compactBinPublication(confirm,target,56000,form));
+        assertFalse(ProductionMenus.compactBinPublication(confirm,target,56001,form));assertFalse(ProductionMenus.compactBinPublication(confirm,target,56000,null));
+        assertFalse(ProductionMenus.compactBinPublication(new MenuSnapshot(1,confirm.title(),true,confirm.slots()),target,56000,form));
+        var slots=new ArrayList<>(confirm.slots());slots.set(11,SlotView.named(11,"Confirm BIN Auction",List.of("Selling: Aspect of the Void","Cost: 605 coins","Click to confirm!")));
+        assertFalse(ProductionMenus.compactBinPublication(new MenuSnapshot(2,confirm.title(),true,slots),target,56000,form));
+        slots=new ArrayList<>(confirm.slots());slots.set(54,item(54,true,"OTHER",1));
+        assertFalse(ProductionMenus.compactBinPublication(new MenuSnapshot(2,confirm.title(),true,slots),target,56000,form));
+        slots=new ArrayList<>(confirm.slots());slots.set(11,SlotView.named(11,"Confirm BIN Auction",List.of("Selling: Aspect of the End","Price: 1 coins","Cost: 605 coins","Click to confirm!")));
+        assertFalse(ProductionMenus.compactBinPublication(new MenuSnapshot(2,confirm.title(),true,slots),target,56000,form));
+    }
     @Test void directCreationAndExistingAuctionPathBothWorkWithoutClickingExistingListings()throws Exception {
         var jobs=jobs();var actions=new RecordingActions();var executor=new BinListingExecutor(expected(),1000,jobs,"sell");
         var root=menu(1,"Auction House",SlotView.named(15,"Manage Auctions",List.of()),expected());

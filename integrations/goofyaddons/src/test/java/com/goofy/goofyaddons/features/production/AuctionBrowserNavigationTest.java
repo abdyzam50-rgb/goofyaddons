@@ -13,6 +13,11 @@ class AuctionBrowserNavigationTest {
     SlotView control(int slot,String name,String selected){return SlotView.named(slot,name,List.of("▶ "+selected));}
     SlotView item(int slot,String product,String lore){return new SlotView(slot,false,slot,false,"Target","Target",List.of(lore),product,null,1,64);}
     AuctionBrowserNavigation browser(){return new AuctionBrowserNavigation("Target",s->"TARGET".equals(s.customId()));}
+    @Test void capturedCoopRootOpensTheBrowserWithoutTouchingCreateOrBids()throws Exception {
+        var captured=CompactorClearanceTest.captured("auction-coop-root.json");var b=browser();var actions=new RecordingActions();
+        assertEquals(AuctionBrowserNavigation.Result.WAITING,b.tick(captured,false,actions,1000));
+        assertEquals(List.of("click:11"),actions.performed());
+    }
     @Test void binAndSortAreVerifiedBeforeSearchAndLowestMatchingResultIsSelected() {
         var b=browser();var a=new RecordingActions();
         b.tick(menu(1,null),false,a,1000);

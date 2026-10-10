@@ -14,7 +14,7 @@ public final class AuctionCommands {
     public static void register() {
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client->{
             var menu=new LiveWorld().menu();
-            if(menu!=null && Set.of("Auction House","Manage Auctions","Auctions Browser","Auction Browser","Create Auction",
+            if(menu!=null && Set.of("Auction House","Co-op Auction House","Manage Auctions","Auctions Browser","Auction Browser","Create Auction",
                 "Create BIN Auction","Confirm BIN Auction","Confirm Auction","BIN Auction View","Confirm Purchase","Auction Duration")
                 .contains(com.goofy.goofyaddons.utils.Chat.strip(menu.title())))lastAuctionMenu=menu;
             if(client.player==null)lastAuctionMenu=null;

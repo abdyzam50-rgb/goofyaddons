@@ -1,0 +1,415 @@
+{
+  "title": "BIN Auction View",
+  "cursorEmpty": true,
+  "slots": [
+    {
+      "slot": 0,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 1,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 2,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 3,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 4,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 5,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 6,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 7,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 8,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 9,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 10,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 11,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 12,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 13,
+      "empty": false,
+      "count": 1,
+      "name": "Aspect of the End",
+      "productId": "ASPECT_OF_THE_END",
+      "lore": [
+        "Damage: +100",
+        "Strength: +100",
+        "Gemstones: []",
+        "",
+        "Ability: Instant Transmission  RIGHT CLICK",
+        "Teleport 8 blocks ahead of you and",
+        "gain +50  Speed for 3 seconds.",
+        "Mana Cost: 50",
+        "",
+        "This item can be reforged!",
+        "RARE SWORD",
+        "-----------------",
+        "Buy it now: 56,000 coins",
+        "",
+        "This is your own auction!",
+        "",
+        "Can buy in: 19s"
+      ]
+    },
+    {
+      "slot": 14,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 15,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 16,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 17,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 18,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 19,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 20,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 21,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 22,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 23,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 24,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 25,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 26,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 27,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 28,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 29,
+      "empty": false,
+      "count": 1,
+      "name": "Buy Item Right Now",
+      "lore": [
+        "",
+        "Price: 56,000 coins",
+        "",
+        "This is your own auction!"
+      ]
+    },
+    {
+      "slot": 30,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 31,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 32,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 33,
+      "empty": false,
+      "count": 1,
+      "name": "Cancel Auction",
+      "lore": [
+        "You may cancel auctions as long",
+        "as they have 0 bids!",
+        "",
+        "Click to cancel auction!"
+      ]
+    },
+    {
+      "slot": 34,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 35,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 36,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 37,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 38,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 39,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 40,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 41,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 42,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 43,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 44,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 45,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 46,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 47,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 48,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 49,
+      "empty": false,
+      "count": 1,
+      "name": "Go Back",
+      "lore": [
+        "To Create BIN Auction"
+      ]
+    },
+    {
+      "slot": 50,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 51,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 52,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 53,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    }
+  ]
+}

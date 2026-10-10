@@ -45,6 +45,10 @@ public final class ProductionCommands {
                     .executes(c->test(StringArgumentType.getString(c,"output"),0))
                     .then(ClientCommands.argument("binPrice",LongArgumentType.longArg(1,1_000_000_000_000L))
                         .executes(c->test(StringArgumentType.getString(c,"output"),LongArgumentType.getLong(c,"binPrice"))))))
+                .then(ClientCommands.literal("testah").then(ClientCommands.argument("output",StringArgumentType.word())
+                    .executes(c->testAuction(StringArgumentType.getString(c,"output")))
+                    .then(ClientCommands.argument("binPrice",LongArgumentType.longArg(1,1_000_000_000_000L))
+                        .executes(c->test(StringArgumentType.getString(c,"output"),LongArgumentType.getLong(c,"binPrice"),false,true)))))
                 .then(ClientCommands.literal("forge").then(ClientCommands.argument("output",StringArgumentType.word())
                     .then(ClientCommands.argument("slot",IntegerArgumentType.integer(1,7))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.FORGE,1,IntegerArgumentType.getInteger(c,"slot")-1,0,0))
@@ -83,21 +87,34 @@ public final class ProductionCommands {
         return test(output,price,false);
     }
     private static int test(String output,long price,boolean guiPricing){
+        return test(output,price,guiPricing,false);
+    }
+    public static int testAuction(String output){return test(output,0,false,true);}
+    static String testItem(String output,boolean auctionOnly) {
+        String id=output.trim().toUpperCase(java.util.Locale.ROOT).replace(' ','_');
+        var recipes=RecipeCatalog.instance().forOutput(id).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).toList();
+        if(!ProductionRecipe.validId(id)||recipes.isEmpty())throw new IllegalArgumentException("No verified crafting recipe for "+id);
+        if(auctionOnly&&recipes.stream().anyMatch(r->r.outputCount()!=1))throw new IllegalArgumentException("AH tests require a recipe producing one item per batch");
+        return id;
+    }
+    private static int test(String output,long price,boolean guiPricing,boolean auctionOnly){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before queueing production.");return 0;}
-        String id=output.toUpperCase(java.util.Locale.ROOT).replace(' ','_');
+        String id;
+        try{id=testItem(output,auctionOnly);}catch(IllegalArgumentException invalid){new LiveActions().message(invalid.getMessage());return 0;}
         var menu=new com.goofy.goofyaddons.menu.LiveWorld().menu();
-        if(price>0 && menu!=null && menu.slots().stream().anyMatch(s->s.inPlayerInventory() && !s.empty() && id.equals(ProductionMenus.productId(s)))) {
+        if((price>0||auctionOnly) && menu!=null && menu.slots().stream().anyMatch(s->s.inPlayerInventory() && !s.empty() && id.equals(ProductionMenus.productId(s)))) {
             new LiveActions().message("Move the "+RecipeCatalog.instance().name(id)+" you already hold out of your inventory first, so the listing picks the crafted one.");return 0;
         }
+        if(price==0&&auctionOnly){priceFromAuctions(id,true);return 1;}
         if(price==0 && com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null){withBazaarQuotes(id);return 1;}
         if(price==0 && onBazaar(id))price=ProductionRun.SELL_ON_BAZAAR;
-        else if(price==0){priceFromAuctions(id);return 1;}
+        else if(price==0){priceFromAuctions(id,false);return 1;}
         if(!FeatureManager.INSTANCE.production().queue(id,ProductionRecipe.Kind.CRAFT,1,-1,price,price>0?ProductionPlanner.listingFeeLimit(price):0,true,guiPricing))return 0;
         FeatureManager.INSTANCE.startProductionTest();return 1;
     }
     private static final java.net.http.HttpClient AUCTION_HTTP=com.goofy.goofyaddons.features.companion.LocalCalculatorHttp.create(java.time.Duration.ofSeconds(2));
     /** Gets a price-only reference for fee budgeting; the automatic sale price is observed in /ah. */
-    private static void priceFromAuctions(String id){
+    private static void priceFromAuctions(String id,boolean auctionOnly){
         var actions=new LiveActions();
         try {
             if(!ProductionRecipe.validId(id))throw new IllegalArgumentException("Unknown product "+id);
@@ -119,12 +136,12 @@ public final class ProductionCommands {
                         long price=AuctionPricing.listingPrice(quote);
                         actions.message(String.format(java.util.Locale.ROOT,"Coflnet reference %,d coins%s. The sale price will come from matching BINs observed in /ah.",quote.lowest(),
                                 quote.secondLowest()==null?"":String.format(java.util.Locale.ROOT,", next %,d",quote.secondLowest())));
-                        test(id,price,true);
+                        test(id,price,true,auctionOnly);
                     }catch(RuntimeException failure){
-                        actions.message("No automatic price for "+RecipeCatalog.instance().name(id)+": "+failure.getMessage()+". Use: production test "+id+" <price>");
+                        actions.message("No automatic price for "+RecipeCatalog.instance().name(id)+": "+failure.getMessage()+". Use: .a* goofyaddon production "+(auctionOnly?"testah":"test")+" "+id+" <price>");
                     }
                 }));
-        }catch(RuntimeException failure){actions.message("No automatic price: "+failure.getMessage()+". Use: production test "+id+" <price>");}
+        }catch(RuntimeException failure){actions.message("No automatic price: "+failure.getMessage()+". Use: .a* goofyaddon production "+(auctionOnly?"testah":"test")+" "+id+" <price>");}
     }
     /** With traders off nothing keeps Bazaar quotes fresh; fetch them so a Bazaar product is not taken for an auction item. */
     private static void withBazaarQuotes(String id){

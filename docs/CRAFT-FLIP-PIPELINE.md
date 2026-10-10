@@ -224,3 +224,51 @@ skipped. Only devices observed in inventory or the current Accessory Bag page
 can be checked; this does not inspect unseen bag pages. Book/general trading
 and Kat pet upgrades do not enter this crafting preflight. Automatic bulk
 compaction remains disabled; this release adds the required initial cleanup.
+
+## Craft mode and one-item AH tests (0.2.32)
+
+The saved `CRAFT` mode is now labelled **Craft flips** in the settings mode
+selector, with a **Use craft mode** shortcut on its card. Apply the settings and
+use Start for automatic Bazaar craft selection. AH recommendations remain
+individual tests until sale/expiry/claim reconciliation is implemented.
+
+With trading stopped, use:
+
+```text
+.a* goofyaddon production testah ASPECT_OF_THE_END
+```
+
+Alternatively enter a product ID in **AH test item**, then click **Run one test**
+on the Craft flips settings card. Apply or discard pending settings first. The
+test buys missing inputs within spending limits, clears detected compactor
+filters, checks account prerequisites, crafts one item and publishes one BIN.
+It runs independently of the trading mode and rest schedule. Stop/toggle ends
+it. It never treats publication as a confirmed sale or profit.
+
+Aspect of the End requires Ender Pearl VIII and uses 32 Enchanted Eyes of Ender
+and one Enchanted Diamond: 16 eyes in each of the two sword blade cells, with the
+diamond as its handle. An AH test accepts only a verified recipe yielding one
+item per batch. Move any matching output already held before testing another
+craft; existing seller listings do not themselves prevent a new test.
+
+`testah` always chooses the Auction House. With no price supplied, Coflnet provides
+a price-only reference, then `/ah` browsing verifies BIN Only, Lowest Price and
+matching item identity before the listing is priced one coin below the observed
+BIN. The explicit-price form is `production testah <productId> <price>`; it still
+passes the GUI and Coflnet validity checks. The original `production test` keeps
+its automatic Bazaar/AH choice. Unknown recipes are rejected before price lookup.
+
+Four sanitized live AH captures now cover **Co-op Auction House**, the empty
+**Create BIN Auction** form, the compact **Confirm BIN Auction** button and the
+resulting **BIN Auction View**. Navigation accepts solo and co-op home titles.
+The compact confirmation contains a Selling name and listing fee, without an
+item stack or sale price: it is accepted only after this executor verified the
+exact identity, price and duration in the creation form, clicked Create once,
+observed a different container, and verified unchanged player inventory. It must
+show the matching Selling name and exact bounded fee. A generic confirmation,
+wrong name, conflicting price or changed inventory cannot publish.
+
+Publication can finish at the observed own **BIN Auction View**, as well as
+Manage Auctions. Both still require the exact item identity and price, no item
+left in inventory and the exact fee debit. The view must explicitly say it is
+the player's own auction. No buy/cancel controls are clicked to prove receipt.
