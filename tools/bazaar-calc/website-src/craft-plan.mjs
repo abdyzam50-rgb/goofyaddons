@@ -10,34 +10,37 @@ export function depth(levels,units,ascending){
  }
  return null;
 }
-export function prepare(recipe,batches,recipes){
- const purchases={},steps=[],available={};
+export function prepare(recipe,batches,recipes,{canBuy=()=>true,requirements={},byOutput}={}){
+ const purchases={},steps=[],available={},blocked=[];let coins=0;
  const require=(id,units,path)=>{
   const use=Math.min(units,available[id]??0);available[id]=(available[id]??0)-use;units-=use;if(!units)return;
-  const basic=BASIC.has(id)?recipes.find(r=>r.kind==='CRAFT'&&r.outputId===id&&!r.requirement):null;
+  const choices=(byOutput?.get(id)??recipes.filter(r=>r.kind==='CRAFT'&&r.outputId===id)).filter(r=>!path.has(id));
+  const basic=BASIC.has(id)?choices.find(r=>!r.requirement):!canBuy(id)?choices.find(r=>!(requirements[r.key]?.length))??choices[0]:null;
   if(!basic){purchases[id]=(purchases[id]??0)+units;return;}
-  if(path.has(id))throw new Error('Cyclic intermediate recipe');
-  const count=Math.ceil(units/basic.outputCount);path.add(id);
+  blocked.push(...(requirements[basic.key]??[]));
+  const count=Math.ceil(units/basic.outputCount);coins+=Math.max(0,basic.coins??0)*count;path.add(id);
   for(const [input,qty] of Object.entries(basic.ingredients))require(input,qty*count,path);
   path.delete(id);steps.push({output:id,batches:count,units:count*basic.outputCount});available[id]=(available[id]??0)+count*basic.outputCount-units;
  };
  for(const [id,qty] of Object.entries(recipe.ingredients))require(id,qty*batches,new Set());
- return {purchases,steps};
+ return {purchases,steps,...(coins?{coins}:{}),...(blocked.length?{blocked:[...new Set(blocked)]}:{})};
 }
 export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=10000,maxBatches=16,tax=1.25,requirements={}}){
  if(!market?.success||!fresh(market.lastUpdated,now))return [];
  const products=market.products??{},best=new Map(),recipes=catalog.recipes.filter(r=>r.kind==='CRAFT');
+ const byOutput=new Map();for(const r of recipes){const list=byOutput.get(r.outputId)??[];list.push(r);byOutput.set(r.outputId,list);}
  const ahRows=new Map((fresh(ah?.generatedAt,now)?ah.rows??[]:[]).filter(r=>fresh(r.sourceAt,now,300000)).map(r=>[r.item,r]));
  for(const recipe of recipes){
   const product=products[recipe.outputId],source=ahRows.get(recipe.outputId),venue=product?'BAZAAR':'AH';
-  if(!product&&!source)continue;
+
   for(let batches=1;batches<=Math.min(16,Math.max(1,Math.floor(maxBatches)));batches++){
-   if(!product&&(batches>1||recipe.outputCount!==1))break;
-   const prep=prepare(recipe,batches,recipes),units=recipe.outputCount*batches;
-   let cost=0,reason=(requirements[recipe.key]??[]).join('; '),gross=null,fee=0,liquidity=0;
+   if(!product&&batches>1)break;
+   const quoteFor=id=>{const q=ahRows.get(id)?.quote;return q?.item===id&&fresh(q.fetchedAt,now)&&Number.isFinite(q.lowest)&&q.lowest>0&&q.lowest<=1e13?q:null;};
+   const prep=prepare(recipe,batches,recipes,{canBuy:id=>!!products[id]||!!quoteFor(id),requirements,byOutput}),units=recipe.outputCount*batches;
+   let cost=Math.max(0,recipe.coins??0)*batches+(prep.coins??0),reason=[...(requirements[recipe.key]??[]),...(prep.blocked??[])].join('; '),gross=null,fee=0,liquidity=0;
    for(const [id,qty] of Object.entries(prep.purchases)){
-    const value=depth(products[id]?.buy_summary,qty,true);
-    if(value===null){reason||=`Missing Bazaar input or insufficient ask depth: ${catalog.names[id]??id}`;cost=null;break;}
+    const value=products[id]?depth(products[id].buy_summary,qty,true):quoteFor(id)?quoteFor(id).lowest*qty:null;
+    if(value===null){reason||=`Missing input price or insufficient Bazaar ask depth: ${catalog.names[id]??id}`;cost=null;break;}
     cost+=value*1.04;
    }
    const capital=cost===null?null:cost*1.03;
@@ -48,10 +51,11 @@ export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=
     if(!Number.isFinite(daily)||units>daily*.05)reason||='Batch exceeds 5% of estimated daily volume';
     if(gross===null)reason||='Insufficient sell-side bid depth';
    }else{
-    const quote=source.quote;
+    const quote=quoteFor(recipe.outputId);
     if(quote?.item!==recipe.outputId||!fresh(quote?.fetchedAt,now)||!Number.isFinite(quote?.lowest)||quote.lowest<=0)reason||='Waiting for a fresh Coflnet BIN quote';
-    else{gross=Math.max(1,Math.floor(quote.lowest)-1);fee=gross*.035+2000;}
-    liquidity=Math.min(1,Math.log1p(source.volume??0)/Math.log(101));
+    else{gross=Math.max(1,Math.floor(quote.lowest)-1)*units;fee=gross*.035+2000*units;}
+    liquidity=Math.min(1,Math.log1p(source?.volume??0)/Math.log(101));
+    if(gross!==null&&!(source?.volume>0))reason||='AH demand unavailable; profit estimate only';
    }
    const total=capital===null?null:capital+fee;
    const net=gross===null?null:product?gross*.97*(1-Math.max(0,tax)/100):gross*.90;
@@ -59,10 +63,10 @@ export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=
    if(total!==null&&total>budget)reason||='Whole batch exceeds your spendable budget';
    if(profit!==null&&profit<minProfit)reason||='Below your minimum net profit';
    const score=profit===null?0:profit/(60+Object.keys(prep.purchases).length*20+prep.steps.length*15+batches*3)*liquidity;
-   const row={key:recipe.key,output:recipe.outputId,name:catalog.names[recipe.outputId]??recipe.outputId,batches,units,venue,capital:total,profit,score,eligible:!reason,reason,requirement:recipe.requirement,purchases:prep.purchases,steps:prep.steps,binPrice:product?null:gross,sourceAt:product?market.lastUpdated:source.quote?.fetchedAt??null};
+   const row={key:recipe.key,output:recipe.outputId,name:catalog.names[recipe.outputId]??recipe.outputId,batches,units,venue,capital:total,profit,score,eligible:!reason,reason,requirement:recipe.requirement,purchases:prep.purchases,steps:prep.steps,binPrice:product?null:gross===null?null:gross/units,sourceAt:product?market.lastUpdated:source?.quote?.fetchedAt??null};
    const prev=best.get(row.output);
    if(!prev||Number(row.eligible)>Number(prev.eligible)||(row.eligible===prev.eligible&&row.score>prev.score))best.set(row.output,row);
   }
  }
- return [...best.values()].sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
+ return [...best.values()].sort((a,b)=>Number(b.profit!==null)-Number(a.profit!==null)||b.score-a.score||a.key.localeCompare(b.key));
 }

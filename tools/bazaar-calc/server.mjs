@@ -107,7 +107,8 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
     }
     if(req.method==='GET'&&url.pathname==='/v1/crafts/market') {
       const products=collector?.market()?.products??{};
-      send(200,await craftMarket.refresh(products));return;
+      if(!craftMarket.catalog.recipes.length)craftMarket.catalog=JSON.parse(assetBytes(assets.get('/calculator/data/production-recipes.json')));
+      send(200,await craftMarket.refresh(products,url.searchParams.get('item')??''));return;
     }
     if(req.method==='GET'&&url.pathname==='/v1/profiles') {
       const username=url.searchParams.get('username')??'';

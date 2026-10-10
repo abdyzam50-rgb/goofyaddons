@@ -39,6 +39,6 @@ test('companion serves sanitized craft discovery with fresh BIN quotes and no au
   Response.json({lowest:20000,secondLowest:21000,uuid:'not-for-navigation'})});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>{server.close(r);server.closeAllConnections();}));
  const body=await(await fetch(`http://127.0.0.1:${server.address().port}/v1/crafts/market`)).json();
- assert.equal(body.protocol,'goofy-craft-market/1');assert.equal(body.rows.length,1);assert.equal(body.rows[0].item,'AH_ITEM');
+ assert.equal(body.protocol,'goofy-craft-market/1');assert.ok(body.rows.length>1000);assert.equal(body.rows[0].item,'AH_ITEM');assert.ok(!body.rows.some(r=>r.item==='BZ_ITEM'));
  assert.equal(body.rows[0].quote.lowest,20000);assert.ok(!JSON.stringify(body).includes('not-for-navigation'));
 });

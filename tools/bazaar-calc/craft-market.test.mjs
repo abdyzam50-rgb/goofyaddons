@@ -22,3 +22,17 @@ test('failed discovery reports its status without supplying invented candidates'
  const market=new CraftMarket({now:()=>NOW,fetcher:async()=>new Response(null,{status:403}),price:async()=>{throw new Error();}});
  const view=await market.refresh();assert.equal(view.rows.length,0);assert.match(view.error,/HTTP 403/);
 });
+
+test('catalog outputs and components are quoted even when craft discovery fails, rotation reaches later items',async()=>{
+ let now=NOW;const quoted=[];
+ const catalog={recipes:Array.from({length:12},(_,i)=>({kind:'CRAFT',outputId:`OUT_${i}`,ingredients:{BASE:1}}))};
+ const market=new CraftMarket({catalog,now:()=>now,fetcher:async()=>new Response(null,{status:403}),price:async item=>{quoted.push(item);return {item,lowest:100,fetchedAt:now};}});
+ const first=await market.refresh({BASE:{}});assert.equal(first.rows.length,12);assert.match(first.error,/403/);assert.ok(first.rows.some(r=>r.quote));
+ now+=20001;await market.refresh({BASE:{}});now+=20001;await market.refresh({BASE:{}});assert.ok(quoted.includes('OUT_11'));
+});
+
+test('search focus quotes a catalog craft and its AH components without arbitrary URL requests',async()=>{
+ const catalog={recipes:[...Array.from({length:20},(_,i)=>({kind:'CRAFT',outputId:`OTHER_${i}`,ingredients:{}})),{kind:'CRAFT',outputId:'FOCUS',ingredients:{PART:1}}]};
+ const quoted=[];const market=new CraftMarket({catalog,now:()=>NOW,fetcher:async()=>Response.json([]),price:async item=>{quoted.push(item);return {item,lowest:1,fetchedAt:NOW};}});
+ await market.refresh({},'FOCUS');assert.ok(quoted.includes('FOCUS'));assert.ok(quoted.includes('PART'));assert.ok(quoted.length<=16);
+});

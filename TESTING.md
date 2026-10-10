@@ -157,3 +157,18 @@ all six Slayer zero counters, missing/invalid whole sections, malformed explicit
 XP, published empty Garden analysis, current/legacy field precedence and
 removal of the irrelevant vanilla XP warning. This patch changes no mod code
 or calculator UI; no additional Java test run is required for its final scope.
+
+### Craft calculation coverage 0.2.40
+
+- Node: 132 tests passed, covering every distinct shipped craft output, missing
+  prices, AH input quote identity/expiry, recursive batch costs/unlocks, cycles,
+  per-output listing fees, catalog quote rotation and search prioritization.
+- Java/companion: `test calculatorIntegrationTest build` successful; 1,075 test
+  results with no failures/errors/skips. Lazy website loading remains verified.
+- Website TypeScript/Vite build passed. Chromium desktop/mobile checks passed
+  for imported unlocks, base preparation, BZ/AH filtering, refresh and expiry.
+- Mod/website ZIP inspection verified catalog/runtime contents and confirmed
+  the public package preserves existing deployment configuration.
+- Coflnet direct connectivity from this environment returned a proxy HTTP 403;
+  AH price behavior was verified with deterministic provider fixtures, not a live
+  purchase or listing. In-game execution was not exercised for this UI update.

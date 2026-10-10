@@ -18,3 +18,10 @@ test('upstream errors cannot invent craft prices and unavailable Bazaar stops AH
  const service=createPublicCrafts({now:()=>now,fetchImpl:async url=>url.includes('hypixel')?Response.json({success:true,lastUpdated:now,products:{}}):new Response('',{status:403})});
  const response=await service(request),body=await response.json();assert.deepEqual(body.rows,[]);assert.match(body.error,/403/);assert.equal(response.headers.get('Cache-Control'),'no-store');
 });
+
+test('Worker loads the catalog from its own assets and prices outputs outside discovery',async()=>{
+ const catalog={recipes:[{kind:'CRAFT',outputId:'RESULT',ingredients:{COAL:1,COMPONENT:1}}]};
+ const service=createPublicCrafts({now:()=>now,fetchImpl:async url=>url.includes('hypixel')?Response.json({success:true,lastUpdated:now,products:{COAL:{}}}):url.endsWith('profit')?Response.json([]):Response.json({lowest:10000})});
+ const response=await service(request,{ASSETS:{fetch:async r=>{assert.equal(new URL(r.url).pathname,'/calculator/data/production-recipes.json');return Response.json(catalog);}}});
+ const b=await response.json();assert.deepEqual(b.rows.map(r=>r.item),['RESULT','COMPONENT']);assert.ok(b.rows.every(r=>r.quote));
+});

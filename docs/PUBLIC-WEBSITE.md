@@ -172,3 +172,19 @@ Collector patch 0.2.39 completes published zero Slayer/Garden progression and
 removes irrelevant vanilla XP warnings. Deploy its website ZIP as above while
 keeping `wrangler.jsonc`. No mod reinstall is needed. The profile response now
 reports `parserVersion: "2026-10-10-unlock-completeness"`.
+
+## Complete craft calculations (0.2.40)
+
+Use `dist/goofyaddons-public-website-craft-0.2.40.zip`. Copy its `tools` files into
+an existing deployment while preserving your `tools/gameplay-collector/wrangler.jsonc`.
+Then run `npx wrangler@4.147.0 deploy` from `tools/gameplay-collector`.
+Cloudflare secrets stay on the Worker. For a new deployment, configure the included
+`wrangler.example.jsonc` as described above.
+
+Open `/calculator/flips/craft` after deployment. Every catalog craft output is
+listed, with costs/profit wherever fresh input/output prices exist and a reason
+otherwise. Search prioritizes AH quotes for the matching craft and its components.
+Use "Show 100 more crafts" to browse beyond the first page. Unknown AH demand,
+stale prices, missing unlocks and untradable components remain conservative blocks.
+The bundled local calculator receives the same calculation changes in mod
+`astar-client-0.2.40-BETA.jar`.

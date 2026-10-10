@@ -3,12 +3,19 @@ import {publicMarket} from './public-market.mjs';
 
 // One discovery/quote rotation per isolate, shared by visitors. No profile or contributor key required.
 export function createPublicCrafts({fetchImpl=fetch,now=Date.now,cache=globalThis.caches?.default}={}) {
- let market;
+ let market,catalog;
  return async function publicCrafts(request,env={}) {
-  const url=new URL(request.url);url.search='';const key=new Request(url);
+  const url=new URL(request.url),item=url.searchParams.get('item')??'';url.search='';
+  if(!catalog&&env.ASSETS){
+   const r=await env.ASSETS.fetch(new Request(new URL('/calculator/data/production-recipes.json',url)));
+   if(!r.ok)return Response.json({error:'Craft catalog unavailable'},{status:503});
+   catalog=await r.json();if(!Array.isArray(catalog.recipes))return Response.json({error:'Invalid craft catalog'},{status:503});
+  }
+  if(/^[A-Z0-9_]{1,64}$/.test(item)&&catalog?.recipes.some(r=>r.kind==='CRAFT'&&r.outputId===item))url.searchParams.set('item',item);
+  const key=new Request(url);
   const saved=await cache?.match(key);
   if(saved)try{const data=await saved.clone().json();if(data.protocol==='goofy-craft-market/1'&&data.generatedAt<=now()+5000&&now()-data.generatedAt<20000)return saved;}catch{}
-  market??=new CraftMarket({fetcher:fetchImpl,now,token:()=>env.COFLNET_TOKEN??null,price:async item=>{
+  market??=new CraftMarket({fetcher:fetchImpl,now,catalog,token:()=>env.COFLNET_TOKEN??null,price:async item=>{
    const response=await fetchImpl(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000),headers:env.COFLNET_TOKEN?{Authorization:`Bearer ${env.COFLNET_TOKEN}`}:{}});
    if(!response.ok)throw new Error('BIN price unavailable');
    const text=await response.text();if(text.length>65536)throw new Error('BIN price response too large');
@@ -19,7 +26,7 @@ export function createPublicCrafts({fetchImpl=fetch,now=Date.now,cache=globalThi
   // A failed Bazaar request must not misclassify Bazaar products as AH outputs.
   const bazaar=await publicMarket(new Request(new URL('/v1/market',url)),{fetchImpl,now:now(),cache});
   if(!bazaar.ok)return Response.json({error:'Fresh Bazaar prices unavailable; craft discovery is waiting'},{status:503,headers:{'Cache-Control':'no-store'}});
-  const data=await market.refresh((await bazaar.json()).products);
+  const data=await market.refresh((await bazaar.json()).products,item);
   const response=Response.json(data,{headers:{'Cache-Control':data.error?'no-store':'public, max-age=20','X-Content-Type-Options':'nosniff'}});
   if(!data.error)await cache?.put(key,response.clone());
   return response;

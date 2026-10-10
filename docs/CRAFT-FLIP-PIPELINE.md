@@ -447,3 +447,35 @@ For future HotF gates, current progression is `skill_tree.experience.foraging`
 (SkyCrypt-Backend `5252bf6`, stats/foraging.go); the NEU `HOTF` XP-cost table
 contains eight tiers. Live official wiki retrieval returned HTTP 403 during
 this audit, so additional wiki-only prerequisites could not be verified.
+
+## Complete calculator coverage (0.2.40)
+
+The craft planner now evaluates all 2,481 distinct crafting outputs in the 2,529-row
+catalog instead of silently discarding outputs absent from Coflnet discovery.
+Alternative recipes compete by feasibility and conservative score. Search, venue
+filters and "Show 100 more crafts" expose the entire result set; absent prices
+produce a blocked row with unknown profit, never a fabricated zero-cost route.
+
+Costs use current Bazaar ask depth or an item-specific, fresh Coflnet lowest BIN
+for AH components. Missing tradable intermediates expand recursively into catalog
+recipes; basic preparation still favors rods/logs over powder/sticks. Whole-batch
+yields, excess ingredients, recipe coin costs, intermediate unlocks, product gates,
+sell depth, taxes, price allowances and per-output AH listing fees are included.
+Cyclic/unpriceable dependencies terminate as unavailable purchases. Existing
+priced intermediate items remain direct purchases; this is not an exhaustive
+optimizer of every buy-versus-craft combination.
+
+Both the local companion and public Worker quote catalog AH outputs/components,
+including items absent from craft discovery. Quote requests stay bounded and
+rotate across the catalog. Searching prioritizes that catalog output and its direct
+components; the public cache accepts only known catalog output IDs as focus keys.
+Discovery failures do not prevent catalog quotes or Bazaar calculations.
+
+Important limits: all catalog routes can be evaluated, but not all are tradable.
+AH rows without fresh prices remain unpriced. Missing provider demand blocks an
+AH recommendation while retaining its available profit estimate. Repeated AH
+components are priced at current lowest BIN per unit, not verified listing depth;
+actual quantities/variants and final prices must be checked in game. Estimates do
+not add AH procurement or sale settlement to automatic craft selection. Quotes
+expire after 60 seconds; discovery demand expires after five minutes. No synthetic
+coins/hour is inferred from an AH volume with an unknown time window.
