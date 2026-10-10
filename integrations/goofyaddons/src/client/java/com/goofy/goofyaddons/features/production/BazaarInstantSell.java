@@ -96,7 +96,7 @@ public final class BazaarInstantSell {
         // so the product icon alone identifies the page.
         var icon = menu.slot(ProductIdentity.ICON_SLOT);
         if (icon == null || icon.empty() || icon.inPlayerInventory()) return -1;
-        boolean named = icon.customId() != null && !icon.customId().isBlank() ? productId.equals(icon.customId()) : name.equals(Chat.strip(icon.hoverName()));
+        boolean named = icon.customId() != null && !icon.customId().isBlank() ? ProductIdentity.matches(icon,productId) : name.equals(Chat.strip(icon.hoverName()));
         return named ? control : -1;
     }
 
@@ -116,7 +116,7 @@ public final class BazaarInstantSell {
     private int count(MenuSnapshot menu) {
         int total = 0;
         for (var slot : menu.slots())
-            if (slot.inPlayerInventory() && slot.containerSlot() < 36 && !slot.empty() && productId.equals(slot.customId())) total += slot.count();
+            if (slot.inPlayerInventory() && slot.containerSlot() < 36 && !slot.empty() && ProductIdentity.matches(slot,productId)) total += slot.count();
         return total;
     }
 

@@ -18,6 +18,9 @@ import java.util.List;
  * its receipt or the order's verified removal.
  */
 final class BookSell {
+    private com.goofy.goofyaddons.features.production.BazaarInstantSell instant;
+    private Task instantTask;
+    void reset(){instant=null;instantTask=null;}
     void sell(BookContext ctx) {
         Task task = ctx.taskInState(Task.BookState.SELL);
         if (task == null) {
@@ -27,6 +30,7 @@ final class BookSell {
             return;
         }
 
+        if(task.instaSell){instant(ctx,task);return;}
         openOrders(ctx);
 
         if (ordersOpen(ctx)) ctx.clock().start(ctx.delay());
@@ -70,6 +74,29 @@ final class BookSell {
         confirm(ctx, task, "SELL: submitted sell order for ", "SELL");
     }
 
+    private void instant(BookContext ctx,Task task){
+        if(instantTask!=task){instant=null;instantTask=task;}
+        var book=task.getBook();
+        if(instant==null){
+            var quotes=ctx.services().latestQuotes();if(quotes==null)return;
+            Double value=com.goofy.goofyaddons.features.production.BazaarStrategy.ORDER_INSTANT.sell(quotes.getAsJsonObject("products").getAsJsonObject(book.getLevel(book.sellLevel())),1);
+            if(value==null)return;
+            instant=new com.goofy.goofyaddons.features.production.BazaarInstantSell(book.getLevel(book.sellLevel()),output(task),1,value*.97,value*1.03,reason->{
+                ctx.expose(book.id());if(!ctx.checkpoint())throw new IllegalStateException("Book sale intent not saved");
+            });
+        }
+        var result=instant.tick(ctx.menu(),ctx.actions(),ctx.services().purse(),ctx.now());
+        switch(result){
+            case SOLD -> {
+                ctx.accounting().sell(task.getProfitTradeId(),"books",book.name(),task.getProfitTradeId()+":sale",book.getQtyAmount(book.level()),instant.proceeds());
+                ctx.tasks().remove(task);ctx.resizeRetainedExtras(book,task.getReservedUnitCost());instant=null;
+                ctx.checkpoint();ctx.state(State.IDLE);ctx.actions().closeMenu();
+            }
+            case BLOCKED,UNCERTAIN -> ctx.safetyHalt(instant.failure());
+            default -> {}
+        }
+    }
+
     void replace(BookContext ctx) {
         Task task = ctx.taskInState(Task.BookState.REPLACE_SELL);
         if (task == null) {
@@ -79,6 +106,7 @@ final class BookSell {
             return;
         }
 
+        if(task.instaSell){instant(ctx,task);return;}
         openOrders(ctx);
 
         if (ordersOpen(ctx)) ctx.clock().start(ctx.delay());

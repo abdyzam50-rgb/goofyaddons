@@ -47,6 +47,13 @@ class ProductionRunTest {
         ProductionJobs jobs;MenuSnapshot menu=ProductionRunTest.menu(null);boolean sign,buying,craftQueued,listingQueued;
         double purse=10_000;final RecordingActions actions=new RecordingActions();final List<String> crafts=new ArrayList<>(),listings=new ArrayList<>();
         Set<String> occupied=Set.of(),unquoted=Set.of();
+        com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result orderResult;
+        final List<String> orders=new ArrayList<>();int orderAcknowledgements;
+        public Double orderBuyCost(String id,int units){return units*50.0;}
+        public Double offerSellValue(String id,int units){return units*2000.0;}
+        public boolean queueOrder(String id,int units,double price,boolean buy,double limit){orders.add((buy?"BUY":"SELL")+":"+id+":"+units);return true;}
+        public com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result tickOrder(boolean owns){return orderResult;}
+        public boolean acknowledgeOrder(){orderAcknowledgements++;return true;}
         final List<Double> confirmedCosts=new ArrayList<>(),confirmedSales=new ArrayList<>();
         public void outputConfirmed(String id,String output,int units,Double cost){confirmedCosts.add(cost);}
         public void saleConfirmed(String id,String output,int units,double proceeds){confirmedSales.add(proceeds);}
@@ -457,6 +464,34 @@ class ProductionRunTest {
         assertEquals(BazaarInstantSell.Result.SOLD,sale.tick(ProductionRunTest.menu(null),actions,1950,1300));
         assertEquals(950,sale.proceeds());assertEquals(1,intents.size());
         assertEquals(List.of("click:11"),actions.serverEffects());
+    }
+
+    @Test void buyOrdersHandOffVerifiedInputsToCraftThenOfferSettlementRecordsProfitOnlyAfterClaim()throws Exception {
+        var env=new Env();env.buying=true;var catalog=catalog();var recipe=catalog.forOutput("OUTPUT").getFirst();
+        var run=ProductionRun.startCraft(env,catalog,recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        run.tick(true,1000);assertEquals(List.of("BUY:INPUT:2"),env.orders);assertTrue(env.crafts.isEmpty());
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,2,100,null,"waiting");
+        run.tick(false,1100);assertTrue(env.crafts.isEmpty());assertEquals(0,run.spent());
+        env.menu=menu(null,item(54,"INPUT",2));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,2,100,null,"claimed");
+        run.tick(true,1200);assertEquals(100,run.spent());assertEquals(100,env.jobs.find(run.jobId()).orElseThrow().costBasis());assertEquals(1,env.orderAcknowledgements);
+        run.tick(true,1300);run.tick(false,1400);assertEquals(List.of("OUTPUTx1"),env.crafts);
+        env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);env.craftQueued=false;env.menu=menu(null,item(54,"OUTPUT",1));
+        run.tick(false,1500);assertEquals(Stage.SELL,run.stage());assertEquals(List.of(100.0),env.confirmedCosts);
+        run.tick(true,1600);assertEquals(List.of("BUY:INPUT:2","SELL:OUTPUT:1"),env.orders);assertTrue(env.confirmedSales.isEmpty());
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,1,0,null,"waiting");
+        run.tick(false,1700);assertTrue(env.confirmedSales.isEmpty());
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,1,0,1975.0,"claimed");
+        assertEquals(Step.DONE,run.tick(true,1800));assertEquals(List.of(1975.0),env.confirmedSales);assertEquals(2,env.orderAcknowledgements);
+        assertEquals(Step.DONE,run.tick(true,1900));assertEquals(1,env.confirmedSales.size());
+    }
+
+    @Test void uncertainInputOrderNeverStartsCraftingOrPretendsToAcquireInputs()throws Exception {
+        var env=new Env();env.buying=true;var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,true,0,0,null,"Unconfirmed claim");
+        assertEquals(Step.UNCERTAIN,run.tick(true,1100));assertTrue(env.crafts.isEmpty());assertEquals(0,run.spent());assertEquals(0,env.orderAcknowledgements);
+        assertEquals(ProductionJobs.State.REVIEW,env.jobs.find(run.jobId()).orElseThrow().state());
     }
 
 }

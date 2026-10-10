@@ -190,3 +190,12 @@ test('essence recommendations require observed Catacombs XX, including ranked po
  b.constraints.accountUnlocks={catacombs:20};assert.equal(run(b).rows.length,1);
  b.constraints.accountUnlocks={catacombs:20.5};assert.throws(()=>run(b),/Invalid account unlocks/);
 });
+
+test('strategy-aware book ranking selects executable instant legs while legacy reports keep order/offer',()=>{
+ const body=packet();body.constraints.mode='BOOKS';body.constraints.bazaarStrategies=true;
+ const r=run(body);assert.ok(r.rows.length>0);
+ assert.ok(r.rows.some(row=>row.buyMode==='instant'||row.sellMode==='instant'));
+ assert.equal(new Set(r.rows.map(row=>row.routeKey)).size,r.rows.length);
+ for(const row of r.rows){assert.ok(['order','instant'].includes(row.buyMode));assert.ok(['offer','instant'].includes(row.sellMode));assert.equal(row.costPerOutput,row.buyPrice*row.inputsPerOutput);assert.ok(row.capitalUsed<=body.constraints.availableCapital);}
+ delete body.constraints.bazaarStrategies;assert.ok(run(body).rows.every(row=>row.buyMode==='order'&&row.sellMode==='offer'));
+});

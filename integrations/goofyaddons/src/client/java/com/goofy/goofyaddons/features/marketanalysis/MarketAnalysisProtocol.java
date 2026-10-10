@@ -68,7 +68,7 @@ public final class MarketAnalysisProtocol {
         root.add("market", market);
         var c = new JsonObject();
         c.addProperty("mode", mode.name()); c.addProperty("availableCapital", Math.max(0, available));
-        c.addProperty("automaticSelection",config.marketAnalysis.automaticSelection);
+        c.addProperty("automaticSelection",config.marketAnalysis.automaticSelection);c.addProperty("bazaarStrategies",true);
         c.add("accountSkills",GSON.toJsonTree(skills));
         c.addProperty("inventoryCapacity", Math.max(0, capacity));
         c.addProperty("bookSlots", Math.max(0, bookSlots)); c.addProperty("generalSlots", Math.max(0, generalSlots));
@@ -191,6 +191,9 @@ public final class MarketAnalysisProtocol {
                 }
                 evidence=Map.copyOf(values);
             }
+            String buyMode=r.has("buyMode")?string(r,"buyMode"):"order",sellMode=r.has("sellMode")?string(r,"sellMode"):"offer";
+            if(!Set.of("order","instant").contains(buyMode)||!Set.of("offer","instant").contains(sellMode))throw new IllegalArgumentException("Unsupported Bazaar strategy");
+            var strategyEvidence=new LinkedHashMap<String,Object>(evidence);strategyEvidence.put("buyMode",buyMode);strategyEvidence.put("sellMode",sellMode);evidence=Map.copyOf(strategyEvidence);
             Map<String,Object> volume=Map.of();
             if(r.has("volumeEvidence")) {
                 var v=r.getAsJsonObject("volumeEvidence");var values=new LinkedHashMap<String,Object>();

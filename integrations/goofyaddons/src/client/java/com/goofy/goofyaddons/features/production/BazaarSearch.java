@@ -45,7 +45,7 @@ final class BazaarSearch {
         for (var slot : menu.slots()) {
             if (slot.empty() || slot.inPlayerInventory()) continue;
             if(slot.customId()!=null && !slot.customId().isBlank()) {
-                if(!productId.equals(slot.customId()))continue;
+                if(!com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(slot,productId))continue;
                 if(identified>=0)return -1;
                 identified=slot.index();continue;
             }

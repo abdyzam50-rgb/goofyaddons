@@ -184,7 +184,7 @@ public final class BazaarInstantBuy {
     private int count(MenuSnapshot menu) {
         int total = 0;
         for (var slot : menu.slots())
-            if (slot.inPlayerInventory() && slot.containerSlot() < 36 && !slot.empty() && productId.equals(slot.customId())) total += slot.count();
+            if (slot.inPlayerInventory() && slot.containerSlot() < 36 && !slot.empty() && ProductIdentity.matches(slot,productId)) total += slot.count();
         return total;
     }
 

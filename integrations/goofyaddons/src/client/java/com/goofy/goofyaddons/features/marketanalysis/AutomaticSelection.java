@@ -33,6 +33,9 @@ public final class AutomaticSelection {
             return new Book(base,from,to,rules.get("name").getAsString(),0,0);
         return null;
     }
+    private static com.goofy.goofyaddons.features.production.BazaarStrategy strategy(MarketAnalysisProtocol.Recommendation r){
+        return com.goofy.goofyaddons.features.production.BazaarStrategy.of("instant".equals(r.executionEvidence().get("buyMode")),"instant".equals(r.executionEvidence().get("sellMode")));
+    }
     public static List<GeneralCalculator.Candidate> general(MarketAnalysisProtocol.Report report,long now,
             JsonObject products,GeneralSettings limits,double tax,double available,int capacity,Set<String> excluded) {
         if(report==null || !TradingSafety.fresh(report.marketAt(),now))return List.of();
@@ -43,7 +46,7 @@ public final class AutomaticSelection {
             // A narrow settings copy keeps every entry check; the report's chosen batch is an upper bound.
             var scoped=new Gson().fromJson(new Gson().toJson(limits),GeneralSettings.class);
             scoped.items=List.of(item);scoped.maxItemsPerOrder=Math.min(scoped.maxItemsPerOrder,r.batch());
-            result.addAll(GeneralCalculator.calculate(products,scoped,tax,available,capacity));
+            result.addAll(GeneralCalculator.calculate(products,scoped,tax,available,capacity).stream().filter(v->v.strategy()==strategy(r)).toList());
         }
         return List.copyOf(result); // Report order already reflects calibrated coins/hour.
     }
@@ -56,7 +59,7 @@ public final class AutomaticSelection {
         for(var r:report.rows()) {
             var book=book(r.inputId(),r.outputId());
             if(!r.kind().equals("BOOK") || !r.configured() || book==null || com.goofy.goofyaddons.features.access.RouteRequirements.book(book.id(),skills)!=null)continue;
-            result.addAll(FlipCalculator.calculate(products,List.of(book),tax,minProfit));
+            var item=FlipCalculator.evaluateStrategy(products,book,tax,minProfit,strategy(r));if(item!=null)result.add(item);
         }
         return List.copyOf(result);
     }

@@ -36,7 +36,7 @@ final class GeneralOrderReview {
         boolean fullySold = saleFill != null && saleFill.filled() == active.quantity;
         long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
         double netExit = ctx.freshQuotes() ? ctx.currentAsk() * (1 - services.taxPercentage() / 100) : -1;
-        boolean holdingLimitHit = active.stage != Stage.PLANNED && !fullySold
+        boolean holdingLimitHit = !services.productionOnly() && active.stage != Stage.PLANNED && !fullySold
                 && TradingSafety.holdingLimit(held, ctx.now(), settings.maxHoldingSeconds,
                     active.unitCost, netExit, settings.maxDrawdownPercentage);
         // Cancel outstanding buys before checking whether acquired stock may be sold.
@@ -70,6 +70,7 @@ final class GeneralOrderReview {
             active.cancelRequested = false;
             if (!ctx.recordAcquisition()) return;
             ctx.restoreFunding(active);
+            if(services.productionOnly() && active.productionBuy){ctx.finishWork();return;}
             trade.selling = true;
             ctx.actions().closeMenu();
             ctx.transition(Step.OPEN_PRODUCT);

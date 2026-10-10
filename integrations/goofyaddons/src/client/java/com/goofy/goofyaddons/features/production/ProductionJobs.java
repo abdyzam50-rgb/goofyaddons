@@ -19,6 +19,7 @@ public final class ProductionJobs {
                     || completedBatches<0 || completedBatches>batches || submittedAt<0 || readyAt<0 || costBasis!=null && (!Double.isFinite(costBasis) || costBasis<0))
                 throw new IllegalArgumentException("Invalid production job");
         }
+        public Job withCost(double cost,String reason){return new Job(id,recipeKey,account,state,batches,workstationSlot,submittedAt,readyAt,cost,petUuid,auctionUuid,reason,completedBatches);}
         public Job withState(State next,String reason){return new Job(id,recipeKey,account,next,batches,workstationSlot,submittedAt,readyAt,costBasis,petUuid,auctionUuid,reason,completedBatches);}
         public Job submitted(int slot,long now,long ready,Double cost){return new Job(id,recipeKey,account,State.WAITING,batches,slot,now,ready,cost,petUuid,auctionUuid,null,completedBatches);}
         public Job completedBatch(){

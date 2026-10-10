@@ -1320,7 +1320,7 @@ public class BazaarFlipper implements Feature {
      * later run wait on, or account for, a task that no longer exists.
      */
     private void clearTransactionState() {
-        navigationRetry.reset();bedrockRecovery.reset();buy.reset();
+        navigationRetry.reset();bedrockRecovery.reset();buy.reset();sell.reset();
         reportedUnclaimedSales = false;
         combine.reset();
         claim.reset();
@@ -1496,7 +1496,7 @@ public class BazaarFlipper implements Feature {
         com.google.gson.JsonObject product = latest == null ? null
                 : latest.getAsJsonObject("products").getAsJsonObject(task.getBook().getLevel(task.getBook().sellLevel()));
         double exit = sale ? price : product == null ? -1
-                : com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(product, "buy_summary");
+                : com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(product, task.instaSell?"sell_summary":"buy_summary");
         var check=BookPricePolicy.check(sale,latest!=null,price,task.getReservedUnitCost(),
                 task.getBook().getQtyAmount(task.getBook().level()),exit,
                 settings().bazaarTaxPercentage(),settings().minNetProfit());

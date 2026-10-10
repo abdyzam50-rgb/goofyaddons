@@ -20,6 +20,12 @@ public final class GeneralPosition {
     com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast;
     Double confirmedCancelRefund;
     boolean settlementPending;
+    boolean instantBuy,instantSell;
+    boolean productionBuy;
+    boolean completed;
+    Double verifiedProceeds;
+    double maximumBuyPrice;
+    double minimumSellPrice;
     double cost() { return quantity * unitCost; }
 
     /** Validate the full batch before an engine can adopt any ownership from a storage adapter. */
@@ -35,6 +41,10 @@ public final class GeneralPosition {
                     || position.confirmedCancelRefund != null && (!position.cancelRequested || position.stage != GeneralPosition.Stage.BUY_ORDER
                         || !position.purchasePriceKnown || !Double.isFinite(position.confirmedCancelRefund)
                         || Math.abs(position.confirmedCancelRefund - position.cost()) > 0.51)
+                    || !Double.isFinite(position.maximumBuyPrice) || position.maximumBuyPrice<0
+                    || !Double.isFinite(position.minimumSellPrice) || position.minimumSellPrice<0
+                    || position.productionBuy && position.maximumBuyPrice<=0
+                    || position.verifiedProceeds!=null && (!Double.isFinite(position.verifiedProceeds)||position.verifiedProceeds<0)
                     || position.stage == null || !ids.add(position.item.id())) {
                 throw new IllegalArgumentException("Invalid saved order position");
             }

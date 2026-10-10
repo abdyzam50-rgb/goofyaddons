@@ -41,6 +41,7 @@ public final class ProductionCommands {
                 .then(ClientCommands.literal("acknowledge").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
                     var manager=FeatureManager.INSTANCE;var actions=new LiveActions();
                     if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()){actions.message("Stop production/trading before acknowledging a reviewed job.");return 0;}
+                    if(manager.production().hasRetainedOrders()){actions.message("Retained craft Bazaar orders still own items/coins; inspect and reconcile them before acknowledging the parent run.");return 0;}
                     try {
                         String account=new LiveWorld().username();
                         if(!new LiveWorld().inWorld())throw new IllegalArgumentException("Join the account whose job you reviewed");

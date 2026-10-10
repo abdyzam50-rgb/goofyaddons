@@ -47,6 +47,12 @@ public final class ProductionRun implements ProductionLoop.Ports {
         Double instantBuyCost(String id, int units);
         /** Instant-sell value of these units from fresh quotes, before tax, or null when unknown. */
         Double instantSellValue(String id, int units);
+        default Double orderBuyCost(String id,int units){return null;}
+        default Double offerSellValue(String id,int units){return null;}
+        default boolean queueOrder(String id,int units,double price,boolean buy,double limit){return false;}
+        default com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result tickOrder(boolean ownsMenu){return null;}
+        default boolean acknowledgeOrder(){return false;}
+        default boolean orderNeedsMenu(){return true;}
         String name(String id);
         /** Queues a craft through the crafting feature; returns its job id or null. */
         String queueCraft(String output, int batches);
@@ -71,6 +77,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private boolean ownsMenu;
     private BazaarInstantBuy buying;
     private BazaarInstantSell selling;
+    private BazaarStrategy strategy=BazaarStrategy.INSTANT_INSTANT;
+    private boolean orderActive,orderCostRecorded;
     private ProductionRecipe recipe;
     private String craftJob, listingJob, workstationJob;
     private String ingredientCraftJob;
@@ -120,6 +128,12 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(recipe.kind()!=ProductionRecipe.Kind.CRAFT||!catalog.byKey(recipe.key()).filter(recipe::equals).isPresent())throw new IllegalArgumentException("Unverified craft recipe");
         var run=start(env,catalog,recipe.outputId(),recipe.kind(),batches,-1,price,fee);run.recipe=recipe;return run;
     }
+    static ProductionRun startCraft(Environment env,RecipeCatalog catalog,ProductionRecipe recipe,int batches,long price,double fee,BazaarStrategy strategy)throws Exception {
+        var run=startCraft(env,catalog,recipe,batches,price,fee);run.strategy=strategy;return run;
+    }
+    public BazaarStrategy strategy(){return strategy;}
+    public Double expectedBazaarSale(){return strategy.instantSell?env.instantSellValue(output,outputUnits()):env.offerSellValue(output,outputUnits());}
+    private Double purchaseCost(String id,int units){return strategy.instantBuy?env.instantBuyCost(id,units):env.orderBuyCost(id,units);}
     public double spent(){return spent;}
     public int outputUnits(){return Math.multiplyExact(batches,recipe==null?1:recipe.outputCount());}
 
@@ -141,7 +155,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** Reselect only when no transaction or craft/compactor intent has been journaled. */
     public boolean cancelUnstarted(String reason)throws Exception {
-        if(stage()!=Stage.PROCURE||spent!=0||buying!=null||ingredientCraftJob!=null||craftJob!=null)return false;
+        if(stage()!=Stage.PROCURE||spent!=0||buying!=null||orderActive||ingredientCraftJob!=null||craftJob!=null)return false;
         var job=env.jobs().find(jobId).orElse(null);
         if(job==null||job.state()!=ProductionJobs.State.PLANNED)return false;
         env.jobs().put(job.withState(ProductionJobs.State.CANCELLED,reason));return true;
@@ -169,6 +183,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     /** True while this step owns a menu, including a verified craft-to-craft handoff. */
     public boolean wantsMenu() {
         if (finished()) return false;
+        if(orderActive)return env.orderNeedsMenu();
         return switch (loop.stage()) {
             case PROCURE -> !env.craftQueued() && (compactorClearance.needsMenu(env.menu()) || hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
             case PROCESS -> kind==ProductionRecipe.Kind.CRAFT ? !env.craftQueued() && hasReusableCraftMenu() : workstationMenuOpen();
@@ -187,6 +202,16 @@ public final class ProductionRun implements ProductionLoop.Ports {
     // ---- Stages ------------------------------------------------------------------------
 
     @Override public Outcome procure(long now) {
+        if(orderActive) {
+            var result=env.tickOrder(ownsMenu);
+            if(result==null || result.failed())return Outcome.uncertain(result==null?"Input order unavailable":result.reason());
+            if(!result.done())return Outcome.pending("Waiting for ingredient order fills and verified claims");
+            try {
+                if(!orderCostRecorded){spent+=result.cost();env.jobs().put(parent().withCost(spent,"Ingredient order claim verified"));orderCostRecorded=true;}
+                if(!env.acknowledgeOrder())return Outcome.uncertain("Claimed ingredient handoff could not be persisted");
+                orderActive=false;orderCostRecorded=false;return Outcome.pending("Claimed ingredients; checking remaining inputs");
+            }catch(Exception failure){return Outcome.uncertain("Ingredient order cost could not be persisted");}
+        }
         if(ingredientCraftJob!=null) {
             if(env.craftQueued())return Outcome.pending("Crafting intermediate ingredients");
             var result=childFinished(ingredientCraftJob,Set.of(ProductionJobs.State.OUTPUT_READY,ProductionJobs.State.DONE),"Ingredient craft");
@@ -198,7 +223,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if (!ownsMenu) return Outcome.pending("Waiting to buy " + env.name(buying.productId()));
             if(!buying.submitted()) {
                 String changed=env.procurementBlock();
-                var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),env::instantBuyCost);
+                var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),this::purchaseCost);
                 if(changed==null&&!basket.complete())changed="No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct());
                 if(changed==null&&(!Double.isFinite(env.spendable())||basket.total()>env.spendable()))changed="All remaining ingredients would exceed spendable capital; nothing bought";
                 if(changed!=null){
@@ -243,11 +268,18 @@ public final class ProductionRun implements ProductionLoop.Ports {
             var text = new StringJoiner(", ");missing.forEach((id, n) -> text.add(n + " " + env.name(id)));
             return Outcome.blocked("Missing " + text + "; add them to your inventory or turn on automatic ingredient buying");
         }
-        var basket=ProductionPlanner.purchaseQuote(missing,env::instantBuyCost);
+        var basket=ProductionPlanner.purchaseQuote(missing,this::purchaseCost);
         if(!basket.complete())return Outcome.blocked("No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct()));
         if(!Double.isFinite(env.spendable())||basket.total()>env.spendable())return Outcome.blocked("All remaining ingredients would exceed spendable capital; nothing bought");
         var first = missing.entrySet().iterator().next();
         double limit=basket.limits().get(first.getKey());
+        if(!strategy.instantBuy) {
+            try{env.jobs().put(parent().withState(ProductionJobs.State.BUYING,"Ingredient buy-order intent: "+first.getKey()+" x "+first.getValue()));}
+            catch(Exception failure){return Outcome.blocked("Ingredient order intent could not be saved");}
+            int units=Math.min(4096,first.getValue());double unit=basket.limits().get(first.getKey())/first.getValue()/1.03;
+            if(!env.queueOrder(first.getKey(),units,unit,true,limit/first.getValue()))return Outcome.uncertain("Ingredient order could not be queued; check retained craft orders");
+            orderActive=true;return Outcome.pending("Placing ingredient buy order");
+        }
         buying = new BazaarInstantBuy(first.getKey(), env.name(first.getKey()), first.getValue(), limit,
                 reason -> env.jobs().put(parent().withState(ProductionJobs.State.BUYING, reason)));
         return Outcome.pending("Buying " + first.getValue() + " " + env.name(first.getKey()));
@@ -334,6 +366,24 @@ public final class ProductionRun implements ProductionLoop.Ports {
     }
 
     private Outcome sellOnBazaar(long now) {
+        if(!strategy.instantSell) {
+            if(!orderActive) {
+                int units=held().getOrDefault(output,0);Double value=env.offerSellValue(output,units);
+                if(units!=outputUnits())return Outcome.uncertain("Craft output quantity differs before sell-offer handoff");
+                if(value==null)return Outcome.blocked("Waiting for a fresh sell-offer quote");
+                try{env.jobs().put(parent().withState(ProductionJobs.State.LISTING,"Craft sell-offer intent"));}
+                catch(Exception failure){return Outcome.blocked("Sell-offer intent could not be saved");}
+                if(!env.queueOrder(output,units,value/units,false,value/units*SALE_FLOOR))return Outcome.uncertain("Craft sell offer could not be queued; retained orders require review");
+                orderActive=true;return Outcome.pending("Placing crafted output sell offer");
+            }
+            var result=env.tickOrder(ownsMenu);
+            if(result==null||result.failed())return Outcome.uncertain(result==null?"Sell offer unavailable":result.reason());
+            if(!result.done())return Outcome.pending("Waiting for crafted output sell offer and coin claim");
+            if(result.proceeds()==null)return Outcome.uncertain("Sell-offer proceeds are unconfirmed");
+            env.saleConfirmed(jobId,output,result.units(),result.proceeds());
+            if(!env.acknowledgeOrder())return Outcome.uncertain("Sale handoff could not be saved");
+            orderActive=false;return Outcome.DONE;
+        }
         if (!ownsMenu) return Outcome.pending("Waiting to sell " + env.name(output));
         if (selling == null) {
             int units = held().getOrDefault(output, 0);
@@ -395,7 +445,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             }
             if (need.isEmpty()) return new Selection(Map.of(),reserved);
             double cost = 0;
-            for (var e : IngredientPreparation.plan(catalog,need,held,reserved).purchases().entrySet()) { Double c = env.instantBuyCost(e.getKey(), e.getValue()); cost += c == null ? 1e18 : c; }
+            for (var e : IngredientPreparation.plan(catalog,need,held,reserved).purchases().entrySet()) { Double c = purchaseCost(e.getKey(), e.getValue()); cost += c == null ? 1e18 : c; }
             if (best == null || cost < bestCost) { best = new Selection(need,reserved); bestCost = cost; }
         }
         return best == null ? new Selection(Map.of(),Map.of()) : best;
@@ -403,7 +453,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** Fresh, fee-inclusive ceiling for every still-missing purchase, including base preparations. */
     public Double remainingPurchaseCost() {
-        var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),env::instantBuyCost);
+        var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),this::purchaseCost);
         return basket.complete()?basket.total():null;
     }
 

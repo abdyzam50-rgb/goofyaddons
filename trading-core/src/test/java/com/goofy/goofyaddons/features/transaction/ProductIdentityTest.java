@@ -37,4 +37,13 @@ class ProductIdentityTest {
         assertFalse(ProductIdentity.productPage(page("Bazaar ➜ Gold Ingot", "Enchanted Gold Ingot", "Gold Ingot"),
                 "GOLD_INGOT", "Gold Ingot", 15));
     }
+    @Test void bookIdentityRequiresOneExactEnchantmentAndLevel(){
+        var book=SlotView.enchantedBook(13,false,13,"overload",4,List.of(),"Overload IV");
+        assertTrue(ProductIdentity.matches(book,"ENCHANTMENT_OVERLOAD_4"));
+        assertFalse(ProductIdentity.matches(book,"ENCHANTMENT_OVERLOAD_5"));
+        assertFalse(ProductIdentity.matches(book,"ENCHANTMENT_POWER_4"));
+        var mixed=new SlotView(13,false,13,false,"Overload IV","Overload IV",List.of(),"ENCHANTED_BOOK",java.util.Map.of("overload",4,"power",4),1,1);
+        assertFalse(ProductIdentity.matches(mixed,"ENCHANTMENT_OVERLOAD_4"));
+    }
+
 }

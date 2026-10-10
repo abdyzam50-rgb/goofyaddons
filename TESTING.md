@@ -332,3 +332,26 @@ the user's in-game test.
 Release validation: Java tests, calculator integration tests and the mod build
 passed; 1,094 tests, zero failures, errors or skips. The 0.2.54 JAR includes the
 bundled calculator and integrated GUI. No public Worker deployment is required.
+
+
+## 0.2.55 multi-strategy Bazaar pipelines
+
+ProductionRunTest drives order procurement → verified input handoff → crafting →
+output offer → verified coin claim, checking persisted cost and exactly-once sale
+accounting. An uncertain input order cannot queue crafting or fabricate basis.
+ProductionOrderHandoffTest drives the reused ordinary order engine: claimed
+ingredients never become sell offers, basket ceilings replace ordinary-item entry
+profit filters, and pre-existing inventory/orders cannot be overwritten.
+BookInstantRoutesTest drives the book engine through verified instant purchase
+and sale, including unreadable purse updates and single transaction submission.
+ProductIdentityTest rejects wrong-level and multi-enchantment book lookalikes.
+CraftFlipPlannerTest covers a recipe profitable only with order inputs and an
+output offer. The adapter test verifies strategy-aware book selection, one winning
+strategy per route, arithmetic, budget and legacy order/offer compatibility.
+
+Validation: mod build, Java suite and calculator integration checks passed;
+1,103 Java tests with no failures/errors/skips. The adapter suite passed all 20
+Node tests, including the local HTTP server checks. In-game server timing and
+full GUI navigation still require player testing. Production offers currently
+wait for full settlement without repricing; interrupted craft order journals are
+retained for review. No public Worker deployment was performed.

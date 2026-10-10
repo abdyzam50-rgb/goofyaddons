@@ -12,10 +12,12 @@ import java.util.List;
  * confirmation. Placement itself is verified by {@link BookPlacement}.
  */
 final class BookBuy {
+    private com.goofy.goofyaddons.features.production.BazaarInstantBuy instant;
+    private Task instantTask;
     private long signSubmittedAt;
     private int signRestarts;
 
-    void reset() { signSubmittedAt = 0; signRestarts = 0; }
+    void reset() { instant=null;instantTask=null;signSubmittedAt = 0; signRestarts = 0; }
 
     /** Forgets a written amount whose menu is being reopened. */
     void menuReopened() { signSubmittedAt = 0; }
@@ -43,6 +45,7 @@ final class BookBuy {
         Task task = ctx.activeTask();
         String prerequisite = com.goofy.goofyaddons.features.access.RouteRequirements.book(task.getBook().id(), ctx.services().observedSkills());
         if (prerequisite != null) { ctx.skipBookRequirement(task, prerequisite); return; }
+        if(task.instaBuy){instant(ctx,task);return;}
         if (!ctx.screenOpen()) ctx.clock().start(ctx.delay());
         if (!ctx.screenOpen() && ctx.clock().shouldFire()) {
             ctx.actions().command("bz " + task.getBook().name().replace("Ultimate", ""));
@@ -126,6 +129,36 @@ final class BookBuy {
                 default -> { }
             }
             ctx.state(State.VERIFY_PLACEMENT);
+        }
+    }
+
+    private void instant(BookContext ctx,Task task){
+        if(instantTask!=task){instant=null;instantTask=task;}
+        var book=task.getBook();int units=task.getAmountToOrder();
+        if(instant==null){
+            if(ctx.menu()==null || units>ctx.menu().emptyInventorySlots()){ctx.deferBookPurchase(task,"insufficient-inventory-for-instant-books");return;}
+            var quotes=ctx.services().latestQuotes();
+            if(quotes==null)return;
+            Double quote=com.goofy.goofyaddons.features.production.BazaarStrategy.INSTANT_OFFER.buy(quotes.getAsJsonObject("products").getAsJsonObject(book.getLevel(book.level())),units);
+            if(quote==null || !ctx.bookPriceAllowed(task,quote*1.03/units,false)){ctx.deferBookPurchase(task,"instant-buy-price-or-depth");return;}
+            double limit=quote*1.03;
+            if(!ctx.capital().resize("books",book.id(),Math.max(ctx.capital().cost("books",book.id()),limit),limit,ctx.services().purse())){ctx.deferBookPurchase(task,"insufficient-spendable-capital");return;}
+            instant=new com.goofy.goofyaddons.features.production.BazaarInstantBuy(book.getLevel(book.level()),book.getRomanLevel(book.level()),units,limit,reason->{
+                ctx.expose(book.id());task.recordPlacement(ctx.now());if(!ctx.checkpoint())throw new IllegalStateException("Book intent not saved");
+            });
+        }
+        var result=instant.tick(ctx.menu(),ctx.signOpen(),ctx.actions(),ctx.services().purse(),ctx.now());
+        switch(result){
+            case BOUGHT -> {
+                int bought=instant.amount();double cost=instant.spent();
+                ctx.accounting().acquire(task.getProfitTradeId(),"books",book.name(),task.getProfitTradeId()+":instant-buy:"+ctx.now(),bought,cost);
+                if(task.assignBook(book,book.level(),0,bought)<0){ctx.safetyHalt("Instant book input assignment failed; inventory retained");return;}
+                task.setReservedUnitCost(Math.max(task.getReservedUnitCost(),cost/bought));ctx.capital().purchased("books",book.id());ctx.fundedHoldings(task);
+                task.setBookState(task.bookList.stream().anyMatch(v->v.location!=0)?Task.BookState.ANVIL:Task.BookState.COMBINE);
+                instant=null;ctx.checkpoint();ctx.actions().closeMenu();ctx.state(State.IDLE);
+            }
+            case BLOCKED,UNCERTAIN -> ctx.safetyHalt(instant.failure());
+            default -> {}
         }
     }
 

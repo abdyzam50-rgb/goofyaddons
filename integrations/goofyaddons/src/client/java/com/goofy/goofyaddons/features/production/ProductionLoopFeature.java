@@ -16,16 +16,17 @@ public final class ProductionLoopFeature implements Feature {
     private final CraftFlipSelection selection=new CraftFlipSelection();
     private double automaticBudget;
     private long nextSelection;
+    public boolean hasRetainedOrders(){return orders.retained();}
     public void refreshSelection(){selection.refresh();}
     public Map<String,Object> craftPlan(){
-        var view=new LinkedHashMap<String,Object>(selection.view());view.put("queued",queued());view.put("activity",activity());
+        var view=new LinkedHashMap<String,Object>(selection.view());view.put("orders",orders.diagnosticState());view.put("queued",queued());view.put("activity",activity());
         view.put("selectionStatus",discoveryReason());view.put("eligibleRoutes",selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count():null);view.put("plannedBudget",automaticBudget);view.put("spent",run==null?0:run.spent());return view;
     }
     public void showCraftPlans(){
         selection.refresh();var actions=new LiveActions();
         var rows=selection.currentRoutes();
         if(rows.isEmpty())actions.message("No feasible craft routes: "+discoveryReason()+". Minimum net profit "+Math.round(GoofyConfig.INSTANCE.craftFlips.minimumProfit)+", maximum batches "+GoofyConfig.INSTANCE.craftFlips.maxBatches+". See debug export for excluded candidate counts.");
-        rows.stream().limit(10).forEach(r->actions.message(RecipeCatalog.instance().name(r.recipe().outputId())+" · "+r.venue()+" · "+r.batches()+" batches · conservative net "+Math.round(r.profit())+" · "+(r.eligible()?"eligible":r.reason())));
+        rows.stream().limit(10).forEach(r->actions.message(RecipeCatalog.instance().name(r.recipe().outputId())+" · "+r.venue()+" · "+r.strategy().label()+" · "+r.batches()+" batches · conservative net "+Math.round(r.profit())+" · "+(r.eligible()?"eligible":r.reason())));
     }
     private String discoveryReason() {
         if(FeatureManager.INSTANCE.accountRequirementsPending())return "Checking account prerequisites";
@@ -43,8 +44,8 @@ public final class ProductionLoopFeature implements Feature {
         if(candidate==null)return;
         try {
             automaticBudget=candidate.capital();
-            run=ProductionRun.startCraft(environment(true,false),RecipeCatalog.instance(),candidate.recipe(),candidate.batches(),candidate.binPrice(),candidate.fee());
-            new LiveActions().message("Automatic craft: "+RecipeCatalog.instance().name(run.output())+" · "+candidate.batches()+" batches · budget "+Math.round(automaticBudget)+" · conservative net "+Math.round(candidate.profit()));
+            run=ProductionRun.startCraft(environment(true,false),RecipeCatalog.instance(),candidate.recipe(),candidate.batches(),candidate.binPrice(),candidate.fee(),candidate.strategy());
+            new LiveActions().message("Automatic craft: "+RecipeCatalog.instance().name(run.output())+" · "+candidate.strategy().label()+" · "+candidate.batches()+" batches · budget "+Math.round(automaticBudget)+" · conservative net "+Math.round(candidate.profit()));
             Diagnostics.event("INFO","production.auto_selected",candidate.describe(RecipeCatalog.instance()));
         }catch(Exception failed){automaticBudget=0;Diagnostics.failure("production.auto_queue_failed",failed);FeatureManager.INSTANCE.safetyPause("Automatic craft could not be journaled; review production jobs");}
     }
@@ -131,6 +132,7 @@ public final class ProductionLoopFeature implements Feature {
         }
     }
 
+    private final com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders orders=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders();
     private long nextAction;
 
     public void start() { running = true; paused = false; }
@@ -144,6 +146,7 @@ public final class ProductionLoopFeature implements Feature {
     /** Steps that need no menu (delegated crafts and listings, timers) advance here. */
     @Override public void poll() {
         if(!isRunning())return;
+        orders.poll();
         if(run==null)selectAutomatic();
         if(run==null||run.wantsMenu())return;
         step(false);
@@ -206,7 +209,7 @@ public final class ProductionLoopFeature implements Feature {
                         why + "; inspect inventory, workstation and listings before requeueing"));
             }
         } catch (Exception failure) { Diagnostics.failure("production.journal_failed", failure); }
-        run=null;automaticBudget=0;
+        orders.stop();run=null;automaticBudget=0;
     }
 
     private ProductionRun.Environment environment(boolean buyInputs) throws java.io.IOException {
@@ -233,7 +236,7 @@ public final class ProductionLoopFeature implements Feature {
             public Set<String> occupied() { return CapitalManager.INSTANCE.occupiedProducts(); }
             public String procurementBlock() {
                 if(automaticBudget<=0||run==null)return null;
-                Double value=instantSellValue(run.output(),run.outputUnits()),remaining=run.remainingPurchaseCost();
+                Double value=run.expectedBazaarSale(),remaining=run.remainingPurchaseCost();
                 if(value==null||remaining==null)return "Fresh input/output depth is unavailable; automatic purchases are waiting";
                 double currentCost=run.spent()+remaining;
                 if(!run.hasVerifiedInputBasis())currentCost=Math.max(currentCost,automaticBudget); // Held materials are not free.
@@ -254,6 +257,17 @@ public final class ProductionLoopFeature implements Feature {
                 var product = market.getAsJsonObject("products").get(id);
                 return product != null && product.isJsonObject() ? ProductionPlanner.instantSellValue(product.getAsJsonObject(), units) : null;
             }
+            public Double orderBuyCost(String id,int units){return strategyQuote(id,units,true);}
+            public Double offerSellValue(String id,int units){return strategyQuote(id,units,false);}
+            private Double strategyQuote(String id,int units,boolean buy){
+                var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
+                if(market==null)return null;var product=market.getAsJsonObject("products").getAsJsonObject(id);
+                return buy?BazaarStrategy.ORDER_OFFER.buy(product,units):BazaarStrategy.ORDER_OFFER.sell(product,units);
+            }
+            public boolean queueOrder(String id,int units,double price,boolean buy,double limit){return orders.queue(id,name(id),units,price,buy,limit);}
+            public com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result tickOrder(boolean ownsMenu){return orders.tick(ownsMenu);}
+            public boolean acknowledgeOrder(){return orders.acknowledge();}
+            public boolean orderNeedsMenu(){return orders.needsMenu();}
             public String name(String id) { return RecipeCatalog.instance().name(id); }
             public String queueCraft(String output, int batches) {
                 var crafting = FeatureManager.INSTANCE.crafting();

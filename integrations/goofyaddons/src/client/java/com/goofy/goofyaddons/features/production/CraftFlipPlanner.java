@@ -9,13 +9,13 @@ import java.util.*;
 /** Recompute whole craft batches from verified grids, depth, fees, capacity and account evidence. */
 final class CraftFlipPlanner {
     record Route(ProductionRecipe recipe,int batches,String venue,double capital,double profit,long binPrice,
-            double fee,double score,String reason) {
+            double fee,double score,String reason,BazaarStrategy strategy) {
         boolean eligible(){return reason==null;}
         Map<String,Object> describe(RecipeCatalog catalog) {
             var row=new LinkedHashMap<String,Object>();
             row.put("recipeKey",recipe.key());row.put("output",recipe.outputId());row.put("name",catalog.name(recipe.outputId()));
             row.put("batches",batches);row.put("outputUnits",recipe.outputCount()*batches);row.put("venue",venue);
-            row.put("capital",capital);row.put("profit",profit);row.put("rankingScore",score);row.put("eligible",eligible());
+            row.put("strategy",strategy.name());row.put("buySell",strategy.label());row.put("capital",capital);row.put("profit",profit);row.put("rankingScore",score);row.put("eligible",eligible());
             row.put("reason",reason);row.put("requirement",recipe.requirement());row.put("ingredients",recipe.ingredients());
             return row;
         }
@@ -50,7 +50,7 @@ final class CraftFlipPlanner {
             if(requirement==null)requirement=RouteRequirements.product(recipe.outputId(),unlocks);
             if(requirement==null)requirement=RouteRequirements.products(IngredientPreparation.dependencies(catalog,recipe.ingredients().keySet()),unlocks);
             int limit=bz?Math.min(16,maxBatches):1;
-            for(int batches=1;batches<=limit;batches++)try {
+            for(var strategy:bz?BazaarStrategy.values():new BazaarStrategy[]{BazaarStrategy.INSTANT_INSTANT}) for(int batches=1;batches<=limit;batches++)try {
                 var quantities=new TreeMap<String,Integer>();
                 final int count=batches;recipe.ingredients().forEach((id,n)->quantities.put(id,Math.multiplyExact(n,count)));
                 var preparation=IngredientPreparation.plan(catalog,quantities,Map.of());
@@ -61,7 +61,7 @@ final class CraftFlipPlanner {
                 int slots=1;double cost=0;boolean priced=true;
                 for(var entry:preparation.purchases().entrySet()) {
                     var product=products.get(entry.getKey());
-                    Double amount=product!=null&&product.isJsonObject()?ProductionPlanner.instantBuyCost(product.getAsJsonObject(),entry.getValue()):null;
+                    Double amount=product!=null&&product.isJsonObject()?strategy.buy(product.getAsJsonObject(),entry.getValue()):null;
                     if(amount==null){priced=false;break;}
                     cost+=amount;slots+=(entry.getValue()+63)/64;
                 }
@@ -75,7 +75,7 @@ final class CraftFlipPlanner {
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;
                 if(bz) {
                     var product=products.getAsJsonObject(recipe.outputId());
-                    Double gross=ProductionPlanner.instantSellValue(product,recipe.outputCount()*batches);
+                    Double gross=strategy.sell(product,recipe.outputCount()*batches);
                     if(gross==null){exclude(excluded,"Insufficient Bazaar sell depth");continue;}
                     net=gross*ProductionRun.SALE_FLOOR*(1-bazaarTax/100);
                     var quick=product.getAsJsonObject("quick_status");
@@ -98,9 +98,9 @@ final class CraftFlipPlanner {
                 double capital=cost*1.03+fee,profit=net-capital;
                 if(!Double.isFinite(profit)||profit<minimumProfit||profit<=0){exclude(excluded,"Below minimum net profit after fees and price allowance");continue;}
                 if(capital>budget)reason="Whole batch exceeds spendable budget";
-                double seconds=60+preparation.purchases().size()*20+preparation.crafts().size()*15+batches*3;
+                double seconds=(strategy.instantBuy?0:180)+(strategy.instantSell?0:180)+60+preparation.purchases().size()*20+preparation.crafts().size()*15+batches*3;
                 double score=profit/seconds*liquidity;
-                var route=new Route(recipe,batches,sale,capital,profit,price,fee,score,reason);
+                var route=new Route(recipe,batches,sale,capital,profit,price,fee,score,reason,strategy);
                 var old=best.get(recipe.outputId());
                 if(old==null||route.eligible()&&!old.eligible()||route.eligible()==old.eligible()&&route.score()>old.score())best.put(recipe.outputId(),route);
             }catch(RuntimeException malformed){/* Invalid quotes/unsupported grids never authorize a route. */}

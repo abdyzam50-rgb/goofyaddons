@@ -114,13 +114,18 @@ public class FlipCalculator {
         double sellBid = topPrice(sell, "sell_summary");
         double sellAsk = topPrice(sell, "buy_summary");
         if (bid <= 0 || ask <= 0 || sellBid <= 0 || sellAsk <= 0) return null;
-        boolean instaBuy = (ask - bid) / ask * 100 <= book.instaBuyPercentage();
-        boolean instaSell = (sellAsk - sellBid) / sellAsk * 100 <= book.instaSellPercentage();
-        // The UI uses the existing top order price. No invented price improvement.
-        double cost = (instaBuy ? ask : bid) * book.getQtyAmount(book.level());
-        double revenue = (instaSell ? sellBid : sellAsk) * (1 - taxPercentage / 100);
-        double profit = revenue - cost;
-        if (!Double.isFinite(profit) || profit <= 0 || profit < minimumProfit) return null;
+        return evaluateStrategy(products,book,taxPercentage,minimumProfit,com.goofy.goofyaddons.features.production.BazaarStrategy.of(
+                (ask-bid)/ask*100<=book.instaBuyPercentage(),(sellAsk-sellBid)/sellAsk*100<=book.instaSellPercentage()));
+    }
+    public static FlipItem evaluateStrategy(JsonObject products,Book book,double taxPercentage,double minimumProfit,com.goofy.goofyaddons.features.production.BazaarStrategy strategy){
+        if(products==null)return null;
+        JsonObject buy=products.getAsJsonObject(book.getLevel(book.level())),sell=products.getAsJsonObject(book.getLevel(book.sellLevel()));
+        if(buy==null||sell==null)return null;
+        boolean instaBuy=strategy.instantBuy,instaSell=strategy.instantSell;
+        Double costQuote=strategy.buy(buy,book.getQtyAmount(book.level())),saleQuote=strategy.sell(sell,1);
+        if(costQuote==null||saleQuote==null)return null;
+        double cost=costQuote,revenue=saleQuote*(1-taxPercentage/100),profit=revenue-cost;
+        if(!Double.isFinite(profit)||profit<=0||profit<minimumProfit)return null;
         JsonObject buyQuick = buy.getAsJsonObject("quick_status");
         JsonObject sellQuick = sell.getAsJsonObject("quick_status");
         if (buyQuick == null || sellQuick == null) return null;

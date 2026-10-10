@@ -1,4 +1,4 @@
-// Supported order-only route adapter. Predictions never authorize a Minecraft action.
+// Supported Bazaar strategies for ordinary-item and book execution. Predictions never authorize a Minecraft action.
 import { assembleMarket, quotesFromBazaar, buyLeg, sellLeg, evaluate, DEFAULT_SETTINGS, DEFAULT_PROFILE,
   enchantRules, booksNeeded, combineXpCost, parseBookId, actionSeconds, curve, at, seriousFlags } from './engine.mjs';
 import mutationCatalog from './mutation-products.json' with { type: 'json' };
@@ -95,7 +95,8 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const baseSettings = { ...DEFAULT_SETTINGS, coins, clickDelayMs: click, includeFlagged: false };
   const rows = [];
   const eligible = m => m && m.bid > 0 && m.ask > 0 && !excluded.has(m.id) && !excluded.has(parseBookId(m.id)?.enchant);
-  const add = (kind, source, target, n, level = 0, sellLevel = 0) => {
+  const strategies=c.bazaarStrategies===true?[['order','offer'],['instant','offer'],['order','instant'],['instant','instant']]:[['order','offer']];
+  const add = (kind, source, target, n, level = 0, sellLevel = 0, buyMode = 'order', sellMode = 'offer') => {
     if (!eligible(source) || !eligible(target)) return;
     const selectionKey=kind==='BOOK'?`${parseBookId(source.id).enchant}:${level}:${sellLevel}`:source.id;
     const supported=kind==='GENERAL' ? !!automaticCatalog.products[source.id] :
@@ -118,7 +119,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
     if (entry) { reject('filtered', entry); return; }
     const settings = { ...baseSettings, checkIntervalMin: (kind === 'BOOK' ? bookCheck : check) / 60 };
     const ctx = { market, recipes: new Map(), settings, profile: { ...DEFAULT_PROFILE, ignoreRequirements: false } };
-    const buy = buyLeg(ctx, source, n, 'order'), sell = sellLeg(ctx, target, 'offer');
+    const buy = buyLeg(ctx, source, n, buyMode), sell = sellLeg(ctx, target, sellMode);
     buy.maxQty = n * maxBatch; sell.maxQty = maxBatch;
     // Keep the user's exact tax (which need not equal one of the calculator's three perk tiers).
     sell.netPrice = sell.grossPrice * (1 - tax);
@@ -139,21 +140,21 @@ export function recommend(body, history, provenance, now = Date.now(), execution
       : kind === 'BOOK' ? (profitPerOutput < bookMinProfit ? 'minimum-profit' : null)
       : profitPerOutput * batch < g.minProfitPerBatch ? 'minimum-profit' : profitPerOutput / o.costPerUnit * 100 < g.minMarginPercentage ? 'minimum-margin' : null;
     if (economics) { reject('filtered', economics); return; }
-    const buyRate = at(curve(buy.fill, settings.checkIntervalMin), n * batch).unitsH;
-    const sellRate = at(curve(sell.fill, settings.checkIntervalMin), batch).unitsH;
+    const buyRate = buyMode==='instant' ? source.ibuyWeek/168 : at(curve(buy.fill, settings.checkIntervalMin), n * batch).unitsH;
+    const sellRate = sellMode==='instant' ? target.isellWeek/168 : at(curve(sell.fill, settings.checkIntervalMin), batch).unitsH;
     // Current traders complete each position before starting its next buy. Cap the upstream
     // pipelined rate by the sum of the two sequential fill times and anvil work.
-    const cycleHours = n * batch / buyRate + batch / sellRate + operations * batch * actionSeconds('anvil_combine', settings) / 3600;
+    const cycleHours = (buyMode==='instant'?actionSeconds('instant_buy',settings)/3600:n * batch / buyRate) + (sellMode==='instant'?actionSeconds('instant_sell',settings)/3600:batch / sellRate) + operations * batch * actionSeconds('anvil_combine', settings) / 3600;
     const outputsPerHour = Math.min(o.unitsH, batch / cycleHours, source.isellWeek/n/168, target.ibuyWeek/168);
     if (!(outputsPerHour > 0) || !Number.isFinite(outputsPerHour)) { reject('filtered', 'no-throughput'); return; }
-    const measured = historyUsed && buy.fill.basis === 'measured' && sell.fill.basis === 'measured';
+    const measured = historyUsed && buy.fill?.basis === 'measured' && sell.fill?.basis === 'measured';
     const routeKey = kind === 'BOOK' ? `${parseBookId(source.id).enchant}:${level}:${sellLevel}` : source.id;
     rows.push({ kind, routeKey, inputId: source.id, outputId: target.id, inputName: source.name, outputName: target.name,
       level, sellLevel, inputsPerOutput: n, batch, inputUnits: n * batch,
-      buyPrice: buy.price, sellPrice: sell.grossPrice, costPerOutput: o.costPerUnit, profitPerOutput,
+      buyMode,sellMode,buyPrice: o.costPerUnit/n, sellPrice: sell.grossPrice, costPerOutput: o.costPerUnit, profitPerOutput,
       profitPerBatch: profitPerOutput * batch, capitalUsed: sequentialCapital,
       outputsPerHour, coinsPerHour: outputsPerHour * profitPerOutput, cycleSeconds: batch / outputsPerHour * 3600,
-      confidence: measured ? 'MEASURED' : 'ESTIMATED', buyBasis: buy.fill.basis, sellBasis: sell.fill.basis,
+      confidence: measured ? 'MEASURED' : 'ESTIMATED', buyBasis: buy.fill?.basis??'estimated', sellBasis: sell.fill?.basis??'estimated',
       configured: c.automaticSelection===true || (kind === 'BOOK' ? configuredBooks.has(routeKey) : configuredGeneral.has(routeKey)),
       volumeEvidence:{inputWeeklyAveragePerDay:volumes.get(source.id).buyWeek*24,outputWeeklyAveragePerDay:volumes.get(target.id).sellWeek*24,
         inputRecentPerDay:volumes.get(source.id).recentBuy*24,outputRecentPerDay:volumes.get(target.id).recentSell*24,
@@ -167,7 +168,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
       assumptions: [...ASSUMPTIONS] });
   };
   if (generalSlots > 0 && c.mode !== 'BOOKS') for (const m of market.values()) {
-    if (!m.id.startsWith('ENCHANTMENT_')) add('GENERAL', m, m, 1);
+    if (!m.id.startsWith('ENCHANTMENT_')) for(const [buy,sell] of strategies)add('GENERAL',m,m,1,0,0,buy,sell);
   }
   if (bookSlots > 0 && c.mode !== 'GENERAL') for (const rule of Object.values(enchantRules())) {
     if (rule.combine_status !== 'combinable' || !rule.combine_cap) continue;
@@ -179,14 +180,16 @@ export function recommend(body, history, provenance, now = Date.now(), execution
         const key = `${rule.id}:${from}:${to}`;
         skip('unsupported', 'combine-needs-xp', 'BOOK', key, !c.automaticSelection && configuredBooks.has(key)); continue;
       }
-      add('BOOK', market.get(`${rule.id}_${from}`), market.get(`${rule.id}_${to}`), n, from, to);
+      for(const [buy,sell] of strategies)add('BOOK', market.get(`${rule.id}_${from}`), market.get(`${rule.id}_${to}`), n, from, to,buy,sell);
     }
   }
   for(const row of rows)executions?.calibrate(row);
   const calibrated=rows.filter(row=>row.executionEvidence);
   rows.sort((a, b) => b.coinsPerHour - a.coinsPerHour || a.capitalUsed - b.capitalUsed || a.routeKey.localeCompare(b.routeKey));
+  // Expose one winning strategy per product/combining route to avoid duplicate ownership.
+  const seen=new Set();const selected=rows.filter(row=>{const key=row.kind+':'+row.routeKey;if(seen.has(key))return false;seen.add(key);return true;});
   const report={ protocol: PROTOCOL, requestId: body.requestId, marketAt, dataAt, generatedAt: now,
-    historyUsed, historyStatus, upstreamCommit: provenance.commit, counts, total: rows.length, rows: rows.slice(0, limit),
+    historyUsed, historyStatus, upstreamCommit: provenance.commit, counts, total: selected.length, rows: selected.slice(0, limit),
     filterReasons, deferred,
     // One provenance block for every consumer: the mod, the local dashboard and diagnostics.
     forecast: { contract: FORECAST_CONTRACT, scoring: SCORING, quoteAt: marketAt, historyAt: dataAt, historyStatus,

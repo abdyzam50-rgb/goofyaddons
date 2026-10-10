@@ -23,12 +23,13 @@ import java.util.regex.Pattern;
  */
 public final class AccountStorage {
     public static final String BOOK_ORDERS = "goofyaddons-book-orders.json";
+    public static final String CRAFT_ORDERS = "goofyaddons-craft-orders.json";
     public static final String GENERAL_ORDERS = "goofyaddons-general-orders.json";
     public static final String PROFIT = "goofyaddons-profit.json";
     public static final String EXECUTION = "goofyaddons-execution.json";
     public static final String TRANSACTIONS = "goofyaddons-transactions.jsonl";
     public static final String PRODUCTION_JOBS = "goofyaddons-production-jobs.json";
-    public static final List<String> FILES = List.of(BOOK_ORDERS, GENERAL_ORDERS, PROFIT, EXECUTION, TRANSACTIONS, PRODUCTION_JOBS);
+    public static final List<String> FILES = List.of(BOOK_ORDERS, GENERAL_ORDERS, CRAFT_ORDERS, PROFIT, EXECUTION, TRANSACTIONS, PRODUCTION_JOBS);
 
     public static final AccountStorage INSTANCE = new AccountStorage(
             () -> net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir());

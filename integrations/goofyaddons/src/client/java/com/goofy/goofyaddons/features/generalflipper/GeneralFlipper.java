@@ -34,6 +34,7 @@ public class GeneralFlipper implements Feature {
         void acquire(GeneralPosition position);
         void sell(GeneralPosition position, int units, Double proceeds);
         void safetyPause(String reason);
+        default boolean productionOnly(){return false;}
         default void placed(GeneralPosition position) {}
         default com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {return null;}
         default void finished(GeneralPosition position) {}
@@ -85,6 +86,9 @@ public class GeneralFlipper implements Feature {
     private double snapshotPurse = -1;
     private boolean snapshotFresh;
     private GeneralPosition active;
+    private GeneralPosition instantPosition;
+    private com.goofy.goofyaddons.features.production.BazaarInstantBuy instantBuying;
+    private com.goofy.goofyaddons.features.production.BazaarInstantSell instantSelling;
     private Step step;
     /** Evidence for the position being worked on; replaced whenever work is selected. */
     private GeneralTrade trade = new GeneralTrade();
@@ -192,7 +196,7 @@ public class GeneralFlipper implements Feature {
             position.checkedAt = 0;
             return false;
         });
-        active = null;navigationRetry.reset();inputRestarts=0;
+        active = null;instantPosition=null;instantBuying=null;instantSelling=null;navigationRetry.reset();inputRestarts=0;
         clearSnapshot();
         save();
     }
@@ -200,7 +204,7 @@ public class GeneralFlipper implements Feature {
     @Override public void pause() {
         paused = true;
         invalidateRequest();
-        active = null;navigationRetry.reset();inputRestarts=0;
+        active = null;instantPosition=null;instantBuying=null;instantSelling=null;navigationRetry.reset();inputRestarts=0;
         clearSnapshot();
         save();
     }
@@ -307,6 +311,7 @@ public class GeneralFlipper implements Feature {
                     && TradingSafety.ordersTitle(view.title()) && !ordersReady()) {
                 recheckOrders("orders-not-loaded");return;
             }
+            if((trade.selling?active.instantSell:active.instantBuy) && (step==Step.OPEN_PRODUCT || step==Step.PRODUCT)){tickInstant(now);return;}
             switch (step) {
                 case OPEN_ORDERS -> {
                     command("managebazaarorders");
@@ -332,6 +337,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean workDue(GeneralPosition position, long now) {
+        if(position.completed || services.productionOnly() && position.productionBuy && position.stage==Stage.INVENTORY)return false;
         long interval = position.stage == Stage.INVENTORY ? 2000 : settings().refreshSeconds * 1000L;
         return position.stage == Stage.RECONCILE || now - position.checkedAt >= interval;
     }
@@ -353,7 +359,7 @@ public class GeneralFlipper implements Feature {
                 return;
             }
         }
-        if (!snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
+        if (services.productionOnly() || !snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
         // Reserving capital stays on a live purse read; only ranking uses the snapshot.
         double purse = services.purse();
         for (GeneralCalculator.Candidate candidate : snapshotCandidates) {
@@ -367,7 +373,7 @@ public class GeneralFlipper implements Feature {
                     || world.now() < cooldownUntil.getOrDefault(candidate.item().id(), 0L)) continue;
             if (!capital.reserve(OWNER, candidate.item().id(), candidate.cost(), purse)) continue;
             GeneralPosition position = new GeneralPosition();
-            position.item = candidate.item();
+            position.item = candidate.item();position.instantBuy=candidate.strategy().instantBuy;position.instantSell=candidate.strategy().instantSell;
             position.tradeId = java.util.UUID.randomUUID().toString();
             position.quantity = candidate.quantity();
             position.forecast = services.forecast(candidate.item().id(),candidate.quantity());
@@ -383,6 +389,44 @@ public class GeneralFlipper implements Feature {
         }
     }
 
+    private void tickInstant(long now)throws Exception {
+        if(instantPosition!=active){instantPosition=active;instantBuying=null;instantSelling=null;}
+        var strategy=com.goofy.goofyaddons.features.production.BazaarStrategy.of(active.instantBuy,active.instantSell);
+        var product=products==null?null:products.getAsJsonObject(active.item.id());
+        if(trade.selling){
+            if(instantSelling==null){
+                if(!freshQuotes())return;Double value=strategy.sell(product,active.quantity);
+                if(value==null || !saleAllowed(value/active.quantity)){fail("Instant exit depth or drawdown limit is unavailable; position retained.");return;}
+                instantSelling=new com.goofy.goofyaddons.features.production.BazaarInstantSell(active.item.id(),active.item.name(),active.quantity,value*.97,value*1.03,reason->{
+                    active.saleEvent=java.util.UUID.randomUUID().toString();active.settlementPending=true;if(!save())throw new IllegalStateException("Sale intent failed");
+                });
+            }
+            var result=instantSelling.tick(view,actions,services.purse(),now);
+            switch(result){
+                case SOLD -> {if(recordSale(active.quantity,instantSelling.proceeds()))completePosition();}
+                case BLOCKED,UNCERTAIN -> fail(instantSelling.failure());
+                default -> {}
+            }
+        }else{
+            if(instantBuying==null){
+                if(!freshQuotes())return;
+                if(active.quantity>capacityFor(active.item.id())){fail("Not enough inventory capacity for instant purchase; no purchase submitted.");return;}
+                Double cost=strategy.buy(product,active.quantity),exit=strategy.sell(product,active.quantity);
+                if(cost==null||exit==null||cost>settings().maxCoinsPerItem||exit*.97*(1-services.taxPercentage()/100)-cost*1.03<settings().minProfitPerBatch || cost!=null&&exit!=null&&(exit*.97*(1-services.taxPercentage()/100)-cost*1.03)/cost*100<settings().minMarginPercentage){fail("Instant entry no longer meets profit/depth limits; no purchase submitted.");return;}
+                double limit=Math.min(cost*1.03,settings().maxCoinsPerItem);if(!capital.resize(OWNER,active.item.id(),limit,services.purse())){fail("Instant entry exceeds spendable capital.");return;}
+                instantBuying=new com.goofy.goofyaddons.features.production.BazaarInstantBuy(active.item.id(),active.item.name(),active.quantity,limit,reason->{
+                    active.stage=Stage.RECONCILE;active.submitted=true;active.purchasePriceKnown=false;if(!save())throw new IllegalStateException("Buy intent failed");
+                });
+            }
+            var result=instantBuying.tick(view,world.signEditorOpen(),actions,services.purse(),now);
+            switch(result){
+                case BOUGHT -> {active.unitCost=instantBuying.spent()/active.quantity;active.purchasePriceKnown=true;active.stage=Stage.INVENTORY;capital.purchased(OWNER,active.item.id());capital.funding(OWNER,active.item.id(),active.cost());if(save()&&recordAcquisition()){services.placed(active);finishWork();}}
+                case BLOCKED,UNCERTAIN -> fail(instantBuying.failure());
+                default -> {}
+            }
+        }
+    }
+
     private boolean purchasePurseReady(double purse) {
         var result = purseObservation.observe(purse, world.now());
         if (result == com.goofy.goofyaddons.features.bookflipper.helper.PurseObservation.Result.TIMED_OUT)
@@ -393,6 +437,7 @@ public class GeneralFlipper implements Feature {
     private boolean saleAllowed(double price) {
         // Profit and margin are entry filters. Existing stock exits at a readable
         // market price within the drawdown guard. Age cannot block an exit.
+        if(services.productionOnly())return Double.isFinite(price) && price>0 && price>=active.minimumSellPrice;
         return Double.isFinite(price) && price > 0 && !TradingSafety.holdingLimit(
                 0, world.now(), settings().maxHoldingSeconds,
                 active.unitCost, price * (1 - services.taxPercentage() / 100),
@@ -407,7 +452,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean shouldReprice(boolean sell) {
-        if (!freshQuotes() || active.reprices >= settings().maxReprices
+        if (services.productionOnly() || !freshQuotes() || active.reprices >= settings().maxReprices
                 || world.now() - active.placedAt < settings().repriceCooldownSeconds * 1000L) return false;
         JsonObject product = products.getAsJsonObject(active.item.id());
         if (product == null) return false;
@@ -416,7 +461,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private List<GeneralCalculator.Candidate> candidates() {
-        if (!world.inWorld() || products == null) return List.of();
+        if (services.productionOnly() || !world.inWorld() || products == null) return List.of();
         if(services.automaticSelection())
             return com.goofy.goofyaddons.features.marketanalysis.AutomaticSelection.general(services.recommendations(),world.now(),
                     products,settings(),services.taxPercentage(),capital.available(snapshotPurse),
@@ -435,7 +480,7 @@ public class GeneralFlipper implements Feature {
 
     private double currentAsk() {
         JsonObject product = products == null ? null : products.getAsJsonObject(active.item.id());
-        return product == null ? -1 : GeneralCalculator.topPrice(product, "buy_summary");
+        return product == null ? -1 : GeneralCalculator.topPrice(product, active!=null && active.instantSell?"sell_summary":"buy_summary");
     }
     /** Pure: whether the quotes this engine already adopted are usable right now. */
     private boolean freshQuotes() {
@@ -565,6 +610,7 @@ public class GeneralFlipper implements Feature {
     private boolean recordSale(int units, Double proceeds) {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
         if (active.saleEvent == null) { active.saleEvent=active.tradeId+":legacy-sale:"+active.placedAt; if(!save()) return false; }
+        if(services.productionOnly()) {active.verifiedProceeds=proceeds;if(!save())return false;}
         services.sell(active, units, proceeds);
         return true;
     }
@@ -580,7 +626,7 @@ public class GeneralFlipper implements Feature {
             cooldownUntil.put(active.item.id(), world.now() + settings().orderTimeoutSeconds * 1000L);
         }
         capital.release(OWNER, active.item.id());
-        positions.remove(active);
+        if(services.productionOnly())active.completed=true;else positions.remove(active);
         finishWork();
     }
     private void fail(String message) {
@@ -644,6 +690,29 @@ public class GeneralFlipper implements Feature {
         @Override public void finishWork() { GeneralFlipper.this.finishWork(); }
         @Override public void completePosition() { GeneralFlipper.this.completePosition(); }
     }
+
+    void resetProductionAccount(){
+        invalidateRequest();positions.clear();active=null;loaded=false;blocked=false;running=false;paused=false;
+        instantPosition=null;instantBuying=null;instantSelling=null;clearSnapshot();
+    }
+    boolean enqueueProduction(String id,String name,int units,double unitPrice,boolean buy,double limit) {
+        restoreBudget();observe();
+        if(blocked||paused||!positions.isEmpty()||units<1||units>4096||unitPrice<=0||!Double.isFinite(unitPrice))return false;
+        if(buy && itemCount(id)>0 || !buy && itemCount(id)!=units || capital.occupied(id))return false;
+        if(buy && !capital.reserve(OWNER,id,units*unitPrice,services.purse()))return false;
+        if(!buy)capital.restore(OWNER,id,units*unitPrice,false);
+        var p=new GeneralPosition();p.item=new GeneralItem(id,name);p.quantity=units;p.unitCost=unitPrice;p.sellPrice=unitPrice;
+        p.stage=buy?Stage.PLANNED:Stage.INVENTORY;p.productionBuy=buy;p.tradeId=java.util.UUID.randomUUID().toString();
+        p.purchasePriceKnown=buy;p.maximumBuyPrice=limit;p.minimumSellPrice=limit;positions.add(p);
+        if(!buy){capital.purchased(OWNER,id);capital.funding(OWNER,id,null);}
+        return save();
+    }
+    GeneralPosition productionPosition(){return positions.isEmpty()?null:positions.getFirst();}
+    boolean consumeProduction(){
+        var p=productionPosition();if(p==null||!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY))return false;
+        positions.remove(p);if(!save()){positions.add(p);return false;}capital.release(OWNER,p.item.id());return true;
+    }
+    boolean productionFailed(){return blocked||paused;}
 
     private void load() {
         loaded = true;

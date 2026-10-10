@@ -81,6 +81,9 @@ final class CraftFlipSelection {
         rankingRefresh.attempted(now,observedMarket==null?0:observedMarket.get("lastUpdated").getAsLong(),cfg);
         var blocked=new HashSet<>(CapitalManager.INSTANCE.occupiedProducts());
         try {
+            if(!manager.production().queued() && manager.production().hasRetainedOrders()){
+                routes=List.of();excluded.clear();generatedAt=0;error="Resolve retained craft Bazaar orders before starting another production run";return;
+            }
             for(var job:manager.crafting().journal())if(job.account().equals(world.username())&&job.state()!=ProductionJobs.State.DONE
                     &&job.state()!=ProductionJobs.State.CANCELLED&&job.state()!=ProductionJobs.State.SELLING) {
                 var recipe=RecipeCatalog.instance().byKey(job.recipeKey()).orElse(null);

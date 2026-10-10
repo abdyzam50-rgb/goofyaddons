@@ -1,11 +1,12 @@
-# Craft flip discovery and execution — 0.2.27
+# Craft flip discovery and execution — 0.2.55
 
 ## Shipped behavior
 
 Select **CRAFT** in G → Macros → Mode and start with the existing trading toggle.
 This mode selects one eligible Bazaar craft, buys its missing base materials,
 prepares reviewed basic intermediates, crafts the exact ranked recipe, and
-instant-sells verified output. It then recomputes the next route from live data.
+uses the selected instant sale or sell offer. Inputs use the selected instant
+purchases or buy orders. It then recomputes the next route from live data.
 Books/general order engines do not start in this mode. Existing lifecycle,
 account/profile binding, stop, recovery and menu ownership rules still apply.
 
@@ -24,7 +25,7 @@ flowchart TD
     E --> Q[Journal and bind exact recipe]
     Q --> I[Buy inputs and prepare intermediates]
     I --> K[Verify crafting output]
-    K --> S[Verify instant sale]
+    K --> S[Verify instant sale or fill and claim sell offer]
     S --> L[Record actual or unknown profit]
     L --> P
 ```
@@ -655,3 +656,44 @@ The job becomes CANCELLED with its prior evidence retained; this command perform
 no transaction and records no profit. It is never run automatically. For the
 provided export the root job prefix is `429960e1`; the purchase receipt was
 1 Enchanted Diamond for 1,314.8 coins.
+
+
+### 0.2.55 shared Bazaar strategies
+
+Craft discovery evaluates order → offer, instant → offer, order → instant and
+instant → instant, retaining one winning executable strategy per output. Actual
+input depth, the instant-buy fee, tax, price allowances, volume, inventory, budget
+and account requirements remain entry gates. Order strategies include waiting in
+ranking estimates; offers and fills are estimates, not completed sales.
+
+ProductionBazaarOrders composes the existing ordinary-item order executor with
+one production-owned position. It has no independent item selection. Buy claims
+stop at inventory ownership and hand the goods to ProductionRun rather than selling
+them. Partial claims/cancellations are handled by the existing verified cancellation
+path; only acquired units contribute cost, and remaining ingredients are replanned.
+The parent records acquisition cost before consuming the child handoff. Crafted
+output offers complete only after the full fill, matching coin receipt and order
+removal. Posting an offer records no profit. This first integration does not reprice
+production offers; it waits for their verified settlement.
+
+The account-scoped goofyaddons-craft-orders.json stores submitted order evidence
+separately from ordinary flip positions. Stops/restarts retain submitted orders;
+interrupted parent runs still require REVIEW, and new orders cannot overwrite a
+retained child. Check inventory and both journals before resolving interrupted
+runs; do not acknowledge a parent while live child orders remain. Diagnostics
+include craft order state under craftPlan.orders.
+
+Book routes now use the same verified instant transaction executors before anvil
+combining and after the finished book reaches inventory. Product identity requires
+one exact enchantment and level, rejecting multi-enchantment lookalikes. Actual
+purse debit/proceeds and exact inventory changes prove these instant transactions;
+unreadable balances wait, and submitted clicks are not replayed. Ordinary-item
+selection/execution also carries the buy/sell strategy; instant variants remain
+excluded when their fees and spread make them unprofitable.
+
+The bundled calculator report evaluates all strategies when a new mod requests
+bazaarStrategies. It emits one winning strategy per ordinary item or combining
+route; the mod carries buyMode/sellMode through report validation and locally
+revalidates that strategy. Legacy requests keep order/offer behavior. The mod's
+bundled companion is updated; this release does not deploy the public Worker.
+Automatic AH sale/expiry reconciliation remains outside this Bazaar integration.

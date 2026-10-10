@@ -7,7 +7,8 @@ import java.util.Comparator;
 import java.util.List;
 
 public final class GeneralCalculator {
-    public record Candidate(GeneralItem item, int quantity, double bid, double ask, double profit, double score) {
+    public record Candidate(GeneralItem item, int quantity, double bid, double ask, double profit, double score,com.goofy.goofyaddons.features.production.BazaarStrategy strategy) {
+        public Candidate(GeneralItem item,int quantity,double bid,double ask,double profit,double score){this(item,quantity,bid,ask,profit,score,com.goofy.goofyaddons.features.production.BazaarStrategy.ORDER_OFFER);}
         public double cost() { return quantity * bid; }
     }
 
@@ -21,8 +22,10 @@ public final class GeneralCalculator {
         for (GeneralItem item : settings.items) {
             if(BazaarAccess.MUTATIONS.contains(item.id()))continue;
             try {
-                Candidate candidate = evaluate(products, item, settings, taxPercentage, available, inventoryCapacity);
-                if (candidate != null) result.add(candidate);
+                for(var strategy:com.goofy.goofyaddons.features.production.BazaarStrategy.values()){
+                    Candidate candidate = evaluate(products, item, settings, taxPercentage, available, inventoryCapacity,strategy);
+                    if (candidate != null) result.add(candidate);
+                }
             } catch (RuntimeException malformed) {
                 // One malformed product must not hide every other allowlisted item.
             }
@@ -42,11 +45,11 @@ public final class GeneralCalculator {
                 .reversed().thenComparing(Comparator.comparingDouble(Candidate::score).reversed())).toList();
     }
     private static Candidate evaluate(JsonObject products, GeneralItem item, GeneralSettings settings,
-                                      double taxPercentage, double available, int inventoryCapacity) {
+                                      double taxPercentage, double available, int inventoryCapacity,com.goofy.goofyaddons.features.production.BazaarStrategy strategy) {
         JsonObject product = products.getAsJsonObject(item.id());
         if (product == null) return null;
-        double bid = topPrice(product, "sell_summary");
-        double ask = topPrice(product, "buy_summary");
+        Double buyQuote=strategy.buy(product,1),sellQuote=strategy.sell(product,1);
+        double bid=buyQuote==null?-1:buyQuote,ask=sellQuote==null?-1:sellQuote;
         JsonObject quick = product.getAsJsonObject("quick_status");
         if (quick == null || bid <= 0 || ask <= bid) return null;
         double flow = Math.min(number(quick, "sellMovingWeek"), number(quick, "buyMovingWeek"));
@@ -58,7 +61,7 @@ public final class GeneralCalculator {
                 Math.min(Math.floor(Math.min(settings.maxCoinsPerItem, available) / bid), Math.floor(flow / 168)));
         if (quantity <= 0 || net * quantity < settings.minProfitPerBatch) return null;
         return new Candidate(item, quantity, bid, ask, net * quantity,
-                net * quantity * Math.log10(flow + 1) / Math.sqrt(bid * quantity));
+                net * quantity * Math.log10(flow + 1) / Math.sqrt(bid * quantity),strategy);
     }
 
     public static double topPrice(JsonObject product, String side) {

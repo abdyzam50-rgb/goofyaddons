@@ -25,6 +25,11 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
     @Override public boolean confirmationAllowed(GeneralContext ctx, double expectedPrice, double purse) {
         var active = ctx.active();
         var settings = ctx.settings();
+        if(ctx.services().productionOnly()) {
+            if(expectedPrice>active.maximumBuyPrice || !ctx.capital().resize(OWNER,active.item.id(),active.cost(),purse)){
+                ctx.fail("Craft ingredient order exceeds its verified price/capital ceiling; no order submitted.");return false;
+            }return true;
+        }
         if (!ConfirmationCheck.buyAllowed(expectedPrice, active.quantity, ctx.currentAsk(),
                 ctx.services().taxPercentage(), settings.minMarginPercentage, settings.minProfitPerBatch, settings.maxCoinsPerItem)
                 || !ctx.capital().resize(OWNER, active.item.id(), active.cost(), purse)) {
@@ -38,6 +43,11 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
         var settings = ctx.settings();
         double purse = ctx.services().purse();
         if (!ctx.purchasePurseReady(purse)) return false;
+        if(ctx.services().productionOnly()) {
+            if(price>active.maximumBuyPrice || !ctx.capital().resize(OWNER,active.item.id(),price*active.quantity,purse)){
+                ctx.fail("Ingredient order price or capital changed; position retained.");return false;
+            }active.unitCost=price;active.purchasePriceKnown=true;return true;
+        }
         double net = ctx.currentAsk() * (1 - ctx.services().taxPercentage() / 100) - price;
         if (net <= 0 || net / price * 100 < settings.minMarginPercentage
                 || net * active.quantity < settings.minProfitPerBatch

@@ -15,6 +15,15 @@ import com.goofy.goofyaddons.utils.MenuText;
 public final class ProductIdentity {
     private ProductIdentity() {}
 
+    /** Exact ordinary product or single-enchantment Bazaar book at its precise level. */
+    public static boolean matches(SlotView slot,String id){
+        if(slot==null||slot.empty()||id==null)return false;
+        if(id.equals(slot.customId()))return true;
+        if(!id.startsWith("ENCHANTMENT_")||!slot.enchantedBook()||slot.enchantments()==null||slot.enchantments().size()!=1)return false;
+        int split=id.lastIndexOf('_');
+        try{return java.util.Objects.equals(slot.enchantments().get(id.substring(12,split).toLowerCase(java.util.Locale.ROOT)),Integer.parseInt(id.substring(split+1)));}
+        catch(RuntimeException invalid){return false;}
+    }
     public static final int ICON_SLOT = 13;
 
     /**
@@ -29,7 +38,7 @@ public final class ProductIdentity {
         SlotView icon = menu.slot(ICON_SLOT);
         if (icon != null && !icon.empty() && !icon.inPlayerInventory()) {
             if (icon.customId() != null && !icon.customId().isBlank()) {
-                return id.equals(icon.customId()) && button.hasLoreLine(name);
+                return matches(icon,id) && button.hasLoreLine(name);
             }
             if (icon.hoverName()!=null && !Chat.strip(icon.hoverName()).isBlank())
                 return name.equals(Chat.strip(icon.hoverName())) && button.hasLoreLine(name);

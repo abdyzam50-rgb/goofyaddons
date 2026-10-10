@@ -72,4 +72,17 @@ class CraftFlipPlannerTest {
         assertEquals(Map.of("No observed spendable budget",1),counts);
     }
 
+    @Test void orderIngredientsAndOutputOffersMakePreviouslyUnprofitableCraftExecutable(){
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
+        var market=market(100);var products=market.getAsJsonObject("products");
+        products.getAsJsonObject("INPUT").getAsJsonArray("buy_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",90);
+        products.getAsJsonObject("INPUT").add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":1,\"amount\":10000}]"));
+        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":200,\"amount\":10000}]"));
+        products.getAsJsonObject("OUTPUT").getAsJsonArray("sell_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",3);
+        var rows=rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of());
+        assertEquals(1,rows.size());var route=rows.getFirst();assertTrue(route.eligible());
+        assertEquals(BazaarStrategy.ORDER_OFFER,route.strategy());assertTrue(route.profit()>0);
+        assertEquals("order → offer",route.describe(catalog).get("buySell"));
+    }
+
 }
