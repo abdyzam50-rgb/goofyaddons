@@ -18,8 +18,13 @@ final class CraftFlipSelection {
     private long nextRefresh,generatedAt,generation;
     private String scope,error="Waiting for craft market data";
     private List<CraftFlipPlanner.Route> routes=List.of();
+    private final Map<String,Integer> excluded=new LinkedHashMap<>();
     List<CraftFlipPlanner.Route> routes(){return routes;}
-    void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;ah=null;routes=List.of();scope=null;nextRefresh=0;}
+    String emptyReason(){
+        if(!excluded.isEmpty())return "Main exclusion: "+excluded.entrySet().stream().max(Map.Entry.comparingByValue()).orElseThrow().getKey();
+        return error==null?"Waiting for priced routes that meet minimum profit and market depth":error;
+    }
+    void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;ah=null;routes=List.of();excluded.clear();scope=null;nextRefresh=0;}
     void refresh() {
         var world=new LiveWorld();long now=world.now();
         if(!world.inWorld()){if(scope!=null)clear();return;}
@@ -29,7 +34,7 @@ final class CraftFlipSelection {
         if(!Objects.equals(scope,current)){clear();scope=current;}
         if(now<nextRefresh)return;nextRefresh=now+20000;
         var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
-        if(market==null){com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch();routes=List.of();error="Waiting for fresh Hypixel Bazaar data";return;}
+        if(market==null){com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch();routes=List.of();excluded.clear();error="Waiting for fresh Hypixel Bazaar data";return;}
         rebuild(now);
         if(pending!=null)return;
         long epoch=generation;
@@ -60,7 +65,7 @@ final class CraftFlipSelection {
                     &&job.state()!=ProductionJobs.State.CANCELLED&&job.state()!=ProductionJobs.State.SELLING) {
                 var recipe=RecipeCatalog.instance().byKey(job.recipeKey()).orElse(null);
                 if(recipe!=null){blocked.add(recipe.outputId());blocked.addAll(recipe.ingredients().keySet());}
-                else if(job.state()==ProductionJobs.State.REVIEW){routes=List.of();error="Resolve production jobs marked REVIEW before automatic crafts";return;}
+                else if(job.state()==ProductionJobs.State.REVIEW){routes=List.of();excluded.clear();error="Resolve production jobs marked REVIEW before automatic crafts";return;}
             }
             for(var job:manager.crafting().journal())if(job.account().equals(world.username())&&job.state()==ProductionJobs.State.SELLING) {
                 String output=job.recipeKey().startsWith("auction:")?job.recipeKey().substring(job.recipeKey().lastIndexOf(':')+1):null;
@@ -70,13 +75,14 @@ final class CraftFlipSelection {
             double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(),budget=CapitalManager.INSTANCE.available(purse);
             if(cfg.craftFlips.maximumCapital>0)budget=Math.min(budget,cfg.craftFlips.maximumCapital);
             routes=CraftFlipPlanner.rank(RecipeCatalog.instance(),market,ah,world.menu(),manager.observedSkills(),manager.observedUnlocks(),blocked,
-                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now);
+                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded);
             generatedAt=now;
-        }catch(Exception unavailable){routes=List.of();error="Production journal or account data unavailable";}
+        }catch(Exception unavailable){routes=List.of();excluded.clear();error="Production journal or account data unavailable";}
     }
     List<CraftFlipPlanner.Route> currentRoutes(){rebuild(System.currentTimeMillis());return routes;}
     Map<String,Object> view() {
-        var result=new LinkedHashMap<String,Object>();result.put("generatedAt",generatedAt);result.put("error",error);
+        var result=new LinkedHashMap<String,Object>();result.put("generatedAt",generatedAt);result.put("error",error);result.put("excludedCandidateCounts",Map.copyOf(excluded));
+        result.put("minimumProfit",GoofyConfig.INSTANCE.craftFlips.minimumProfit);result.put("maxBatches",GoofyConfig.INSTANCE.craftFlips.maxBatches);result.put("venue",GoofyConfig.INSTANCE.craftFlips.venue);
         result.put("rows",routes.stream().limit(100).map(r->r.describe(RecipeCatalog.instance())).toList());
         result.put("rankingNote","Score combines conservative net profit, estimated crafting work and liquidity; it is not realized coins/hour. AH listings remain unsold positions.");
         return result;

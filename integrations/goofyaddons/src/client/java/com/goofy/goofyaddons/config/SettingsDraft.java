@@ -11,14 +11,9 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Settings edits held as a draft until the player presses Apply.
- *
- * <p>Each control records one named change. The preview is the saved settings with every
- * recorded change replayed on top, so a keybind or reload committed elsewhere while the
- * draft is open is kept rather than overwritten. Typing never writes the file or restarts
- * the calculator; Apply validates the whole candidate, commits it in one atomic write and
- * says which restarts it caused. A value that cannot be parsed stays as a field error and
- * blocks Apply instead of silently reverting.
+ * Validated settings edits shared by explicit saves and {@link SettingsAutosave}.
+ * Named edits replay over the latest saved settings so concurrent keybind or reload
+ * changes are preserved. Invalid typed values stay as field errors and never commit.
  */
 public final class SettingsDraft {
     @FunctionalInterface public interface Committer { void commit(GoofyConfig candidate) throws Exception; }
@@ -33,6 +28,8 @@ public final class SettingsDraft {
     private GoofyConfig base, preview;
     private List<String> changes = List.of(), restarts = List.of();
     private String problem;
+    private long revision;
+    public long revision() { return revision; }
 
     public SettingsDraft(Supplier<GoofyConfig> current, Committer committer) {
         this.current = current;
@@ -51,6 +48,7 @@ public final class SettingsDraft {
     }
 
     public void edit(String label, Consumer<GoofyConfig> change) {
+        revision++;
         errors.remove(label);
         raw.remove(label);
         edits.remove(label); // Re-inserted last so a later edit of the same control wins.
@@ -107,7 +105,7 @@ public final class SettingsDraft {
         if (problem != null) return "Not valid yet: " + problem;
         if (changes.isEmpty()) return "No unsaved changes.";
         String text = "Unsaved: " + String.join(", ", changes) + ".";
-        if (!restarts.isEmpty()) text += " On Apply, " + String.join("; ", restarts) + ".";
+        if (!restarts.isEmpty()) text += " When saved, " + String.join("; ", restarts) + ".";
         return text;
     }
 
@@ -131,6 +129,7 @@ public final class SettingsDraft {
     }
 
     public void discard() {
+        revision++;
         edits.clear();
         errors.clear();
         raw.clear();
@@ -138,6 +137,7 @@ public final class SettingsDraft {
     }
 
     private void reject(String label, String text, String message) {
+        revision++;
         errors.put(label, message);
         raw.put(label, text);
         edits.remove(label);

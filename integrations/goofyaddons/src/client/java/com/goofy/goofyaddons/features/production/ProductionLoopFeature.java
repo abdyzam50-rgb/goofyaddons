@@ -24,13 +24,13 @@ public final class ProductionLoopFeature implements Feature {
     public void showCraftPlans(){
         selection.refresh();var actions=new LiveActions();
         var rows=selection.currentRoutes();
-        if(rows.isEmpty())actions.message("No priced craft routes yet; check the dashboard craft plan and prerequisite status.");
+        if(rows.isEmpty())actions.message("No feasible craft routes: "+discoveryReason()+". Minimum net profit "+Math.round(GoofyConfig.INSTANCE.craftFlips.minimumProfit)+", maximum batches "+GoofyConfig.INSTANCE.craftFlips.maxBatches+". See debug export for excluded candidate counts.");
         rows.stream().limit(10).forEach(r->actions.message(RecipeCatalog.instance().name(r.recipe().outputId())+" · "+r.venue()+" · "+r.batches()+" batches · conservative net "+Math.round(r.profit())+" · "+(r.eligible()?"eligible":r.reason())));
     }
     private String discoveryReason() {
         if(FeatureManager.INSTANCE.accountRequirementsPending())return "Checking account prerequisites";
         var rows=selection.routes();
-        if(rows.isEmpty())return "Waiting for priced routes that meet minimum profit and market depth";
+        if(rows.isEmpty())return selection.emptyReason();
         return rows.stream().filter(CraftFlipPlanner.Route::eligible).findAny().isPresent()?"Ready to select a craft":rows.getFirst().reason();
     }
     private void selectAutomatic() {

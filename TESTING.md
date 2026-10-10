@@ -290,3 +290,17 @@ Compile/build and existing schedule/craft tests cover API compatibility and
 unchanged scheduling behavior. Rendering under a real Minecraft loading overlay
 still requires the user's in-game confirmation; no live graphics session is
 available in this environment.
+
+### 0.2.52 settings autosave
+
+SettingsAutosaveTest exercises delayed typing, latest-value persistence, immediate
+flush, invalid-input correction, external keybind preservation, deferral during
+trading, and failure suppression with explicit retry. GUI wiring is compiled by
+the full mod build; in-game input confirmation remains a user smoke test.
+
+CraftFlipPlannerTest also verifies that a profitable recipe below the configured
+10,000 net-profit floor reports all 16 excluded batch sizes, and that an
+unobserved budget produces its own reason instead of retaining prior counts.
+
+Final 0.2.52 validation: 1,087 Java tests, zero failures/errors/skips;
+`test calculatorIntegrationTest build` succeeds.

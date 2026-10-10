@@ -261,16 +261,27 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private String tradingNote;
-    /** Settings edits wait here until Apply; typing never writes the file or restarts anything. */
+    /** Validated edits save automatically; text edits are debounced. */
     private final com.goofy.goofyaddons.config.SettingsDraft draft=com.goofy.goofyaddons.config.SettingsDraft.live();
+    private final com.goofy.goofyaddons.config.SettingsAutosave autosave = new com.goofy.goofyaddons.config.SettingsAutosave(
+        draft, ()->com.goofy.goofyaddons.features.FeatureManager.INSTANCE.canReloadConfig(),
+        ()->System.nanoTime()/1_000_000);
+    private void saveTrading(boolean retry) {
+        String note=autosave.flush(retry); if(note!=null)tradingNote=note;
+    }
+    @Override public void tick() {
+        super.tick();
+        String note=autosave.tick(); if(note!=null)tradingNote=note;
+    }
     private void editTrading(String label,java.util.function.Consumer<com.goofy.goofyaddons.config.GoofyConfig> edit) {
         draft.edit(label,edit);
+        if(focused==null)saveTrading(false);
     }
     private void applyTrading() {
-        focus(null);tradingNote=draft.apply();
+        focus(null);saveTrading(true);
     }
     private void discardTrading() {
-        focus(null);draft.discard();tradingNote="Unsaved changes discarded.";
+        draft.discard();focus(null);tradingNote="Unsaved changes discarded.";
     }
     /** Re-saves the reviewed file as loaded, without any unapplied draft changes. */
     private void commitReviewed() {
@@ -313,14 +324,14 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 client.cancelRouteForTrading();
                 net.minecraft.client.Minecraft.getInstance().gui.setScreen(null);
                 com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStart();
-            },Button.ACCENT).when(()->!manager.isMacroRunning() && client.canStartTrading()),
+            },Button.ACCENT).when(()->!draft.dirty() && !manager.isMacroRunning() && client.canStartTrading()),
             new Button("Stop",()->com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStop(),Button.PLAIN));
         status.row("Mode",()->"Change trading mode while stopped.",new Mode<>(List.of(com.goofy.goofyaddons.features.TradingMode.values()),
             ()->draft.view().tradingMode,com.goofy.goofyaddons.features.TradingMode::label,v->editTrading("Mode",cfg->cfg.tradingMode=v)));
-        Card pending=card("Unsaved changes","Edits below are a draft. Apply validates and saves them together; restarts happen only then.");
+        Card pending=card("Automatic saving","Valid changes save automatically. Text saves after a short pause; stop trading before changing trading settings.");
         pending.callout(()->draft.dirty()?Callout.WARN:Callout.INFO,draft::summary);
-        pending.row("Apply",()->"Spending and mode changes require stopping the trader first.",
-            new Button("Apply",this::applyTrading,Button.ACCENT).when(draft::canApply),
+        pending.row("Pending changes",()->"Invalid values stay unsaved. Retry a failed save here.",
+            new Button("Retry save",this::applyTrading,Button.ACCENT).when(draft::canApply),
             new Button("Discard",this::discardTrading,Button.PLAIN).when(draft::dirty));
         pending.callout(()->Callout.INFO,()->tradingNote);
         Card keys=card("Keybinds","Click Change, then press a key. Escape cancels. Bindings also appear in Minecraft Controls.");
@@ -630,7 +641,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private void focus(Field f) {
+        boolean leaving=focused!=null && focused!=f;
         focused = f;
+        if(leaving)saveTrading(false);
         // 26.x reads typed letters through SDL, which only sends them while text input is on:
         // without this, keys like backspace work but letters never arrive.
         if (minecraft != null) {
@@ -645,6 +658,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     @Override
     public void removed() {
         focus(null);
+        saveTrading(false);
+        if(draft.dirty())new com.goofy.goofyaddons.menu.LiveActions().message(tradingNote==null?draft.summary():tradingNote);
         if (changedSettings) {
             AstarConfig.save();
         }

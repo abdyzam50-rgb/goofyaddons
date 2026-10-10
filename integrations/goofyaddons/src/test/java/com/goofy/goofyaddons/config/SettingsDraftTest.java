@@ -92,7 +92,7 @@ class SettingsDraftTest {
         draft.whole("Calculator port", "8790", 1024, 65535,
                 (cfg, v) -> cfg.marketAnalysis.endpoint = "http://127.0.0.1:" + v + "/v1/recommendations");
         assertEquals(List.of("the bundled calculator restarts on port 8790"), draft.restarts());
-        assertTrue(draft.summary().contains("On Apply, the bundled calculator restarts on port 8790."));
+        assertTrue(draft.summary().contains("When saved, the bundled calculator restarts on port 8790."));
         assertEquals("Settings saved; the bundled calculator restarts on port 8790.", draft.apply());
 
         draft.edit("Auto-start", cfg -> cfg.marketAnalysis.autoStartCompanion = false);

@@ -61,4 +61,15 @@ class CraftFlipPlannerTest {
         assertTrue(rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of("catacombs",20)).getFirst().eligible());
     }
 
+    @Test void emptyRankingExplainsProfitThresholdAndUnobservedBudget() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
+        var counts=new LinkedHashMap<String,Integer>();
+        assertTrue(CraftFlipPlanner.rank(catalog,market(100),null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),100000,
+            10000,1.25,16,"BAZAAR",NOW,counts).isEmpty());
+        assertEquals(16,counts.get("Below minimum net profit after fees and price allowance"));
+        assertTrue(CraftFlipPlanner.rank(catalog,market(100),null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),0,
+            10000,1.25,16,"BAZAAR",NOW,counts).isEmpty());
+        assertEquals(Map.of("No observed spendable budget",1),counts);
+    }
+
 }

@@ -153,11 +153,13 @@ or install anything system-wide. Runtime failures appear in the Macros page.
 
 Use **G → Macros → Market and account checks**:
 
-- Settings on this page are a draft. Typing never saves the file or restarts the
-  calculator. **Unsaved changes** lists what changed, any field that needs fixing,
-  and which restart Apply will cause; **Apply** validates and saves everything at
-  once, and **Discard** drops the draft. A keybind or reload saved while a draft is
-  open is kept when the draft is applied.
+- Valid settings save automatically: toggles and mode choices save immediately;
+  text fields save after 750 ms without editing, when leaving the field, or when
+  closing the screen. Invalid fields stay unsaved with an explanation. Changes
+  made during trading wait until trading stops while the screen is open. Failed
+  writes remain pending; **Retry save** retries, and **Discard** drops pending edits.
+  Calculator restarts happen only after a validated save. Private contributor-key
+  enrollment retains its separate explicit save control.
 - **Background service** shows startup/download/running/failure status. When a
   start fails, the status carries the exit code and the last line of
   `companion-error.log`, and the detailed diagnostics export includes the last few
@@ -167,7 +169,7 @@ Use **G → Macros → Market and account checks**:
 - **Retry / restart** retries startup or restarts the service owned by this mod.
 - **Calculator port** changes the local port for the service, dashboard, account
   lookup and trade feed together. If 8789 is occupied, stop trading, choose a free
-  port such as 8790, and press Apply; the bundled calculator restarts once on the new port. The mod identifies
+  port such as 8790; the bundled calculator restarts once on the new port. The mod identifies
   unrelated listeners without stopping them or repeatedly launching a conflicting
   process. Existing history and private keys stay in the same data folder.
 - **Auto-start** can be disabled when you prefer a separately managed calculator.

@@ -23,10 +23,19 @@ final class CraftFlipPlanner {
     static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
             Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
             double minimumProfit,double bazaarTax,int maxBatches,String venue,long now) {
+        return rank(catalog,market,ah,menu,skills,unlocks,blocked,budget,minimumProfit,bazaarTax,maxBatches,venue,now,new LinkedHashMap<>());
+    }
+    static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
+            Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
+            double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded) {
+        excluded.clear();
+        if(menu==null){exclude(excluded,"Player inventory unavailable");return List.of();}
+        if(!menu.cursorEmpty()){exclude(excluded,"Clear the item held on the cursor");return List.of();}
+        if(!Double.isFinite(budget)||budget<=0){exclude(excluded,"No observed spendable budget");return List.of();}
         if(market==null||!market.has("lastUpdated")||!TradingSafety.fresh(market.get("lastUpdated").getAsLong(),now)
-                ||menu==null||!menu.cursorEmpty()||!Double.isFinite(budget)||budget<=0||!Double.isFinite(minimumProfit)||minimumProfit<0
-                ||!Double.isFinite(bazaarTax)||bazaarTax<0||bazaarTax>=100||maxBatches<1||maxBatches>16||!Set.of("BOTH","BAZAAR","AH").contains(venue))return List.of();
-        var products=market.getAsJsonObject("products");if(products==null)return List.of();
+                ||!Double.isFinite(minimumProfit)||minimumProfit<0
+                ||!Double.isFinite(bazaarTax)||bazaarTax<0||bazaarTax>=100||maxBatches<1||maxBatches>16||!Set.of("BOTH","BAZAAR","AH").contains(venue)){exclude(excluded,"Fresh Bazaar prices or valid craft settings unavailable");return List.of();}
+        var products=market.getAsJsonObject("products");if(products==null){exclude(excluded,"Bazaar products unavailable");return List.of();}
         var auctions=new HashMap<String,JsonObject>();
         if(ah!=null&&ah.has("rows"))for(var value:ah.getAsJsonArray("rows"))try {
             var row=value.getAsJsonObject();auctions.put(row.get("item").getAsString(),row);
@@ -36,7 +45,7 @@ final class CraftFlipPlanner {
             if(recipe.kind()!=ProductionRecipe.Kind.CRAFT)continue;
             boolean bz=products.has(recipe.outputId());String sale=bz?"BAZAAR":"AH";
             if(!venue.equals("BOTH")&&!venue.equals(sale))continue;
-            if(!bz&&!auctions.containsKey(recipe.outputId()))continue;
+            if(!bz&&!auctions.containsKey(recipe.outputId())){exclude(excluded,"AH quote unavailable");continue;}
             String requirement=RouteRequirements.craft(recipe.requirement(),skills,unlocks);
             if(requirement==null)requirement=RouteRequirements.product(recipe.outputId(),unlocks);
             if(requirement==null)requirement=RouteRequirements.products(IngredientPreparation.dependencies(catalog,recipe.ingredients().keySet()),unlocks);
@@ -56,7 +65,7 @@ final class CraftFlipPlanner {
                     if(amount==null){priced=false;break;}
                     cost+=amount;slots+=(entry.getValue()+63)/64;
                 }
-                if(!priced||cost<=0)continue;
+                if(!priced||cost<=0){exclude(excluded,"Missing input prices or insufficient buy depth");continue;}
                 for(var craft:preparation.crafts()) {
                     var intermediate=catalog.forOutput(craft.output()).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
                     slots=Math.max(slots,1+(intermediate.outputCount()*craft.batches()+63)/64+
@@ -67,11 +76,11 @@ final class CraftFlipPlanner {
                 if(bz) {
                     var product=products.getAsJsonObject(recipe.outputId());
                     Double gross=ProductionPlanner.instantSellValue(product,recipe.outputCount()*batches);
-                    if(gross==null)continue;
+                    if(gross==null){exclude(excluded,"Insufficient Bazaar sell depth");continue;}
                     net=gross*ProductionRun.SALE_FLOOR*(1-bazaarTax/100);
                     var quick=product.getAsJsonObject("quick_status");
                     double week=quick==null?0:Math.min(quick.get("buyMovingWeek").getAsDouble(),quick.get("sellMovingWeek").getAsDouble());
-                    if(!Double.isFinite(week)||week<=0)continue;
+                    if(!Double.isFinite(week)||week<=0){exclude(excluded,"Daily volume unavailable");continue;}
                     if(recipe.outputCount()*batches>week/7*0.05)reason="Batch exceeds 5% of observed daily market volume";
                     liquidity=Math.min(1,week/168/Math.max(1,recipe.outputCount()*batches));
                 } else {
@@ -87,7 +96,7 @@ final class CraftFlipPlanner {
                     liquidity=Math.min(1,Math.log1p(volume)/Math.log(101));
                 }
                 double capital=cost*1.03+fee,profit=net-capital;
-                if(!Double.isFinite(profit)||profit<minimumProfit||profit<=0)continue;
+                if(!Double.isFinite(profit)||profit<minimumProfit||profit<=0){exclude(excluded,"Below minimum net profit after fees and price allowance");continue;}
                 if(capital>budget)reason="Whole batch exceeds spendable budget";
                 double seconds=60+preparation.purchases().size()*20+preparation.crafts().size()*15+batches*3;
                 double score=profit/seconds*liquidity;
@@ -98,4 +107,5 @@ final class CraftFlipPlanner {
         }
         return best.values().stream().sorted(Comparator.comparingDouble(Route::score).reversed().thenComparing(r->r.recipe().key())).toList();
     }
+    private static void exclude(Map<String,Integer> excluded,String reason) { excluded.merge(reason,1,Integer::sum); }
 }

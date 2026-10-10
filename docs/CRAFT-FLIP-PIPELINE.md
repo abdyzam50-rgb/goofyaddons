@@ -228,7 +228,7 @@ compaction remains disabled; this release adds the required initial cleanup.
 ## Craft mode and one-item AH tests (0.2.32)
 
 The saved `CRAFT` mode is now labelled **Craft flips** in the settings mode
-selector, with a **Use craft mode** shortcut on its card. Apply the settings and
+selector, with a **Use craft mode** shortcut on its card. Wait for “Settings saved” and
 use Start for automatic Bazaar craft selection. AH recommendations remain
 individual tests until sale/expiry/claim reconciliation is implemented.
 
@@ -239,7 +239,7 @@ With trading stopped, use:
 ```
 
 Alternatively enter a product ID in **AH test item**, then click **Run one test**
-on the Craft flips settings card. Apply or discard pending settings first. The
+on the Craft flips settings card. Resolve or discard invalid pending settings first. The
 test buys missing inputs within spending limits, clears detected compactor
 filters, checks account prerequisites, crafts one item and publishes one BIN.
 It runs independently of the trading mode and rest schedule. Stop/toggle ends
@@ -567,7 +567,7 @@ procurement and sale reconciliation are enabled:
 
 To test: install the new JAR, open trading settings, choose **Craft flips**, set
 **Sale market → BAZAAR**, configure batch capital/minimum profit/max batches,
-Apply, then use the trading toggle. `0` batch capital uses spendable funds under
+Wait for “Settings saved”, then use the trading toggle. `0` batch capital uses spendable funds under
 existing limits. `.a* goofyaddon production requirements` shows imported account
 unlock status; `.a* goofyaddon production flips` shows current route candidates.
 No manual item list is required. Stop the toggle if an in-game result needs
@@ -596,3 +596,19 @@ incorrectly suggesting every failure is a settings/seed-file problem. The
 existing schedule tests verify that starting in an offline window disconnects
 and waits instead of starting a craft. Disable the rest schedule when testing
 crafts immediately outside a scheduled online window.
+
+### 0.2.52 automatic settings saving
+
+The Macros page saves valid toggle/mode changes immediately and debounces typed
+settings by 750 ms. Leaving a field or closing the screen flushes valid edits.
+Trading settings cannot change during an active transaction: edits remain pending
+until stopped. Invalid input and failed writes remain visible and do not silently
+change the live configuration. Retry save remains available for write failures.
+Starting through the GUI requires all settings to be saved first.
+
+Empty craft rankings now report their most common exclusion and export candidate
+counts with the configured market, minimum net profit and maximum batches. Counts
+refer to candidate batches (missing AH quotes are counted per recipe), not unique
+eligible routes. Defaults remain 10,000 net profit and 16 batches: all-capital does
+not override depth, volume, account, inventory or execution checks. A fresh debug
+export is needed to identify a specific user's current blocker.
