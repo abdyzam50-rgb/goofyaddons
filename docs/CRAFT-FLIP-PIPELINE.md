@@ -740,7 +740,7 @@ sales. Unsubmitted buys, sell orders, unknown cost and unreadable journals are
 refused. The command verifies order ownership, any claimed inventory, cancellation
 and applicable refund evidence. It then saves known input quantity/cost to a
 REVIEW job before consuming the child order journal. Failure to save keeps the
-child's ownership. Recovery pauses when finished; stop with B, inspect recovered
+child's ownership. Recovery pauses when finished; run `.a* goofyaddon stop`, inspect recovered
 inventory and other leftovers, then run `production acknowledge all` and restart.
 Stopping recovery retains the order for a later attempt. If live evidence differs
 from the tracked order, recovery pauses for manual inspection rather than clearing
