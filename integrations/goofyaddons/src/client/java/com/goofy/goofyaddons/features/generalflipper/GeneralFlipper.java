@@ -456,8 +456,11 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean shouldReprice(boolean sell) {
-        if (services.productionOnly() || !freshQuotes() || active.reprices >= settings().maxReprices
+        if (!freshQuotes() || (!services.productionOnly() && active.reprices >= settings().maxReprices)
                 || world.now() - active.placedAt < settings().repriceCooldownSeconds * 1000L) return false;
+        // Ingredient replacements return to the parent planner after verified cancellation.
+        // It checks the whole basket again; standalone item-flip repricing limits do not apply.
+        if (services.productionOnly() && (sell || !active.productionBuy || active.cancelRequested)) return false;
         JsonObject product = products.getAsJsonObject(active.item.id());
         if (product == null) return false;
         double price = GeneralCalculator.topPrice(product, sell ? "buy_summary" : "sell_summary");

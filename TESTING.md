@@ -383,3 +383,13 @@ Compilation covers the new Settings row and HUD/debug queue data. Multiple real
 Hypixel orders and GUI timing remain untested in Minecraft; test with a small
 capital limit and inspect the active queue in a debug export. Automatic AH craft
 settlement remains gated, and interrupted legacy ownership still requires recovery.
+
+
+The 0.2.59 ingredient outbid update passes 1,118 Java tests via
+`./gradlew -p client test build`. New coverage drives cancellation of an outbid
+unfilled ingredient order through rounded ownership and refund verification,
+checks fresh-data/cooldown rules and manual recovery isolation, and verifies
+zero/partial-fill handoff followed by whole-basket blocking and missing-only
+replacement. The recovery test also exercises default nonzero general reprice
+limits to ensure production never falls into standalone item repricing.
+Real server fill races and menu latency still need in-game validation.

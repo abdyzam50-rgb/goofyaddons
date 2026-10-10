@@ -68,18 +68,31 @@ class ProductionOrderHandoffTest {
     }
 
     @Test void recoveryVerifiesRoundedOrderOwnershipAndRefundBeforeReleasingTheChild()throws Exception {
-        var services=services();GoofyConfig.INSTANCE.general.maxReprices=0;
+        verifiedCancellation(true);
+    }
+    @Test void outbidIngredientCancellationHandsBackVerifiedRefundInsteadOfPlacingAStandaloneFlip()throws Exception {
+        verifiedCancellation(false);
+    }
+    private void verifiedCancellation(boolean recovery)throws Exception {
+        var services=services();
         var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
         var p=new GeneralPosition();p.item=new GeneralItem("INPUT","Input");p.quantity=1280;p.unitCost=100;
         p.stage=GeneralPosition.Stage.BUY_ORDER;p.productionBuy=true;p.maximumBuyPrice=103;p.purchasePriceKnown=true;p.submitted=true;p.tradeId="retained";
-        var world=new FakeWorld();p.placedAt=world.clock();repo.save(List.of(p));
+        var world=new FakeWorld();p.placedAt=world.clock()-61_000;repo.save(List.of(p));
         var slots=new ArrayList<SlotView>();for(int i=0;i<54;i++)slots.add(SlotView.empty(i,false,i));
         for(int i=0;i<36;i++)slots.add(SlotView.empty(54+i,true,i));
         slots.set(49,SlotView.named(49,"Close",List.of()));
         slots.set(11,SlotView.named(11,"BUY Input",List.of("Order amount: 1,280x","Filled: 0/1.3k (0%)","Click to view options!")));
         world.showing(new MenuSnapshot(42,"Your Bazaar Orders",true,slots));
         var actions=new RecordingActions();var engine=new GeneralFlipper(world,actions,repo,services);
-        assertTrue(engine.recoverProductionBuy());drive(engine,world,1400);
+        if(recovery)assertTrue(engine.recoverProductionBuy());
+        else {
+            engine.start();
+            var products=GeneralFlipper.class.getDeclaredField("products");products.setAccessible(true);
+            products.set(engine,com.google.gson.JsonParser.parseString("{\"INPUT\":{\"sell_summary\":[{\"pricePerUnit\":102}],\"buy_summary\":[{\"pricePerUnit\":200}]}}").getAsJsonObject());
+            var quotesAt=GeneralFlipper.class.getDeclaredField("quotesAt");quotesAt.setAccessible(true);quotesAt.setLong(engine,world.clock());
+        }
+        drive(engine,world,1400);
         assertFalse(engine.productionFailed());assertTrue(actions.serverEffects().contains("click:11"),actions.performed().toString());
         var options=new ArrayList<>(slots);options.set(11,SlotView.empty(11,false,11));options.set(13,SlotView.named(13,"Cancel Order",List.of()));
         world.showing(new MenuSnapshot(43,"Buy Order Options",true,options));drive(engine,world,180);
@@ -89,8 +102,29 @@ class ProductionOrderHandoffTest {
         world.showing(new MenuSnapshot(44,"Your Bazaar Orders",true,empty));drive(engine,world,1800);
         assertFalse(engine.productionFailed());assertTrue(engine.productionPosition().completed);
         assertTrue(repo.load().getFirst().completed,"Evidence stays durable until parent/manual-review handoff");
+        assertEquals(0,engine.productionPosition().reprices,"No replacement before parent budget/profit check");
         assertTrue(engine.consumeProduction());assertTrue(repo.load().isEmpty());
     }
+    @Test void ingredientOutbidWaitsForCooldownAndFreshDataButIgnoresStandaloneRepriceLimit()throws Exception {
+        var services=services();GoofyConfig.INSTANCE.general.maxReprices=0;
+        var world=new FakeWorld().showing(inventory("INPUT",0));
+        var engine=new GeneralFlipper(world,new RecordingActions(),new JsonGeneralOrderRepository(()->dir.resolve("outbid.json")),services);
+        engine.start();assertTrue(engine.enqueueProduction("parent-first","INPUT","Input",2,100,true,103));
+        var p=engine.productionPosition();p.placedAt=world.clock();p.stage=GeneralPosition.Stage.BUY_ORDER;p.submitted=true;
+        var active=GeneralFlipper.class.getDeclaredField("active");active.setAccessible(true);active.set(engine,p);
+        var products=GeneralFlipper.class.getDeclaredField("products");products.setAccessible(true);
+        products.set(engine,com.google.gson.JsonParser.parseString("{\"INPUT\":{\"sell_summary\":[{\"pricePerUnit\":102}]}}").getAsJsonObject());
+        var quotesAt=GeneralFlipper.class.getDeclaredField("quotesAt");quotesAt.setAccessible(true);quotesAt.setLong(engine,world.clock());
+        var field=GeneralFlipper.class.getDeclaredField("session");field.setAccessible(true);var ctx=(GeneralContext)field.get(engine);
+        assertFalse(ctx.shouldReprice(false),"No rapid cancellation during the cooldown");
+        world.advance(60_001);assertFalse(ctx.shouldReprice(false),"Stale quotes cannot trigger cancellation");
+        quotesAt.setLong(engine,world.clock());assertTrue(ctx.shouldReprice(false));
+        p.cancelRequested=true;assertFalse(ctx.shouldReprice(false),"Manual recovery is cancellation only");p.cancelRequested=false;
+        assertFalse(ctx.shouldReprice(true),"Craft offers retain their sale-floor lifecycle");
+        products.set(engine,com.google.gson.JsonParser.parseString("{\"INPUT\":{\"sell_summary\":[{\"pricePerUnit\":100}]}}").getAsJsonObject());
+        assertFalse(ctx.shouldReprice(false),"An unchanged top bid is not an outbid");
+    }
+
     private void drive(GeneralFlipper engine,FakeWorld world,long millis) {
         for(long n=0;n<millis;n+=60){engine.poll();engine.onTick();world.advance(60);}
     }

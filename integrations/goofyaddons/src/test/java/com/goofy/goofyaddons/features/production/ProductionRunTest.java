@@ -486,6 +486,22 @@ class ProductionRunTest {
         assertEquals(Step.DONE,run.tick(true,1900));assertEquals(1,env.confirmedSales.size());
     }
 
+    @Test void cancelledIngredientOrderRechecksProfitAndBuysOnlyMissingUnits()throws Exception {
+        for(int filled:List.of(0,1)) {
+            var env=new Env();env.buying=true;var catalog=catalog();
+            var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+            run.tick(true,1000);assertEquals(List.of("BUY:INPUT:2"),env.orders);
+            env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,filled,filled*50,null,"verified cancellation");
+            if(filled>0)env.menu=menu(null,item(54,"INPUT",filled));
+            run.tick(true,1100);assertEquals(filled*50,run.spent());assertEquals(1,env.orderAcknowledgements);
+            env.procurementBlock="Replacement would miss minimum profit";
+            assertEquals(Step.BLOCKED,run.tick(true,1200));assertEquals(1,env.orders.size());assertTrue(env.crafts.isEmpty());
+            env.procurementBlock=null;run.tick(true,1300);
+            assertEquals(List.of("BUY:INPUT:2","BUY:INPUT:"+(2-filled)),env.orders);
+            assertEquals(filled*50,env.jobs.find(run.jobId()).orElseThrow().costBasis());
+        }
+    }
+
     @Test void uncertainInputOrderNeverStartsCraftingOrPretendsToAcquireInputs()throws Exception {
         var env=new Env();env.buying=true;var catalog=catalog();
         var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);

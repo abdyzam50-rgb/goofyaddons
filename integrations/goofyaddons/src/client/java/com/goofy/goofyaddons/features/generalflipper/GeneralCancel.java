@@ -132,7 +132,7 @@ final class GeneralCancel {
             ctx.capital().funding(OWNER, active.item.id(), 0.0);
             long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
             boolean agedOut = held > 0 && ctx.now() - held >= settings.maxHoldingSeconds * 1000L;
-            if (!trade.selling && !agedOut && active.reprices < settings.maxReprices && ctx.freshQuotes()) {
+            if (!ctx.services().productionOnly() && !trade.selling && !agedOut && active.reprices < settings.maxReprices && ctx.freshQuotes()) {
                 JsonObject product = ctx.products().getAsJsonObject(active.item.id());
                 double bid = product == null ? -1 : GeneralCalculator.topPrice(product, "sell_summary");
                 double net = ctx.currentAsk() * (1 - ctx.services().taxPercentage() / 100) - bid;

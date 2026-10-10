@@ -1,9 +1,9 @@
-# Craft flip discovery and execution — 0.2.58
+# Craft flip discovery and execution — 0.2.59
 
 ## Shipped behavior
 
 Select **CRAFT** in G → Macros → Mode and start with the existing trading toggle.
-This mode selects one eligible Bazaar craft, buys its missing base materials,
+This mode selects eligible Bazaar crafts, buys their missing base materials,
 prepares reviewed basic intermediates, crafts the exact ranked recipe, and
 uses the selected instant sale or sell offer. Inputs use the selected instant
 purchases or buy orders. It then recomputes the next route from live data.
@@ -793,3 +793,26 @@ buys in sequence, preserving each known claim/cost before releasing its child
 journal; then inspect leftovers and acknowledge REVIEW entries. Retained sell
 orders still require manual reconciliation. New concurrency does not bypass an
 existing unresolved ownership block.
+
+
+## 0.2.59 — outbid ingredient-order replacement
+
+Craft ingredient buy orders now check fresh top bids during ordinary order reviews.
+Once an order is at least 60 seconds old, a top bid more than 0.01 coins above its
+tracked unit price triggers the existing claim/cancel flow. Checks use the shared
+menu lease and 20-second review interval; replacement is not instantaneous.
+
+Cancellation must still prove ownership, inventory arrivals, any refund, and removal
+of the old order. Claimed units and their actual cost are durably handed to the same
+craft parent. With no fills, the child hands back zero units and zero cost. Neither
+case directly starts an ordinary item flip: the parent recomputes missing inputs,
+checks fresh whole-basket prices, available capital, prerequisites and minimum
+craft profit, then places an order only for the remaining units. A replacement
+that no longer qualifies waits with its blocker instead of spending more coins.
+The new order retains the ordinary basket price ceiling and its own cooldown.
+
+The production bridge's standalone `maxReprices=0` remains deliberate: cancellation
+returns to the parent rather than applying general-flip profit tests to ingredients.
+Explicit `production recoverorders` still cancels/claims only and never buys a
+replacement. Craft sell offers keep the existing sale-floor and settlement rules.
+These changes do not resolve an interrupted retained order without recovery.

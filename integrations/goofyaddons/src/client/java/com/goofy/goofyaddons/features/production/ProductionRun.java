@@ -209,7 +209,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
             try {
                 if(!orderCostRecorded){spent+=result.cost();env.jobs().put(parent().withCost(spent,"Ingredient order claim verified"));orderCostRecorded=true;}
                 if(!env.acknowledgeOrder())return Outcome.uncertain("Claimed ingredient handoff could not be persisted");
-                orderActive=false;orderCostRecorded=false;return Outcome.pending("Claimed ingredients; checking remaining inputs");
+                orderActive=false;orderCostRecorded=false;return Outcome.pending(result.units()>0
+                    ? "Claimed ingredients; checking remaining inputs" : "Ingredient order cancelled; checking replacement budget and profit");
             }catch(Exception failure){return Outcome.uncertain("Ingredient order cost could not be persisted");}
         }
         if(ingredientCraftJob!=null) {
