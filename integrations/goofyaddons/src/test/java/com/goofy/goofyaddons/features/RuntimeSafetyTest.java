@@ -127,4 +127,14 @@ class RuntimeSafetyTest {
         w.reset();
         assertFalse(w.stalled("new",false,400000));
     }
+    @Test void gemstoneOrderAliasesRemainExactAndDuplicatesStayAmbiguous() {
+        assertTrue(TradingSafety.orderNameMatches("§aBUY §6✧ Fine Amber Gemstone",false,"Fine Amber Gem"));
+        assertTrue(TradingSafety.orderNameMatches("SELL ✧ Fine Amber Gemstone",true,"Fine Amber Gemstone"));
+        assertFalse(TradingSafety.orderNameMatches("BUY ✧ Flawless Amber Gemstone",false,"Fine Amber Gem"));
+        assertFalse(TradingSafety.orderNameMatches("BUY ✧ Fine Topaz Gemstone",false,"Fine Amber Gem"));
+        assertFalse(TradingSafety.orderNameMatches("SELL ✧ Fine Amber Gemstone",false,"Fine Amber Gem"));
+        assertFalse(TradingSafety.orderNameMatches("BUY Enchanted Gold Ingot",false,"Gold Ingot"));
+        assertFalse(TradingSafety.orderNameMatches("BUY ✧ Potato",false,"Potato"));
+        assertTrue(TradingSafety.ambiguousOrders(List.of("BUY Fine Amber Gem","BUY ✧ Fine Amber Gemstone"),"Fine Amber Gem"));
+    }
 }

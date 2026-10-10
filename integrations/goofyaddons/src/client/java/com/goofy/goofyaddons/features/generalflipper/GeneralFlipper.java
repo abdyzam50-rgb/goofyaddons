@@ -554,7 +554,13 @@ public class GeneralFlipper implements Feature {
         return decision!=com.goofy.goofyaddons.features.MenuRecheck.Decision.EXHAUSTED;
     }
 
-    private int findOrder(boolean sell) { return find((sell ? "SELL " : "BUY ") + active.item.name(), true); }
+    private int findOrder(boolean sell) {
+        for(var slot:view.slots()) {
+            if(!slot.inPlayerInventory() && !slot.empty()
+                    && TradingSafety.orderNameMatches(slot.hoverName(),sell,active.item.name()))return slot.index();
+        }
+        return -1;
+    }
     private boolean ordersReady() {
         if (!TradingSafety.ordersTitle(view.title())) return false;
         if (!ordersSettle.settled(view.containerId(), world.now())) return false;

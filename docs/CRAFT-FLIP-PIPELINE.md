@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.59
+# Craft flip discovery and execution — 0.2.60
 
 ## Shipped behavior
 
@@ -816,3 +816,20 @@ returns to the parent rather than applying general-flip profit tests to ingredie
 Explicit `production recoverorders` still cancels/claims only and never buys a
 replacement. Craft sell offers keep the existing sale-floor and settlement rules.
 These changes do not resolve an interrupted retained order without recovery.
+
+
+## 0.2.60 — decorated gemstone orders
+
+The Bazaar orders menu displays gemstones as, for example,
+`BUY ✧ Fine Amber Gemstone`, while the recipe catalog can call the item
+`Fine Amber Gem`. Order lookup now accepts those exact gemstone aliases and the
+leading gemstone symbol for the known gemstone tiers/types. It does not use a
+substring match: Fine/Flawless, Amber/Topaz and buy/sell remain distinct. Duplicate
+order detection uses the same identity rule, including mixed decorated/plain names.
+The existing quantity and co-op creator checks still run before any click.
+
+The regression exercises a 1,280-unit order with `Filled: 35/1.3k`, the claim into
+inventory, reopening the remaining order's options, cancellation/refund verification,
+and handoff of only the 35 acquired units at their known cost. Interrupted orders
+still need explicit `production recoverorders`; this update does not attach old
+orders to a newly selected craft or erase retained evidence.

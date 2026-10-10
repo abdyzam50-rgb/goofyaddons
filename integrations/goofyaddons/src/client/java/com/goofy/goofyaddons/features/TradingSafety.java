@@ -13,9 +13,23 @@ public final class TradingSafety {
                 "Bazaar ➜ Orders", "Bazaar → Orders", "Bazaar ➜ Manage Orders", "Bazaar → Manage Orders").contains(normalized);
     }
 
+    /** Exact order identity, allowing only the documented gemstone display decoration/alias. */
+    public static boolean orderNameMatches(String hoverName, boolean selling, String item) {
+        String prefix=selling?"SELL ":"BUY ";
+        String clean=com.goofy.goofyaddons.utils.Chat.strip(hoverName);
+        return clean!=null && clean.startsWith(prefix)
+                && gemstoneOrderName(clean.substring(prefix.length())).equals(gemstoneOrderName(item));
+    }
+    private static String gemstoneOrderName(String name) {
+        if(name==null)return "";
+        String plain=name.startsWith("✧ ")?name.substring(2):name;
+        if(plain.matches("(?:Rough|Flawed|Fine|Flawless|Perfect) (?:Amber|Amethyst|Jade|Jasper|Ruby|Sapphire|Topaz|Opal|Aquamarine|Citrine|Onyx|Peridot) Gem(?:stone)?"))
+            return plain.endsWith("Gemstone")?plain.substring(0,plain.length()-5):plain;
+        return name;
+    }
     public static boolean ambiguousOrders(java.util.List<String> names, String item) {
-        return names.stream().filter(name -> name.equals("BUY " + item)).count() > 1
-                || names.stream().filter(name -> name.equals("SELL " + item)).count() > 1
+        return names.stream().filter(name -> orderNameMatches(name,false,item)).count() > 1
+                || names.stream().filter(name -> orderNameMatches(name,true,item)).count() > 1
                 || names.stream().anyMatch(name -> name.contains("Next Page") || name.contains("Previous Page"));
     }
 

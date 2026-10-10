@@ -393,3 +393,12 @@ zero/partial-fill handoff followed by whole-basket blocking and missing-only
 replacement. The recovery test also exercises default nonzero general reprice
 limits to ensure production never falls into standalone item repricing.
 Real server fill races and menu latency still need in-game validation.
+
+
+The 0.2.60 decorated gemstone order update passes 1,120 Java tests via
+`./gradlew -p client test build`. Regressions cover strict gemstone aliases,
+wrong tier/type/side refusal, mixed-alias duplicate detection, and the decorated
+35/1.3k partial claim → options → cancel → verified refund/inventory handoff.
+Menu fixtures supply readable item stack metadata; unknown stack limits remain
+conservative. Actual server metadata and interrupted account state require a
+fresh debug export if the order is still blocked in game.
