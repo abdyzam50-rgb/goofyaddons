@@ -11,7 +11,7 @@ test('public crafts are cached, fixed-destination, price-only and exclude Bazaar
   return Response.json({lowest:10000,secondLowest:11000,uuid:'private-auction-id'});
  }});
  const response=await service(request,{COFLNET_TOKEN:'secret-test'}),body=await response.json();assert.equal(body.rows.length,1);assert.equal(body.rows[0].item,'RESULT');assert.equal(body.rows[0].quote.lowest,10000);assert.ok(!JSON.stringify(body).includes('private-auction-id'));assert.ok(!JSON.stringify(body).includes('secret-test'));
- await service(request,{COFLNET_TOKEN:'secret-test'});assert.equal(calls,3);assert.ok(entries.has('https://collector.test/v1/crafts/market'));
+ await service(request,{COFLNET_TOKEN:'secret-test'});assert.equal(calls,4);assert.ok(entries.has('https://collector.test/v1/crafts/market'));
 });
 test('upstream errors cannot invent craft prices and unavailable Bazaar stops AH classification',async()=>{
  const unavailable=createPublicCrafts({now:()=>now,fetchImpl:async()=>new Response('',{status:403})});assert.equal((await unavailable(request)).status,503);
@@ -24,4 +24,14 @@ test('Worker loads the catalog from its own assets and prices outputs outside di
  const service=createPublicCrafts({now:()=>now,fetchImpl:async url=>url.includes('hypixel')?Response.json({success:true,lastUpdated:now,products:{COAL:{}}}):url.endsWith('profit')?Response.json([]):Response.json({lowest:10000})});
  const response=await service(request,{ASSETS:{fetch:async r=>{const path=new URL(r.url).pathname;return path==='/data/production-recipes.json'?Response.json(catalog):new Response('Missing asset',{status:404});}}});
  const b=await response.json();assert.deepEqual(b.rows.map(r=>r.item),['RESULT','COMPONENT']);assert.ok(b.rows.every(r=>r.quote));
+});
+
+test('public Worker gets sales demand independently from the documented price summary',async()=>{
+ const service=createPublicCrafts({now:()=>now,fetchImpl:async url=>{
+  if(url.includes('hypixel'))return Response.json({success:true,lastUpdated:now,products:{}});
+  if(url.endsWith('/profit')){assert.equal(url,'https://sky.coflnet.com/api/craft/profit');return Response.json([candidate('RESULT')]);}
+  if(url.endsWith('/bin'))return Response.json({lowest:10000});
+  assert.equal(url,'https://sky.coflnet.com/api/item/price/RESULT');return Response.json({volume:42,median:9000});
+ }});
+ const data=await(await service(request)).json();assert.equal(data.rows[0].volume,42);assert.equal(data.rows[0].quote.lowest,10000);assert.equal(data.error,null);
 });

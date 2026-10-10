@@ -1,5 +1,5 @@
 // Loopback calculator, account dashboard, market collector and optional paired Discord controls.
-import {CraftMarket} from './craft-market.mjs';
+import {CraftMarket,craftDemand} from './craft-market.mjs';
 import {profileFailure} from './profile-errors.mjs';
 import { DiscordBot } from './discord-bot.mjs';
 import { discordSettings } from './discord-config.mjs';
@@ -60,7 +60,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
     const price={protocol:'goofy-ah-price/1',item,lowest,secondLowest:second,source:'coflnet',fetchedAt:Date.now()};
     if(auctionPrices.size>500)auctionPrices.clear();auctionPrices.set(item,price);return price;
   }
-  const craftMarket=new CraftMarket({fetcher:auctionFetcher,token:auctionToken,price:auctionPrice});
+  const craftMarket=new CraftMarket({fetcher:auctionFetcher,token:auctionToken,price:auctionPrice,demand:item=>craftDemand(item,{fetcher:auctionFetcher,token:auctionToken()})});
 
   const server = createServer(async (req, res) => {
     const host = req.headers.host?.split(':')[0];

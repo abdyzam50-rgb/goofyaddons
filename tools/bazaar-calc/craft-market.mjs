@@ -11,9 +11,18 @@ export function craftCandidates(body,now=Date.now()) {
  }
  return [...rows.values()].sort((a,b)=>b.discoveryProfit-a.discoveryProfit||a.item.localeCompare(b.item));
 }
+// Public price summary reports historical sales activity, independently of profitable-craft discovery.
+export async function craftDemand(item,{fetcher=fetch,token=null,now=Date.now}={}) {
+ const r=await fetcher(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}`,{signal:AbortSignal.timeout(10000),headers:token?{Authorization:`Bearer ${token}`}:{}});
+ if(!r.ok)throw new Error(`Coflnet sales summary HTTP ${r.status}`);
+ const text=await r.text();if(text.length>65536)throw new Error('Coflnet sales summary too large');
+ const body=JSON.parse(text);
+ if(!Number.isFinite(body.volume)||body.volume<0||!Number.isFinite(body.median)||body.median<0)throw new Error('Invalid Coflnet sales summary');
+ return {item,volume:body.volume,median:body.median,fetchedAt:now()};
+}
 export class CraftMarket {
- constructor({fetcher=fetch,token=()=>null,price,catalog={recipes:[]},now=Date.now}={}) {
-  this.catalog=catalog;this.fetcher=(...args)=>fetcher(...args);this.token=token;this.price=price;this.now=now;
+ constructor({fetcher=fetch,token=()=>null,price,demand=null,catalog={recipes:[]},now=Date.now}={}) {
+  this.demand=demand;this.demands=new Map();this.demandErrors=new Map();this.catalog=catalog;this.fetcher=(...args)=>fetcher(...args);this.token=token;this.price=price;this.now=now;
   this.rows=[];this.at=0;this.attempt=0;this.offset=0;this.flight=null;this.error=null;this.quotes=new Map();this.quoteErrors=new Map();
  }
  async refresh(products={},focus='') {
@@ -23,7 +32,7 @@ export class CraftMarket {
   this.flight=(async()=>{
    try {
     if(!this.at||this.now()-this.at>=60000) {
-     try {const token=this.token(),r=await this.fetcher('https://sky.coflnet.com/api/crafts/profit',{
+     try {const token=this.token(),r=await this.fetcher('https://sky.coflnet.com/api/craft/profit',{
       signal:AbortSignal.timeout(10000),headers:token?{Authorization:`Bearer ${token}`}:{}});
      if(!r.ok)throw new Error(`Coflnet craft discovery HTTP ${r.status}`);
      const text=await r.text();if(text.length>8*1024*1024)throw new Error('Coflnet craft response too large');
@@ -37,7 +46,13 @@ export class CraftMarket {
     const targets=[...new Set([...ah.filter(r=>focused.has(r.item)).slice(0,8),...ah.slice(0,4),...Array.from({length:4},(_,i)=>ah[(this.offset+i)%Math.max(1,ah.length)])].filter(Boolean))];
     this.offset=(this.offset+4)%Math.max(1,ah.length);
     await Promise.all(targets.map(async row=>{
+     const summaryTask=(async()=>{
+     if(this.demand&&(!this.demands.has(row.item)||this.now()-this.demands.get(row.item).fetchedAt>=300000)) {
+      try {const summary=await this.demand(row.item);if(summary.item===row.item&&Number.isFinite(summary.volume)&&summary.volume>=0&&Number.isFinite(summary.fetchedAt)){this.demands.set(row.item,summary);this.demandErrors.delete(row.item);}}catch(e){this.demandErrors.set(row.item,{message:e.message,at:this.now()});}
+     }
+     })();
      try {this.quotes.set(row.item,await this.price(row.item));this.quoteErrors.delete(row.item);}catch(e){this.quotes.delete(row.item);this.quoteErrors.set(row.item,{message:e.message,at:this.now()});}
+     await summaryTask;
     }));
    }catch(e){this.error=e.message;}
    return this.view(products);
@@ -56,8 +71,10 @@ export class CraftMarket {
   return {protocol:'goofy-craft-market/1',generatedAt:now,discoveryAt:this.at,error:this.error,
    source:'coflnet',rows:this.candidates(products).map(row=>{
     const quote=this.quotes.get(row.item);
-    const failure=this.quoteErrors.get(row.item);
-    return {...row,quoteError:failure&&now-failure.at<=60000?failure.message:null,quote:quote&&now-quote.fetchedAt<=60000&&quote.fetchedAt<=now+5000?quote:null};
+    const failure=this.quoteErrors.get(row.item),demand=this.demands.get(row.item);
+    const demandFailure=this.demandErrors.get(row.item);
+    const validDemand=demand&&demand.fetchedAt<=now+5000&&now-demand.fetchedAt<=300000;
+    return {...row,demandError:!validDemand&&demandFailure&&now-demandFailure.at<=300000?demandFailure.message:null,...(validDemand?{volume:demand.volume,median:demand.median,demandAt:demand.fetchedAt,demandSource:'coflnet-sales-summary'}:{}),quoteError:failure&&now-failure.at<=60000?failure.message:null,quote:quote&&now-quote.fetchedAt<=60000&&quote.fetchedAt<=now+5000?quote:null};
    }),coverage:'Catalog outputs and components plus Coflnet craft candidates; fresh BIN quotes are collected in bounded rotations. Market volume is provider-reported; its time window is not assumed.'};
  }
 }

@@ -34,7 +34,7 @@ test('manual calculator and fresh market work without an account snapshot or act
 });
 
 test('companion serves sanitized craft discovery with fresh BIN quotes and no auction IDs',async t=>{
- const now=Date.now();const server=createCompanion({collector:{market:()=>({products:{BZ_ITEM:{}}})},auctionFetcher:async url=>url.endsWith('/crafts/profit')?
+ const now=Date.now();const server=createCompanion({collector:{market:()=>({products:{BZ_ITEM:{}}})},auctionFetcher:async url=>url.endsWith('/craft/profit')?
   Response.json(['AH_ITEM','BZ_ITEM'].map(itemId=>({itemId,type:'crafting',sellPrice:20000,craftCost:10000,volume:100,median:19000,lastUpdated:new Date(now).toISOString()}))):
   Response.json({lowest:20000,secondLowest:21000,uuid:'not-for-navigation'})});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>{server.close(r);server.closeAllConnections();}));

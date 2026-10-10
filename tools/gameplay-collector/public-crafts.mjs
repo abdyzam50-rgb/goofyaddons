@@ -1,4 +1,4 @@
-import {CraftMarket} from '../bazaar-calc/craft-market.mjs';
+import {CraftMarket,craftDemand} from '../bazaar-calc/craft-market.mjs';
 import {publicMarket} from './public-market.mjs';
 
 // One discovery/quote rotation per isolate, shared by visitors. No profile or contributor key required.
@@ -15,7 +15,7 @@ export function createPublicCrafts({fetchImpl=fetch,now=Date.now,cache=globalThi
   const key=new Request(url);
   const saved=await cache?.match(key);
   if(saved)try{const data=await saved.clone().json();if(data.protocol==='goofy-craft-market/1'&&data.generatedAt<=now()+5000&&now()-data.generatedAt<20000)return saved;}catch{}
-  market??=new CraftMarket({fetcher:fetchImpl,now,catalog,token:()=>env.COFLNET_TOKEN??null,price:async item=>{
+  market??=new CraftMarket({fetcher:fetchImpl,now,catalog,demand:item=>craftDemand(item,{fetcher:fetchImpl,token:env.COFLNET_TOKEN??null,now}),token:()=>env.COFLNET_TOKEN??null,price:async item=>{
    const response=await fetchImpl(`https://sky.coflnet.com/api/item/price/${encodeURIComponent(item)}/bin`,{signal:AbortSignal.timeout(10000),headers:env.COFLNET_TOKEN?{Authorization:`Bearer ${env.COFLNET_TOKEN}`}:{}});
    if(!response.ok)throw new Error(`Coflnet BIN HTTP ${response.status}`);
    const text=await response.text();if(text.length>65536)throw new Error('BIN price response too large');

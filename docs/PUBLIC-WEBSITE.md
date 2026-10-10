@@ -215,3 +215,30 @@ For an existing 0.2.40 deployment, update both `tools/bazaar-calc/craft-market.m
 and `tools/gameplay-collector/public-crafts.mjs`, then deploy. The full public
 package `dist/goofyaddons-public-website-craft-0.2.42.zip` also includes the updated
 error display. Preserve your existing wrangler.jsonc when copying files.
+
+### Craft discovery route and independent demand (0.2.43)
+
+The live Worker returned `Coflnet craft discovery HTTP 404`. Coflnet SkyApi's
+CraftingController routes profit at `/api/craft/profit` (singular); the internal
+SkyCrafts service's controller name is not the public gateway route. Corrected
+all local/Worker callers and endpoint contract fixtures.
+
+Demand no longer depends solely on appearance in the provider's profitable list.
+Bounded quote rotations also fetch `/api/item/price/{item}` sales summaries, cache
+validated volume/median for five minutes, and keep BIN prices usable if the sales
+request fails. Summary and BIN calls run concurrently. Zero reported volume is
+preserved and never interpreted as positive demand. The page displays individual
+summary HTTP errors instead of endlessly saying only that demand is unavailable.
+Provider activity is not assumed to be units/day or promised sell-through timing.
+
+Source contracts inspected: Coflnet/SkyApi revision
+`aa4349e07d28b8389ff8f605cf4dd93fa2177edf`, Controllers/CraftingController.cs
+and Controllers/PricesController.cs; Coflnet/SkyCrafts revision
+`1d25352d31cfa94f04a797bd7c120e4d0bc3b565`, Models/ItemResult.cs.
+
+Public deployment: copy the `tools` files from
+`dist/goofyaddons-public-website-craft-0.2.43.zip`, preserving wrangler.jsonc,
+then deploy from tools/gameplay-collector. For a minimal collector-only patch,
+update public-crafts.mjs and ../bazaar-calc/craft-market.mjs. The full package
+also includes detailed demand error messages. Local mod users can install
+astar-client-0.2.43-BETA.jar for the same corrected routes and demand collection.

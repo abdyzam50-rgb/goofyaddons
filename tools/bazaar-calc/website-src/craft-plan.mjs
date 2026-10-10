@@ -55,7 +55,7 @@ export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=
     if(quote?.item!==recipe.outputId||!fresh(quote?.fetchedAt,now)||!Number.isFinite(quote?.lowest)||quote.lowest<=0)reason||=source?.quoteError?`Coflnet BIN unavailable: ${source.quoteError}`:'Waiting for a fresh Coflnet BIN quote';
     else{gross=Math.max(1,Math.floor(quote.lowest)-1)*units;fee=gross*.035+2000*units;}
     liquidity=Math.min(1,Math.log1p(source?.volume??0)/Math.log(101));
-    if(gross!==null&&!(source?.volume>0))reason||='AH demand unavailable; profit estimate only';
+    if(gross!==null&&!(source?.volume>0))reason||=source?.demandError?`AH demand unavailable: ${source.demandError}`:source?.volume===0?'No reported AH sales; profit estimate only':'AH demand unavailable; profit estimate only';
    }
    const total=capital===null?null:capital+fee;
    const net=gross===null?null:product?gross*.97*(1-Math.max(0,tax)/100):gross*.90;

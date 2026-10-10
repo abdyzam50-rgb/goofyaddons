@@ -190,3 +190,16 @@ receiver for injected global fetch. Added a strict receiver test and preserved
 item-specific BIN HTTP failures in the response/UI. All 133 Node tests and the
 TypeScript/Vite website build passed. Worker redeployment is still required to
 verify the corrected discovery against the live provider.
+
+### Independent AH demand 0.2.43
+
+Live response confirmed discovery HTTP 404 and zero demand-bearing rows despite
+fresh BIN quotes. Authoritative Coflnet gateway source specifies singular
+`/api/craft/profit` and per-item `/api/item/price/{item}` sales summary fields.
+Tests enforce those destinations and cover independent demand without profitable
+craft discovery, five-minute cache/expiry, malformed values, upstream errors,
+and preserved zero sales. All 136 Node tests passed. Live demand after deployment
+cannot be verified until the owner's Worker is redeployed.
+The final website build and desktop/mobile Chromium checks passed. Gradle
+`calculatorIntegrationTest build` succeeded and the final JAR's bundled collector
+and companion match the corrected sources.
