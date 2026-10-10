@@ -36,3 +36,9 @@ test('search focus quotes a catalog craft and its AH components without arbitrar
  const quoted=[];const market=new CraftMarket({catalog,now:()=>NOW,fetcher:async()=>Response.json([]),price:async item=>{quoted.push(item);return {item,lowest:1,fetchedAt:NOW};}});
  await market.refresh({},'FOCUS');assert.ok(quoted.includes('FOCUS'));assert.ok(quoted.includes('PART'));assert.ok(quoted.length<=16);
 });
+
+test('Worker fetch is invoked without a CraftMarket receiver and quote failures remain visible',async()=>{
+ let invoked=false;
+ const market=new CraftMarket({now:()=>NOW,catalog:{recipes:[{kind:'CRAFT',outputId:'RESULT',ingredients:{}}]},fetcher:async function(){assert.equal(this,undefined);invoked=true;return Response.json([]);},price:async()=>{throw new Error('Coflnet BIN HTTP 429');}});
+ const result=await market.refresh();assert.ok(invoked);assert.equal(result.error,null);assert.equal(result.rows[0].quote,null);assert.equal(result.rows[0].quoteError,'Coflnet BIN HTTP 429');
+});

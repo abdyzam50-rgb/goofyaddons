@@ -52,7 +52,7 @@ export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=
     if(gross===null)reason||='Insufficient sell-side bid depth';
    }else{
     const quote=quoteFor(recipe.outputId);
-    if(quote?.item!==recipe.outputId||!fresh(quote?.fetchedAt,now)||!Number.isFinite(quote?.lowest)||quote.lowest<=0)reason||='Waiting for a fresh Coflnet BIN quote';
+    if(quote?.item!==recipe.outputId||!fresh(quote?.fetchedAt,now)||!Number.isFinite(quote?.lowest)||quote.lowest<=0)reason||=source?.quoteError?`Coflnet BIN unavailable: ${source.quoteError}`:'Waiting for a fresh Coflnet BIN quote';
     else{gross=Math.max(1,Math.floor(quote.lowest)-1)*units;fee=gross*.035+2000*units;}
     liquidity=Math.min(1,Math.log1p(source?.volume??0)/Math.log(101));
     if(gross!==null&&!(source?.volume>0))reason||='AH demand unavailable; profit estimate only';

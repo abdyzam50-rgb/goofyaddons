@@ -201,3 +201,17 @@ Existing 0.2.40 deployments only need the latest `public-crafts.mjs` copied into
 `tools/gameplay-collector` followed by `npx wrangler@4.147.0 deploy`. No mod update,
 new token, database migration or settings reset is needed. The corrected public
 package is `dist/goofyaddons-public-website-craft-0.2.41.zip`.
+
+### Cloudflare fetch receiver correction (0.2.42)
+
+Live discovery reported `Illegal invocation: function called with incorrect this
+reference`. CraftMarket now calls the injected fetcher through a wrapper, so
+Cloudflare's global fetch is not invoked as a method of CraftMarket. Item BIN
+requests used a different call path and could succeed despite failed discovery.
+Individual failed quote requests now include their HTTP status in the craft
+market response; the rebuilt planner displays that failure instead of only waiting.
+
+For an existing 0.2.40 deployment, update both `tools/bazaar-calc/craft-market.mjs`
+and `tools/gameplay-collector/public-crafts.mjs`, then deploy. The full public
+package `dist/goofyaddons-public-website-craft-0.2.42.zip` also includes the updated
+error display. Preserve your existing wrangler.jsonc when copying files.

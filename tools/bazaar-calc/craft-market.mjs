@@ -13,8 +13,8 @@ export function craftCandidates(body,now=Date.now()) {
 }
 export class CraftMarket {
  constructor({fetcher=fetch,token=()=>null,price,catalog={recipes:[]},now=Date.now}={}) {
-  this.catalog=catalog;this.fetcher=fetcher;this.token=token;this.price=price;this.now=now;
-  this.rows=[];this.at=0;this.attempt=0;this.offset=0;this.flight=null;this.error=null;this.quotes=new Map();
+  this.catalog=catalog;this.fetcher=(...args)=>fetcher(...args);this.token=token;this.price=price;this.now=now;
+  this.rows=[];this.at=0;this.attempt=0;this.offset=0;this.flight=null;this.error=null;this.quotes=new Map();this.quoteErrors=new Map();
  }
  async refresh(products={},focus='') {
   if(this.flight)return this.flight;
@@ -37,7 +37,7 @@ export class CraftMarket {
     const targets=[...new Set([...ah.filter(r=>focused.has(r.item)).slice(0,8),...ah.slice(0,4),...Array.from({length:4},(_,i)=>ah[(this.offset+i)%Math.max(1,ah.length)])].filter(Boolean))];
     this.offset=(this.offset+4)%Math.max(1,ah.length);
     await Promise.all(targets.map(async row=>{
-     try {this.quotes.set(row.item,await this.price(row.item));}catch {this.quotes.delete(row.item);}
+     try {this.quotes.set(row.item,await this.price(row.item));this.quoteErrors.delete(row.item);}catch(e){this.quotes.delete(row.item);this.quoteErrors.set(row.item,{message:e.message,at:this.now()});}
     }));
    }catch(e){this.error=e.message;}
    return this.view(products);
@@ -56,7 +56,8 @@ export class CraftMarket {
   return {protocol:'goofy-craft-market/1',generatedAt:now,discoveryAt:this.at,error:this.error,
    source:'coflnet',rows:this.candidates(products).map(row=>{
     const quote=this.quotes.get(row.item);
-    return {...row,quote:quote&&now-quote.fetchedAt<=60000&&quote.fetchedAt<=now+5000?quote:null};
+    const failure=this.quoteErrors.get(row.item);
+    return {...row,quoteError:failure&&now-failure.at<=60000?failure.message:null,quote:quote&&now-quote.fetchedAt<=60000&&quote.fetchedAt<=now+5000?quote:null};
    }),coverage:'Catalog outputs and components plus Coflnet craft candidates; fresh BIN quotes are collected in bounded rotations. Market volume is provider-reported; its time window is not assumed.'};
  }
 }

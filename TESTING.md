@@ -181,3 +181,12 @@ binding path to `/data/production-recipes.json`. The Worker test now uses a
 binding fixture that returns HTTP 404 for other paths and verifies catalog-only
 outputs and AH components receive quotes. Collector and craft market tests pass.
 Redeploying the user's Worker is required; it was not deployed from this workspace.
+
+### Cloudflare craft fetch invocation 0.2.42
+
+Live endpoint returned HTTP 200 with an `Illegal invocation` discovery error,
+while an individual Aspect of the End BIN quote was present. Corrected the method
+receiver for injected global fetch. Added a strict receiver test and preserved
+item-specific BIN HTTP failures in the response/UI. All 133 Node tests and the
+TypeScript/Vite website build passed. Worker redeployment is still required to
+verify the corrected discovery against the live provider.
