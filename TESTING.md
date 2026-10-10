@@ -261,3 +261,20 @@ and hide fresh coverage counts. Existing craft searches, account imports,
 price refresh, AH historical references and all five reference pages remain
 covered. TypeScript/Vite and calculator integration/build checks validate the
 public assets and bundled mod.
+
+### 0.2.50 automatic craft pipeline foundation
+
+Added regressions for complete-basket affordability, later ingredients lacking
+quotes, essence unlocks during ranking, market changes before submission,
+evidence-based cancellation, and a complete empty-inventory buy → pinned craft
+→ Bazaar sale run. The full-loop fixture proves 200 coins of acquired input cost
+and 978 coins of sale proceeds, records each callback exactly once, and continues
+purchase verification after a post-submission market block. Existing crafting,
+compactor clearance, lag/navigation, journal recovery, account requirements and
+profit evidence tests remain enabled. No live Minecraft session is available in
+this environment; receipt/menu fixtures validate orchestration before the user
+runs the macro in game.
+
+Final 0.2.50 validation: 1,081 Java tests, zero failures/errors/skips; Gradle
+`test calculatorIntegrationTest build` succeeds. The open-amount-editor regression
+also proves a market block causes no close or submit action until prices recover.

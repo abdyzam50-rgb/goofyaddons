@@ -41,6 +41,8 @@ public final class BazaarInstantBuy {
         this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.maximumCost = maximumCost; this.intent = intent;
     }
 
+    /** Once submitted, verify its outcome before permitting any new market decision. */
+    public boolean submitted(){return step==Step.CONFIRM||step==Step.VERIFY||step==Step.DONE;}
     public String failure() { return failure; }
     public String productId() { return productId; }
     public int amount() { return amount; }

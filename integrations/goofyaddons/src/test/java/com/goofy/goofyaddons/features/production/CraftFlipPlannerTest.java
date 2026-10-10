@@ -53,4 +53,12 @@ class CraftFlipPlannerTest {
         quote.getAsJsonObject().addProperty("fetchedAt",NOW-60001);
         assertTrue(rank(market(1),ah,catalog,ProductionRunTest.menu(null),100000,Map.of()).isEmpty());
     }
+    @Test void bazaarTradingUnlocksApplyToCraftOutputsAndInputsDuringSelection() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","ESSENCE_WITHER",4,"")),Map.of());
+        var market=market(1);market.getAsJsonObject("products").add("ESSENCE_WITHER",market.getAsJsonObject("products").remove("INPUT"));
+        var blocked=rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of()).getFirst();
+        assertFalse(blocked.eligible());assertTrue(blocked.reason().contains("Catacombs"));
+        assertTrue(rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of("catacombs",20)).getFirst().eligible());
+    }
+
 }

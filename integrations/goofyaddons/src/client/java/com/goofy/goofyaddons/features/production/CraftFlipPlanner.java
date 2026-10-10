@@ -38,6 +38,8 @@ final class CraftFlipPlanner {
             if(!venue.equals("BOTH")&&!venue.equals(sale))continue;
             if(!bz&&!auctions.containsKey(recipe.outputId()))continue;
             String requirement=RouteRequirements.craft(recipe.requirement(),skills,unlocks);
+            if(requirement==null)requirement=RouteRequirements.product(recipe.outputId(),unlocks);
+            if(requirement==null)requirement=RouteRequirements.products(IngredientPreparation.dependencies(catalog,recipe.ingredients().keySet()),unlocks);
             int limit=bz?Math.min(16,maxBatches):1;
             for(int batches=1;batches<=limit;batches++)try {
                 var quantities=new TreeMap<String,Integer>();

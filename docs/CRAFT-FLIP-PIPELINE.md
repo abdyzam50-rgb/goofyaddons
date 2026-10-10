@@ -540,3 +540,42 @@ The build reapplies Flips.tsx overlays from the pinned upstream source so repeat
 builds remain reproducible as UI overlays change. Browser coverage checks the
 legacy search reaching the Hephaestus Relic row and its Minos Relic pipeline on
 both desktop and mobile.
+
+### 0.2.50 — automatic Bazaar craft execution foundation
+
+The existing CRAFT scheduler can select a verified Bazaar route, purchase missing
+base materials, craft basic intermediates, process the pinned final recipe, sell
+instantly, then select again. This pass hardens that executable loop before AH
+procurement and sale reconciliation are enabled:
+
+- Selection applies output and ingredient Bazaar gates (including essence and
+  mutations) as well as the recipe's collection/skill requirements.
+- Every remaining input must have fresh, sufficient depth and the complete
+  fee-inclusive basket must fit spendable funds before the next ingredient is
+  bought. A cheap first ingredient cannot strand the run with unpriced or
+  unaffordable later ingredients.
+- Pre-submission navigation rechecks the basket, selected run budget and minimum
+  profit using verified spending plus current remaining costs. Held materials
+  with unknown basis retain the original conservative cost allowance.
+- After a purchase has been submitted, receipt/inventory verification takes
+  priority over changed market signals. The transaction is never replayed.
+- A blocked run can be cancelled for reselection only while its journal remains
+  PLANNED and it has no spend, active buyer, craft or intermediate intent. A
+  compactor/purchase/craft intent prevents automatic cancellation. Started jobs
+  keep their journal and require completion or review.
+- The HUD/dashboard craft plan reports selection status and eligible route count.
+
+To test: install the new JAR, open trading settings, choose **Craft flips**, set
+**Sale market → BAZAAR**, configure batch capital/minimum profit/max batches,
+Apply, then use the trading toggle. `0` batch capital uses spendable funds under
+existing limits. `.a* goofyaddon production requirements` shows imported account
+unlock status; `.a* goofyaddon production flips` shows current route candidates.
+No manual item list is required. Stop the toggle if an in-game result needs
+inspection; uncertain purchases/crafts are journaled for REVIEW, not replayed.
+
+Automatic AH crafts remain blocked pending AH component purchase and
+sale/expiry/claim reconciliation. The existing individual AH test command is
+still available for validated listings. This release does not claim shared
+craft-trade calibration: the community evidence protocol currently accepts
+book and general trades. Craft actual profits are tracked locally only when
+cost and sale receipts can be verified.

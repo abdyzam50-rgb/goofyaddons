@@ -47,6 +47,9 @@ class ProductionRunTest {
         ProductionJobs jobs;MenuSnapshot menu=ProductionRunTest.menu(null);boolean sign,buying,craftQueued,listingQueued;
         double purse=10_000;final RecordingActions actions=new RecordingActions();final List<String> crafts=new ArrayList<>(),listings=new ArrayList<>();
         Set<String> occupied=Set.of(),unquoted=Set.of();
+        final List<Double> confirmedCosts=new ArrayList<>(),confirmedSales=new ArrayList<>();
+        public void outputConfirmed(String id,String output,int units,Double cost){confirmedCosts.add(cost);}
+        public void saleConfirmed(String id,String output,int units,double proceeds){confirmedSales.add(proceeds);}
         Map<String,Integer> unlocks=Map.of("hotm",10);boolean requirementsPending;String procurementBlock,pinnedKey;
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
@@ -370,6 +373,75 @@ class ProductionRunTest {
         sale.tick(page,actions,1000,0);
         assertEquals(BazaarInstantSell.Result.UNCERTAIN,sale.tick(ProductionRunTest.menu(null),actions,6000,100));
         assertEquals(0,sale.proceeds());
+    }
+
+    @Test void wholePurchaseBasketMustBeQuotedAndFundedBeforeTheFirstInputIsBought()throws Exception {
+        var env=new Env();env.buying=true;env.purse=150;
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,null));
+        grid.set(0,new ProductionRecipe.Ingredient("A_INPUT",1));grid.set(1,new ProductionRecipe.Ingredient("Z_INPUT",1));
+        var recipe=new ProductionRecipe("basket",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("A_INPUT",1,"Z_INPUT",1),grid,0,0,"",null);
+        var run=ProductionRun.startCraft(env,new RecipeCatalog(List.of(recipe),Map.of()),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        assertEquals(Step.BLOCKED,run.tick(true,1000));assertTrue(run.reason().contains("All remaining"));assertTrue(env.actions.serverEffects().isEmpty());
+        env.purse=1000;env.unquoted=Set.of("Z_INPUT");
+        assertEquals(Step.BLOCKED,run.tick(true,1100));assertTrue(run.reason().contains("Z_INPUT"));assertTrue(env.actions.serverEffects().isEmpty());
+        env.unquoted=Set.of();assertEquals(206,run.remainingPurchaseCost(),0.001);
+        assertEquals(Step.PENDING,run.tick(true,1200));assertTrue(run.reason().contains("Buying"));
+    }
+
+    @Test void marketRecheckStopsNavigationBeforeSubmissionButUnstartedCancellationRequiresNoIntent()throws Exception {
+        var env=new Env();env.buying=true;var recipe=catalog().forOutput("OUTPUT").getFirst();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        assertEquals(Step.PENDING,run.tick(true,1000));
+        assertFalse(run.cancelUnstarted("changed")); // A buyer is already queued.
+        env.procurementBlock="Market moved below profit target";
+        assertEquals(Step.BLOCKED,run.tick(true,1100));assertTrue(env.actions.serverEffects().stream().noneMatch(x->x.contains("sign")||x.contains("click")));
+        assertTrue(run.cancelUnstarted("Replanning an untouched run"));
+        assertEquals(ProductionJobs.State.CANCELLED,env.jobs.find(run.jobId()).orElseThrow().state());
+    }
+    @Test void recordedProductionIntentCannotBeCancelledForAutomaticReselection()throws Exception {
+        var env=new Env();var recipe=catalog().forOutput("OUTPUT").getFirst();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        env.jobs.put(env.jobs.find(run.jobId()).orElseThrow().withState(ProductionJobs.State.BUYING,"Purchase intent"));
+        assertFalse(run.cancelUnstarted("market moved"));
+        assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state());
+    }
+
+    @Test void automaticBazaarRunBuysCraftsAndSellsWithActualReceiptBasisExactlyOnce()throws Exception {
+        var env=new Env();env.buying=true;var recipe=catalog().forOutput("OUTPUT").getFirst();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        run.tick(true,1000);run.tick(true,1100);
+        env.menu=menu("Input",item(13,"INPUT",1),SlotView.named(10,"Buy Instantly",List.of("Input","Price per unit: 100 coins")));
+        run.tick(true,1200);
+        env.menu=menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of()));run.tick(true,1300);
+        env.sign=true;run.tick(true,1400);env.sign=false;
+        env.procurementBlock="Prices changed after submission"; // Verification cannot be skipped.
+        env.menu=menu(null,item(54,"INPUT",2));env.purse=9800;run.tick(true,1500);
+        assertEquals(200,run.spent(),0.001);assertFalse(run.cancelUnstarted("reselect"));
+        env.procurementBlock=null;run.tick(false,1600);run.tick(false,1700);
+        assertEquals(recipe.key(),env.pinnedKey);assertEquals(List.of("OUTPUTx1"),env.crafts);
+        env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);
+        env.menu=menu(null,item(54,"OUTPUT",1));run.tick(false,1800);
+        assertEquals(Stage.SELL,run.stage());assertEquals(List.of(200.0),env.confirmedCosts);
+        run.tick(true,1900);
+        env.menu=menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 990 coins")),item(54,"OUTPUT",1));run.tick(true,2000);
+        env.menu=menu(null);env.purse+=978;assertEquals(Step.DONE,run.tick(true,2100));run.tick(true,2200);
+        assertEquals(List.of(978.0),env.confirmedSales);
+        assertEquals(ProductionJobs.State.DONE,env.jobs.find(run.jobId()).orElseThrow().state());
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.startsWith("sign:")).count());
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.equals("click:11")).count());
+    }
+
+    @Test void changedMarketCannotCloseOrSubmitAnOpenAmountEditor()throws Exception {
+        var env=new Env();env.buying=true;var recipe=catalog().forOutput("OUTPUT").getFirst();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        run.tick(true,1000);run.tick(true,1100);
+        env.menu=menu("Input",item(13,"INPUT",1),SlotView.named(10,"Buy Instantly",List.of("Input","Price per unit: 100 coins")));run.tick(true,1200);
+        env.menu=menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of()));run.tick(true,1300);
+        env.sign=true;env.procurementBlock="Market moved";int effects=env.actions.serverEffects().size();
+        assertEquals(Step.BLOCKED,run.tick(true,1400));assertEquals(effects,env.actions.serverEffects().size());
+        assertFalse(run.cancelUnstarted("reselect"));
+        env.procurementBlock=null;run.tick(true,1500);
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.startsWith("sign:")).count());
     }
 
 }

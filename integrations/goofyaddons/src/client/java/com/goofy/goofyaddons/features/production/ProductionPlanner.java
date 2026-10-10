@@ -10,6 +10,21 @@ public final class ProductionPlanner {
             boolean executable,String reason) {}
     private ProductionPlanner() {}
 
+    /** Complete remaining purchase basket; no partial spending when later inputs cannot be funded. */
+    public record PurchaseQuote(Map<String,Double> limits,double total,String blockedProduct) {
+        public boolean complete(){return blockedProduct==null;}
+    }
+    public static PurchaseQuote purchaseQuote(Map<String,Integer> purchases,java.util.function.BiFunction<String,Integer,Double> quote) {
+        var limits=new TreeMap<String,Double>();double total=0;
+        for(var entry:new TreeMap<>(purchases).entrySet()) {
+            Double cost=quote.apply(entry.getKey(),entry.getValue());
+            if(entry.getValue()<=0||cost==null||!Double.isFinite(cost)||cost<=0||!Double.isFinite(cost*1.03+total))
+                return new PurchaseQuote(Map.of(),0,entry.getKey());
+            double limit=cost*1.03;limits.put(entry.getKey(),limit);total+=limit;
+        }
+        return new PurchaseQuote(Map.copyOf(limits),total,null);
+    }
+
     /**
      * A ceiling for the BIN listing fee when the player gave none: the Auction House rate for the
      * price (1% below 10M, 2% below 100M, 2.5% above) plus the largest duration fee. A quote above

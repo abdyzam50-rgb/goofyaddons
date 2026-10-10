@@ -19,13 +19,19 @@ public final class ProductionLoopFeature implements Feature {
     public void refreshSelection(){selection.refresh();}
     public Map<String,Object> craftPlan(){
         var view=new LinkedHashMap<String,Object>(selection.view());view.put("queued",queued());view.put("activity",activity());
-        view.put("plannedBudget",automaticBudget);view.put("spent",run==null?0:run.spent());return view;
+        view.put("selectionStatus",discoveryReason());view.put("eligibleRoutes",selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count());view.put("plannedBudget",automaticBudget);view.put("spent",run==null?0:run.spent());return view;
     }
     public void showCraftPlans(){
         selection.refresh();var actions=new LiveActions();
         var rows=selection.currentRoutes();
         if(rows.isEmpty())actions.message("No priced craft routes yet; check the dashboard craft plan and prerequisite status.");
         rows.stream().limit(10).forEach(r->actions.message(RecipeCatalog.instance().name(r.recipe().outputId())+" · "+r.venue()+" · "+r.batches()+" batches · conservative net "+Math.round(r.profit())+" · "+(r.eligible()?"eligible":r.reason())));
+    }
+    private String discoveryReason() {
+        if(FeatureManager.INSTANCE.accountRequirementsPending())return "Checking account prerequisites";
+        var rows=selection.routes();
+        if(rows.isEmpty())return "Waiting for priced routes that meet minimum profit and market depth";
+        return rows.stream().filter(CraftFlipPlanner.Route::eligible).findAny().isPresent()?"Ready to select a craft":rows.getFirst().reason();
     }
     private void selectAutomatic() {
         if(!"CRAFT".equals(FeatureManager.INSTANCE.modeLabel())||System.currentTimeMillis()<nextSelection
@@ -48,7 +54,7 @@ public final class ProductionLoopFeature implements Feature {
     public String name() { return "Production"; }
     public boolean queued() { return run != null; }
     public String activity() {
-        if (run == null) return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?"Craft discovery · "+selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes":"No production run queued";
+        if (run == null) return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?"Craft discovery · "+selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes · "+discoveryReason():"No production run queued";
         return "Production " + run.output() + " · " + run.stage().name().toLowerCase(Locale.ROOT) + (run.reason() == null ? "" : " · " + run.reason());
     }
     public Set<String> lockedProducts() { return run == null ? Set.of() : run.lockedProducts(); }
@@ -168,6 +174,11 @@ public final class ProductionLoopFeature implements Feature {
                     FeatureManager.INSTANCE.safetyPause("Production needs review: " + reason);
                 }
                 case BLOCKED, PENDING -> {
+                    if(result==ProductionLoop.Step.BLOCKED&&automaticBudget>0&&run.cancelUnstarted(run.reason())) {
+                        Diagnostics.event("INFO","production.auto_reselect",Map.of("job",run.jobId(),"reason",run.reason()));
+                        run=null;automaticBudget=0;nextSelection=System.currentTimeMillis()+5000;lastReason=null;
+                        FeatureManager.INSTANCE.invalidateMarketReport();return;
+                    }
                     if (result == ProductionLoop.Step.BLOCKED && run.reason() != null && !run.reason().equals(lastReason))
                         new LiveActions().message("Production waiting: " + run.reason());
                     lastReason = result == ProductionLoop.Step.BLOCKED ? run.reason() : lastReason;
@@ -219,9 +230,12 @@ public final class ProductionLoopFeature implements Feature {
             public Set<String> occupied() { return CapitalManager.INSTANCE.occupiedProducts(); }
             public String procurementBlock() {
                 if(automaticBudget<=0||run==null)return null;
-                Double value=instantSellValue(run.output(),run.outputUnits());
-                if(value==null)return "Fresh output depth is unavailable; automatic purchases are waiting";
-                return value*ProductionRun.SALE_FLOOR*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-automaticBudget<GoofyConfig.INSTANCE.craftFlips.minimumProfit?
+                Double value=instantSellValue(run.output(),run.outputUnits()),remaining=run.remainingPurchaseCost();
+                if(value==null||remaining==null)return "Fresh input/output depth is unavailable; automatic purchases are waiting";
+                double currentCost=run.spent()+remaining;
+                if(!run.hasVerifiedInputBasis())currentCost=Math.max(currentCost,automaticBudget); // Held materials are not free.
+                if(currentCost>automaticBudget)return "Remaining ingredients exceed the selected craft budget; waiting before further purchases";
+                return value*ProductionRun.SALE_FLOOR*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-currentCost<GoofyConfig.INSTANCE.craftFlips.minimumProfit?
                     "Market moved below the craft profit target; waiting before further purchases":null;
             }
             public boolean buyingAllowed() { return buyInputs || GoofyConfig.INSTANCE.productionBuysIngredients; }

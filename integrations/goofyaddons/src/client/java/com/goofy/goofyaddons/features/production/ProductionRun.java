@@ -139,12 +139,21 @@ public final class ProductionRun implements ProductionLoop.Ports {
         return run;
     }
 
+    /** Reselect only when no transaction or craft/compactor intent has been journaled. */
+    public boolean cancelUnstarted(String reason)throws Exception {
+        if(stage()!=Stage.PROCURE||spent!=0||buying!=null||ingredientCraftJob!=null||craftJob!=null)return false;
+        var job=env.jobs().find(jobId).orElse(null);
+        if(job==null||job.state()!=ProductionJobs.State.PLANNED)return false;
+        env.jobs().put(job.withState(ProductionJobs.State.CANCELLED,reason));return true;
+    }
+
     public String jobId() { return jobId; }
     public Stage stage() { return loop.stage(); }
     public String reason() { return loop.reason(); }
     public boolean finished() { return loop.finished(); }
     public String output() { return output; }
     public boolean isCraftRun(){return kind==ProductionRecipe.Kind.CRAFT;}
+    public boolean hasVerifiedInputBasis(){return !basisUnknown;}
 
     /** Products this run must keep away from traders. */
     public Set<String> lockedProducts() {
@@ -187,6 +196,17 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         if (buying != null) {
             if (!ownsMenu) return Outcome.pending("Waiting to buy " + env.name(buying.productId()));
+            if(!buying.submitted()) {
+                String changed=env.procurementBlock();
+                var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),env::instantBuyCost);
+                if(changed==null&&!basket.complete())changed="No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct());
+                if(changed==null&&(!Double.isFinite(env.spendable())||basket.total()>env.spendable()))changed="All remaining ingredients would exceed spendable capital; nothing bought";
+                if(changed!=null){
+                    // Closing an amount editor may submit its text. Keep it open and wait instead.
+                    if(!env.signOpen()){buying=null;env.actions().closeMenu();}
+                    return Outcome.blocked(changed);
+                }
+            }
             var result = buying.tick(env.menu(), env.signOpen(), env.actions(), env.purse(), now);
             switch (result) {
                 case BOUGHT -> { addCost(buying); buying = null; env.actions().closeMenu(); return Outcome.pending("Bought inputs; checking the rest"); }
@@ -223,11 +243,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
             var text = new StringJoiner(", ");missing.forEach((id, n) -> text.add(n + " " + env.name(id)));
             return Outcome.blocked("Missing " + text + "; add them to your inventory or turn on automatic ingredient buying");
         }
+        var basket=ProductionPlanner.purchaseQuote(missing,env::instantBuyCost);
+        if(!basket.complete())return Outcome.blocked("No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct()));
+        if(!Double.isFinite(env.spendable())||basket.total()>env.spendable())return Outcome.blocked("All remaining ingredients would exceed spendable capital; nothing bought");
         var first = missing.entrySet().iterator().next();
-        Double cost = env.instantBuyCost(first.getKey(), first.getValue());
-        if (cost == null) return Outcome.blocked("No fresh Bazaar quote covers " + first.getValue() + " " + env.name(first.getKey()));
-        double limit = cost * 1.03; // Room for the book moving between the quote and the click, never more.
-        if (limit > env.spendable()) return Outcome.blocked("Buying " + env.name(first.getKey()) + " would exceed spendable capital");
+        double limit=basket.limits().get(first.getKey());
         buying = new BazaarInstantBuy(first.getKey(), env.name(first.getKey()), first.getValue(), limit,
                 reason -> env.jobs().put(parent().withState(ProductionJobs.State.BUYING, reason)));
         return Outcome.pending("Buying " + first.getValue() + " " + env.name(first.getKey()));
@@ -379,6 +399,12 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if (best == null || cost < bestCost) { best = new Selection(need,reserved); bestCost = cost; }
         }
         return best == null ? new Selection(Map.of(),Map.of()) : best;
+    }
+
+    /** Fresh, fee-inclusive ceiling for every still-missing purchase, including base preparations. */
+    public Double remainingPurchaseCost() {
+        var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),env::instantBuyCost);
+        return basket.complete()?basket.total():null;
     }
 
     private IngredientPreparation.Plan preparation() {
