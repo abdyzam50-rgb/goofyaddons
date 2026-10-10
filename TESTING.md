@@ -151,3 +151,9 @@ Worker reproduced curedmc's missing progression in its prior parser; corrected
 raw Hypixel data could not be fetched here without its private deployment key.
 The field mappings are verified against the current SkyCrypt backend/schema;
 a live user lookup must be checked after redeployment.
+
+Collector patch 0.2.39 validation: all 123 Node tests passed. Regressions verify
+all six Slayer zero counters, missing/invalid whole sections, malformed explicit
+XP, published empty Garden analysis, current/legacy field precedence and
+removal of the irrelevant vanilla XP warning. This patch changes no mod code
+or calculator UI; no additional Java test run is required for its final scope.

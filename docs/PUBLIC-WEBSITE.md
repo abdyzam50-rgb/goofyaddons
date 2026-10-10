@@ -167,3 +167,8 @@ Then click Load / refresh profile on the calculator. The profile JSON endpoint
 `"parserVersion":"2026-10-10-skill-tree"`. This identifies the corrected HotM,
 Quick Forge, Slayer and Garden parser. Existing Worker secrets remain in place.
 Installing the mod alone does not update the hosted profile API.
+
+Collector patch 0.2.39 completes published zero Slayer/Garden progression and
+removes irrelevant vanilla XP warnings. Deploy its website ZIP as above while
+keeping `wrangler.jsonc`. No mod reinstall is needed. The profile response now
+reports `parserVersion: "2026-10-10-unlock-completeness"`.

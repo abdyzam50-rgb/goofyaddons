@@ -43,7 +43,9 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
     else if(Number.isSafeInteger(count)&&count>=0)dungeonCompletions[`${label} Floor ${floor}`]=count>0?1:0;
    }
   }
-  const analyzed=member.garden_player_data?.analyzed_greenhouse_crops;
+  const garden=member.garden_player_data;
+  const analyzed=garden&&typeof garden==='object'&&!Array.isArray(garden)
+   ?garden.analyzed_greenhouse_crops===undefined?[]:garden.analyzed_greenhouse_crops:undefined;
   const inspectedMutations=Array.isArray(analyzed)&&analyzed.length<=4096&&analyzed.every(id=>typeof id==='string'&&/^[a-z0-9_]{1,80}$/i.test(id))
    ?[...new Set(analyzed.map(id=>id.toUpperCase()))]:null;
   if(inspectedMutations===null)unknown.push('Garden mutation inspections');
@@ -68,12 +70,13 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
    }
   }else unknown.push('collections');
   const slayerBosses=member.slayer?.slayer_bosses??member.slayer_bosses;
-  if(slayerBosses&&typeof slayerBosses==='object'&&!Array.isArray(slayerBosses))for(const [id,boss] of Object.entries(slayerBosses)) {
-   const table=LEVELS.slayer_xp[id];
-   if(!table)continue;
+  if(slayerBosses&&typeof slayerBosses==='object'&&!Array.isArray(slayerBosses))for(const [id,table] of Object.entries(LEVELS.slayer_xp)) {
+   const raw=slayerBosses[id];
+   const boss=raw===undefined?{}:raw;
    const name=id[0].toUpperCase()+id.slice(1);
-   if(!present(boss?.xp)){unknown.push(`${name} Slayer`);continue;}
-   let level=table.filter(n=>boss.xp>=n).length;
+   const xp=boss&&typeof boss==='object'&&!Array.isArray(boss)?boss.xp===undefined?0:boss.xp:undefined;
+   if(!present(xp)){unknown.push(`${name} Slayer`);continue;}
+   let level=table.filter(n=>xp>=n).length;
    if(boss.claimed_levels&&typeof boss.claimed_levels==='object') {
     const claimed=Object.entries(boss.claimed_levels).filter(([key,value])=>/^level_[1-9]$/.test(key)&&value===true).map(([key])=>Number(key.slice(6)));
     level=Math.min(level,Math.max(0,...claimed));
@@ -84,8 +87,7 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
    const n=member.nether_island_player_data?.[field];if(present(n))reputation[label]=n;
   }
   if(!Object.keys(reputation).length)unknown.push('faction reputation');
-  // SkyBlock profiles do not reliably publish the current vanilla XP level.
-  unknown.push('current XP levels');
+  // Vanilla XP is not a profile unlock and is intentionally omitted from the account warnings.
   const purse=member.currencies?.coin_purse??member.coin_purse;
   return [{id:clean(p.profile_id),name:clean(p.cute_name)||'Profile',selected:p.selected===true,gameMode:clean(p.game_mode)||'normal',
    purse:present(purse)&&purse<=1e13?purse:null,fetchedAt:now,unknown,
@@ -132,7 +134,7 @@ export async function lookupProfiles(username,key,fetcher=fetch,now=Date.now()) 
   get(`https://api.hypixel.net/v2/skyblock/profiles?uuid=${player.id}`,{'API-Key':key}),
   get('https://api.hypixel.net/v2/resources/skyblock/collections').catch(()=>null)
  ]);
- return {protocol:'goofy-profile/1',parserVersion:'2026-10-10-skill-tree',username:clean(player.name),fetchedAt:now,profiles:summarizeProfiles(data,player.id,resources,now)};
+ return {protocol:'goofy-profile/1',parserVersion:'2026-10-10-unlock-completeness',username:clean(player.name),fetchedAt:now,profiles:summarizeProfiles(data,player.id,resources,now)};
 }
 export async function handleProfileLookup(request,env,now=Date.now(),fetcher=fetch) {
  const username=new URL(request.url).searchParams.get('username')??'';

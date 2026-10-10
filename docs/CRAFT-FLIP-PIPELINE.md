@@ -418,3 +418,18 @@ is needed for production: the Worker continues to fetch Hypixel directly.
 The `/v1/profiles?username=...` response now includes
 `parserVersion: "2026-10-10-skill-tree"` so deployments can be identified.
 The 0.2.38 public website ZIP must be redeployed to update this parser.
+
+## Remaining account unlocks (collector patch 0.2.39)
+
+Published Slayer maps now enumerate all six bosses. An omitted boss/counter in
+a published map is represented as zero progression, including Blaze/Vampire;
+missing whole sections, explicit nulls and invalid XP remain unknown. Published
+Garden records without an analyzed-crop list represent no analyzed mutations.
+Malformed/absent Garden records remain unknown. This never unlocks a positive
+requirement or treats discovery as analysis.
+
+Vanilla XP is omitted from the account-summary warning list at the user's
+request. No XP feature, live XP hook or extra settings were added. The existing
+API cannot establish that value, and no skill XP is substituted for it.
+This patch changes the hosted collector only; the 0.2.38 mod remains compatible.
+The profile endpoint reports `parserVersion: "2026-10-10-unlock-completeness"`.

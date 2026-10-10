@@ -11,7 +11,7 @@ test('profile import uses spendable purse and published progression, excludes un
  const [p]=summarizeProfiles(data({...member,inventory:{secret:'private'},banking:{balance:9999999}}),uuid,resources,1234);
  assert.equal(p.purse,3210000);assert.equal(p.fetchedAt,1234);assert.equal(p.stats.enchantingLevel,1);assert.equal(p.stats.skills.Taming,2);
  assert.equal(p.stats.hotmTier,2);assert.equal(p.stats.collections.Diamond,4);assert.equal(p.stats.slayers.Zombie,3);
- assert.equal(p.stats.ignoreRequirements,false);assert.ok(p.unknown.includes('current XP levels'));
+ assert.equal(p.stats.ignoreRequirements,false);assert.ok(!p.unknown.includes('current XP levels'));
  assert.doesNotMatch(JSON.stringify(p),/private|inventory|banking|9999999/);
 });
 test('unpublished purse and skills remain unknown; legacy profiles are supported',()=>{
@@ -99,7 +99,7 @@ test('unknown names and username rate limits do not trigger fallback or Hypixel 
  }
 });
 
-test('HotM and all Slayer XP boundaries are imported without turning missing data into zero',()=>{
+test('HotM and Slayer XP boundaries distinguish missing sections from published zero counters',()=>{
  for(const [xp,expected] of [[0,1],[2999,1],[3000,2],[11999,2],[12000,3],[37000,4]]) {
   const [p]=summarizeProfiles(data({mining_core:{experience:xp}}),uuid,null,1234);
   assert.equal(p.stats.hotmTier,expected);
@@ -107,7 +107,7 @@ test('HotM and all Slayer XP boundaries are imported without turning missing dat
  const [p]=summarizeProfiles(data({slayer_bosses:{zombie:{xp:200},spider:{xp:200},wolf:{xp:250},enderman:{xp:250},blaze:{xp:250},vampire:{xp:240}}}),uuid,null,1234);
  for(const name of ['Zombie','Spider','Wolf','Enderman','Blaze','Vampire'])assert.equal(p.stats.slayers[name],3);
  const [missing]=summarizeProfiles(data({slayer_bosses:{wolf:{}}}),uuid,null,1234);
- assert.equal(missing.stats.slayers.Wolf,undefined);assert.ok(missing.unknown.includes('Wolf Slayer'));
+ assert.equal(missing.stats.slayers.Wolf,0);assert.ok(!missing.unknown.includes('Wolf Slayer'));
 });
 test('published Slayer reward claims limit usable recipe levels',()=>{
  const [p]=summarizeProfiles(data({slayer_bosses:{wolf:{xp:1000000,claimed_levels:{level_1:true,level_2:true,level_3:true,level_9:false}},zombie:{xp:200,claimed_levels:{}}}}),uuid,null,1234);
@@ -129,15 +129,24 @@ test('current Hypixel skill tree, nested Slayers and Garden analysis import know
  const current={...member,skill_tree:{experience:{mining:12000},nodes:{mining:{quick_forge:12}}},slayer:{slayer_bosses:{wolf:{xp:1500},enderman:{xp:200}}},garden_player_data:{analyzed_greenhouse_crops:['chorus_fruit','godseed','chorus_fruit'],discovered_greenhouse_crops:['veilshroom']},objectives:{tutorial:['dna_analysis_rewardskyblock_xp_1','dna_analysis_rewardskyblock_xp_5','unrelated_reward','dna_analysis_rewardskyblock_xp_999']}};
  const [p]=summarizeProfiles(data(current),uuid,resources);
  assert.equal(p.stats.hotmTier,3);assert.equal(p.stats.quickForgeLevel,12);assert.equal(p.stats.slayers.Wolf,4);assert.equal(p.stats.slayers.Enderman,2);
- assert.equal(p.stats.slayers.Zombie,undefined,'Modern Slayer map supersedes legacy map');
+ assert.equal(p.stats.slayers.Zombie,0,'Modern Slayer map supersedes legacy map');
  assert.deepEqual(p.stats.inspectedMutations,['CHORUS_FRUIT','GODSEED']);assert.equal(p.stats.cropAnalyzerMilestone,5);
  for(const field of ['Heart of the Mountain','Quick Forge','slayers','Garden mutation inspections','Crop Analyzer Milestone'])assert.ok(!p.unknown.includes(field),field);
 });
 test('published empty node and analysis maps mean zero unlocks, while missing and invalid data remain unknown',()=>{
  const [p]=summarizeProfiles(data({...member,skill_tree:{experience:{mining:0},nodes:{mining:{}}},slayer:{slayer_bosses:{}},garden_player_data:{analyzed_greenhouse_crops:[]},objectives:{tutorial:[]}}),uuid,resources);
- assert.equal(p.stats.hotmTier,1);assert.equal(p.stats.quickForgeLevel,0);assert.deepEqual(p.stats.slayers,{});
+ assert.equal(p.stats.hotmTier,1);assert.equal(p.stats.quickForgeLevel,0);assert.ok(Object.values(p.stats.slayers).every(level=>level===0));
  assert.deepEqual(p.stats.inspectedMutations,[]);assert.equal(p.stats.cropAnalyzerMilestone,0);
  const [bad]=summarizeProfiles(data({skill_tree:{experience:{mining:-1},nodes:{mining:{quick_forge:20.5}}},slayer:{slayer_bosses:[]},garden_player_data:{analyzed_greenhouse_crops:[123]},objectives:{tutorial:'unpublished'}}),uuid,resources);
  for(const field of ['Heart of the Mountain','Quick Forge','slayers','Garden mutation inspections','Crop Analyzer Milestone'])assert.ok(bad.unknown.includes(field),field);
  assert.equal(bad.stats.inspectedMutations,null);assert.equal(bad.stats.cropAnalyzerMilestone,null);
+});
+
+test('published zero Slayer counters and empty Garden analysis are known, malformed records are not',()=>{
+ const [p]=summarizeProfiles(data({slayer:{slayer_bosses:{blaze:{},vampire:{boss_kills_tier_0:0}}},garden_player_data:{copper:0}}),uuid,null);
+ assert.equal(p.stats.slayers.Blaze,0);assert.equal(p.stats.slayers.Vampire,0);assert.deepEqual(p.stats.inspectedMutations,[]);
+ assert.ok(!p.unknown.includes('Blaze Slayer'));assert.ok(!p.unknown.includes('Garden mutation inspections'));
+ const [bad]=summarizeProfiles(data({slayer:{slayer_bosses:{blaze:null,vampire:{xp:'0'}}},garden_player_data:{analyzed_greenhouse_crops:null}}),uuid,null);
+ assert.ok(bad.unknown.includes('Blaze Slayer'));assert.ok(bad.unknown.includes('Vampire Slayer'));assert.equal(bad.stats.inspectedMutations,null);
+ const [absent]=summarizeProfiles(data({}),uuid,null);assert.ok(absent.unknown.includes('slayers'));assert.equal(absent.stats.inspectedMutations,null);
 });
