@@ -54,3 +54,17 @@ test('unavailable, zero and malformed historical sales never manufacture positiv
  await assert.rejects(craftDemand('RESULT',{fetcher:async()=>new Response('',{status:429})}),/429/);
  const zero=await craftDemand('RESULT',{now:()=>NOW,fetcher:async()=>Response.json({volume:0,median:0})});assert.equal(zero.volume,0);
 });
+
+test('a search after initial general refresh fetches its item during the global cooldown',async()=>{
+ const catalog={recipes:Array.from({length:20},(_,i)=>({kind:'CRAFT',outputId:`OUT_${i}`,ingredients:{}}))};
+ const calls=[];const market=new CraftMarket({catalog,now:()=>NOW,fetcher:async()=>Response.json([]),price:async item=>{calls.push(item);return {item,lowest:100,fetchedAt:NOW};}});
+ const general=await market.refresh();assert.equal(general.rows.find(r=>r.item==='OUT_19').quote,null);
+ const focused=await market.refresh({},'OUT_19');assert.equal(focused.rows.find(r=>r.item==='OUT_19').quote.lowest,100);
+ await market.refresh({},'OUT_19');assert.equal(calls.filter(i=>i==='OUT_19').length,1);
+});
+test('search arriving during general collection waits and still fetches its own quote',async()=>{
+ let release;const gate=new Promise(r=>release=r);const catalog={recipes:Array.from({length:20},(_,i)=>({kind:'CRAFT',outputId:`OUT_${i}`,ingredients:{}}))};
+ const market=new CraftMarket({catalog,now:()=>NOW,fetcher:async()=>{await gate;return Response.json([]);},price:async item=>({item,lowest:100,fetchedAt:NOW})});
+ const general=market.refresh(),focused=market.refresh({},'OUT_19');release();await general;
+ assert.equal((await focused).rows.find(r=>r.item==='OUT_19').quote.lowest,100);
+});

@@ -203,3 +203,12 @@ cannot be verified until the owner's Worker is redeployed.
 The final website build and desktop/mobile Chromium checks passed. Gradle
 `calculatorIntegrationTest build` succeeded and the final JAR's bundled collector
 and companion match the corrected sources.
+
+### Searched BIN quote race 0.2.44
+
+The deployed 0.2.40 frontend still focuses its catalog search correctly. Reproduced
+missing focused quotes when a general collection ran immediately beforehand or
+was still in flight. Fixed explicit item collection during that global cooldown
+with per-item throttling and in-flight deduplication. All 139 Node tests passed,
+including the public Worker endpoint's general-then-search sequence. No UI code
+changed in this patch. The owner must redeploy to validate it against their page.

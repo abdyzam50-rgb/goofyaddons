@@ -242,3 +242,21 @@ then deploy from tools/gameplay-collector. For a minimal collector-only patch,
 update public-crafts.mjs and ../bazaar-calc/craft-market.mjs. The full package
 also includes detailed demand error messages. Local mod users can install
 astar-client-0.2.43-BETA.jar for the same corrected routes and demand collection.
+
+### Search quote cooldown race (collector patch 0.2.44)
+
+The page requests general craft data on mount, then item-focused data when a user
+searches. Previously an item request during the global 20-second cooldown or an
+in-flight general request returned that general response without fetching the
+searched item. A successful manual item lookup alone did not validate this flow.
+
+A validated catalog focus now explicitly fetches its output and direct components,
+independently of general rotation. Item requests share in-flight work and have a
+20-second per-item cooldown, including failures. The searched output is first in
+the bounded target list; summary/BIN calls remain concurrent. Tests reproduce the
+initial-general-then-search sequence at both collector and Worker endpoint levels.
+
+Existing public installations need only the latest ../bazaar-calc/craft-market.mjs
+and `npx wrangler@4.147.0 deploy`. The complete public package is
+`dist/goofyaddons-public-website-craft-0.2.44.zip`. Existing site assets/configuration
+remain compatible. This is a public collector patch; no new mod JAR is included.

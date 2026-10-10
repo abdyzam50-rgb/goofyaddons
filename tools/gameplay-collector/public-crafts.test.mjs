@@ -35,3 +35,11 @@ test('public Worker gets sales demand independently from the documented price su
  }});
  const data=await(await service(request)).json();assert.equal(data.rows[0].volume,42);assert.equal(data.rows[0].quote.lowest,10000);assert.equal(data.error,null);
 });
+
+test('Worker search immediately after a general request returns the searched BIN during cooldown',async()=>{
+ const catalog={recipes:Array.from({length:20},(_,i)=>({kind:'CRAFT',outputId:`OUT_${i}`,ingredients:{}}))};
+ const env={ASSETS:{fetch:async()=>Response.json(catalog)}};
+ const service=createPublicCrafts({now:()=>now,fetchImpl:async url=>url.includes('hypixel')?Response.json({success:true,lastUpdated:now,products:{}}):url.endsWith('/profit')?Response.json([]):url.endsWith('/bin')?Response.json({lowest:10000}):Response.json({volume:42,median:9000})});
+ const general=await(await service(request,env)).json();assert.equal(general.rows.find(r=>r.item==='OUT_19').quote,null);
+ const searched=await(await service(new Request('https://collector.test/v1/crafts/market?item=OUT_19'),env)).json();assert.equal(searched.rows.find(r=>r.item==='OUT_19').quote.lowest,10000);
+});

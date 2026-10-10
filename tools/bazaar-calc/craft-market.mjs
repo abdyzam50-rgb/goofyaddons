@@ -23,9 +23,17 @@ export async function craftDemand(item,{fetcher=fetch,token=null,now=Date.now}={
 export class CraftMarket {
  constructor({fetcher=fetch,token=()=>null,price,demand=null,catalog={recipes:[]},now=Date.now}={}) {
   this.demand=demand;this.demands=new Map();this.demandErrors=new Map();this.catalog=catalog;this.fetcher=(...args)=>fetcher(...args);this.token=token;this.price=price;this.now=now;
-  this.rows=[];this.at=0;this.attempt=0;this.offset=0;this.flight=null;this.error=null;this.quotes=new Map();this.quoteErrors=new Map();
+  this.rows=[];this.at=0;this.attempt=0;this.offset=0;this.flight=null;this.error=null;this.quotes=new Map();this.quoteErrors=new Map();this.quoteFlights=new Map();this.quoteAttempts=new Map();
  }
  async refresh(products={},focus='') {
+  const selected=this.catalog.recipes?.find(r=>r.kind==='CRAFT'&&r.outputId===focus);
+  if(selected) {
+   const general=this.refresh(products);
+   const candidates=new Map(this.candidates(products).map(r=>[r.item,r]));
+   const targets=[focus,...Object.keys(selected.ingredients??{})].map(id=>candidates.get(id)).filter(Boolean).slice(0,8);
+   await Promise.all([general,...targets.map(r=>this.quoteRow(r))]);
+   return this.view(products);
+  }
   if(this.flight)return this.flight;
   if(this.now()-this.attempt<20000)return this.view(products);
   this.attempt=this.now();
@@ -41,11 +49,19 @@ export class CraftMarket {
     }
     const ah=this.candidates(products);
     // Bounded rotation gives new candidates price coverage without flooding Coflnet.
-    const recipe=this.catalog.recipes?.find(r=>r.kind==='CRAFT'&&r.outputId===focus);
-    const focused=new Set(recipe?[focus,...Object.keys(recipe.ingredients??{})]:[]);
-    const targets=[...new Set([...ah.filter(r=>focused.has(r.item)).slice(0,8),...ah.slice(0,4),...Array.from({length:4},(_,i)=>ah[(this.offset+i)%Math.max(1,ah.length)])].filter(Boolean))];
+    const targets=[...new Set([...ah.slice(0,4),...Array.from({length:4},(_,i)=>ah[(this.offset+i)%Math.max(1,ah.length)])].filter(Boolean))];
     this.offset=(this.offset+4)%Math.max(1,ah.length);
-    await Promise.all(targets.map(async row=>{
+    await Promise.all(targets.map(row=>this.quoteRow(row)));
+   }catch(e){this.error=e.message;}
+   return this.view(products);
+  })().finally(()=>{this.flight=null;});
+  return this.flight;
+ }
+ async quoteRow(row) {
+  if(this.quoteFlights.has(row.item))return this.quoteFlights.get(row.item);
+  if(this.now()-(this.quoteAttempts.get(row.item)??-Infinity)<20000)return;
+  this.quoteAttempts.set(row.item,this.now());
+  const task=(async()=>{
      const summaryTask=(async()=>{
      if(this.demand&&(!this.demands.has(row.item)||this.now()-this.demands.get(row.item).fetchedAt>=300000)) {
       try {const summary=await this.demand(row.item);if(summary.item===row.item&&Number.isFinite(summary.volume)&&summary.volume>=0&&Number.isFinite(summary.fetchedAt)){this.demands.set(row.item,summary);this.demandErrors.delete(row.item);}}catch(e){this.demandErrors.set(row.item,{message:e.message,at:this.now()});}
@@ -53,11 +69,9 @@ export class CraftMarket {
      })();
      try {this.quotes.set(row.item,await this.price(row.item));this.quoteErrors.delete(row.item);}catch(e){this.quotes.delete(row.item);this.quoteErrors.set(row.item,{message:e.message,at:this.now()});}
      await summaryTask;
-    }));
-   }catch(e){this.error=e.message;}
-   return this.view(products);
-  })().finally(()=>{this.flight=null;});
-  return this.flight;
+  })().finally(()=>this.quoteFlights.delete(row.item));
+  this.quoteFlights.set(row.item,task);
+  return task;
  }
  candidates(products={}) {
   const rows=new Map(this.rows.filter(r=>this.now()-r.sourceAt<=300000).map(r=>[r.item,r]));
