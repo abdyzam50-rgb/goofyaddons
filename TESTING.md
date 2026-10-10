@@ -252,3 +252,12 @@ GET cannot publish, both datasets execute serially with sanitized results,
 one GitHub failure does not suppress the other publisher, leases block
 concurrent manual/cron writes, locks release after failures, and expired leases
 recover. Existing scheduled AH collection/publishing and public route tests pass.
+
+### 0.2.49 Bazaar status visibility
+
+Chromium desktop/mobile checks assert LIVE Bazaar status with six fixture
+products and bundled-history labels. A 90-second-old snapshot must show STALE
+and hide fresh coverage counts. Existing craft searches, account imports,
+price refresh, AH historical references and all five reference pages remain
+covered. TypeScript/Vite and calculator integration/build checks validate the
+public assets and bundled mod.

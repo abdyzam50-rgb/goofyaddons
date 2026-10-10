@@ -18,6 +18,7 @@ for(const file of ['CraftPlanner.tsx','craft-plan.mjs','craft-plan.d.mts'])cpSyn
 patch('packages/web/src/pages/Flips.tsx','// Flip tables',"import { CraftPlanner } from '../components/CraftPlanner';\n// Flip tables");
 patch('packages/web/src/pages/Flips.tsx','  return (\n    <>\n      <div className="pagehead">','  return (\n    <>\n      {kind === "craft" && <CraftPlanner />}\n      <div className="pagehead">');
 cpSync(join(root,'website-src/ProfileLookup.tsx'),join(web,'src/components/ProfileLookup.tsx'));
+cpSync(join(root,'website-src/BazaarStatus.tsx'),join(web,'src/components/BazaarStatus.tsx'));
 cpSync(join(root,'website-src/CommunityStatus.tsx'),join(web,'src/components/CommunityStatus.tsx'));
 cpSync(join(root,'website-src/Reference.tsx'),join(web,'src/pages/Reference.tsx'));
 patch('packages/web/src/main.tsx','import { About, ApiDocs, Contribute, Status, Timing } from "./pages/Info";', 'import { ApiDocs, Contribute, Status } from "./pages/Info";\nimport { About, Timing, ApiDocsStatic, ContributeStatic, StatusStatic } from "./pages/Reference";');

@@ -350,3 +350,18 @@ The public ZIP contains `admin-publish.mjs` and the updated `worker.mjs`. Deploy
 both; preserve `wrangler.jsonc`. No reset or schema import is required: the small
 lease table is created automatically. This is a Worker-only release; the mod
 and public calculator assets do not need replacing to enable the endpoint.
+
+### Bazaar status section (0.2.49)
+
+Data status now includes a Bazaar market data section alongside the persistent
+AH section. It independently requests `/v1/market` every 20 seconds while visible
+and shows LIVE/CHECKING/STALE/UNAVAILABLE, the Hypixel snapshot timestamp and age,
+and fresh product coverage. A stale or failed feed cannot be described as live
+coverage. The history tile displays the bundled snapshot dates and provenance.
+
+The text distinguishes centrally cached live prices, scheduled AH scans reading
+Bazaar prices, the local mod's market collection, and public chart storage.
+There is currently no continuous public Bazaar-history export to D1 or GitHub;
+the public charts update only on rebuild/deployment. Gameplay evidence and
+AH aggregates do not rebuild those charts. This release adds status visibility,
+not a new Bazaar retention or publication service.

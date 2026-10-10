@@ -6,11 +6,11 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
 import {createCompanion} from './server.mjs';
-let phase=0;
+let phase=0,staleBazaar=false;
 const product=(id,ask,bid)=>({product_id:id,buy_summary:[{pricePerUnit:ask,amount:100000,orders:10}],sell_summary:[{pricePerUnit:bid,amount:100000,orders:10}],quick_status:{buyMovingWeek:700000,sellMovingWeek:700000,buyVolume:100000,sellVolume:100000,buyOrders:10,sellOrders:10}});
 const products={BLAZE_ROD:product('BLAZE_ROD',10,9),ENCHANTED_ENDER_PEARL:product('ENCHANTED_ENDER_PEARL',100,90),ENCHANTED_EYE_OF_ENDER:product('ENCHANTED_EYE_OF_ENDER',100000,90000),ENCHANTED_COBBLESTONE:product('ENCHANTED_COBBLESTONE',100,90),ENCHANTED_REDSTONE:product('ENCHANTED_REDSTONE',100,90),ENCHANTED_IRON:product('ENCHANTED_IRON',100,90)};
 const account={protocol:'goofy-profile/1',username:'Tester',profiles:[{id:'fixture',name:'Apple',selected:true,gameMode:'normal',purse:2500000,fetchedAt:Date.now(),unknown:[],stats:{hotmTier:10,quickForgeLevel:20,enchantingLevel:60,collections:{'Ender Pearl':6},skills:{},slayers:{Wolf:3},reputation:{},xpLevels:0,ignoreRequirements:false}}]};
-const collector={market:()=>({success:true,lastUpdated:Date.now(),products:{...products,ENCHANTED_EYE_OF_ENDER:product('ENCHANTED_EYE_OF_ENDER',100000,phase?70000:90000)}}),history:()=>({stats:{},hold:{},names:{},asOf:Date.now()}),status:()=>({enabled:true})};
+const collector={market:()=>({success:true,lastUpdated:Date.now()-(staleBazaar?90000:0),products:{...products,ENCHANTED_EYE_OF_ENDER:product('ENCHANTED_EYE_OF_ENDER',100000,phase?70000:90000)}}),history:()=>({stats:{},hold:{},names:{},asOf:Date.now()}),status:()=>({enabled:true})};
 const server=createCompanion({collector,publishingFetcher:async url=>Response.json(url.endsWith('/history')?{protocol:'goofy-ah-history/1',generatedAt:Date.now(),rows:[{item:'ASPECT_OF_THE_END',price:5000000,lastAt:Date.now()-86400000,volume:42,demandAt:Date.now()-86400000}]}:{protocol:'goofy-ah-status/1',collection:{},publishing:{},items:0,observations:0}),profileFetcher:async()=>Response.json(account),resourcesFetcher:async()=>Response.json({success:true,items:[]}),auctionToken:()=>null,auctionFetcher:async url=>url.includes('ASPECT_OF_THE_END')?new Response('',{status:404}):url.endsWith('/profit')?Response.json([{itemId:'AATROX_BATPHONE',type:'crafting',sellPrice:100000,craftCost:900,median:100000,volume:100,lastUpdated:new Date().toISOString()}]):Response.json({lowest:100000,secondLowest:110000,uuid:'never-display-this'})});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
 const dir=process.argv[2]??'/tmp/goofy-public-craft-preview';await mkdir(dir,{recursive:true});
@@ -68,8 +68,11 @@ try {
    assert.ok(!body.includes('This site has no server')&&!body.includes('No auction or NPC flips')&&!body.includes('Sign in with Discord'),route+' contains obsolete instructions');
    const layout=await evaluate('({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})');assert.ok(layout.scroll<=layout.width+1,route+' overflow at '+width);
    if(route==='api-docs')for(const path of ['/v1/market','/v1/crafts/history','/calculator/data/production-recipes.json']){assert.equal((await fetch(base+path)).status,200,path);}
+   if(route==='status'){const body=await evaluate(`document.querySelector('section[aria-label="Bazaar market data"]').innerText`);assert.ok(body.includes('LIVE')&&body.includes('6 products')&&body.includes('Bundled snapshot'),body);}
    if(route==='about')assert.equal((await fetch(base+'/calculator/licenses/NEU-CATALOG-LICENSE.txt')).status,200);
   }
  }
+ staleBazaar=true;await send('Page.navigate',{url:base+'/calculator/status'});await new Promise(r=>setTimeout(r,1400));
+ const staleStatus=await evaluate(`document.querySelector('section[aria-label="Bazaar market data"]').innerText`);assert.ok(staleStatus.includes('STALE')&&!staleStatus.includes('6 products'),staleStatus);
  assert.deepEqual(errors,[]);console.log('Public craft planner: desktop/mobile, profile unlocks, base preparations, BZ/AH filters, price refresh, stale-price removal and all five reference pages passed.');
 }finally{ws?.close();chrome.kill();await once(chrome,'exit');await new Promise(r=>{server.close(r);server.closeAllConnections();});await rm(profile,{recursive:true,force:true});}

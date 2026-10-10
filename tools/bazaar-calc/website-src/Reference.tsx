@@ -5,6 +5,7 @@ import type { Manifest } from "../static/backend";
 import { Icon } from "../components/Icon";
 import { api, ago, coins, num, utc } from "../lib";
 import { useApp } from "../state";
+import { BazaarStatus } from "../components/BazaarStatus";
 import { CommunityStatus } from "../components/CommunityStatus";
 const repo="https://github.com/abdyzam50-rgb/goofyaddons";
 function Cadence(){return <><h2>Refresh and retention</h2><div className="tablewrap"><table><thead><tr><th className="l">Data</th><th className="l">Refresh / retention</th></tr></thead><tbody>{[
@@ -71,12 +72,8 @@ export function StatusStatic() {
       <div className="pagehead"><div><span className="eyebrow">Reference</span><h1>Data status</h1><p className="lede">Live Bazaar prices refresh from Hypixel through the collector. Persistent AH collection and gameplay publishing run independently. Bundled Bazaar charts remain a reference snapshot until the website is rebuilt and deployed.</p></div></div>
       {q.error && <div className="note"><Icon name="warn" />{(q.error as Error).message}</div>}
       <CommunityStatus />
+      <BazaarStatus manifest={m} />
       {m && q.data && <>
-        <div className="grid cols-3">
-          <div className="card tile"><div className="label">Live prices</div><div className="value">{q.data.dataAt ? new Date(q.data.dataAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "–"}</div><div className="sub">live Hypixel prices; refresh about every 20 seconds while visible</div></div>
-          <div className="card tile"><div className="label">Bundled Bazaar history up to</div><div className="value">{ago(m.asOf)}</div><div className="sub">{utc(m.asOf)}{q.data.statsUsed === false ? " · too old, not used" : ""}</div></div>
-          <div className="card tile"><div className="label">Site built</div><div className="value">{ago(m.builtAt)}</div><div className="sub">bundled history snapshot; changes when the website is rebuilt and deployed · recipes: NEU {m.recipesVersion?.slice(0, 7) ?? "–"}</div></div>
-        </div>
         <h2>Bundled Bazaar snapshot coverage</h2>
         <div className="tablewrap"><table><thead><tr><th className="l">Day (UTC)</th><th>Polls</th><th className="l" style={{ width: "50%" }}>Share of the day</th></tr></thead><tbody>
           {m.daily.slice(-30).reverse().map(d => <tr key={d.day}><td className="l">{d.day}</td><td className="n">{num(d.polls)}</td>
