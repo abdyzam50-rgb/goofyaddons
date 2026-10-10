@@ -43,6 +43,12 @@ class AccessTest {
         assertTrue(ActionRequirements.blocked(control,Map.of(),ActionRequirements.Action.COMBINE).contains("unobserved"));
         assertNotNull(ActionRequirements.blocked("You haven't unlocked this item!",Map.of("enchanting",60),ActionRequirements.Action.BUY));
     }
+    @Test void actionControlsEnforceHotmAndSlayerRequirementsBeforeClicking() {
+        String control="Requires Heart of the Mountain Tier VI\nRequires Wolf Slayer III";
+        assertNull(ActionRequirements.blocked(control,Map.of(),Map.of("hotm",6,"wolfslayer",3),ActionRequirements.Action.FORGE));
+        assertTrue(ActionRequirements.blocked(control,Map.of(),Map.of("hotm",5,"wolfslayer",3),ActionRequirements.Action.FORGE).contains("observed 5"));
+        assertTrue(ActionRequirements.blocked(control,Map.of(),Map.of("hotm",6),ActionRequirements.Action.FORGE).contains("unobserved"));
+    }
     @Test void learnedLocksPersistButClearWhenAccountLevelsUpAndMutationsStayExcluded() {
         var access=new BazaarAccess(dir.resolve("access.json"));
         access.deny("BOOK","BUY requires Enchanting 30; observed level 20");

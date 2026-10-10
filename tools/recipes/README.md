@@ -51,3 +51,8 @@ This updates the website research recipes, production catalog and provenance.
 The mod build bundles that same website, so build the website before the JAR.
 Compare `integrations/goofyaddons/src/main/resources/goofyaddons/production-recipes.json`
 and `tools/bazaar-calc/calculator/data/production-recipes.json` after generation.
+
+Requirement import normalizes NEU Slayer codes (`WOLF_3`, `EMAN_6`, etc.) and
+reputation codes before deduplication. Structured HotM requirements become
+`HotM N`. Numeric and Roman tiers share the same gate. Unknown requirements
+remain visible and block execution rather than silently enabling a route.

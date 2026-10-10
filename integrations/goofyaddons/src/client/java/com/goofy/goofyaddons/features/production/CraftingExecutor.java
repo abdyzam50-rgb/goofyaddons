@@ -91,7 +91,7 @@ public final class CraftingExecutor {
         if(now<next)return Result.WAITING;
         if(submitted) {
             int made=convertedBatches(menu);
-            if(made>0 && made<batchCount && remainingGrid(menu,batchCount-made))return takeOutput(menu,actions,skills,now);
+            if(made>0 && made<batchCount && remainingGrid(menu,batchCount-made))return takeOutput(menu,actions,skills,unlocks,now);
             return Result.WAITING;
         }
         int target=-1,donor=-1;
@@ -138,14 +138,14 @@ public final class CraftingExecutor {
             var stack=available.stream().max(Comparator.comparingInt(SlotView::count)).orElseThrow();
             source=stack.index();send(menu,actions,source,false,false,now);return Result.WAITING;
         }
-        return takeOutput(menu,actions,skills,now);
+        return takeOutput(menu,actions,skills,unlocks,now);
     }
-    private Result takeOutput(MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,long now) {
+    private Result takeOutput(MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,long now) {
         // Hypixel's Quick Crafting column (16, 25, 34) can show the same item before the grid is
         // full; only the result slot holds the grid's output.
         var outputs=menu.slots().stream().filter(s->s.index()==RESULT && !s.empty() && recipe.outputId().equals(s.customId())).toList();
         if(outputs.size()!=1 || outputs.getFirst().count()!=recipe.outputCount())return Result.WAITING;
-        var output=outputs.getFirst();String reason=ActionRequirements.blocked(output.lore(),skills,ActionRequirements.Action.CRAFT);
+        var output=outputs.getFirst();String reason=ActionRequirements.blocked(output.lore(),skills,unlocks,ActionRequirements.Action.CRAFT);
         if(reason!=null)return block("Crafting requirement: "+reason);
         submitted=true;send(menu,actions,output.index(),true,false,now);return Result.WAITING;
     }

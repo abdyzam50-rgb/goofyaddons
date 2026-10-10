@@ -141,10 +141,20 @@ public final class AccountUnlocks {
             copy(stats.getAsJsonObject("collections"),"",result);
             if(stats.has("collectionIds"))copy(stats.getAsJsonObject("collectionIds"),"",result);
         }
-        if(!unknown.contains("slayers"))copy(stats.getAsJsonObject("slayers")," Slayer",result);
+        if(!unknown.contains("slayers")) {
+            var slayers=stats.getAsJsonObject("slayers");
+            for(var e:slayers.entrySet()) {
+                if(unknown.contains(e.getKey()+" Slayer"))continue;
+                double level=e.getValue().getAsDouble();int maximum=e.getKey().equalsIgnoreCase("Vampire")?5:9;
+                if(!Double.isFinite(level) || level<0 || level>maximum || level!=Math.floor(level))throw new IllegalArgumentException("Invalid Slayer level");
+                result.put(RouteRequirements.normalize(e.getKey()+" Slayer"),(int)level);
+            }
+        }
         if(!unknown.contains("faction reputation"))copy(stats.getAsJsonObject("reputation")," Reputation",result);
         if(!unknown.contains("Heart of the Mountain")) {
-            int level=stats.get("hotmTier").getAsInt();result.put("heartofthemountain",level);result.put("hotm",level);
+            double value=stats.get("hotmTier").getAsDouble();
+            if(!Double.isFinite(value) || value<0 || value>10 || value!=Math.floor(value))throw new IllegalArgumentException("Invalid Heart of the Mountain tier");
+            int level=(int)value;result.put("heartofthemountain",level);result.put("hotm",level);
         }
         return new ProfileRequirements(Map.copyOf(levels),Map.copyOf(result),!unknown.contains("collections"));
     }

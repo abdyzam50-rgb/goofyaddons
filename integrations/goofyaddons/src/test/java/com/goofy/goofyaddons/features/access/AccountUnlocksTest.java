@@ -52,6 +52,19 @@ class AccountUnlocksTest {
         account.poll("Tester","Apple",Map.of(),1000000);assertNotNull(RouteRequirements.craft("Ender Pearl VI",account.skills(1000000),account.current(1000000)));
         assertEquals("INVALID_PROFILE",account.diagnosticState(1000000).get("failureCode"));
     }
+    @Test void hotmAndSlayersAreProfileBoundValidatedAndUnknownsAreNotZero() {
+        var data=profile(1000000);var p=data.getAsJsonArray("profiles").get(0).getAsJsonObject();
+        p.add("unknown",new JsonArray());var stats=p.getAsJsonObject("stats");
+        stats.addProperty("hotmTier",6);stats.getAsJsonObject("slayers").addProperty("Wolf",3);stats.getAsJsonObject("slayers").addProperty("Vampire",5);
+        var parsed=AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000);
+        assertNull(RouteRequirements.craft("HotM 6 & WOLF_3 & Vampire Slayer V",parsed.skills(),parsed.unlocks()));
+        p.getAsJsonArray("unknown").add("Wolf Slayer");
+        assertFalse(AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000).unlocks().containsKey("wolfslayer"));
+        stats.addProperty("hotmTier",6.5);assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000));
+        stats.addProperty("hotmTier",11);assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000));
+        stats.addProperty("hotmTier",6);stats.getAsJsonObject("slayers").addProperty("Vampire",6);
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000));
+    }
     JsonObject profile(long at) {
         var root=JsonParser.parseString("""
           {"protocol":"goofy-profile/1","username":"Tester","profiles":[

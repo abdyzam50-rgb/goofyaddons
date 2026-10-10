@@ -346,3 +346,24 @@ Quote IDs containing punctuation, for example
 `.a* goofyaddon production recipes "ZOMBIE;0"` (an excluded pet recipe).
 The public website ZIP must be redeployed to update an existing Worker; installing
 the new JAR updates its bundled local calculator automatically.
+
+## HotM and Slayer prerequisites (0.2.36)
+
+Profile imports supply Heart of the Mountain and Zombie, Spider, Wolf, Enderman,
+Blaze and Vampire Slayer levels. Craft and workstation routes check their catalog
+requirements before buying materials and again before submission. Missing, stale
+or invalid account evidence keeps the route blocked with its unmet requirement.
+When Hypixel publishes Slayer `claimed_levels`, usable tiers are limited to the
+claimed rewards; profiles without that field retain the XP-based level.
+
+Forge access requires HotM II. The configured slot must also be available at the
+observed tier (up to seven slots), and each recipe can require a higher tier.
+Actual confirmation controls are checked for additional HotM/Slayer requirements.
+Already submitted jobs can still reconcile receipts and claim outputs if account
+evidence expires. Catalog codes such as `WOLF_3` and `EMAN_6` now normalize to
+readable Slayer requirements rather than blocking as unknown text.
+
+Use `.a* goofyaddon production requirements` to inspect profile status, HotM and
+all six Slayer levels. Install the new JAR for local execution checks. Redeploy
+the 0.2.36 public website ZIP for the updated Worker profile import and website
+Slayer summary; existing secrets and deployment configuration are retained.

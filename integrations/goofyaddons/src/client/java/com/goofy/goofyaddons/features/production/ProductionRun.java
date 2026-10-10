@@ -196,8 +196,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
             }
         }
         String marketBlock=env.procurementBlock();if(marketBlock!=null)return Outcome.blocked(marketBlock);
-        var requirement=craftRequirement();
-        if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
+        var requirement=productionRequirement();
+        if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking production prerequisites"):Outcome.blocked(requirementReason(requirement));
         var cleared=compactorClearance.tick(env.menu(),env.actions(),new CompactorClearance.Ports(){
             public boolean open(SlotView device){return env.openCompactor(device);}
             public void intent(String reason)throws Exception{env.jobs().put(parent().withState(ProductionJobs.State.PROCESSING,reason));}
@@ -236,14 +236,18 @@ public final class ProductionRun implements ProductionLoop.Ports {
     @Override public Outcome process(long now) {
         if (kind == ProductionRecipe.Kind.CRAFT) {
             if (craftJob == null) {
-                var requirement=craftRequirement();
-                if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
+                var requirement=productionRequirement();
+                if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking production prerequisites"):Outcome.blocked(requirementReason(requirement));
                 craftJob = recipe==null?env.queueCraft(output,batches):env.queueCraftRecipe(output,batches,recipe.key());
                 if (craftJob == null) return Outcome.blocked("Craft could not be queued; inputs changed or another production step is queued");
                 return Outcome.pending("Crafting");
             }
             if (env.craftQueued()) return Outcome.pending("Crafting");
             return childFinished(craftJob, Set.of(ProductionJobs.State.OUTPUT_READY, ProductionJobs.State.DONE), "Craft");
+        }
+        if(workstation==null || workstationState()==ProductionJobs.State.PLANNED) {
+            String requirement=productionRequirement();
+            if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking production prerequisites"):Outcome.blocked(requirementReason(requirement));
         }
         if (!workstationMenuOpen()) return Outcome.pending(kind == ProductionRecipe.Kind.FORGE ? "Open The Forge to submit" : "Open Kat's Pet Sitter with the pet placed");
         if (!ownsMenu) return Outcome.pending("Waiting for the menu");
@@ -263,7 +267,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             }
             if (workstation == null) return Outcome.blocked("Production journal could not record the workstation job");
         }
-        var result = workstation.tick(menu, env.actions(), env.skills(), env.account(), env.purse(), env.spendable(), now);
+        var result = workstation.tick(menu, env.actions(), env.skills(), env.unlocks(), env.account(), env.purse(), env.spendable(), now);
         return switch (result) {
             case SUBMITTED -> { copyTiming(); yield Outcome.DONE; }
             case WAITING -> Outcome.pending("Submitting");
@@ -284,7 +288,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if (!workstationMenuOpen()) return Outcome.pending(kind == ProductionRecipe.Kind.FORGE ? "Open The Forge to claim" : "Open Kat's Pet Sitter to claim");
         if (!ownsMenu) return Outcome.pending("Waiting for the menu");
         if (workstation == null) return Outcome.uncertain("Claim needs the workstation job; use the claim command");
-        var result = workstation.tick(env.menu(), env.actions(), env.skills(), env.account(), env.purse(), env.spendable(), now);
+        var result = workstation.tick(env.menu(), env.actions(), env.skills(), env.unlocks(), env.account(), env.purse(), env.spendable(), now);
         return switch (result) {
             case CLAIMED -> Outcome.DONE;
             case WAITING, SUBMITTED -> Outcome.pending("Claiming");
@@ -360,7 +364,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 : catalog.forOutput(output).stream().filter(r -> r.kind() == kind).toList();
         Selection best = null;double bestCost = Double.POSITIVE_INFINITY;
         for (var option : options) {
-            if(kind==ProductionRecipe.Kind.CRAFT && com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks())!=null)continue;
+            if(com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks())!=null)continue;
             var need = new LinkedHashMap<String,Integer>();
             var reserved=new HashMap<String,Integer>();
             for (var e : new TreeMap<>(option.ingredients()).entrySet()) {
@@ -381,9 +385,14 @@ public final class ProductionRun implements ProductionLoop.Ports {
         var selected=selection();return IngredientPreparation.plan(catalog,selected.deficits(),held(),selected.reserved());
     }
 
-    private String craftRequirement() {
-        if(kind!=ProductionRecipe.Kind.CRAFT)return null;
-        String reason="No verified crafting recipe for "+output;
+    private String productionRequirement() {
+        if(kind==ProductionRecipe.Kind.FORGE) {
+            Integer hotm=env.unlocks().get("hotm");
+            String access=com.goofy.goofyaddons.features.access.RouteRequirements.threshold("Heart of the Mountain",2,hotm);
+            if(access!=null)return access;
+            if(forgeSlot>=Math.min(7,hotm))return "Forge slot "+(forgeSlot+1)+" is unavailable at Heart of the Mountain "+hotm;
+        }
+        String reason="No verified production recipe for "+output;
         for(var option:recipe==null?catalog.forOutput(output):List.of(recipe))if(option.kind()==kind) {
             var blocked=com.goofy.goofyaddons.features.access.RouteRequirements.craft(option.requirement(),env.skills(),env.unlocks());
             if(blocked==null)return null;

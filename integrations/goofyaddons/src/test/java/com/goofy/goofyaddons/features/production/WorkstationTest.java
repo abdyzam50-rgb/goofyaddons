@@ -46,21 +46,30 @@ class WorkstationTest {
         assertEquals(1,actions.serverEffects().size());
         assertEquals(CraftingExecutor.Result.BLOCKED,execute.tick(r,confirmed,actions,Map.of(),9500));
     }
+    @Test void missingForgeUnlockCannotSubmitEvenWithAValidConfirmation()throws Exception {
+        var jobs=new ProductionJobs(dir.resolve("jobs.json"));
+        jobs.put(new ProductionJobs.Job("job",forge().key(),"account",ProductionJobs.State.PLANNED,1,0,0,0,100.0,null,null,null));
+        var actions=new RecordingActions();var execute=new WorkstationExecutor(forge(),"job",jobs,null);
+        assertEquals(WorkstationExecutor.Result.BLOCKED,execute.tick(confirm(),actions,Map.of(),Map.of(),"account",1000,0,1000));
+        assertTrue(actions.serverEffects().isEmpty());assertEquals(ProductionJobs.State.PLANNED,jobs.find("job").orElseThrow().state());
+        assertEquals(WorkstationExecutor.Result.WAITING,execute.tick(confirm(),actions,Map.of(),Map.of("hotm",2),"account",1000,0,2000));
+        assertEquals(List.of("click:16"),actions.serverEffects());
+    }
     @Test void forgeSubmissionIsPersistedBeforeClickAndClaimRequiresServerInventoryProof()throws Exception {
         var jobs=new ProductionJobs(dir.resolve("jobs.json"));
         jobs.put(new ProductionJobs.Job("job",forge().key(),"account",ProductionJobs.State.PLANNED,1,0,0,0,100.0,null,null,null));
         var actions=new RecordingActions();var execute=new WorkstationExecutor(forge(),"job",jobs,null);
-        assertEquals(WorkstationExecutor.Result.WAITING,execute.tick(confirm(),actions,Map.of(),"account",1000,0,1000));
+        assertEquals(WorkstationExecutor.Result.WAITING,execute.tick(confirm(),actions,Map.of(),Map.of("hotm",10),"account",1000,0,1000));
         assertEquals(ProductionJobs.State.SUBMITTING,new ProductionJobs(dir.resolve("jobs.json")).find("job").orElseThrow().state());
         assertEquals(List.of("click:16"),actions.serverEffects());
         var working=menu(3,"The Forge",item(10,"OUTPUT",1,List.of("Time Remaining: 1m")));
-        assertEquals(WorkstationExecutor.Result.SUBMITTED,execute.tick(working,actions,Map.of(),"account",1000,0,2000));
+        assertEquals(WorkstationExecutor.Result.SUBMITTED,execute.tick(working,actions,Map.of(),Map.of("hotm",10),"account",1000,0,2000));
         assertEquals(62000,jobs.find("job").orElseThrow().readyAt());
         var complete=menu(3,"The Forge",item(10,"OUTPUT",1,List.of("Time Remaining: Completed!")));
-        assertEquals(WorkstationExecutor.Result.WAITING,execute.tick(complete,actions,Map.of(),"account",1000,0,3000));
+        assertEquals(WorkstationExecutor.Result.WAITING,execute.tick(complete,actions,Map.of(),Map.of("hotm",10),"account",1000,0,3000));
         assertEquals(ProductionJobs.State.CLAIMING,jobs.find("job").orElseThrow().state());
         assertEquals(List.of("click:16","click:10"),actions.serverEffects());
-        assertEquals(WorkstationExecutor.Result.CLAIMED,execute.tick(menu(3,"The Forge",item(54,"OUTPUT",1,List.of())),actions,Map.of(),"account",1000,0,3500));
+        assertEquals(WorkstationExecutor.Result.CLAIMED,execute.tick(menu(3,"The Forge",item(54,"OUTPUT",1,List.of())),actions,Map.of(),Map.of("hotm",10),"account",1000,0,3500));
         assertEquals(ProductionJobs.State.OUTPUT_READY,jobs.find("job").orElseThrow().state());
     }
     @Test void katUsesExactPetAndActualDiscountedChargeThenVerifiesClaimedRarity()throws Exception {
@@ -75,13 +84,13 @@ class WorkstationTest {
         jobs.put(new ProductionJobs.Job("kat",recipe.key(),"account",ProductionJobs.State.PLANNED,1,-1,0,0,1000000.0,pet.uuid(),null,null));
         var actions=new RecordingActions();var execute=new WorkstationExecutor(recipe,"kat",jobs,pet);
         assertEquals(WorkstationExecutor.Result.WAITING,execute.tick(menu(1,"Pet Sitter",input,item(54,"MATERIAL",8,List.of()),
-            SlotView.named(22,"Upgrade Pet",List.of("Cost: 4,500,000 coins","Click to upgrade!"))),actions,Map.of(),"account",20000000,4500000,1000));
+            SlotView.named(22,"Upgrade Pet",List.of("Cost: 4,500,000 coins","Click to upgrade!"))),actions,Map.of(),Map.of("hotm",10),"account",20000000,4500000,1000));
         assertEquals(WorkstationExecutor.Result.SUBMITTED,execute.tick(menu(1,"Pet Sitter",input,
-            SlotView.named(22,"Upgrading",List.of("Time Remaining: 10s"))),actions,Map.of(),"account",15500000,4500000,1500));
+            SlotView.named(22,"Upgrading",List.of("Time Remaining: 10s"))),actions,Map.of(),Map.of("hotm",10),"account",15500000,4500000,1500));
         assertEquals(5500000,jobs.find("kat").orElseThrow().costBasis());
         assertEquals(WorkstationExecutor.Result.WAITING,execute.tick(menu(1,"Pet Sitter",output,
-            SlotView.named(22,"Collect Pet",List.of("Time Remaining: Completed!","Click to collect!"))),actions,Map.of(),"account",15500000,4500000,2000));
-        assertEquals(WorkstationExecutor.Result.CLAIMED,execute.tick(menu(1,"Pet Sitter",claimed),actions,Map.of(),"account",15500000,4500000,2500));
+            SlotView.named(22,"Collect Pet",List.of("Time Remaining: Completed!","Click to collect!"))),actions,Map.of(),Map.of("hotm",10),"account",15500000,4500000,2000));
+        assertEquals(WorkstationExecutor.Result.CLAIMED,execute.tick(menu(1,"Pet Sitter",claimed),actions,Map.of(),Map.of("hotm",10),"account",15500000,4500000,2500));
         assertEquals(List.of("click:22","click:22"),actions.serverEffects());
     }
     @Test void interruptedSubmissionOrWrongAccountNeverReplaysAnIrreversibleClick()throws Exception {
@@ -89,7 +98,7 @@ class WorkstationTest {
         jobs.put(new ProductionJobs.Job("job",forge().key(),"account",ProductionJobs.State.SUBMITTING,1,0,0,0,null,null,null,null));
         var actions=new RecordingActions();var execute=new WorkstationExecutor(forge(),"job",jobs,null);
         assertEquals(WorkstationExecutor.Result.BLOCKED,execute.tick(confirm(),actions,Map.of(),"other",1000,0,1000));
-        assertEquals(WorkstationExecutor.Result.BLOCKED,execute.tick(confirm(),actions,Map.of(),"account",1000,0,2000));assertTrue(actions.serverEffects().isEmpty());
+        assertEquals(WorkstationExecutor.Result.BLOCKED,execute.tick(confirm(),actions,Map.of(),Map.of("hotm",10),"account",1000,0,2000));assertTrue(actions.serverEffects().isEmpty());
     }
     @Test void timerParsingDistinguishesPredictionsFromCompletedJobsAndIgnoresInventoryImpostors() {
         var m=menu(1,"The Forge",item(10,"OUTPUT",1,List.of("Time Remaining: 2d 3h 4m 5s")),item(11,"OTHER",1,List.of("Time Remaining: Completed!")),item(54,"OUTPUT",1,List.of("Time Remaining: Completed!")));

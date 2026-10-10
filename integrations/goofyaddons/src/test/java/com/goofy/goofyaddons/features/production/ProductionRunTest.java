@@ -36,7 +36,7 @@ class ProductionRunTest {
         ProductionJobs jobs;MenuSnapshot menu=ProductionRunTest.menu(null);boolean sign,buying,craftQueued,listingQueued;
         double purse=10_000;final RecordingActions actions=new RecordingActions();final List<String> crafts=new ArrayList<>(),listings=new ArrayList<>();
         Set<String> occupied=Set.of(),unquoted=Set.of();
-        Map<String,Integer> unlocks=Map.of();boolean requirementsPending;String procurementBlock,pinnedKey;
+        Map<String,Integer> unlocks=Map.of("hotm",10);boolean requirementsPending;String procurementBlock,pinnedKey;
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
         public String account(){return "account";}
@@ -233,6 +233,23 @@ class ProductionRunTest {
         assertTrue(env.listings.isEmpty());
     }
 
+    @Test void forgeUnlocksAndSlotCapacityBlockBeforeProcurement()throws Exception {
+        var env=new Env();env.buying=true;env.unlocks=Map.of();
+        var run=ProductionRun.start(env,catalog(),"REFINED",ProductionRecipe.Kind.FORGE,1,2,0,0);
+        assertEquals(Step.BLOCKED,run.tick(true,1000));assertTrue(env.actions.serverEffects().isEmpty());
+        env.unlocks=Map.of("hotm",2);
+        assertEquals(Step.BLOCKED,run.tick(true,2000));assertTrue(run.reason().contains("slot"));assertTrue(env.actions.serverEffects().isEmpty());
+        env.unlocks=Map.of("hotm",3);
+        assertEquals(Step.PENDING,run.tick(true,3000));assertTrue(run.reason().contains("Buying"));
+    }
+    @Test void forgeCatalogThresholdIsHigherThanBasicWorkstationAccess()throws Exception {
+        var env=new Env();env.buying=true;env.unlocks=Map.of("hotm",2);
+        var r=new ProductionRecipe("forge:REFINED:0",ProductionRecipe.Kind.FORGE,"REFINED",1,Map.of("INPUT",2),List.of(),60,0,"HotM 6 & Wolf Slayer 3",null);
+        var run=ProductionRun.start(env,new RecipeCatalog(List.of(r),Map.of()),"REFINED",ProductionRecipe.Kind.FORGE,1,0,0,0);
+        assertEquals(Step.BLOCKED,run.tick(true,1000));assertTrue(env.actions.serverEffects().isEmpty());
+        env.unlocks=Map.of("hotm",6,"wolfslayer",2);assertEquals(Step.BLOCKED,run.tick(true,2000));
+        env.unlocks=Map.of("hotm",6,"wolfslayer",3);assertEquals(Step.PENDING,run.tick(true,3000));
+    }
     @Test void forgeRunWaitsForThePlayerToOpenTheForgeAndProvesSubmission()throws Exception {
         var env=new Env();env.menu=ProductionRunTest.menu(null,item(54,"INPUT",2));
         var run=ProductionRun.start(env,catalog(),"REFINED",ProductionRecipe.Kind.FORGE,1,0,0,0);

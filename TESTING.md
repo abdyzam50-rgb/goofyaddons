@@ -120,3 +120,12 @@ exclusion list wraps long IDs without horizontal overflow. The mod resource,
 embedded calculator ZIP, website files and public website deployment ZIP contain
 identical catalogs. Live crafting of all imported routes was not possible here;
 server GUI evidence and account/market checks remain necessary during execution.
+
+0.2.36 validation: 1,069 Java tests, 116 Node tests and 6 Python importer tests
+passed with zero failures/errors. Full Java tests, shipped-calculator integration
+checks and the release build passed. Regressions cover raw Slayer codes, HotM
+aliases and boundaries, invalid/unknown account facts, published Slayer reward
+claims, pre-purchase Forge access/slot/recipe gates and confirmation controls.
+Desktop/mobile Chromium checks passed for profile import, ingredient preparation,
+Bazaar/AH filters and quote refresh/expiry. Live Hypixel crafting and Forge
+submission remain for user testing.

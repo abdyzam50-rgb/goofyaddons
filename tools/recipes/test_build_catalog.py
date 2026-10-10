@@ -21,10 +21,15 @@ class CatalogImportTest(unittest.TestCase):
         rows=[{'output_id':'OUTPUT','kind':'crafting','requirements':[
             {'type':'collection','name':'Gold Ingot','tier':4},
             {'type':'slayer','name':'Zombie','level':3},
+            {'type':'hotm','tier':6},
             {'type':'other','text':'Unknown prerequisite'}]}]
         gates=parsed_requirements(rows)['OUTPUT']
-        self.assertEqual('Requires: Gold Ingot IV & Zombie Slayer 3 & Unknown prerequisite',
+        self.assertEqual('Requires: Gold Ingot IV & Zombie Slayer 3 & HotM 6 & Unknown prerequisite',
                          merge_requirements('Requires: Gold Ingot IV',*gates))
+
+    def test_raw_slayer_and_reputation_codes_become_profile_gate_names(self):
+        self.assertEqual('Requires: Wolf Slayer 3 & Enderman Slayer 6 & Barbarian Reputation 1000',
+                         merge_requirements('WOLF_3 & EMAN_6 & BARBARIAN:1000 & Wolf Slayer III'))
 
     def test_invalid_counts_variant_yields_and_self_conversion_cannot_execute(self):
         for item, raw in [({'internalname': 'BEE;0'}, {'A1': 'EGG:1'}),

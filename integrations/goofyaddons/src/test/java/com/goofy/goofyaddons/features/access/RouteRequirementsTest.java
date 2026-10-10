@@ -22,6 +22,15 @@ class RouteRequirementsTest {
         assertNotNull(RouteRequirements.craft(rule,Map.of("fishing",35),Map.of("diamond",4)));
         assertNotNull(RouteRequirements.craft("Requires: Special Quest",Map.of(),Map.of()));
     }
+    @Test void rawSlayerCodesAndHotmAliasesUseObservedLevels() {
+        var levels=Map.of("hotm",6,"wolfslayer",3,"endermanslayer",6,"barbarianreputation",1000);
+        assertNull(RouteRequirements.craft("Requires: HotM Tier VI & WOLF_3 & EMAN_6 & BARBARIAN:1000",Map.of(),levels));
+        assertNull(RouteRequirements.craft("Heart of the Mountain Level 6",Map.of(),levels));
+        assertNull(RouteRequirements.craft("HotM 6",Map.of(),Map.of("heartofthemountain",6)));
+        assertNotNull(RouteRequirements.craft("WOLF_4",Map.of(),levels));
+        assertTrue(RouteRequirements.craft("BLAZE_3",Map.of(),levels).contains("unobserved"));
+        assertNotNull(RouteRequirements.craft("UNKNOWN_3",Map.of(),levels));
+    }
     private com.google.gson.JsonObject profile() {
         return JsonParser.parseString("""
             {"protocol":"goofy-profile/1","username":"Tester","fetchedAt":1000000,"profiles":[

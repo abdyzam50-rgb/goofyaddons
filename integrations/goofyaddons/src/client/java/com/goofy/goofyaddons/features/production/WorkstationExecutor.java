@@ -26,15 +26,26 @@ public final class WorkstationExecutor {
             throw new IllegalArgumentException("Kat needs the exact input pet UUID and variant");
     }
     public Result tick(MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,String account,double purse,double maximumCoins,long now) {
+        return tick(menu,actions,skills,Map.of(),account,purse,maximumCoins,now);
+    }
+    public Result tick(MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,String account,double purse,double maximumCoins,long now) {
         try {
             var job=journal.find(jobId).orElseThrow();
             if(job.batches()!=1 || !job.account().equals(account) || !job.recipeKey().equals(recipe.key()))return block("Workstation job account/recipe changed");
             if(menu==null || !menu.cursorEmpty())return block("Workstation transaction requires a readable menu and empty cursor");
             if(job.state()==ProductionJobs.State.PLANNED) {
+                String prerequisite=com.goofy.goofyaddons.features.access.RouteRequirements.craft(recipe.requirement(),skills,unlocks);
+                if(prerequisite!=null)return block(prerequisite);
+                if(recipe.kind()==ProductionRecipe.Kind.FORGE) {
+                    Integer hotm=unlocks.get("hotm");
+                    String access=com.goofy.goofyaddons.features.access.RouteRequirements.threshold("Heart of the Mountain",2,hotm);
+                    if(access!=null)return block(access);
+                    if(job.workstationSlot()>=Math.min(7,hotm))return block("Forge slot is unavailable at this Heart of the Mountain tier");
+                }
                 if(!Double.isFinite(purse) || purse<0 || !Double.isFinite(maximumCoins) || maximumCoins<0)return block("Workstation spending budget is unavailable");
                 int control=submitControl(menu);
                 if(control<0)return block("Workstation confirmation does not prove the selected recipe/pet");
-                String reason=ActionRequirements.blocked(menu.slot(control).lore(),skills,
+                String reason=ActionRequirements.blocked(menu.slot(control).lore(),skills,unlocks,
                         recipe.kind()==ProductionRecipe.Kind.FORGE?ActionRequirements.Action.FORGE:ActionRequirements.Action.KAT);
                 if(reason!=null)return block(reason);
                 Double charge=ProductionMenus.exactCoins(menu.slot(control).lore());

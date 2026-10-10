@@ -58,6 +58,14 @@ def import_recipe(item, raw, index, enchants):
                 ingredients=dict(sorted(ingredients.items())), grid=grid, durationSeconds=0,
                 coins=0, requirement=item.get('crafttext', '') or '', inputPet=None)
 
+def canonical_requirement(text):
+    match=re.fullmatch(r'(ZOMBIE|SPIDER|WOLF|ENDERMAN|EMAN|BLAZE|VAMPIRE)_([0-9]+)',text.strip(),re.I)
+    if match:
+        names={'ZOMBIE':'Zombie','SPIDER':'Spider','WOLF':'Wolf','ENDERMAN':'Enderman','EMAN':'Enderman','BLAZE':'Blaze','VAMPIRE':'Vampire'}
+        return f"{names[match[1].upper()]} Slayer {match[2]}"
+    match=re.fullmatch(r'(BARBARIAN|MAGE):([0-9]+)',text.strip(),re.I)
+    return f"{match[1].title()} Reputation {match[2]}" if match else text
+
 def requirement_key(text):
     def level(match):
         values={'I':1,'V':5,'X':10,'L':50,'C':100,'D':500,'M':1000}
@@ -77,6 +85,7 @@ def parsed_requirements(rows):
             if kind=='collection': text=f"{gate['name']} {gate['tier']}"
             elif kind=='slayer': text=f"{gate['name']} Slayer {gate['level']}"
             elif kind=='skill': text=f"{gate['name']} {gate['level']}"
+            elif kind=='hotm': text=f"HotM {gate['tier']}"
             elif kind=='reputation': text=f"{gate['faction']} Reputation {gate['amount']}"
             else: text=gate.get('text') or 'Unverified unlock'
             extra.setdefault(row['output_id'], []).append(text)
@@ -89,6 +98,7 @@ def merge_requirements(*texts):
         clean = re.sub(r'§.', '', text or '')
         clean = re.sub(r'^requires?:?\s*', '', clean, flags=re.I).strip()
         for part in re.split(r'\s*&\s*', clean):
+            part=canonical_requirement(part)
             if part and requirement_key(part) not in seen:
                 seen.add(requirement_key(part))
                 parts.append(part)

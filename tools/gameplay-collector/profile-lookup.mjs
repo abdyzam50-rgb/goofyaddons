@@ -38,7 +38,15 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   }else unknown.push('collections');
   if(member.slayer_bosses)for(const [id,boss] of Object.entries(member.slayer_bosses)) {
    const table=LEVELS.slayer_xp[id];
-   if(table&&present(boss.xp))slayers[({enderman:'Enderman',vampire:'Vampire'})[id]??id[0].toUpperCase()+id.slice(1)]=table.filter(n=>boss.xp>=n).length;
+   if(!table)continue;
+   const name=id[0].toUpperCase()+id.slice(1);
+   if(!present(boss?.xp)){unknown.push(`${name} Slayer`);continue;}
+   let level=table.filter(n=>boss.xp>=n).length;
+   if(boss.claimed_levels&&typeof boss.claimed_levels==='object') {
+    const claimed=Object.entries(boss.claimed_levels).filter(([key,value])=>/^level_[1-9]$/.test(key)&&value===true).map(([key])=>Number(key.slice(6)));
+    level=Math.min(level,Math.max(0,...claimed));
+   }
+   slayers[name]=level;
   }else unknown.push('slayers');
   for(const [field,label] of [['barbarians_reputation','Barbarian'],['mages_reputation','Mage']]) {
    const n=member.nether_island_player_data?.[field];if(present(n))reputation[label]=n;

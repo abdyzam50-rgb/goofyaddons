@@ -58,6 +58,13 @@ public final class ProductionCommands {
                 .then(ClientCommands.literal("claim").then(ClientCommands.argument("job",StringArgumentType.word())
                     .executes(c->claim(StringArgumentType.getString(c,"job"),0,0))
                     .then(sale((c,price,fee)->claim(StringArgumentType.getString(c,"job"),price,fee)))))
+                .then(ClientCommands.literal("requirements").executes(c->{
+                    var manager=FeatureManager.INSTANCE;var actions=new LiveActions();var unlocks=manager.observedUnlocks();
+                    actions.message(manager.accountRequirementsStatus());
+                    actions.message("Heart of the Mountain: "+(unlocks.containsKey("hotm")?unlocks.get("hotm"):"unobserved"));
+                    var names=java.util.List.of("Zombie","Spider","Wolf","Enderman","Blaze","Vampire");
+                    actions.message("Slayers: "+names.stream().map(name->name+" "+(unlocks.containsKey(name.toLowerCase(java.util.Locale.ROOT)+"slayer")?unlocks.get(name.toLowerCase(java.util.Locale.ROOT)+"slayer"):"unobserved")).collect(java.util.stream.Collectors.joining(" · ")));return 1;
+                }))
                 .then(ClientCommands.literal("status").executes(c->{new LiveActions().message(FeatureManager.INSTANCE.production().activity());return 1;}))
                 .then(ClientCommands.literal("recipes").executes(c->{
                     var catalog=RecipeCatalog.instance();

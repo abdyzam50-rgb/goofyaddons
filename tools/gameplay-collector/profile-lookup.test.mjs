@@ -97,3 +97,18 @@ test('unknown names and username rate limits do not trigger fallback or Hypixel 
   assert.equal(calls.length,1);
  }
 });
+
+test('HotM and all Slayer XP boundaries are imported without turning missing data into zero',()=>{
+ for(const [xp,expected] of [[0,1],[2999,1],[3000,2],[11999,2],[12000,3],[37000,4]]) {
+  const [p]=summarizeProfiles(data({mining_core:{experience:xp}}),uuid,null,1234);
+  assert.equal(p.stats.hotmTier,expected);
+ }
+ const [p]=summarizeProfiles(data({slayer_bosses:{zombie:{xp:200},spider:{xp:200},wolf:{xp:250},enderman:{xp:250},blaze:{xp:250},vampire:{xp:240}}}),uuid,null,1234);
+ for(const name of ['Zombie','Spider','Wolf','Enderman','Blaze','Vampire'])assert.equal(p.stats.slayers[name],3);
+ const [missing]=summarizeProfiles(data({slayer_bosses:{wolf:{}}}),uuid,null,1234);
+ assert.equal(missing.stats.slayers.Wolf,undefined);assert.ok(missing.unknown.includes('Wolf Slayer'));
+});
+test('published Slayer reward claims limit usable recipe levels',()=>{
+ const [p]=summarizeProfiles(data({slayer_bosses:{wolf:{xp:1000000,claimed_levels:{level_1:true,level_2:true,level_3:true,level_9:false}},zombie:{xp:200,claimed_levels:{}}}}),uuid,null,1234);
+ assert.equal(p.stats.slayers.Wolf,3);assert.equal(p.stats.slayers.Zombie,0);
+});

@@ -10,6 +10,7 @@ public final class ActionRequirements {
     public enum Action {BUY,COMBINE,CRAFT,FORGE,KAT}
     private static final String SKILLS="Farming|Mining|Combat|Foraging|Fishing|Enchanting|Alchemy|Carpentry|Taming|Runecrafting|Social";
     private static final Pattern THRESHOLD=Pattern.compile("(?i)(?:requires?|you need|you must have)\\s+(?:an?\\s+)?("+SKILLS+")\\s+(?:skill\\s+)?(?:level\\s*)?[: ]*([0-9]{1,2}|[IVXLCDM]+)\\b");
+    private static final Pattern UNLOCK=Pattern.compile("(?i)(?:requires?|you need|you must have)\\s+(?:an?\\s+)?(HotM|Heart of the Mountain|(?:Zombie|Spider|Wolf|Enderman|Blaze|Vampire) Slayer)\\s+(?:(?:tier|level)\\s*)?[: ]*([0-9]{1,2}|[IVXLCDM]+)\\b");
     private static final Pattern NAME=Pattern.compile("(?i)^("+SKILLS+")\\s+([0-9]{1,2}|[IVXLCDM]+)$");
     private static final Pattern PROGRESS=Pattern.compile("(?i)progress to level\\s+([0-9]{1,2}|[IVXLCDM]+)\\b");
     private ActionRequirements() {}
@@ -40,7 +41,15 @@ public final class ActionRequirements {
         ambiguous.forEach(result::remove);return Map.copyOf(result);
     }
     public static String blocked(String control,Map<String,Integer> skills,Action action) {
+        return blocked(control,skills,Map.of(),action);
+    }
+    public static String blocked(String control,Map<String,Integer> skills,Map<String,Integer> unlocks,Action action) {
         String explicit=BazaarAccess.unmet(control);if(explicit!=null)return explicit;
+        var unlock=UNLOCK.matcher(Chat.strip(control));
+        while(unlock.find()) {
+            String reason=RouteRequirements.craft(unlock.group(1)+" "+unlock.group(2),skills,unlocks);
+            if(reason!=null)return action+" "+reason;
+        }
         var match=THRESHOLD.matcher(Chat.strip(control));
         while(match.find()) {
             int required=level(match.group(2));if(required<1 || required>60)continue;
