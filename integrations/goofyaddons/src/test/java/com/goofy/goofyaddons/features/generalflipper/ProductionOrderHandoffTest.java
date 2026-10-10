@@ -215,4 +215,41 @@ class ProductionOrderHandoffTest {
         assertTrue(engine.productionFailed("parent-first"),"Submitted order verification must retain its deadline");
         assertNotNull(repo.load().getFirst());
     }
+    private MenuSnapshot outputRecoveryMenu(int units,boolean hasSellOrder) {
+        var slots=new ArrayList<SlotView>();for(int i=0;i<54;i++)slots.add(SlotView.empty(i,false,i));
+        for(int i=0;i<36;i++)slots.add(SlotView.empty(54+i,true,i));
+        slots.set(49,SlotView.named(49,"Close",List.of()));
+        if(units>0)slots.set(54,new SlotView(54,true,0,false,"Soulflow","Soulflow",List.of(),"SOULFLOW",null,units,64));
+        if(hasSellOrder)slots.set(11,SlotView.named(11,"SELL Soulflow",List.of("Order amount: 10x","Filled: 0/10")));
+        return new MenuSnapshot(42,"Your Bazaar Orders",true,slots);
+    }
+    private GeneralPosition unsubmittedOutput() {
+        var p=new GeneralPosition();p.item=new GeneralItem("SOULFLOW","Soulflow");p.quantity=10;p.unitCost=26496.5;
+        p.stage=GeneralPosition.Stage.INVENTORY;p.minimumSellPrice=25000;p.productionParent="parent-output";p.tradeId="output-position";
+        return p;
+    }
+    @Test void mixedIngredientAndUnsubmittedOutputRecoveryVerifiesStockWithoutSellingIt()throws Exception {
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("mixed.json"));var output=unsubmittedOutput();
+        var input=new GeneralPosition();input.item=new GeneralItem("INPUT","Input");input.quantity=2;input.unitCost=100;
+        input.stage=GeneralPosition.Stage.INVENTORY;input.productionBuy=true;input.purchasePriceKnown=true;input.maximumBuyPrice=103;
+        input.productionParent="parent-input";input.tradeId="input-position";repo.save(List.of(input,output));
+        var actions=new RecordingActions();var engine=new GeneralFlipper(new FakeWorld().showing(outputRecoveryMenu(10,false)),actions,repo,services());
+        assertTrue(engine.recoverProductionBuy());assertTrue(engine.consumeProduction());
+        var world=new FakeWorld().showing(outputRecoveryMenu(10,false));
+        engine=new GeneralFlipper(world,actions,repo,services());assertTrue(engine.recoverProductionBuy());drive(engine,world,1600);
+        assertFalse(engine.productionFailed());assertTrue(engine.productionPosition().completed);
+        assertFalse(engine.productionPosition().submitted);assertNull(engine.productionPosition().verifiedProceeds);
+        assertFalse(engine.productionPosition().purchasePriceKnown,"The sell quote is not promoted to an input cost");
+        assertTrue(repo.load().getFirst().completed,"Verification stays durable until the controller archives recovery evidence");
+        assertTrue(actions.serverEffects().isEmpty(),actions.performed().toString());
+        assertTrue(engine.consumeProduction());assertTrue(repo.load().isEmpty());
+    }
+    @Test void outputRecoveryRefusesChangedInventoryOrAnExistingOrderWithoutClicking()throws Exception {
+        for(boolean existing:List.of(false,true)) {
+            var repo=new JsonGeneralOrderRepository(()->dir.resolve("mismatch-"+existing+".json"));repo.save(List.of(unsubmittedOutput()));
+            var world=new FakeWorld().showing(outputRecoveryMenu(existing?10:9,existing));var actions=new RecordingActions();
+            var engine=new GeneralFlipper(world,actions,repo,services());assertTrue(engine.recoverProductionBuy());drive(engine,world,1600);
+            assertTrue(engine.productionFailed());assertFalse(repo.load().getFirst().completed);assertTrue(actions.serverEffects().isEmpty());
+        }
+    }
 }

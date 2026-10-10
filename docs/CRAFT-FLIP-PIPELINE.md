@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.62
+# Craft flip discovery and execution — 0.2.63
 
 ## Shipped behavior
 
@@ -891,3 +891,29 @@ work; it does not silently resume or erase those positions. Mixed buy/sell recov
 remains conservative and may require inspecting the actual orders/inventory and
 production jobs before requeueing. The saved maximum batches was still 16 and active
 crafts 4 in this export, rather than the suggested comparison settings.
+
+
+## 0.2.63 — mixed retained-order recovery
+
+The new export confirms an 8-unit Alligator Skin buy order and an unsubmitted
+10-unit Soulflow output position, with exactly 10 Soulflow in player inventory.
+Previously `production recoverorders` refused the whole queue because a sell-side
+position was present. It now permits that combination only when the sell-side
+position is INVENTORY, unsubmitted and has no pending settlement. Submitted sells
+and unreadable acquisition costs for buys still refuse recovery.
+
+Recovery is explicitly separate from ordinary execution: it cancels/claims buys
+as before and verifies each unsubmitted output against a settled, unpaginated,
+unambiguous live orders menu and its exact inventory count. An existing buy/sell
+order or changed inventory pauses with all evidence retained. It never lists or
+sells the output, acquires new materials, reprices, or assumes sale proceeds.
+Verified output recovery is saved until the controller durably archives a REVIEW
+record before consuming the reservation. That archive has no invented cost basis:
+the original parent retains its own recorded cost; the sell quote is not treated
+as an acquisition cost. Stop/start/account changes clear the transient recovery
+mode. All journal records remain account/profile scoped.
+
+After updating, stop trading and run `production recoverorders`. Wait for the
+recovered message, inspect claimed inputs and unsold outputs, then stop and use
+`production acknowledge all` before restarting automatic crafts. Unsold Soulflow
+remains in inventory for manual sale or storage; recovery does not record profit.

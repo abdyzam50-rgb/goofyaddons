@@ -423,3 +423,12 @@ navigation deadline while submitted verification still times out. Existing
 unexpected-menu, order ownership, cancellation and strategy tests also pass.
 The empty-portfolio stop guard compiles; actual profile transitions and server GUI
 latency still require in-game validation. Previously retained orders are preserved.
+
+
+The 0.2.63 mixed craft recovery update passes 1,127 Java tests via
+`./gradlew -p client test build`. New driving coverage accepts mixed ingredient and
+unsubmitted output records, hands off only verified stock, persists verification
+until archival, and produces no purchase/sale clicks or proceeds. Mismatched
+inventory and existing sell orders refuse output recovery. Existing cancellation,
+refund, unknown-cost and submitted-sell refusal tests remain passing. The recovery
+controller's archival path compiles; live mixed queue recovery still needs testing.

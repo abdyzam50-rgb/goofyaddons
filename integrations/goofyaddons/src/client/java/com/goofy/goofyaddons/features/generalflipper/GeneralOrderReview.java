@@ -24,6 +24,17 @@ final class GeneralOrderReview {
         int buy = ctx.findOrder(false);
         int sell = ctx.findOrder(true);
         int inventory = ctx.itemCount(active.item.id());
+        if(ctx.recoveringProduction() && !active.productionBuy) {
+            if(active.stage!=Stage.INVENTORY || active.submitted || active.settlementPending
+                    || buy>=0 || sell>=0 || inventory!=active.quantity) {
+                ctx.fail("Unsold output recovery needs the exact tracked inventory and no outstanding order; evidence retained.");return;
+            }
+            // Only release an unsubmitted output after live orders/inventory verification.
+            // The parent keeps its cost basis; this is neither a sale nor an acquisition.
+            active.completed=true;
+            if(ctx.save())ctx.finishWork();
+            return;
+        }
         if (buy < 0 && sell < 0 && active.stage != Stage.PLANNED && (active.stage != Stage.INVENTORY || inventory == 0)
                 && ctx.recheckOrders("tracked-order-absent")) return;
         if (buy < 0 && sell < 0 && inventory == 0 && active.stage == Stage.BUY_ORDER && active.cancelRequested

@@ -66,6 +66,10 @@ public final class ProductionBazaarOrders {
     public boolean recoverBuy(){bind();return engine.recoverProductionBuy();}
     public com.goofy.goofyaddons.features.production.ProductionJobs.Job recoveryEvidence(String account) {
         var p=engine.productionPosition();
+        if(p!=null && !p.productionBuy && p.completed && !p.submitted && p.stage==GeneralPosition.Stage.INVENTORY)
+            return new com.goofy.goofyaddons.features.production.ProductionJobs.Job(p.tradeId,"recovered:output:"+p.item.id(),account,
+                com.goofy.goofyaddons.features.production.ProductionJobs.State.REVIEW,1,-1,0,0,null,null,null,
+                "Verified unsold output recovery: "+p.quantity+" "+p.item.id()+" units remain in inventory; no order exists and no sale was submitted. Parent "+p.productionParent+" retains its original cost basis. No sale, new acquisition or profit assumed.");
         if(p==null || !p.productionBuy || !p.purchasePriceKnown || !(p.completed || p.stage==GeneralPosition.Stage.INVENTORY))
             throw new IllegalStateException("Claim/cancellation has not been verified");
         return new com.goofy.goofyaddons.features.production.ProductionJobs.Job(p.tradeId,"recovered:bazaar:"+p.item.id(),account,

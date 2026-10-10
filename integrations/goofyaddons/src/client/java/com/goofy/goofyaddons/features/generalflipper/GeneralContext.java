@@ -15,6 +15,7 @@ import java.util.List;
  * its own class cannot quietly change how it observes, persists or fails.
  */
 interface GeneralContext {
+    default boolean recoveringProduction(){return false;}
     GeneralPosition active();
     GeneralTrade trade();
     GeneralClaim claim();

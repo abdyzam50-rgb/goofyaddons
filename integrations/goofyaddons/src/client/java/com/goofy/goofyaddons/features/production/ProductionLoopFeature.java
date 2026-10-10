@@ -83,7 +83,7 @@ public final class ProductionLoopFeature implements Feature {
         return "Craft discovery · "+(selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes · ":"")+discoveryReason();
     }
     public String activity() {
-        if(recoveringOrders)return "Recovering craft ingredient orders · "+orders.diagnosticState().get("step");
+        if(recoveringOrders)return "Recovering craft positions · "+orders.diagnosticState().get("step");
         if(work.isEmpty())return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?discoveryStatus():"No production run queued";
         var current=foreground!=null && work.contains(foreground)?foreground:work.getFirst();
         return "Craft queue "+work.size()+"/"+GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts+" · "+current.run.output()+" · "+current.run.stage().name().toLowerCase(Locale.ROOT)+(current.run.reason()==null?"":" · "+current.run.reason());
@@ -175,12 +175,12 @@ public final class ProductionLoopFeature implements Feature {
     public boolean needsMenu() { return isRunning() && (recoveringOrders?orders.needsMenu():menuWork()!=null); }
     public boolean canYield() { return !needsMenu(); }
 
-    /** Cancel a retained ingredient order and claim its filled inputs; never select another craft. */
+    /** Recover ingredient buys and verified unsubmitted outputs; never select another craft. */
     public boolean recoverOrders() {
         if(queued() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued())return false;
-        if(!orders.recoverBuy()){new LiveActions().message("No recoverable ingredient buy order, or the order journal is unreadable. Evidence preserved.");return false;}
+        if(!orders.recoverBuy()){new LiveActions().message("No recoverable craft positions, or the order journal is unreadable. Evidence preserved.");return false;}
         recoveringOrders=true;
-        new LiveActions().message("Recovering the retained ingredient order: claim filled inputs, cancel/refund the remainder, then retain the inputs for manual review. No new purchases or sales.");
+        new LiveActions().message("Recovering retained craft positions: claim/cancel ingredient buys and verify unsubmitted outputs against inventory and live orders. Evidence stays in manual review. No new purchases or sales.");
         return true;
     }
     private void recoverOrderStep(boolean ownsMenu) {
@@ -198,7 +198,7 @@ public final class ProductionLoopFeature implements Feature {
             Diagnostics.event("INFO","production.order_recovered",Map.of("job",evidence.id(),"reason",evidence.reason()));
             if(orders.retained())return;
             recoveringOrders=false;orders.stop();
-            FeatureManager.INSTANCE.safetyPause("Ingredient orders recovered. Inspect inventory, then use production acknowledge all before restarting crafts.");
+            FeatureManager.INSTANCE.safetyPause("Craft positions recovered. Inspect inventory and recovered evidence, then use production acknowledge all before restarting crafts.");
         }catch(Exception failed) {
             recoveringOrders=false;orders.stop();Diagnostics.failure("production.order_recovery_failed",failed);
             FeatureManager.INSTANCE.safetyPause("Craft order recovery could not be saved; evidence retained");

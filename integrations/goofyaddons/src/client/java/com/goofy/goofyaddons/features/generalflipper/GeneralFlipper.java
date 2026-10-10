@@ -71,6 +71,7 @@ public class GeneralFlipper implements Feature {
     private boolean running;
     private boolean paused;
     private boolean blocked;
+    private boolean productionRecovery;
     private CompletableFuture<JsonObject> request;
     private int generation;
     private JsonObject products;
@@ -174,6 +175,7 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void start() {
+        productionRecovery=false;
         bedrockRecovery.reset();
         restoreBudget();
         if (blocked) { actions.message("General flipper is blocked; resolve the logged order-state error first."); return; }
@@ -188,6 +190,7 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void stop() {
+        productionRecovery=false;
         running = false;
         paused = false;
         invalidateRequest();
@@ -666,6 +669,7 @@ public class GeneralFlipper implements Feature {
 
     /** The engine's rules, as the operations see them. */
     private final class Session implements GeneralContext {
+        @Override public boolean recoveringProduction(){return productionRecovery;}
         @Override public GeneralPosition active() { return active; }
         @Override public GeneralTrade trade() { return trade; }
         @Override public GeneralClaim claim() { return claim; }
@@ -712,7 +716,7 @@ public class GeneralFlipper implements Feature {
     }
 
     void resetProductionAccount(){
-        invalidateRequest();positions.clear();active=null;loaded=false;blocked=false;running=false;paused=false;
+        invalidateRequest();positions.clear();active=null;loaded=false;blocked=false;running=false;paused=false;productionRecovery=false;
         instantPosition=null;instantBuying=null;instantSelling=null;clearSnapshot();
     }
     boolean enqueueProduction(String id,String name,int units,double unitPrice,boolean buy,double limit) {
@@ -759,11 +763,15 @@ public class GeneralFlipper implements Feature {
     boolean recoverProductionBuy() {
         restoreBudget();
         if(!services.productionOnly() || blocked || positions.isEmpty())return false;
-        if(positions.stream().anyMatch(p->!p.productionBuy || !p.purchasePriceKnown || p.stage==Stage.PLANNED && !p.submitted))return false;
+        if(positions.stream().anyMatch(p->p.productionBuy
+                ? !p.purchasePriceKnown || p.stage==Stage.PLANNED && !p.submitted
+                : p.stage!=Stage.INVENTORY || p.submitted || p.settlementPending))return false;
         start();
-        for(var p:positions)if(!p.completed && p.stage!=Stage.INVENTORY) {
+        productionRecovery=true;
+        for(var p:positions)if(!p.completed) {
             // The existing claim/cancel engine verifies live ownership, inventory and refunds.
-            p.cancelRequested=true;p.checkedAt=0;
+            if(p.productionBuy && p.stage!=Stage.INVENTORY)p.cancelRequested=true;
+            p.checkedAt=0;
             if(!save()){running=false;return false;}
         }
         return true;
