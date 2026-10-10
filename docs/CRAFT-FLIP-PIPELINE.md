@@ -72,7 +72,8 @@ Each candidate evaluates whole batches, not arbitrary scaled top prices:
 4. Fit the batch inside spendable funds, configured batch capital, empty inventory
    space, grid/output/intermediate capacity and the 1–16 batch executor limit.
 5. Require observed collection/skill/slayer unlocks. Skip conflicting positions,
-   held outputs and active/unreadable Personal Compactor recipes.
+   held outputs and unreadable Personal Compactor configurations. Known compactor
+   recipes are cleared by the production preflight before inputs are bought.
 6. Limit a Bazaar batch to 5% of daily volume estimated from the smaller weekly
    buy/sell counter. Rank using conservative net profit, estimated GUI work and
    liquidity. Coflnet's reported volume affects AH confidence without assuming
@@ -197,3 +198,29 @@ closes its retained menu when it finishes without a sale, or when it needs to
 switch to Auction House listing. Bazaar navigation replaces it with the required
 product menu. Forge/Kat preparation keeps the former standalone-close behavior.
 No occupied cursor or unfinished grid is adopted for the next recipe.
+
+## Clearing compactor filters before production (0.2.31)
+
+Every craft and Forge production run clears all recipes from every detected
+Personal Compactor before procurement. Standalone crafting uses the same gate.
+This includes unrelated filters and disabled compactors; the ON/OFF setting is
+preserved. Existing filters are intentionally not restored, per the user's
+request to start with an empty configuration. These are filter entries, not
+inventory stacks: clearing them does not sell, drop, or delete materials.
+
+The two supplied 7000 menu captures verify all twelve numbered controls, their
+product IDs, removal lore, empty-filter lore and the activation toggle. Sanitized
+fixtures retain only menu fields, without account or session details. Each
+removal intent is saved in the production journal before its click. The executor
+waits for the exact expected filter map, checks that inventory counts did not
+change, and finally closes the menu and verifies empty saved item metadata. A
+missing acknowledgement, replaced container, unexpected recipe change or changed
+inventory stops the run for review; removal clicks are not blindly replayed.
+
+Automatic opening uses an owned hotbar compactor. Put each compactor in the
+hotbar for automatic clearing, or manually open an inventory compactor's menu.
+Unreachable or unreadable detected devices block production rather than being
+skipped. Only devices observed in inventory or the current Accessory Bag page
+can be checked; this does not inspect unseen bag pages. Book/general trading
+and Kat pet upgrades do not enter this crafting preflight. Automatic bulk
+compaction remains disabled; this release adds the required initial cleanup.

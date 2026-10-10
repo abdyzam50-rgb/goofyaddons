@@ -120,6 +120,22 @@ class ProductionRunTest {
         env.menu=menu(null,item(54,"OUTPUT",1));run.tick(false,5);
         assertEquals(List.of("OUTPUT@5000"),env.listings);
     }
+    @Test void clearsUnrelatedFiltersBeforeAnyProductionPurchase()throws Exception {
+        var env=new Env();env.buying=true;var filters=Map.of(0,"UNRELATED_RECIPE");
+        env.menu=CompactorClearanceTest.menu("Personal Compactor 7000",false,filters,filters);
+        var run=ProductionRun.start(env,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        assertTrue(run.wantsMenu());run.tick(false,0);assertTrue(env.actions.performed().isEmpty());
+        run.tick(true,0);assertEquals(List.of("click:10"),env.actions.performed());assertTrue(env.crafts.isEmpty());
+        assertEquals(ProductionJobs.State.PROCESSING,env.jobs.find(run.jobId()).orElseThrow().state());
+        run.tick(true,100);assertEquals(List.of("click:10"),env.actions.performed());
+        env.menu=CompactorClearanceTest.menu("Personal Compactor 7000",false,Map.of(),filters);
+        run.tick(true,600);assertEquals(List.of("click:10","close"),env.actions.performed());
+        env.menu=CompactorClearanceTest.menu(null,false,Map.of(),filters);
+        run.tick(true,1200);assertEquals(List.of("click:10","close"),env.actions.performed());
+        env.menu=CompactorClearanceTest.menu(null,false,Map.of(),Map.of());
+        run.tick(true,1800);run.tick(true,2400);
+        assertEquals(List.of("click:10","command:bz Input"),env.actions.serverEffects());
+    }
     @Test void occupiedBaseIngredientsCannotBeConsumedByPreparation()throws Exception {
         var env=new Env();env.occupied=Set.of("BLAZE_ROD");
         env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",1));

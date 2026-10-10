@@ -30,7 +30,7 @@ public final class PersonalCompactors {
             "capacity",first==null?0:CompactorData.capacity(CompactorData.tier(first.customId())),
             "configurationReadable",first!=null && first.metadata().compactor()!=null,
             "status",first==null?"Not observed in inventory or the open Accessory Bag":first.metadata().compactor()==null?"Compactor configuration unreadable":
-                "Detected Personal Compactor "+CompactorData.tier(first.customId())+"; automatic GUI configuration awaits verification",
+                "Detected Personal Compactor "+CompactorData.tier(first.customId())+"; production clears all detected recipe filters before buying or crafting",
             "automaticBulkEnabled",false);
     }
     public static String conflict(MenuSnapshot menu,Collection<String> inputs,RecipeCatalog catalog) {

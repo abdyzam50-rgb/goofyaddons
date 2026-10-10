@@ -1,0 +1,352 @@
+{
+  "title": "Personal Compactor 7000",
+  "cursorEmpty": true,
+  "slots": [
+    {
+      "slot": 0,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 1,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 2,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 3,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 4,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 5,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 6,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 7,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 8,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 9,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 10,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #1",
+      "productId": "ENCHANTED_HAY_BALE",
+      "lore": [
+        "Item: Enchanted Hay Bale",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 11,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #2",
+      "productId": "ENCHANTED_WHEAT",
+      "lore": [
+        "Item: Enchanted Wheat",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 12,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #3",
+      "productId": "ENCHANTED_SEEDS",
+      "lore": [
+        "Item: Enchanted Seeds",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 13,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #4",
+      "productId": "BOX_OF_SEEDS",
+      "lore": [
+        "Item: Box of Seeds",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 14,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #5",
+      "productId": "ENCHANTED_SUGAR_CANE",
+      "lore": [
+        "Item: Enchanted Sugar Cane",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 15,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #6",
+      "productId": "ENCHANTED_SUGAR",
+      "lore": [
+        "Item: Enchanted Sugar",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 16,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #7",
+      "productId": "MUTANT_NETHER_STALK",
+      "lore": [
+        "Item: Mutant Nether Wart",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 17,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 18,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 19,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 20,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #8",
+      "productId": "ENCHANTED_NETHER_STALK",
+      "lore": [
+        "Item: Enchanted Nether Wart",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 21,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #9",
+      "productId": "ENCHANTED_HUGE_MUSHROOM_2",
+      "lore": [
+        "Item: Enchanted Red Mushroom Block",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 22,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #10",
+      "productId": "ENCHANTED_MITHRIL",
+      "lore": [
+        "Item: Enchanted Mithril",
+        "",
+        "This item will automatically be crafted",
+        "from ingredients in your inventory.",
+        "",
+        "Click to remove item!"
+      ]
+    },
+    {
+      "slot": 23,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #11",
+      "lore": [
+        "Click on an item in your inventory to",
+        "add it to this Personal Compactor",
+        "filter."
+      ]
+    },
+    {
+      "slot": 24,
+      "empty": false,
+      "count": 1,
+      "name": "Auto-Craft Slot #12",
+      "lore": [
+        "Click on an item in your inventory to",
+        "add it to this Personal Compactor",
+        "filter."
+      ]
+    },
+    {
+      "slot": 25,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 26,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 27,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 28,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 29,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 30,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 31,
+      "empty": false,
+      "count": 1,
+      "name": "Compactor Currently ON!",
+      "lore": [
+        "Your Personal Compactor is",
+        "currently ON. Toggle it OFF to stop",
+        "compacting items.",
+        "",
+        "Click to toggle!"
+      ]
+    },
+    {
+      "slot": 32,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 33,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 34,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    },
+    {
+      "slot": 35,
+      "empty": false,
+      "count": 1,
+      "name": "",
+      "lore": []
+    }
+  ]
+}

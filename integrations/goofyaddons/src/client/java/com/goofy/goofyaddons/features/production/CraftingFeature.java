@@ -11,6 +11,8 @@ public final class CraftingFeature implements Feature {
     private final CraftingExecutor executor=new CraftingExecutor();
     private ProductionRecipe recipe;
     private boolean keepMenuOpen;
+    private String compactorStatus;
+    private CompactorClearance compactorClearance=new CompactorClearance();
     private int remaining;
     private String jobId;
     private ProductionJobs jobs;
@@ -20,7 +22,7 @@ public final class CraftingFeature implements Feature {
     public boolean queued(){return recipe!=null;}
     /** The journal id of the most recently queued job, for callers that follow it. */
     public String jobId(){return jobId;}
-    public String activity(){return recipe==null?"No craft queued":"Crafting "+recipe.outputId()+" · "+remaining+" batches remaining";}
+    public String activity(){return recipe==null?"No craft queued":"Crafting "+recipe.outputId()+" · "+remaining+" batches remaining"+(compactorStatus==null?"":" · "+compactorStatus);}
     public Set<String> lockedProducts(){if(recipe==null)return Set.of();var ids=new HashSet<>(recipe.ingredients().keySet());ids.add(recipe.outputId());return Set.copyOf(ids);}
     private ProductionJobs jobs()throws java.io.IOException {
         if(jobs==null) {
@@ -53,7 +55,7 @@ public final class CraftingFeature implements Feature {
         }
         String requirement=com.goofy.goofyaddons.features.access.RouteRequirements.craft(chosen.get().requirement(),FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks());
         if(requirement!=null){new LiveActions().message("Cannot queue craft: "+requirement+". Check Your Skills and wait for the account lookup.");return false;}
-        recipe=chosen.get();keepMenuOpen=keepOpen;remaining=batches;jobId=UUID.randomUUID().toString();executor.reset();opening=false;
+        recipe=chosen.get();keepMenuOpen=keepOpen;remaining=batches;jobId=UUID.randomUUID().toString();executor.reset();opening=false;compactorClearance=new CompactorClearance();compactorStatus=null;
         try {
             jobs().put(new ProductionJobs.Job(jobId,recipe.key(),new LiveWorld().username(),ProductionJobs.State.PLANNED,batches,-1,0,0,null,null,null,null));
         }catch(Exception failure){recipe=null;Diagnostics.failure("production.journal_failed",failure);new LiveActions().message("Crafting journal could not be saved; no action performed.");return false;}
@@ -101,6 +103,13 @@ public final class CraftingFeature implements Feature {
                 if(requirement!=null && FeatureManager.INSTANCE.accountRequirementsPending())return;
                 if(requirement!=null){fail("Crafting requirement: "+requirement);return;}
                 if(menu==null || !menu.cursorEmpty()){fail("Crafting cursor is occupied");return;}
+                var cleared=compactorClearance.tick(menu,actions,new CompactorClearance.Ports(){
+                    public boolean open(SlotView device){return LiveCompactorOpening.open(device);}
+                    public void intent(String reason)throws Exception{jobs().put(jobs().find(jobId).orElseThrow().withState(ProductionJobs.State.PROCESSING,reason));}
+                },true,now);
+                compactorStatus=cleared.reason();
+                if(cleared.step()==ProductionLoop.Step.UNCERTAIN){fail(cleared.reason());return;}
+                if(cleared.step()!=ProductionLoop.Step.DONE)return;
                 if(menu.title()!=null && !"Craft Item".equals(Chat.strip(menu.title()))){fail("Close the unrelated menu before starting crafting");return;}
                 jobs().put(jobs().find(jobId).orElseThrow().withState(ProductionJobs.State.PROCESSING,null));
                 opening=true;openedAt=now;nextCommand=0;

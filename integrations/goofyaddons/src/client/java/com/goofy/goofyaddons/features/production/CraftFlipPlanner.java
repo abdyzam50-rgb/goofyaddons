@@ -46,7 +46,7 @@ final class CraftFlipPlanner {
                 String reason=requirement;
                 if(menu.countInInventory(recipe.outputId())>0)reason="Output already held; move it before automatic production";
                 if(blocked.contains(recipe.outputId())||preparation.products().stream().anyMatch(blocked::contains))reason="Product belongs to another position or unresolved production job";
-                String conflict=PersonalCompactors.conflict(menu,preparation.products(),catalog);if(conflict!=null)reason=conflict;
+                String conflict=CompactorClearance.unreadable(menu);if(conflict!=null)reason=conflict;
                 int slots=1;double cost=0;boolean priced=true;
                 for(var entry:preparation.purchases().entrySet()) {
                     var product=products.get(entry.getKey());

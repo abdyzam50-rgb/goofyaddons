@@ -41,6 +41,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         /** Products owned by trader positions or other queued work. */
         Set<String> occupied();
         boolean buyingAllowed();
+        default boolean openCompactor(SlotView device){return false;}
         default String procurementBlock(){return null;}
         /** Instant-buy cost of these units from fresh quotes, or null when unknown. */
         Double instantBuyCost(String id, int units);
@@ -77,6 +78,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private WorkstationExecutor workstation;
     private double spent;
     private boolean basisUnknown;
+    private final CompactorClearance compactorClearance=new CompactorClearance();
 
     private ProductionRun(Environment env, RecipeCatalog catalog, String output, ProductionRecipe.Kind kind, ProductionRecipe recipe,
                           int batches, int forgeSlot, long binPrice, double maximumFee, String jobId) {
@@ -159,7 +161,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     public boolean wantsMenu() {
         if (finished()) return false;
         return switch (loop.stage()) {
-            case PROCURE -> !env.craftQueued() && (hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
+            case PROCURE -> !env.craftQueued() && (compactorClearance.needsMenu(env.menu()) || hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
             case PROCESS -> kind==ProductionRecipe.Kind.CRAFT ? !env.craftQueued() && hasReusableCraftMenu() : workstationMenuOpen();
             case CLAIM -> workstationMenuOpen();
             case SELL -> binPrice == SELL_ON_BAZAAR || hasReusableCraftMenu() && !env.listingQueued();
@@ -196,6 +198,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
         String marketBlock=env.procurementBlock();if(marketBlock!=null)return Outcome.blocked(marketBlock);
         var requirement=craftRequirement();
         if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking crafting prerequisites"):Outcome.blocked(requirementReason(requirement));
+        var cleared=compactorClearance.tick(env.menu(),env.actions(),new CompactorClearance.Ports(){
+            public boolean open(SlotView device){return env.openCompactor(device);}
+            public void intent(String reason)throws Exception{env.jobs().put(parent().withState(ProductionJobs.State.PROCESSING,reason));}
+        },ownsMenu,now);
+        if(cleared.step()!=ProductionLoop.Step.DONE)return cleared;
         var compactorConflict=PersonalCompactors.conflict(env.menu(),lockedProducts(),catalog);
         if(compactorConflict!=null)return Outcome.blocked(compactorConflict);
         var preparation=preparation();var missing=preparation.purchases();

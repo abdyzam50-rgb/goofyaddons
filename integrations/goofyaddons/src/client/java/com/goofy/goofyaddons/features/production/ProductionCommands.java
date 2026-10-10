@@ -26,7 +26,7 @@ public final class ProductionCommands {
                             (data==null || data.active()==null?"state unknown":data.active()?"enabled":"disabled")+
                             (data==null?"":" · "+data.recipes().size()+"/"+com.goofy.goofyaddons.menu.CompactorData.capacity(data.tier())+" recipes"));
                     }
-                    actions.message("Automatic bulk configuration is pending GUI verification; existing recipes are preserved.");return 1;
+                    actions.message("Production clears every detected compactor recipe before buying or crafting. Keep compactors in the hotbar for automatic opening; bulk compaction is not enabled yet.");return 1;
                 }).then(ClientCommands.literal("inspect").executes(c->{
                     try {PersonalCompactors.capture();new LiveActions().message("Saved compactor GUI controls to config/goofyaddons-compactor-menu.json.");}
                     catch(java.io.IOException missing){new LiveActions().message("Open the Personal Compactor menu first, then run this command.");}return 1;

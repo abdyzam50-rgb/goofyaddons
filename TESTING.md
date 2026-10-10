@@ -68,3 +68,13 @@ integration checks remain required.
 integration suite and the owned Craft Item → Auction House transition. The release
 JAR built successfully. These are simulated menu checks; live Hypixel execution
 was not available in this workspace.
+
+0.2.31 validation: 1,048 Java tests passed with no failures, including
+shipped-calculator integration checks. Two sanitized live Compactor 7000 menu
+captures validate populated and empty numbered controls. Simulations verify
+all twelve removals, disabled devices, multiple devices, empty-menu closing,
+menu ownership, durable intent failures, missing acknowledgements, unexpected
+filter/inventory changes, saved-metadata verification and a production purchase
+blocked until clearance finishes. The release JAR built successfully. Live
+Hypixel opening/removal execution was not available in this workspace; keep
+compactors in the hotbar for automatic opening. Bulk compaction remains disabled.

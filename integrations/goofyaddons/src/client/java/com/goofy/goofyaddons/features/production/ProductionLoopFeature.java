@@ -206,6 +206,7 @@ public final class ProductionLoopFeature implements Feature {
             public MenuSnapshot menu() { return new LiveWorld().menu(); }
             public boolean signOpen() { return new LiveWorld().signEditorOpen(); }
             public GameActions actions() { return new LiveActions(); }
+            public boolean openCompactor(SlotView device){return LiveCompactorOpening.open(device);}
             public double purse() { return new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(); }
             public double spendable() {
                 double purse=purse(),available=Double.isFinite(purse)&&purse>=0?CapitalManager.INSTANCE.available(purse):0;
