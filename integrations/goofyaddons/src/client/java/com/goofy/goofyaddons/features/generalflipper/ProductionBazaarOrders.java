@@ -10,7 +10,9 @@ import java.util.concurrent.CompletableFuture;
 
 /** One production-owned order using the ordinary trader's placement, claim and receipt rules. */
 public final class ProductionBazaarOrders {
-    public record Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason){}
+    public record Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason,boolean rejected){
+        public Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason){this(done,failed,units,cost,proceeds,reason,false);}
+    }
     private final GeneralFlipper engine;
     private Object scope;
     private void bind(){var current=AccountStorage.INSTANCE.pinned();if(!Objects.equals(scope,current)){engine.resetProductionAccount();scope=current;}}
@@ -49,7 +51,7 @@ public final class ProductionBazaarOrders {
         if(p==null)return new Result(false,true,0,0,null,"Production order for "+parent+" is missing");
         boolean done=p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY;
         return new Result(done,engine.productionFailed(parent),p.productionBuy && p.completed?0:p.quantity,
-            p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,engine.activity());
+            p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,p.rejectedReason==null?engine.activity():p.rejectedReason,p.rejectedReason!=null);
     }
     public boolean needsMenu(String parent){return engine.needsMenu() && java.util.Objects.equals(parent,engine.productionMenuParent());}
     public boolean acknowledge(String parent){return engine.consumeProduction(parent);}
@@ -61,7 +63,7 @@ public final class ProductionBazaarOrders {
         var p=engine.productionPosition();
         if(p==null)return new Result(false,true,0,0,null,"Production order journal is missing");
         boolean done=p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY;
-        return new Result(done,engine.productionFailed(),p.productionBuy && p.completed?0:p.quantity,p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,engine.activity());
+        return new Result(done,engine.productionFailed(),p.productionBuy && p.completed?0:p.quantity,p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,p.rejectedReason==null?engine.activity():p.rejectedReason,p.rejectedReason!=null);
     }
     public boolean recoverBuy(){bind();return engine.recoverProductionBuy();}
     public com.goofy.goofyaddons.features.production.ProductionJobs.Job recoveryEvidence(String account) {

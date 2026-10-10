@@ -432,3 +432,12 @@ until archival, and produces no purchase/sale clicks or proceeds. Mismatched
 inventory and existing sell orders refuse output recovery. Existing cancellation,
 refund, unknown-cost and submitted-sell refusal tests remain passing. The recovery
 controller's archival path compiles; live mixed queue recovery still needs testing.
+
+
+The 0.2.64 unsubmitted ingredient rejection fix passes 1,129 Java tests via
+`./gradlew -p client test build`. Coverage verifies no acquired cost or REVIEW pause
+for a known pre-submission rejection, a 30-second retry delay, fresh whole-basket
+profit blocking before the next attempt, and preserved reconciliation requirements
+for submitted positions. Existing price-ceiling coverage now asserts durable
+rejection rather than a false transaction failure. Actual provider/GUI mismatch
+causes remain unverified; price ceilings are not relaxed.

@@ -79,6 +79,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private BazaarInstantSell selling;
     private BazaarStrategy strategy=BazaarStrategy.INSTANT_INSTANT;
     private boolean orderActive,orderCostRecorded;
+    private long orderRetryAfter;
+    private boolean waitingForOrderRetry;
     private ProductionRecipe recipe;
     private String craftJob, listingJob, workstationJob;
     private String ingredientCraftJob;
@@ -182,7 +184,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** True while this step owns a menu, including a verified craft-to-craft handoff. */
     public boolean wantsMenu() {
-        if (finished()) return false;
+        if (finished() || waitingForOrderRetry) return false;
         if(orderActive)return env.orderNeedsMenu();
         return switch (loop.stage()) {
             case PROCURE -> !env.craftQueued() && (compactorClearance.needsMenu(env.menu()) || hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
@@ -209,10 +211,14 @@ public final class ProductionRun implements ProductionLoop.Ports {
             try {
                 if(!orderCostRecorded){spent+=result.cost();env.jobs().put(parent().withCost(spent,"Ingredient order claim verified"));orderCostRecorded=true;}
                 if(!env.acknowledgeOrder())return Outcome.uncertain("Claimed ingredient handoff could not be persisted");
-                orderActive=false;orderCostRecorded=false;return Outcome.pending(result.units()>0
+                orderActive=false;orderCostRecorded=false;
+                if(result.rejected()){waitingForOrderRetry=true;orderRetryAfter=now+30000;return Outcome.pending("Ingredient quote changed; refreshing prices before retrying: "+result.reason());}
+                return Outcome.pending(result.units()>0
                     ? "Claimed ingredients; checking remaining inputs" : "Ingredient order cancelled; checking replacement budget and profit");
             }catch(Exception failure){return Outcome.uncertain("Ingredient order cost could not be persisted");}
         }
+        if(now<orderRetryAfter)return Outcome.pending("Waiting for fresh ingredient prices; retrying in "+Math.max(1,(orderRetryAfter-now+999)/1000)+" seconds");
+        waitingForOrderRetry=false;
         if(ingredientCraftJob!=null) {
             if(env.craftQueued())return Outcome.pending("Crafting intermediate ingredients");
             var result=childFinished(ingredientCraftJob,Set.of(ProductionJobs.State.OUTPUT_READY,ProductionJobs.State.DONE),"Ingredient craft");

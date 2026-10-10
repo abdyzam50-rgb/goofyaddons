@@ -10,6 +10,7 @@ public final class GeneralPosition {
     Stage stage;
     boolean submitted;
     boolean cancelRequested;
+    String rejectedReason;
     int reprices;
     long placedAt;
     long heldSince;
@@ -48,6 +49,7 @@ public final class GeneralPosition {
                     || position.productionBuy && position.maximumBuyPrice<=0
                     || position.verifiedProceeds!=null && (!Double.isFinite(position.verifiedProceeds)||position.verifiedProceeds<0)
                     || position.productionParent!=null && (!position.productionParent.matches("[A-Za-z0-9_-]{8,80}") || position.instantBuy || position.instantSell || !parents.add(position.productionParent))
+                    || position.rejectedReason!=null && (!position.productionBuy || position.submitted || !position.completed || position.stage!=Stage.PLANNED)
                     || position.stage == null || !ids.add(position.item.id())) {
                 throw new IllegalArgumentException("Invalid saved order position");
             }

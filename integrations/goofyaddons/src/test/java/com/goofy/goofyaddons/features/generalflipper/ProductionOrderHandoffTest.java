@@ -35,7 +35,8 @@ class ProductionOrderHandoffTest {
         var active=GeneralFlipper.class.getDeclaredField("active");active.setAccessible(true);active.set(engine,engine.productionPosition());
         var field=GeneralFlipper.class.getDeclaredField("session");field.setAccessible(true);var ctx=(GeneralContext)field.get(engine);
         assertTrue(new GeneralBuy().acceptPrice(ctx,102));assertEquals(204,engine.productionPosition().cost());
-        assertFalse(new GeneralBuy().acceptPrice(ctx,104));assertTrue(engine.productionFailed());
+        assertFalse(new GeneralBuy().acceptPrice(ctx,104));assertFalse(engine.productionFailed());
+        assertTrue(engine.productionPosition().completed);assertNotNull(engine.productionPosition().rejectedReason);
         assertTrue(engine.hasRetainedPositions());assertTrue(actions.serverEffects().isEmpty());
     }
     @Test void queueRejectsExistingInventoryAndRetainedOrdersWithoutReplacingTheirEvidence()throws Exception {
@@ -251,5 +252,14 @@ class ProductionOrderHandoffTest {
             var engine=new GeneralFlipper(world,actions,repo,services());assertTrue(engine.recoverProductionBuy());drive(engine,world,1600);
             assertTrue(engine.productionFailed());assertFalse(repo.load().getFirst().completed);assertTrue(actions.serverEffects().isEmpty());
         }
+    }
+    @Test void submittedIngredientPriceFailureStillRequiresReconciliation()throws Exception {
+        var engine=new GeneralFlipper(new FakeWorld().showing(inventory("INPUT",0)),new RecordingActions(),new JsonGeneralOrderRepository(()->dir.resolve("submitted-price.json")),services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-first","INPUT","Input",2,100,true,103));
+        var p=engine.productionPosition();p.stage=GeneralPosition.Stage.BUY_ORDER;p.submitted=true;
+        var active=GeneralFlipper.class.getDeclaredField("active");active.setAccessible(true);active.set(engine,p);
+        var field=GeneralFlipper.class.getDeclaredField("session");field.setAccessible(true);
+        assertFalse(new GeneralBuy().acceptPrice((GeneralContext)field.get(engine),104));
+        assertTrue(engine.productionFailed("parent-first"));assertFalse(p.completed);assertNull(p.rejectedReason);
     }
 }

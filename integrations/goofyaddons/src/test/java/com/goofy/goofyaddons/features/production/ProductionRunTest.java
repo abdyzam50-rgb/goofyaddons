@@ -533,4 +533,15 @@ class ProductionRunTest {
         assertEquals(ProductionJobs.State.BUYING,first.jobs.find(a.jobId()).orElseThrow().state());
     }
 
+    @Test void unsubmittedPriceRejectionRetriesWithoutReviewOrAcquisition()throws Exception {
+        var env=new Env();env.buying=true;var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,0,0,null,"Price moved",true);
+        assertEquals(Step.PENDING,run.tick(true,1100));assertEquals(0,run.spent());assertEquals(1,env.orderAcknowledgements);assertFalse(run.wantsMenu(),"Retry waits yield the GUI to other crafts");
+        assertNotEquals(ProductionJobs.State.REVIEW,env.jobs.find(run.jobId()).orElseThrow().state());
+        run.tick(true,30000);assertEquals(1,env.orders.size());assertTrue(env.crafts.isEmpty());
+        env.procurementBlock="Fresh basket no longer profitable";assertEquals(Step.BLOCKED,run.tick(true,31100));assertEquals(1,env.orders.size());
+        env.procurementBlock=null;run.tick(true,31200);assertEquals(2,env.orders.size());assertEquals(0,run.spent());
+    }
 }

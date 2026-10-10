@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.63
+# Craft flip discovery and execution — 0.2.64
 
 ## Shipped behavior
 
@@ -917,3 +917,29 @@ After updating, stop trading and run `production recoverorders`. Wait for the
 recovered message, inspect claimed inputs and unsold outputs, then stop and use
 `production acknowledge all` before restarting automatic crafts. Unsold Soulflow
 remains in inventory for manual sale or storage; recovery does not record profit.
+
+
+## 0.2.64 — unsubmitted ingredient quote rejection
+
+The latest export proves mixed recovery succeeded: the Alligator Skin order was
+refunded, unsold Soulflow was verified, and the recovered REVIEW records were
+acknowledged. A later Enchanted Cooked Fish run stopped at the ingredient PRICE
+screen because the GUI price/capital check rejected the planned order. It had no
+submission event, acquired inventory or retained craft order; marking its parent
+REVIEW and pausing all crafts was unnecessary.
+
+Known production-buy rejection now completes only a PLANNED, unsubmitted child
+with a durable rejection reason. The parent saves zero acquired cost, acknowledges
+the rejected child, waits 30 seconds for refreshed prices and recomputes the full
+remaining basket with the existing budget/profit checks. It neither raises the
+price ceiling nor buys at the rejected price. Freshness failure before confirmation
+uses the same path. Submitted orders, unreadable state and transaction outcomes
+still retain evidence and pause for reconciliation. Rejection diagnostics include
+planned unit price, unit ceiling, quantity and observed purse for future diagnosis.
+
+This prevents a stale-price rejection from becoming a global REVIEW stop; it does
+not establish why the provider and GUI prices differed in that run. Continued
+mismatches will retry conservatively rather than assume the displayed profit is
+real. The old 4bc04906 REVIEW record remains in the user's journal and can be
+acknowledged while stopped, since this export contains no retained craft order or
+acquired inputs for it. The separate general Fuming Potato Book order is unchanged.

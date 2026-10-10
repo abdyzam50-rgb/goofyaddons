@@ -11,7 +11,7 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
 
     @Override public boolean confirmationPreconditions(GeneralContext ctx) {
         var active = ctx.active();
-        if (!ctx.freshQuotes()) { ctx.fail("Quotes expired before order confirmation."); return false; }
+        if (!ctx.freshQuotes()) { rejectUnsubmitted(ctx,"Quotes expired before order confirmation."); return false; }
         if (active.quantity > ctx.capacityFor(active.item.id())) {
             ctx.fail("Not enough inventory capacity for this buy order."); return false;
         }
@@ -27,7 +27,7 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
         var settings = ctx.settings();
         if(ctx.services().productionOnly()) {
             if(expectedPrice>active.maximumBuyPrice || !ctx.capital().resize(OWNER,active.item.id(),active.cost(),purse)){
-                ctx.fail("Craft ingredient order exceeds its verified price/capital ceiling; no order submitted.");return false;
+                rejectUnsubmitted(ctx,"Craft ingredient order exceeds its verified price/capital ceiling; no order submitted.");return false;
             }return true;
         }
         if (!ConfirmationCheck.buyAllowed(expectedPrice, active.quantity, ctx.currentAsk(),
@@ -45,7 +45,7 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
         if (!ctx.purchasePurseReady(purse)) return false;
         if(ctx.services().productionOnly()) {
             if(price>active.maximumBuyPrice || !ctx.capital().resize(OWNER,active.item.id(),price*active.quantity,purse)){
-                ctx.fail("Ingredient order price or capital changed; position retained.");return false;
+                rejectUnsubmitted(ctx,"Ingredient order price or capital changed: GUI unit price "+price+", ceiling "+active.maximumBuyPrice+"; no order submitted.");return false;
             }active.unitCost=price;active.purchasePriceKnown=true;return true;
         }
         double net = ctx.currentAsk() * (1 - ctx.services().taxPercentage() / 100) - price;
@@ -61,6 +61,15 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
         active.unitCost = price;
         active.purchasePriceKnown = true;
         return true;
+    }
+
+    private void rejectUnsubmitted(GeneralContext ctx,String reason) {
+        var p=ctx.active();
+        if(ctx.services().productionOnly() && p.productionBuy && p.stage==Stage.PLANNED && !p.submitted) {
+            p.rejectedReason=reason;
+            ctx.services().event("INFO","order.preflight_rejected",java.util.Map.of("item",p.item.id(),"reason",reason,"plannedUnitPrice",p.unitCost,"maximumUnitPrice",p.maximumBuyPrice,"units",p.quantity,"purse",ctx.services().purse()));
+            ctx.completePosition();
+        }else ctx.fail(reason);
     }
 
     @Override public void placementVisible(GeneralContext ctx) {
