@@ -5,8 +5,9 @@ import {useApp} from '../state';
 import {coins,num} from '../lib';
 import {fresh,planCrafts,type Catalog} from './craft-plan.mjs';
 const get=async(path:string)=>{const r=await fetch(path,{cache:'no-store',signal:AbortSignal.timeout(20000)});const body=await r.json();if(!r.ok)throw new Error(body.error??'Service unavailable');return body;};
-export function CraftPlanner(){
- const {settings,profile}=useApp(),[now,setNow]=useState(Date.now()),[venue,setVenue]=useState('ALL'),[search,setSearch]=useState(''),[onlyEligible,setOnlyEligible]=useState(false),[minProfit,setMinProfit]=useState(10000),[maxBatches,setMaxBatches]=useState(16),[shown,setShown]=useState(100);
+export function CraftPlanner({search:sharedSearch,onSearchChange}:{search?:string;onSearchChange?:(value:string)=>void}={}){
+ const {settings,profile}=useApp(),[now,setNow]=useState(Date.now()),[venue,setVenue]=useState('ALL'),[localSearch,setLocalSearch]=useState(''),[onlyEligible,setOnlyEligible]=useState(false),[minProfit,setMinProfit]=useState(10000),[maxBatches,setMaxBatches]=useState(16),[shown,setShown]=useState(100);
+ const search=sharedSearch??localSearch,setSearch=onSearchChange??setLocalSearch;
  useEffect(()=>{const id=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(id);},[]);
  const catalog=useQuery<Catalog>({queryKey:['production-catalog'],queryFn:()=>get('/calculator/data/production-recipes.json'),staleTime:Infinity});
  const market=useQuery({queryKey:['craft-live-bazaar'],queryFn:()=>get('/v1/market'),refetchInterval:20000});

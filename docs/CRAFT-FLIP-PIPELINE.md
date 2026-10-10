@@ -524,3 +524,19 @@ Sources. Descriptions now match scheduled AH history, independent gameplay
 publishing, real Worker endpoints, key privacy, provenance and the distinction
 between live quotes and bundled chart history. Timing is explicitly a model;
 historical AH references remain research only pending fresh verification.
+
+### 0.2.47 — find AH-component crafts from either search
+
+Hephaestus Relic and the other Hephaestus recipes were already in the production
+catalog. The craft page previously exposed independent searches for the complete
+live catalog and the legacy order-based table, whose AH-output toggle defaulted
+to off. Both searches now share the same query, and craft research includes AH
+outputs by default (including after Reset). Searching Hephaestus Relic requests
+fresh output/ingredient quotes and keeps its catalog row visible when budget,
+requirements or prices prevent a feasible trade. It requires three Minos Relics
+and one Hephaestus Anvil; this change does not invent prices for them.
+
+The build reapplies Flips.tsx overlays from the pinned upstream source so repeated
+builds remain reproducible as UI overlays change. Browser coverage checks the
+legacy search reaching the Hephaestus Relic row and its Minos Relic pipeline on
+both desktop and mobile.

@@ -12,6 +12,8 @@ if(!checkout||!data||process.argv.length<5)throw new Error('Provide upstream che
 if(execFileSync('git',['rev-parse','HEAD'],{cwd:checkout,encoding:'utf8'}).trim()!==COMMIT)throw new Error('Wrong upstream revision');
 const root=fileURLToPath(new URL('.',import.meta.url)),web=join(checkout,'packages/web');
 function patch(file,old,next){const p=join(checkout,file),text=readFileSync(p,'utf8');if(text.includes(next))return;if(!text.includes(old))throw new Error(`Patch mismatch: ${file}`);writeFileSync(p,text.replace(old,next));}
+// Reapply page overlays from the pinned source for reproducible repeated builds.
+writeFileSync(join(web,'src/pages/Flips.tsx'),execFileSync('git',['show',`${COMMIT}:packages/web/src/pages/Flips.tsx`],{cwd:checkout}));
 for(const file of ['CraftPlanner.tsx','craft-plan.mjs','craft-plan.d.mts'])cpSync(join(root,'website-src',file),join(web,'src/components',file));
 patch('packages/web/src/pages/Flips.tsx','// Flip tables',"import { CraftPlanner } from '../components/CraftPlanner';\n// Flip tables");
 patch('packages/web/src/pages/Flips.tsx','  return (\n    <>\n      <div className="pagehead">','  return (\n    <>\n      {kind === "craft" && <CraftPlanner />}\n      <div className="pagehead">');
@@ -56,6 +58,10 @@ const flipFile=join(web,'src/pages/Flips.tsx');writeFileSync(flipFile,readFileSy
 patch('packages/web/src/pages/Flips.tsx','noFlags: true } })','noFlags: true, requirementsMet: !profile.ignoreRequirements } })');
 patch('packages/web/src/pages/Planner.tsx','import { Fragment, useState }','import { Fragment, useEffect, useState }');
 patch('packages/web/src/pages/Planner.tsx','  const [requireMet, setRequireMet] = useState(!profile.ignoreRequirements);','  const [requireMet, setRequireMet] = useState(!profile.ignoreRequirements);\n  useEffect(()=>setRequireMet(!profile.ignoreRequirements),[profile.ignoreRequirements]);');
+// One search controls both the complete catalog and the legacy order-based research table.
+patch('packages/web/src/pages/Flips.tsx','{kind === "craft" && <CraftPlanner />}','{kind === "craft" && <CraftPlanner search={f.q} onSearchChange={value=>set({q:value})} />}');
+patch('packages/web/src/pages/Flips.tsx','useState<Filters>(DEFAULT)','useState<Filters>(()=>({...DEFAULT,includeAhForge:kind === "craft"}))');
+patch('packages/web/src/pages/Flips.tsx','setF(DEFAULT); setPage(0);','setF({...DEFAULT,includeAhForge:kind === "craft"}); setPage(0);');
 const plannerFile=join(web,'src/pages/Planner.tsx');writeFileSync(plannerFile,readFileSync(plannerFile,'utf8').replace('options: { kinds, requireMet: !profile.ignoreRequirements || requireMet }','options: { kinds, requireMet }'));
 cpSync(join(root,'website-src/requirements.ts'),join(checkout,'packages/shared/src/rules/requirements.ts'));
 patch('packages/shared/src/calc/engine.ts','import { BAZAAR,','import { tradeRequirements, BAZAAR,');

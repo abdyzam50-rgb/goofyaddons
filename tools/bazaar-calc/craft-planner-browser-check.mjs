@@ -50,6 +50,11 @@ try {
   assert.ok(await evaluate(`document.body.innerText.includes('confirmed sale and claim')`));
   await evaluate(`{const input=document.querySelector('input[aria-label="Search crafts"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'ASPECT_OF_THE_END');input.dispatchEvent(new Event('input',{bubbles:true}));}`);await new Promise(r=>setTimeout(r,800));
   assert.ok(await evaluate(`document.querySelector('tbody').innerText.includes('historical estimate')`));
+  await evaluate(`{const input=document.querySelector('#fq');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Hephaestus Relic');input.dispatchEvent(new Event('input',{bubbles:true}));}`);await new Promise(r=>setTimeout(r,1000));
+  assert.equal(await evaluate(`document.querySelector('input[aria-label="Search crafts"]').value`),'Hephaestus Relic');
+  assert.ok(await evaluate(`document.querySelector('section[aria-label="Live craft production plan"] tbody').innerText.includes('HEPHAESTUS_RELIC')`));
+  await evaluate(`document.querySelector('section[aria-label="Live craft production plan"] tbody details').open=true`);
+  assert.ok(await evaluate(`document.querySelector('section[aria-label="Live craft production plan"]').innerText.includes('Minos Relic')`));
   const layout=await evaluate(`({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})`);assert.ok(layout.scroll<=layout.width+1,`Overflow at ${width}`);
   const shot=await send('Page.captureScreenshot',{format:'png'});await writeFile(join(dir,`craft-${width}.png`),Buffer.from(shot.result.data,'base64'));
   await evaluate(`Date.now=()=>${Date.now()+65000}`);await new Promise(r=>setTimeout(r,1300));

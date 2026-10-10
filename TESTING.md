@@ -239,3 +239,8 @@ The Chromium craft planner check also navigates all five Reference pages at
 serverless/Discord/manual contribution claims, verifies page widths, and reads
 the linked market/history/catalog/license endpoints. TypeScript/Vite compilation
 and the bundled calculator integration build verify the maintained overlay.
+
+0.2.47 adds a browser regression for searching Hephaestus Relic from the lower
+research-table search: the complete catalog search mirrors it and exposes the
+correct recipe and Minos Relic ingredients. Existing craft refresh, stale-price,
+profile, historical AH and reference-page checks remain part of that run.
