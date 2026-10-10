@@ -304,3 +304,15 @@ unobserved budget produces its own reason instead of retaining prior counts.
 
 Final 0.2.52 validation: 1,087 Java tests, zero failures/errors/skips;
 `test calculatorIntegrationTest build` succeeds.
+
+### 0.2.53 A* GUI integration
+
+Import upstream pixel controls from c2b54c5 while preserving autosave, masked
+contributor fields and keybind capture. Compile the reorganized settings tabs and
+adaptive rows with the complete Java/calculator integration suite. UI smoke steps
+are in docs/GUI-INTEGRATION.md; no display/Xvfb runtime is installed here, so real
+Minecraft rendering and clicks are not claimed as tested.
+
+Final 0.2.53 validation: 1,087 Java tests, zero failures/errors/skips;
+`test calculatorIntegrationTest build` succeeds. Release JAR includes the Pixel
+controls and the bundled calculator.

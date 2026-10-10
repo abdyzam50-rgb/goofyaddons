@@ -612,3 +612,17 @@ refer to candidate batches (missing AH quotes are counted per recipe), not uniqu
 eligible routes. Defaults remain 10,000 net profit and 16 batches: all-capital does
 not override depth, volume, account, inventory or execution checks. A fresh debug
 export is needed to identify a specific user's current blocker.
+
+### 0.2.53 GUI integration and navigation
+
+The trading settings now use Overview, Limits, Crafts, Calculator, Rest and
+Connections tabs in the Macros page. Controls save automatically; the redundant
+manual-save panel is gone. Craft ranking and automatic controls are separate from
+the one-item AH test card. Full-width cards and stacked rows give labels and
+long explanations room. Search includes trading settings.
+
+The upstream A* pixel GUI update (c2b54c5) supplies dropdown choices, switches,
+stone-frame styling and corrected SDL mouse-button handling. Keybind capture,
+private-key masking and the existing autosave hooks are preserved. Body text and
+input values retain their original case for readability. See GUI-INTEGRATION.md
+for the source branch and the in-game validation procedure.

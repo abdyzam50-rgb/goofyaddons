@@ -4,12 +4,14 @@ import astar.client.draw.OverlayColour;
 import astar.client.ui.LoadingArt;
 import astar.client.ui.MazeBackground;
 import astar.client.ui.Panels;
+import astar.client.ui.Pixel;
 import astar.client.ui.Theme;
 import astar.client.ui.Ui;
 import astar.pathing.Tuning;
 import com.mojang.blaze3d.platform.InputConstants;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,7 +37,7 @@ import net.minecraft.util.FormattedCharSequence;
  * set of cards of settings. Everything here can also be done with {@code .A*}.
  *
  * <p>Drawn entirely by the mod: rounded shapes from the {@code panel} shader ({@link Panels})
- * and Inter for the text, at its own scale of whole screen pixels ({@link #px}), whatever the GUI
+ * and pixel fonts for the text, at its own scale of whole screen pixels ({@link #px}), whatever the GUI
  * scale, so it stays sharp. Its controls are its own too ({@link El}), laid out every frame.
  */
 final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds.BindingCaptureScreen {
@@ -96,6 +98,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private final List<Tile> tiles = new ArrayList<>();
     private Field search;
     private Field focused;
+    /** The list a box of choices has open, drawn over everything; none if null. */
+    private Mode<?> dropped;
     private El pressed;
     private El hovered;
     private long hoveredSince;
@@ -125,7 +129,12 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     /** The logo's size, in units. */
-    private static final int LOGO = 42;
+    private static final int LOGO = 36;
+
+    /** The mod's version, under its name. */
+    private static final String VERSION = net.fabricmc.loader.api.FabricLoader.getInstance()
+            .getModContainer("astar-client")
+            .map(m -> m.getMetadata().getVersion().getFriendlyString()).orElse("");
 
     /**
      * The logo: the loading screen's A, playing its search once as the window opens and then
@@ -168,8 +177,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         title = Ui.font("title", px);
         int screenW = Math.round(width / k);
         int screenH = Math.round(height / k);
-        winW = Math.min(620, screenW - 16);
-        winH = Math.min(380, screenH - 16);
+        // The stone frame goes round the outside.
+        winW = Math.min(620, screenW - 2 * Pixel.FRAME - 8);
+        winH = Math.min(380, screenH - 2 * Pixel.FRAME - 8);
         winX = (screenW - winW) / 2;
         winY = (screenH - winH) / 2;
         areaX = winX + SIDE_W + PAD;
@@ -231,6 +241,20 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         buildPage();
     }
 
+    /** Opens the first list of choices on the page, as the {@code dropdown} test step does. */
+    void dropFirst() {
+        for (Card c : cards) {
+            for (Row r : c.rows) {
+                for (El e : r.controls) {
+                    if (e instanceof Mode<?> m) {
+                        dropped = m;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     private void open(String name) {
         page = name;
         lastPage = name;
@@ -243,6 +267,11 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     // ---- Building pages ------------------------------------------------------------------
 
     private void buildPage() {
+        dropped = null;
+        fixed.removeIf(e->e instanceof TradingTab);
+        areaY=winY+HEAD_H+16;
+        areaH=winH-HEAD_H-20;
+        if(page.equals(MACROS))tradingTabs();
         cards.clear();
         tiles.clear();
         if (page.equals(SEARCH)) {
@@ -261,27 +290,27 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private String tradingNote;
+    private long tradingNoteUntil;
+    private void notifyTrading(String note) {tradingNote=note;tradingNoteUntil=System.nanoTime()/1_000_000+4000;}
+    private String tradingFeedback() {
+        if(draft.dirty())return tradingNote!=null&&tradingNote.startsWith("Not saved:")?tradingNote:draft.summary();
+        return System.nanoTime()/1_000_000<tradingNoteUntil && tradingNote!=null && !tradingNote.startsWith("Settings saved")?tradingNote:null;
+    }
     /** Validated edits save automatically; text edits are debounced. */
     private final com.goofy.goofyaddons.config.SettingsDraft draft=com.goofy.goofyaddons.config.SettingsDraft.live();
     private final com.goofy.goofyaddons.config.SettingsAutosave autosave = new com.goofy.goofyaddons.config.SettingsAutosave(
         draft, ()->com.goofy.goofyaddons.features.FeatureManager.INSTANCE.canReloadConfig(),
         ()->System.nanoTime()/1_000_000);
     private void saveTrading(boolean retry) {
-        String note=autosave.flush(retry); if(note!=null)tradingNote=note;
+        String note=autosave.flush(retry); if(note!=null)notifyTrading(note);
     }
     @Override public void tick() {
         super.tick();
-        String note=autosave.tick(); if(note!=null)tradingNote=note;
+        String note=autosave.tick(); if(note!=null)notifyTrading(note);
     }
     private void editTrading(String label,java.util.function.Consumer<com.goofy.goofyaddons.config.GoofyConfig> edit) {
         draft.edit(label,edit);
         if(focused==null)saveTrading(false);
-    }
-    private void applyTrading() {
-        focus(null);saveTrading(true);
-    }
-    private void discardTrading() {
-        draft.discard();focus(null);tradingNote="Unsaved changes discarded.";
     }
     /** Re-saves the reviewed file as loaded, without any unapplied draft changes. */
     private void commitReviewed() {
@@ -289,8 +318,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             var gson=new com.google.gson.Gson();
             var candidate=gson.fromJson(gson.toJson(com.goofy.goofyaddons.config.GoofyConfig.INSTANCE),com.goofy.goofyaddons.config.GoofyConfig.class);
             com.goofy.goofyaddons.config.GoofyConfig.commitSettings(candidate);
-            tradingNote="Settings saved.";
-        }catch(Exception failure){tradingNote=failure.getMessage();}
+            notifyTrading("Settings saved.");
+        }catch(Exception failure){notifyTrading(failure.getMessage());}
     }
     private Field tradingNumber(String label,java.util.function.DoubleSupplier value, java.util.function.BiConsumer<com.goofy.goofyaddons.config.GoofyConfig,Double> set) {
         Field field=new Field(BigDecimal.valueOf(value.getAsDouble()).toPlainString(),20,"coins",text->draft.decimal(label,text,set),c->Character.isDigit(c)||c=='.');
@@ -305,14 +334,52 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private int bindingSlot;
     private void captureBinding(net.minecraft.client.KeyMapping binding,int slot) {
         if(!com.goofy.goofyaddons.features.FeatureManager.INSTANCE.canReloadConfig()) {
-            tradingNote="Stop trading before changing keybinds.";return;
+            notifyTrading("Stop trading before changing keybinds.");return;
         }
         focus(null);bindingCapture=binding;bindingSlot=slot;
-        tradingNote="Press a new key; Escape cancels.";
+        notifyTrading("Press a new key; Escape cancels.");
     }
+    private enum TradingSection {
+        OVERVIEW("Overview"), LIMITS("Limits"), CRAFTS("Crafts"), CALCULATOR("Calculator"), REST("Rest"), CONNECTIONS("Connections");
+        final String label;
+        TradingSection(String label){this.label=label;}
+    }
+    private static TradingSection lastTradingSection=TradingSection.OVERVIEW;
+    private TradingSection tradingSection=lastTradingSection;
     private void buildTrading() {
+        switch(tradingSection) {
+            case OVERVIEW -> buildTradingOverview();
+            case LIMITS -> buildTradingLimits();
+            case CRAFTS -> buildTradingCrafts();
+            case CALCULATOR -> {buildTradingCalculator();buildTradingFiles();}
+            case REST -> buildTradingRest();
+            case CONNECTIONS -> {buildTradingCommunity();buildTradingDiscord();}
+        }
+    }
+    private void tradingTabs() {
+        int x=areaX, y=winY+HEAD_H+8;
+        for(var section:TradingSection.values()) {
+            int w=width(section.label,body)+16;
+            if(x>areaX && x+w>areaX+areaW){x=areaX;y+=24;}
+            fixed.add(new TradingTab(section).at(x,y,w,18));x+=w+4;
+        }
+        areaY=y+30;
+        areaH=winY+winH-4-areaY;
+    }
+    private final class TradingTab extends El {
+        final TradingSection section;
+        TradingTab(TradingSection section){this.section=section;}
+        @Override void draw(GuiGraphicsExtractor g,boolean hot) {
+            Pixel.button(g,ex,ey,ew,eh,section==tradingSection?Pixel.State.ACTIVE:hot?Pixel.State.HOVER:Pixel.State.NORMAL,t());
+            text(g,section.label,body,ex+(ew-width(section.label,body))/2,ey+6,section==tradingSection?t().highlight:t().textDim);
+        }
+        @Override void click(double mx,double my,int button) {
+            focus(null);bindingCapture=null;tradingSection=section;lastTradingSection=section;buildPage();
+        }
+    }
+    private void buildTradingOverview() {
         var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
-        Card status=card("SkyBlock trader","Books, ordinary items and verified production operations. Saved inventory, orders and profit records stay in your existing config folder.");
+        Card status=card("SkyBlock trader","Choose a mode and start trading. Settings save automatically while stopped.");
         status.callout(()->manager.hasSafetyBlock()||com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?Callout.ERROR:Callout.INFO,
             ()->com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?com.goofy.goofyaddons.config.GoofyConfig.loadError():manager.status()+" · "+manager.activity());
         status.row("Current task",manager::taskItem);
@@ -328,12 +395,6 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             new Button("Stop",()->com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStop(),Button.PLAIN));
         status.row("Mode",()->"Change trading mode while stopped.",new Mode<>(List.of(com.goofy.goofyaddons.features.TradingMode.values()),
             ()->draft.view().tradingMode,com.goofy.goofyaddons.features.TradingMode::label,v->editTrading("Mode",cfg->cfg.tradingMode=v)));
-        Card pending=card("Automatic saving","Valid changes save automatically. Text saves after a short pause; stop trading before changing trading settings.");
-        pending.callout(()->draft.dirty()?Callout.WARN:Callout.INFO,draft::summary);
-        pending.row("Pending changes",()->"Invalid values stay unsaved. Retry a failed save here.",
-            new Button("Retry save",this::applyTrading,Button.ACCENT).when(draft::canApply),
-            new Button("Discard",this::discardTrading,Button.PLAIN).when(draft::dirty));
-        pending.callout(()->Callout.INFO,()->tradingNote);
         Card keys=card("Keybinds","Click Change, then press a key. Escape cancels. Bindings also appear in Minecraft Controls.");
         keys.row("Trading on / off",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey.getTranslatedKeyMessage().getString(),
             new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey,0),Button.PLAIN));
@@ -341,35 +402,45 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.debugKey,1),Button.PLAIN));
         keys.row("Reload config",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.reloadKey.getTranslatedKeyMessage().getString(),
             new Button("Change",()->captureBinding(com.goofy.goofyaddons.keybinds.GoofyKeybinds.reloadKey,2),Button.PLAIN));
-        keys.callout(()->Callout.INFO,()->tradingNote);
+
+    }
+    private void buildTradingLimits() {
+        var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
         Card capital=card("Spending limits","These limits apply to every purchase. Changes require stopping the trader.");
         capital.row("Capital limit",()->"Maximum committed trading capital, in coins.",tradingNumber("Capital limit",()->draft.view().maxTradingCapital,(cfg,v)->cfg.maxTradingCapital=v));
         capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber("Purse reserve",()->draft.view().purseReserve,(cfg,v)->cfg.purseReserve=v));
         capital.row("Book slots",()->"Maximum active book routes.",tradingWhole("Book slots",()->draft.view().maxActiveBooks,1,10,(cfg,v)->cfg.maxActiveBooks=v));
         capital.row("Item slots",()->"Maximum active ordinary-item routes.",tradingWhole("Item slots",()->draft.view().general.maxActiveItems,1,10,(cfg,v)->cfg.general.maxActiveItems=v));
         capital.row("Production buys inputs",()->"Let a queued production run instant-buy missing ingredients within spendable capital. Off until you have tested it in game.",
-            new Check(()->draft.view().productionBuysIngredients,v->editTrading("Production buys inputs",cfg->cfg.productionBuysIngredients=v)));
-        Card market=card("Market and account checks","The calculator keeps live market data and the dashboard. Account prerequisites come directly from the website.");
+            new Check(()->draft.view().productionBuysIngredients,v->editTrading("Production buys inputs",cfg->cfg.productionBuysIngredients=v)).toggle());
+
+    }
+    private void buildTradingCalculator() {
+        var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
+        Card market=card("Calculator and account","Live prices, player unlocks and the local dashboard.");
         market.row("Background service",()->com.goofy.goofyaddons.features.companion.BundledCalculator.status(),
             new Button("Dashboard",()->com.goofy.goofyaddons.features.companion.BundledCalculator.openDashboard(),Button.PLAIN),
             new Button("Retry / restart",()->com.goofy.goofyaddons.features.companion.BundledCalculator.retry(),Button.PLAIN));
         market.row("Calculator port",()->"Change this if another program occupies the port. Dashboard and trade feed follow this setting.",
             tradingWhole("Calculator port",()->java.net.URI.create(draft.view().marketAnalysis.endpoint).getPort(),1024,65535,
                 (cfg,v)->cfg.marketAnalysis.endpoint="http://127.0.0.1:"+v+"/v1/recommendations"));
-        market.row("Auto-start",()->"Start the bundled calculator with Minecraft; saved data stays outside the mod folder.",new Check(()->draft.view().marketAnalysis.autoStartCompanion,v->editTrading("Auto-start",cfg->cfg.marketAnalysis.autoStartCompanion=v)));
-        market.row("Calculator",()->"Enable local market analysis.",new Check(()->draft.view().marketAnalysis.enabled,v->editTrading("Calculator",cfg->{cfg.marketAnalysis.enabled=v;if(!v)cfg.marketAnalysis.automaticSelection=false;})));
-        market.row("Automatic routes",()->"Choose supported flips from the calculator while retaining spending and requirement checks.",new Check(()->draft.view().marketAnalysis.automaticSelection,v->editTrading("Automatic routes",cfg->{cfg.marketAnalysis.automaticSelection=v;if(v)cfg.marketAnalysis.enabled=true;})));
-        market.row("Account dashboard",()->"Share local account snapshots with the companion site.",new Check(()->draft.view().marketAnalysis.dashboardEnabled,v->editTrading("Account dashboard",cfg->cfg.marketAnalysis.dashboardEnabled=v)));
+        market.row("Auto-start",()->"Start the bundled calculator with Minecraft; saved data stays outside the mod folder.",new Check(()->draft.view().marketAnalysis.autoStartCompanion,v->editTrading("Auto-start",cfg->cfg.marketAnalysis.autoStartCompanion=v)).toggle());
+        market.row("Calculator",()->"Enable local market analysis.",new Check(()->draft.view().marketAnalysis.enabled,v->editTrading("Calculator",cfg->{cfg.marketAnalysis.enabled=v;if(!v)cfg.marketAnalysis.automaticSelection=false;})).toggle());
+        market.row("Automatic routes",()->"Choose supported flips from the calculator while retaining spending and requirement checks.",new Check(()->draft.view().marketAnalysis.automaticSelection,v->editTrading("Automatic routes",cfg->{cfg.marketAnalysis.automaticSelection=v;if(v)cfg.marketAnalysis.enabled=true;})).toggle());
+        market.row("Account dashboard",()->"Share local account snapshots with the companion site.",new Check(()->draft.view().marketAnalysis.dashboardEnabled,v->editTrading("Account dashboard",cfg->cfg.marketAnalysis.dashboardEnabled=v)).toggle());
         market.row("Bazaar access",()->"NPC mode uses A* to approach a loaded Bazaar NPC.",new Mode<>(List.of("AUTO","COMMAND","NPC"),()->draft.view().access.bazaarMode,v->v,v->editTrading("Bazaar access",cfg->cfg.access.bazaarMode=v)));
-        market.row("Skill checks",()->"Check account levels and skip blocked routes.",new Check(()->draft.view().access.checkSkills,v->editTrading("Skill checks",cfg->cfg.access.checkSkills=v)));
+        market.row("Skill checks",()->"Check account levels and skip blocked routes.",new Check(()->draft.view().access.checkSkills,v->editTrading("Skill checks",cfg->cfg.access.checkSkills=v)).toggle());
         market.row("Versions",()->com.goofy.goofyaddons.diagnostics.ReleaseInfo.manifest().summary());
         market.row("Last route decision",()->{String why=manager.lastRouteDecision();return why==null?"No automatic route chosen yet.":why;});
         Card abilities=card("What runs automatically","Research only plans or reads menus, Queued runs steps you start, Automatic chooses and finishes its own work.");
         for(var entry:com.goofy.goofyaddons.features.capability.Capabilities.all())
             abilities.row(entry.feature().label,()->entry.level().name().charAt(0)+entry.level().name().substring(1).toLowerCase(Locale.ROOT)+" · "+entry.boundary());
-        var sharing=com.goofy.goofyaddons.features.companion.BundledCalculator.contributor();
-        Card crafts=card("Craft flips","CRAFT mode buys verified Bazaar inputs, prepares basic intermediates, crafts and instant-sells the result. AH crafts are ranked for individual tests; automatic AH settlement is pending.");
-        crafts.row("Craft flip mode",()->"Select Craft flips, apply settings, then use Start for automatic Bazaar crafting.",
+
+    }
+    private void buildTradingCrafts() {
+        var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
+        Card crafts=card("Craft flips","Buy ingredients, prepare intermediates, craft and instant-sell on the Bazaar.");
+        crafts.row("Craft flip mode",()->"Select Craft flips, then use the trading toggle for automatic Bazaar crafting.",
             new Button("Use craft mode",()->editTrading("Mode",cfg->cfg.tradingMode=com.goofy.goofyaddons.features.TradingMode.CRAFT),Button.PLAIN));
         crafts.row("Sale market",()->"Choose which market appears in the craft ranking.",new Mode<>(List.of("BOTH","BAZAAR","AH"),()->draft.view().craftFlips.venue,
             v->v,v->editTrading("Craft sale market",cfg->cfg.craftFlips.venue=v)));
@@ -377,15 +448,22 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         crafts.row("Minimum net profit",()->"Require this profit after depth, taxes and price movement allowance before buying.",tradingNumber("Craft profit",()->draft.view().craftFlips.minimumProfit,(cfg,v)->cfg.craftFlips.minimumProfit=v));
         crafts.row("Maximum batches",()->"1–16; planning reduces the batch to fit money, depth, volume and inventory.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,16,(cfg,v)->cfg.craftFlips.maxBatches=v));
         crafts.row("Inspect ranking",()->"Account requirements and route reasons appear in the local dashboard.",new Button("Best crafts",()->manager.production().showCraftPlans(),Button.PLAIN));
+        crafts.row("Current plan",manager.production()::activity);
+        Card auctionTests=card("Auction House tests","Craft and list one BIN. Automatic sale and claim tracking is still pending.");
         String[] testItem={"ASPECT_OF_THE_END"};
         Field ahTestItem=new Field(testItem[0],120,"ASPECT_OF_THE_END",v->testItem[0]=v,c->Character.isLetterOrDigit(c)||c=='_').wide(200);
-        crafts.row("AH test item",()->"Craft one item and publish one BIN. Stop trading first; missing ingredients are bought within your spending limits.",ahTestItem);
-        crafts.row("Test AH craft",()->"Checks the selling price with Coflnet, then crafts and opens Create Auction to list one item. Listing is not a confirmed sale.",
+        auctionTests.row("AH test item",()->"Craft one item and publish one BIN. Stop trading first; missing ingredients are bought within your spending limits.",ahTestItem);
+        auctionTests.row("Test AH craft",()->"Checks the selling price with Coflnet, then crafts and opens Create Auction to list one item. Listing is not a confirmed sale.",
             new Button("Run one test",()->{
                 client.cancelRouteForTrading();
                 net.minecraft.client.Minecraft.getInstance().gui.setScreen(null);
                 com.goofy.goofyaddons.features.production.ProductionCommands.testAuction(testItem[0]);
             },Button.ACCENT).when(()->!draft.dirty()&&manager.canReloadConfig()&&client.canStartTrading()));
+
+    }
+    private void buildTradingCommunity() {
+        var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
+        var sharing=com.goofy.goofyaddons.features.companion.BundledCalculator.contributor();
         Card community=card("Shared gameplay learning","Learn from the public dataset. Uploads require a private key approved by the collector owner.");
         community.row("Sync status",()->com.goofy.goofyaddons.features.companion.BundledCalculator.sharingStatus());
         community.row("Trade feed",()->com.goofy.goofyaddons.features.companion.ContributorTelemetry.status());
@@ -397,7 +475,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         community.row("Collector",()->"The owner's upload service address.",collector);
         community.row("Dataset repository",()->"Public repository used to download shared learning data.",repository);
         community.row("Contributor key",()->"Paste the private key you received. Leave blank to keep a saved key.",contributorKey);
-        community.row("Upload gameplay",()->"Share trade timing and profit ratios. Names, inventory, balances and chat stay private.",new Check(()->uploads[0],v->uploads[0]=v));
+        community.row("Upload gameplay",()->"Share trade timing and profit ratios. Names, inventory, balances and chat stay private.",new Check(()->uploads[0],v->uploads[0]=v).toggle());
         community.row("Apply",()->"Save privately and reload the bundled calculator. Public downloads need no key.",
             new Button("Save sharing",()->{
                 com.goofy.goofyaddons.features.companion.BundledCalculator.saveContributor(collector.text,repository.text,contributorKey.text,uploads[0],false);
@@ -408,16 +486,24 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 com.goofy.goofyaddons.features.companion.BundledCalculator.saveContributor(collector.text,repository.text,"",false,true);
             },Button.PLAIN).when(()->!com.goofy.goofyaddons.features.companion.BundledCalculator.savingContributor()));
         community.callout(()->Callout.INFO,()->com.goofy.goofyaddons.features.companion.BundledCalculator.contributorNote());
+
+    }
+    private void buildTradingDiscord() {
+        var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
         Card discord=card("Discord companion","Status posts, contact alerts and manual player controls through the locally paired calculator. Bot credentials stay on your PC.");
         discord.row("Private settings",()->"Fill in the bot token and channel/user IDs, then restart the background service.",new Button("Open settings",()->com.goofy.goofyaddons.features.companion.BundledCalculator.openDiscordSettings(),Button.PLAIN).when(()->com.goofy.goofyaddons.features.companion.BundledCalculator.discordSettingsReady()));
         discord.row("Webhook interval",()->"Configured in the companion's private discord-settings.json; default five minutes.");
         discord.row("Bridge",()->com.goofy.goofyaddons.features.discord.DiscordRemote.INSTANCE.status());
-        discord.row("Enabled",()->"Requires the companion bot and config/goofyaddons-discord.key.",new Check(()->draft.view().discord.enabled,v->editTrading("Discord enabled",cfg->cfg.discord.enabled=v)));
-        discord.row("Pause on contact",()->"Pause trading after a mention or staff message until you review it.",new Check(()->draft.view().discord.pauseOnContact,v->editTrading("Pause on contact",cfg->cfg.discord.pauseOnContact=v)));
-        discord.row("Mention alerts",()->"Send messages mentioning your player name to your Discord channel.",new Check(()->draft.view().discord.alertMentions,v->editTrading("Mention alerts",cfg->cfg.discord.alertMentions=v)));
-        discord.row("Staff-message alerts",()->"Notify on a staff rank in the sender prefix; respond manually.",new Check(()->draft.view().discord.alertStaff,v->editTrading("Staff-message alerts",cfg->cfg.discord.alertStaff=v)));
+        discord.row("Enabled",()->"Requires the companion bot and config/goofyaddons-discord.key.",new Check(()->draft.view().discord.enabled,v->editTrading("Discord enabled",cfg->cfg.discord.enabled=v)).toggle());
+        discord.row("Pause on contact",()->"Pause trading after a mention or staff message until you review it.",new Check(()->draft.view().discord.pauseOnContact,v->editTrading("Pause on contact",cfg->cfg.discord.pauseOnContact=v)).toggle());
+        discord.row("Mention alerts",()->"Send messages mentioning your player name to your Discord channel.",new Check(()->draft.view().discord.alertMentions,v->editTrading("Mention alerts",cfg->cfg.discord.alertMentions=v)).toggle());
+        discord.row("Staff-message alerts",()->"Notify on a staff rank in the sender prefix; respond manually.",new Check(()->draft.view().discord.alertStaff,v->editTrading("Staff-message alerts",cfg->cfg.discord.alertStaff=v)).toggle());
+
+    }
+    private void buildTradingRest() {
+        var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
         Card rest=card("Daily rest schedule","Local regional time with daylight saving. Existing session windows are preserved.");
-        rest.row("Enabled",()->"Log off and reconnect according to the configured time ranges.",new Check(()->draft.view().restSchedule.enabled,v->editTrading("Rest schedule enabled",cfg->cfg.restSchedule.enabled=v)));
+        rest.row("Enabled",()->"Log off and reconnect according to the configured time ranges.",new Check(()->draft.view().restSchedule.enabled,v->editTrading("Rest schedule enabled",cfg->cfg.restSchedule.enabled=v)).toggle());
         Field zone=new Field(draft.view().restSchedule.timeZone,64,"America/New_York",v->editTrading("Time zone",cfg->cfg.restSchedule.timeZone=v),c->Character.isLetterOrDigit(c)||c=='/'||c=='_'||c=='-'||c=='+');
         zone.live=()->draft.view().restSchedule.timeZone;
         rest.row("Time zone",()->"Use a regional name such as America/Toronto.",zone.wide(160));
@@ -437,9 +523,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 rest.row("Session "+(i+1)+" · "+names[field],()->"24-hour HH:mm. Invalid or overlapping ranges are not saved.",time.wide(64));
             }
         }
+
+    }
+    private void buildTradingFiles() {
+        var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
         Card files=card("Saved settings and sessions","Advanced route settings and regional rest windows remain in goofyaddons.json. Existing data files are retained.");
         files.row("Review / reload",()->com.goofy.goofyaddons.config.GoofyConfig.location(),new Button("Save reviewed",this::commitReviewed,Button.PLAIN).when(()->!draft.dirty()),
-            new Button("Reload",()->{if(manager.canReloadConfig())com.goofy.goofyaddons.config.ConfigReload.reload();else tradingNote="Stop trading before reloading.";},Button.PLAIN));
+            new Button("Reload",()->{if(manager.canReloadConfig())com.goofy.goofyaddons.config.ConfigReload.reload();else notifyTrading("Stop trading before reloading.");},Button.PLAIN));
         files.callout(()->Callout.INFO,()->tradingNote);
     }
 
@@ -451,6 +541,18 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 route.option(o);
             }
         }
+        // The logo big, beside the settings: the search it plays is the route's look in small.
+        Card preview = card("Preview", "The logo's search, in this theme.");
+        preview.preview = true;
+        preview.row("Live search", () -> "Play it again", new Button("Replay", () -> {
+            LoadingArt logo = LoadingArt.logo();
+            if (logo != null) {
+                logo.restart();
+                if (Theme.current() != Theme.RAINBOW) {
+                    logo.finish();
+                }
+            }
+        }, Button.ACCENT));
     }
 
     /** The Drawing page's own rows (not settings from the file) whose words pass {@code keep}. */
@@ -600,6 +702,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                         .option(o);
             }
         }
+        List<Card> existing=List.copyOf(cards);
+        buildTradingOverview();buildTradingLimits();buildTradingCrafts();buildTradingCalculator();
+        buildTradingRest();buildTradingCommunity();buildTradingDiscord();buildTradingFiles();
+        for(Card c:cards)if(!existing.contains(c)) {
+            boolean whole=matches.test("trader "+c.title+" "+(c.about==null?"":c.about));
+            if(!whole)c.rows.removeIf(r->r.label==null || !matches.test("trader "+c.title+" "+r.label+" "+(r.desc==null?"":r.desc.get())));
+        }
         cards.removeIf(c -> c.rows.isEmpty());
         if (cards.isEmpty()) {
             card("Search", null).callout(() -> Callout.INFO,
@@ -614,7 +723,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private boolean twoColumns() {
-        return areaW >= 420;
+        return !page.equals(MACROS) && !page.equals(SEARCH) && areaW >= 420;
     }
 
     // ---- Doing things ------------------------------------------------------------------------
@@ -719,6 +828,19 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         double mx = ux(event.x());
         double my = uy(event.y());
+        if (dropped != null) {
+            // An open list takes the click: a value picks it, anywhere else just closes it.
+            Mode<?> list = dropped;
+            dropped = null;
+            int i = list.itemAt(mx, my);
+            if (i >= 0) {
+                list.pick(i);
+                return true;
+            }
+            if (list.in(mx, my)) {
+                return true;
+            }
+        }
         El e = at(mx, my);
         if (!(e instanceof Field)) {
             focus(null);
@@ -747,6 +869,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
     @Override
     public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        dropped = null;
         int max = Math.max(0, contentH - areaH);
         int s = scrolls.getOrDefault(key(), 0);
         scrolls.put(key(), Math.clamp(s - (int) Math.round(scrollY * 28), 0, max));
@@ -754,14 +877,14 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private String key() {
-        return page;
+        return page.equals(MACROS)?page+":"+tradingSection.name():page;
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
         if(bindingCapture!=null) {
             var binding=bindingCapture;bindingCapture=null;
-            if(event.isEscape()){tradingNote="Key change cancelled.";return true;}
+            if(event.isEscape()){notifyTrading("Key change cancelled.");return true;}
             try {
                 var gson=new com.google.gson.Gson();
                 var cfg=gson.fromJson(gson.toJson(com.goofy.goofyaddons.config.GoofyConfig.INSTANCE),com.goofy.goofyaddons.config.GoofyConfig.class);
@@ -775,8 +898,12 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 com.goofy.goofyaddons.config.GoofyConfig.commitSettings(cfg);
                 binding.setKey(InputConstants.Type.KEYBOARD.getOrCreate(code));
                 net.minecraft.client.KeyMapping.resetMapping();minecraft.options.save();
-                tradingNote="Keybind saved.";
-            }catch(Exception failure){tradingNote=failure.getMessage();}
+                notifyTrading("Keybind saved.");
+            }catch(Exception failure){notifyTrading(failure.getMessage());}
+            return true;
+        }
+        if (dropped != null && event.isEscape()) {
+            dropped = null;
             return true;
         }
         if (focused != null) {
@@ -816,7 +943,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         super.extractRenderState(g, mouseX, mouseY, a);
         double mx = ux(mouseX);
         double my = uy(mouseY);
-        El hot = at(mx, my);
+        El hot = dropped != null && (dropped.itemAt(mx, my) >= 0 || dropped.in(mx, my)) ? dropped
+                : at(mx, my);
         if (hot != hovered) {
             hovered = hot;
             hoveredSince = System.currentTimeMillis();
@@ -825,37 +953,43 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         g.pose().pushMatrix();
         g.pose().scale(k, k);
 
-        // The window and its sidebar.
-        Panels.framed(g, winX, winY, winW, winH, 0, 1, th.panelBorder, th.bg);
+        // The window in its stone frame, and its sidebar.
+        Pixel.bricks(g, winX, winY, winW, winH, th);
+        Panels.rect(g, winX, winY, winW, winH, 0, th.bg);
         // The whole window is a piece of the loading screen's map: a search solving one random
         // maze after another, with the sidebar and the cards laid over it.
         g.enableScissor(winX + 1, winY + 1, winX + winW - 1, winY + winH - 1);
         MazeBackground.get().draw(g, winX + 1, winY + 1, winW - 2, winH - 2, 0.55f);
         g.disableScissor();
-        Panels.rect(g, winX + 1, winY + 1, SIDE_W - 1, winH - 2, 0, th.bgPanel);
-        Panels.rect(g, winX + SIDE_W, winY + 1, 1, winH - 2, 0, th.slate);
-        Panels.rect(g, winX + SIDE_W + 1, winY + HEAD_H, winW - SIDE_W - 2, 1, 0, th.slate);
-        // The logo, then "A* Client" beside it: the A* in the theme's colour.
-        int starW = width("A* ", strong);
-        int nameW = starW + width("Client", strong);
-        int lx = winX + (SIDE_W - LOGO - 6 - nameW) / 2;
-        logo(g, lx, winY + (HEAD_H - LOGO) / 2);
-        int ny = winY + HEAD_H / 2 - 3;
-        text(g, "A*", strong, lx + LOGO + 6, ny, th.text);
-        text(g, "Client", strong, lx + LOGO + 6 + starW, ny, th.text);
-        // Where this is, at the bottom of the sidebar.
+        Panels.rect(g, winX, winY, SIDE_W, winH, 0, th.bgPanel);
+        // A double line between the sidebar and the page, and one under the page's title.
+        Panels.rect(g, winX + SIDE_W, winY, 1, winH, 0, th.panelBorder);
+        Panels.rect(g, winX + SIDE_W + 1, winY, 1, winH, 0, th.bg);
+        Panels.rect(g, winX + SIDE_W + PAD, winY + HEAD_H, winW - SIDE_W - 2 * PAD, 1, 0,
+                th.panelBorder);
+        // The logo in its dark box, then "A* Client" and the version beside it.
+        int lx = winX + 8;
+        int ly = winY + (HEAD_H - LOGO) / 2;
+        Pixel.panel(g, lx - 1, ly - 1, LOGO + 2, LOGO + 2, th.panelBorder, th.bg);
+        logo(g, lx, ly);
+        int tx = lx + LOGO + 8;
+        text(g, "A* Client", strong, tx, winY + HEAD_H / 2 - 9, th.text);
+        text(g, "v" + VERSION, small, tx, winY + HEAD_H / 2 + 3, th.textDim);
+        // Where this is, at the bottom of the sidebar, by a sparkle.
         int fy = winY + winH - 44;
-        Panels.framed(g, winX + 10, fy, SIDE_W - 20, 34, 6, 1, th.panelBorder, th.bgPanel);
+        Pixel.panel(g, winX + 8, fy, SIDE_W - 16, 36, th.panelBorder, th.bg);
         Places.Place place = Places.current();
-        int dot = state() == Navigator.State.DONE ? th.slate : th.slateLight;
-        Panels.framed(g, winX + 18, fy + 11, 12, 12, 3, 2, dot, th.bgPanel);
-        Panels.rect(g, winX + 22, fy + 15, 4, 4, 0, dot);
-        text(g, fit(place == null ? "Unknown map" : capital(place.name), strong, SIDE_W - 50),
-                strong, winX + 36, fy + 7, t().text);
-        text(g, fit(stateWord(), small, SIDE_W - 50), small, winX + 36, fy + 19, t().textDim);
+        boolean going = state() != Navigator.State.DONE;
+        Pixel.sparkle(g, winX + 22, fy + 18, 5, going ? th.accentBright : th.accent,
+                th.highlight, th.bg);
+        text(g, fit(place == null ? "Unknown map" : place.name, strong, SIDE_W - 52),
+                strong, winX + 36, fy + 8, t().text);
+        text(g, fit(stateWord(), small, SIDE_W - 52), small, winX + 36, fy + 21, t().textDim);
         // The page's title.
         String heading = page.equals(SEARCH) ? "Search" : pages().get(page);
         text(g, heading, title, winX + SIDE_W + PAD + 4, winY + (HEAD_H - 12) / 2 + 1, t().text);
+        String feedback=page.equals(MACROS)?tradingFeedback():null;
+        if(feedback!=null)text(g,fit(feedback,small,areaW-8),small,areaX+4,winY+HEAD_H-11,Callout.WARN);
 
         for (El e : fixed) {
             e.draw(g, e == hot);
@@ -881,11 +1015,22 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             int barY = areaY + (areaH - barH) * Math.min(scroll, max) / max;
             Panels.rect(g, winX + winW - 6, barY, 3, barH, 1, th.slate);
         }
+        // An open list of choices on top of the page.
+        if (dropped != null && !dropped.shown) {
+            dropped = null;
+        }
+        if (dropped != null) {
+            g.nextStratum();
+            dropped.drawList(g, mx, my);
+        }
         // Help for what's under the mouse, after a moment, on top of everything.
-        if (hot != null && hot.tip() != null
+        if (dropped == null && hot != null && hot.tip() != null
                 && System.currentTimeMillis() - hoveredSince > 450) {
             g.nextStratum();
             tooltip(g, hot.tip(), (int) mx, (int) my);
+        }
+        if(feedback!=null && dropped==null && mx>=areaX && mx<areaX+areaW && my>=winY+HEAD_H-13 && my<winY+HEAD_H) {
+            g.nextStratum();tooltip(g,feedback,(int)mx,(int)my);
         }
         g.pose().popMatrix();
     }
@@ -910,7 +1055,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         int screenH = Math.round(height / k);
         int at = mx + 10 + w > screenW ? mx - 10 - w : mx + 10;
         int top = Math.clamp(my + 10, 2, Math.max(2, screenH - h - 2));
-        Panels.framed(g, at, top, w, h, 6, 1, th.panelBorder, th.bgPanel);
+        Pixel.panel(g, at, top, w, h, cardEdge(th), th.bgPanel);
         int yy = top + 7;
         for (FormattedCharSequence l : lines) {
             g.text(font, l, at + 8, yy, th.text, false);
@@ -961,9 +1106,32 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         return rows * (h + GAP) - GAP;
     }
 
+    /** Units between letters, on top of the font's own gap: the pixel-art look's tracking. */
+    private static final int TRACK = 1;
+    /** Each letter's width in each font, measured once. */
+    private final Map<FontDescription, Map<Integer, Integer>> advances = new HashMap<>();
+
+    /**
+     * Headings use tracked capitals; body text and typed values retain their case.
+     */
     private void text(GuiGraphicsExtractor g, String s, FontDescription f, int at, int top,
             int colour) {
-        g.text(font, Ui.text(s, f), at, top, colour, false);
+        String up = headingFont(f)?s.toUpperCase(Locale.ROOT):s;
+        int x = at;
+        for (int i = 0; i < up.length(); ) {
+            int cp = up.codePointAt(i);
+            if (cp != ' ') {
+                g.text(font, Ui.text(Character.toString(cp), f), x, top, colour, false);
+            }
+            x += advance(cp, f) + (headingFont(f)?TRACK:0);
+            i += Character.charCount(cp);
+        }
+    }
+
+    private boolean headingFont(FontDescription f) { return f.equals(strong)||f.equals(title); }
+    private int advance(int cp, FontDescription f) {
+        return advances.computeIfAbsent(f, k -> new HashMap<>()).computeIfAbsent(cp,
+                c -> font.width(Ui.text(Character.toString(c), f)));
     }
 
     /**
@@ -982,7 +1150,16 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private int width(String s, FontDescription f) {
-        return font.width(Ui.text(s, f));
+        String up = headingFont(f)?s.toUpperCase(Locale.ROOT):s;
+        int w = 0;
+        int n = 0;
+        for (int i = 0; i < up.length(); ) {
+            int cp = up.codePointAt(i);
+            w += advance(cp, f);
+            n++;
+            i += Character.charCount(cp);
+        }
+        return w + Math.max(0, n - 1) * (headingFont(f)?TRACK:0);
     }
 
     /** As much of {@code s} as fits in {@code w}, with "..." if cut. */
@@ -1062,6 +1239,10 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         final List<Row> rows = new ArrayList<>();
         /** A small button by the title. */
         El header;
+        /** Shows the logo big under its title. */
+        boolean preview;
+        int artY;
+        int artS;
         int cx;
         int cy;
         int cw;
@@ -1093,9 +1274,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                     Field f = new Field(n.text(), 12, "", s -> apply(o, s),
                             c -> Character.isDigit(c) || c == '.' || c == '-');
                     f.live = n::text;
-                    yield f.wide(52);
+                    yield f.wide(72);
                 }
-                case Tuning.Flag f -> new Check(f::get, on -> apply(o, on.toString()));
+                case Tuning.Flag f -> new Check(f::get, on -> apply(o, on.toString())).toggle();
                 case Tuning.Choice c -> new Mode<>(c.choices, c::get, v -> v, v -> apply(o, v));
             };
             Row r = row(label(o.name), () -> notes.getOrDefault(o, firstSentence(o.help)),
@@ -1129,6 +1310,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                     header.at(at + w - 10 - header.prefW(), top + 8, header.prefW(), 16);
                 }
             }
+            if (preview) {
+                // About 96 units, at a whole number of screen pixels per pixel of the art.
+                int m = Math.max(1, Math.round(96f * px / 64));
+                artS = Math.min(w - 24, 64 * m / px);
+                artY = yy + 2;
+                yy += artS + 10;
+            }
             for (Row r : rows) {
                 yy += r.layout(at + 10, yy, w - 20);
             }
@@ -1142,19 +1330,27 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 return;
             }
             Theme.Colours th = t();
-            Panels.framed(g, cx, cy, cw, ch, 7, 1, th.panelBorder, th.bgPanel);
+            Pixel.panel(g, cx, cy, cw, ch, cardEdge(th), th.bgPanel);
             if (title != null) {
-                text(g, fit(title, strong, cw - 80), strong, cx + 10, cy + 11, t().text);
+                text(g, fit(title, strong, cw - (header==null?20:header.prefW()+30)), strong, cx + 10, cy + 11, t().text);
                 for (int i = 0; i < aboutLines.size(); i++) {
                     text(g, aboutLines.get(i), small, cx + 10, cy + 24 + 11 * i, t().textDim);
                 }
                 int line = cy + 10 + 14 + 11 * aboutLines.size() + 4;
-                Panels.rect(g, cx + 10, line, cw - 20, 1, 0, th.slate);
+                Panels.rect(g, cx + 10, line, cw - 20, 1, 0, th.panelBorder);
                 if (header != null) {
                     header.shown = header.enabled();
                     if (header.shown) {
                         header.draw(g, header == hot);
                     }
+                }
+            }
+            if (preview) {
+                int ax = cx + (cw - artS) / 2;
+                Pixel.panel(g, ax - 3, artY - 3, artS + 6, artS + 6, th.panelBorder, th.bg);
+                LoadingArt art = LoadingArt.logo();
+                if (art != null) {
+                    art.draw(g, ax, artY, artS, artS, 1);
                 }
             }
             for (Row r : rows) {
@@ -1176,6 +1372,11 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 }
             }
         }
+    }
+
+    /** A card's edge: a step lighter than the boxes inside it. */
+    private static int cardEdge(Theme.Colours th) {
+        return Theme.mix(th.panelBorder, th.slate, 0.35) | 0xFF000000;
     }
 
     /** Callout kinds: their colour. */
@@ -1204,6 +1405,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         int rw;
         int rh;
         List<String> descLines = List.of();
+        boolean stacked;
 
         Row(String label, Supplier<String> desc, List<El> controls) {
             this.label = label;
@@ -1215,9 +1417,28 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             rx = at;
             ry = top;
             rw = w;
+            stacked=false;
             if (callout != null) {
                 String s = calloutText.get();
-                rh = s == null || s.isBlank() ? 0 : 26;
+                rh = s == null || s.isBlank() ? 0 : 14+10*wrap(s,small,w-30,w-30,5).size();
+                return rh;
+            }
+            int controlsWidth=controls.stream().mapToInt(El::prefW).sum()+6*Math.max(0,controls.size()-1);
+            if(reset!=null)controlsWidth+=reset.prefW()+6;
+            if(label!=null && !controls.isEmpty() && controlsWidth+width(label,body)+12>w) {
+                stacked=true;
+                String description=desc==null?null:desc.get();
+                descLines=description==null?List.of():wrap(description,small,w,w,4);
+                int yy=top+18+descLines.size()*11+5,xx=at;
+                List<El> items=new ArrayList<>(controls);
+                if(reset!=null)items.add(reset);
+                for(El e:items) {
+                    int ew=Math.min(w,e.prefW());
+                    if(xx>at && xx+ew>at+w){xx=at;yy+=24;}
+                    e.at(xx,yy,ew,18);xx+=ew+6;
+                }
+                rh=yy+24-top;
+                if(slider!=null){slider.at(at,top+rh,w,10);rh+=14;}
                 return rh;
             }
             int cyy = top + (30 - 18) / 2;
@@ -1229,12 +1450,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 rh = 26;
                 return rh;
             }
-            // Controls all 18 high on one right edge; a lone box or list as wide as the others.
+            // Controls all 18 high on one right edge; a lone list as wide as the others (a
+            // number's box stays narrow, leaving its line room in the wider capitals).
             int right = at + w;
             for (int i = controls.size() - 1; i >= 0; i--) {
                 El e = controls.get(i);
                 int ew = e.prefW();
-                if (controls.size() == 1 && (e instanceof Mode || e instanceof Field)) {
+                if (controls.size() == 1 && e instanceof Mode) {
                     ew = Math.max(ew, CONTROL_W);
                 }
                 e.at(right - ew, cyy, ew, 18);
@@ -1274,7 +1496,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             if (callout != null) {
                 String s = calloutText.get();
                 if (s != null && !s.isBlank()) {
-                    drawCallout(g, rx, ry + 3, rw, 20, callout.get(), s);
+                    drawCallout(g, rx, ry + 3, rw, rh-6, callout.get(), s);
                 }
                 return;
             }
@@ -1292,7 +1514,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 return;
             }
             if (label != null) {
-                int room = controlsLeft() - rx - 8;
+                int room = stacked?rw:controlsLeft() - rx - 8;
                 boolean changed = option != null && option.changed();
                 text(g, fit(label, body, room), body, rx, ry + 6, t().text);
                 if (changed) {
@@ -1322,8 +1544,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         // Information in slate like the rest; only success, warnings and errors keep a colour.
         boolean info = colour == Callout.INFO;
         int ink = info ? th.slateLight : colour;
-        Panels.framed(g, at, top, w, h, 5, 1, info ? th.panelBorder : colour, th.bgPanel);
-        Panels.framed(g, at + 7, top + 5, 10, 10, 5, 1, ink, th.bgPanel);
+        Pixel.panel(g, at, top, w, h, info ? th.panelBorder : colour, th.bg);
+        Pixel.panel(g, at + 7, top + 5, 10, 10, ink, th.bg);
         if (colour == Callout.OK) {
             // A tick, in pixels.
             int[][] tick = {{0, 2}, {1, 3}, {2, 4}, {3, 3}, {4, 2}, {5, 1}};
@@ -1335,7 +1557,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             int mw = width(mark, small);
             text(g, mark, small, at + 12 - mw / 2, top + 6, ink);
         }
-        text(g, fit(s, small, w - 30), small, at + 23, top + 6, th.text);
+        var lines=wrap(s,small,w-30,w-30,5);
+        for(int i=0;i<lines.size();i++)text(g,lines.get(i),small,at+23,top+6+10*i,th.text);
     }
 
     // ---- Controls ----------------------------------------------------------------------------
@@ -1417,7 +1640,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
         @Override
         int prefW() {
-            return width(label, body) + (style == GHOST ? 10 : 22);
+            return width(label, body) + (style == GHOST ? 10 : 24);
         }
 
         @Override
@@ -1426,20 +1649,24 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             boolean on = enabled();
             hot &= on;
             int colour = !on ? th.slate : th.text;
+            boolean down = on && pressed == this;
             if (style == GHOST) {
                 colour = hot ? th.text : th.textDim;
             } else {
-                // The main button only stands out by its slate border; no accent, no gradient.
-                int edge = hot ? th.slateLight : style == ACCENT && on ? th.slate : th.panelBorder;
-                Panels.framed(g, ex, ey, ew, eh, 5, 1, edge, th.bgPanel);
+                // A chunky stone button, in one of its five states.
+                Pixel.State state = !on ? Pixel.State.DISABLED : down ? Pixel.State.PRESSED
+                        : hot ? Pixel.State.HOVER : style == ACCENT ? Pixel.State.ACTIVE
+                        : Pixel.State.NORMAL;
+                Pixel.button(g, ex, ey, ew, eh, state, th);
             }
             String shown = label;
             if (armedUntil > System.currentTimeMillis()) {
                 shown = "Sure?";
-                Panels.framed(g, ex, ey, ew, eh, 5, 1, Callout.ERROR, th.bgPanel);
+                Pixel.outline(g, ex, ey, ew, eh, Callout.ERROR);
             }
             int tw = width(shown, body);
-            text(g, shown, body, ex + (ew - tw) / 2, ey + (eh - 9) / 2, colour);
+            text(g, shown, body, ex + (ew - tw) / 2, ey + (eh - 7) / 2 + (down ? 1 : 0),
+                    colour);
         }
 
         @Override
@@ -1453,21 +1680,35 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         final BooleanSupplier get;
         final Consumer<Boolean> set;
 
+        /** Drawn as a sliding switch instead of a box. */
+        boolean toggle;
+
         Check(BooleanSupplier get, Consumer<Boolean> set) {
             this.get = get;
             this.set = set;
-            ew = 18;
+            ew = 12;
+        }
+
+        Check toggle() {
+            toggle = true;
+            ew = 24;
+            return this;
         }
 
         @Override
         void draw(GuiGraphicsExtractor g, boolean hot) {
             Theme.Colours th = t();
             boolean on = get.getAsBoolean();
-            // A route node: slate when off; on, an accent border round a highlight centre.
+            int top = ey + (eh - 12) / 2;
+            if (toggle) {
+                Pixel.toggle(g, ex, top, ew, 12, on, hot, th);
+                return;
+            }
+            // A route node: a slate square when off; on, an accent one round a highlight centre.
             int edge = on ? th.accent : hot ? th.slateLight : th.slate;
-            Panels.framed(g, ex, ey, ew, eh, 3, on ? 2 : 1, edge, th.bgPanel);
+            Pixel.panel(g, ex, top, ew, 12, edge, th.bg);
             if (on) {
-                Panels.rect(g, ex + 5, ey + 5, ew - 10, eh - 10, 0, th.highlight);
+                Panels.rect(g, ex + 4, top + 4, ew - 8, 4, 0, th.highlight);
             }
         }
 
@@ -1477,7 +1718,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
     }
 
-    /** A box showing one of a few values; a click steps to the next, a right click back. */
+    /** A dropdown of named choices; right click steps back. */
     private final class Mode<T> extends El {
         final List<T> values;
         final Supplier<T> get;
@@ -1499,31 +1740,86 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             for (T v : values) {
                 most = Math.max(most, width(label.apply(v), body));
             }
-            return Math.max(44, most + 30 + (swatch != null ? 12 : 0));
+            return Math.max(44, most + 26 + (swatch != null ? 12 : 0));
         }
 
         @Override
         void draw(GuiGraphicsExtractor g, boolean hot) {
             Theme.Colours th = t();
-            Panels.framed(g, ex, ey, ew, eh, 5, 1, hot ? th.slateLight : th.panelBorder,
-                    th.bgPanel);
+            boolean open = dropped == this;
+            Pixel.button(g, ex, ey, ew, eh, open ? Pixel.State.ACTIVE
+                    : hot ? Pixel.State.HOVER : Pixel.State.NORMAL, th);
             T v = get.get();
-            int at = ex + 8;
+            int at = ex + 7;
             if (swatch != null) {
-                Panels.rect(g, at, ey + 5, 8, 8, 4, swatch.apply(v));
+                Pixel.panel(g, at, ey + 5, 8, 8, th.bg, swatch.apply(v));
                 at += 12;
             }
-            text(g, label.apply(v), body, at, ey + 5, t().text);
-            // Two small arrows: it steps.
-            arrow(g, ex + ew - 9, ey + eh / 2 - 3, '^', t().slate);
-            arrow(g, ex + ew - 9, ey + eh / 2 + 3, 'v', t().slate);
+            text(g, label.apply(v), body, at, ey + 6, th.text);
+            Pixel.chevron(g, ex + ew - 11, ey + eh / 2 - 1, open ? th.highlight : th.slateLight);
         }
 
+        /** A left click opens its list (or closes it); a right click steps back one. */
         @Override
         void click(double mx, double my, int button) {
-            int i = values.indexOf(get.get());
-            int step = button == 1 ? values.size() - 1 : 1;
-            set.accept(values.get((i + step) % values.size()));
+            // 26.x numbers the buttons as SDL does: left is 1, right is 3.
+            if (button == InputConstants.MOUSE_BUTTON_RIGHT) {
+                int i = values.indexOf(get.get());
+                set.accept(values.get((i + values.size() - 1) % values.size()));
+                return;
+            }
+            dropped = dropped == this ? null : this;
+        }
+
+        private static final int ITEM_H = 13;
+
+        int listH() {
+            return values.size() * ITEM_H + 4;
+        }
+
+        /** Below the box, or above it if it would run out of the window. */
+        int listTop() {
+            return ey + eh + listH() + 1 > winY + winH ? ey - listH() - 1 : ey + eh + 1;
+        }
+
+        /** Which value's line is at this spot in the open list, or -1. */
+        int itemAt(double mx, double my) {
+            int top = listTop() + 2;
+            if (mx < ex || mx >= ex + ew || my < top || my >= top + values.size() * ITEM_H) {
+                return -1;
+            }
+            return (int) ((my - top) / ITEM_H);
+        }
+
+        void pick(int i) {
+            set.accept(values.get(i));
+        }
+
+        /** The open list, over everything else. */
+        void drawList(GuiGraphicsExtractor g, double mx, double my) {
+            Theme.Colours th = t();
+            int top = listTop();
+            Pixel.panel(g, ex, top, ew, listH(), th.accent, th.bgPanel);
+            int under = itemAt(mx, my);
+            T now = get.get();
+            for (int i = 0; i < values.size(); i++) {
+                T v = values.get(i);
+                int yy = top + 2 + i * ITEM_H;
+                if (i == under) {
+                    Panels.rect(g, ex + 2, yy, ew - 4, ITEM_H, 0, th.terrainLight);
+                }
+                boolean picked = v.equals(now);
+                int at = ex + 7;
+                if (picked) {
+                    Panels.rect(g, ex + 3, yy + 5, 2, 3, 0, th.accent);
+                }
+                if (swatch != null) {
+                    Pixel.panel(g, at, yy + 2, 8, 8, th.bg, swatch.apply(v));
+                    at += 12;
+                }
+                text(g, fit(label.apply(v), body, ew - (at - ex) - 4), body, at, yy + 3,
+                        picked ? th.highlight : i == under ? th.text : th.textDim);
+            }
         }
     }
 
@@ -1560,21 +1856,23 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             if (!on && live != null) {
                 text = live.get();
             }
-            Panels.framed(g, ex, ey, ew, eh, 5, 1, on ? th.accent : hot ? th.slateLight
-                    : th.panelBorder, th.bgPanel);
+            // Sunk into the card: darker than it, the edge lighting up when typed in.
+            Pixel.panel(g, ex, ey, ew, eh, on ? th.accent : hot ? th.slateLight
+                    : th.panelBorder, th.bg);
             int room = ew - 16;
             if (text.isEmpty() && !on) {
-                text(g, fit(hint, body, room), body, ex + 8, ey + 5, t().slate);
+                text(g, fit(hint, body, room), body, ex + 8, ey + 6, t().slate);
                 return;
             }
+            // Preserve both private-key masking and the upstream leading-value display.
             String shown = secret?"*".repeat(text.length()):text;
             while (width(shown, body) > room && !shown.isEmpty()) {
-                shown = shown.substring(1);
+                shown = on ? shown.substring(1) : shown.substring(0, shown.length() - 1);
             }
-            text(g, shown, body, ex + 8, ey + 5, t().text);
+            text(g, shown, body, ex + 8, ey + 6, t().text);
             if (on && System.currentTimeMillis() / 500 % 2 == 0) {
-                int cx = ex + 8 + width(shown, body);
-                Panels.rect(g, cx, ey + 4, 1, 10, 0, th.highlight);
+                int cx = ex + 9 + width(shown, body);
+                Panels.rect(g, cx, ey + 5, 1, 8, 0, th.accentBright);
             }
         }
 
@@ -1635,23 +1933,23 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             int track = ey + eh / 2 - 1;
             int kx = ex + (int) Math.round(toT(n.get()) * ew);
             int dx = ex + (int) Math.round(toT(n.def) * ew);
-            // A route like the theme tiles': a start node, a solid slate line up to the knob, and
-            // sparse dim dots on from there.
-            Panels.rect(g, ex + 6, track, Math.max(0, kx - ex - 6), 2, 0, th.slate);
-            for (int x = kx + 8; x + 2 <= ex + ew; x += 6) {
-                Panels.rect(g, x, track, 2, 2, 0, th.panelBorder);
+            // A route: a start node, a solid accent line up to the knob, and a dotted line on
+            // from there.
+            Panels.rect(g, ex + 6, track, Math.max(0, kx - ex - 6), 2, 0, th.accent);
+            for (int x = kx + 7; x + 1 <= ex + ew; x += 3) {
+                Panels.rect(g, x, track + 1, 1, 1, 0, th.slate);
             }
-            Panels.framed(g, ex, track - 2, 6, 6, 0, 1, th.slate, th.bgPanel);
-            Panels.rect(g, ex + 2, track, 2, 2, 0, th.slate);
+            Pixel.panel(g, ex, track - 2, 6, 6, th.accent, th.bg);
+            Panels.rect(g, ex + 2, track, 2, 2, 0, th.highlight);
             // Where the default is.
-            Panels.rect(g, dx - 1, track - 2, 2, 6, 0, th.slate);
-            // The knob, a node on the route: slate, or while held an accent border round a
-            // highlight centre.
+            Panels.rect(g, dx, track - 2, 1, 6, 0, th.slateLight);
+            // The knob, a square node on the route: slate round an accent centre, lit while
+            // held or under the mouse.
             boolean on = pressed == this;
-            int r = hot || on ? 7 : 6;
-            Panels.framed(g, kx - r, track + 1 - r, 2 * r, 2 * r, 3, 2, on ? th.accent
-                    : hot ? th.slateLight : th.slate, th.bgPanel);
-            Panels.rect(g, kx - 1, track, 2, 2, 0, on ? th.highlight : th.slate);
+            int r = 5;
+            Pixel.panel(g, kx - r, track + 1 - r, 2 * r, 2 * r, on ? th.highlight
+                    : hot ? th.slateLight : th.slate, th.bg);
+            Panels.rect(g, kx - 2, track - 1, 4, 4, 0, on ? th.highlight : th.accent);
         }
 
         @Override
@@ -1695,18 +1993,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         void draw(GuiGraphicsExtractor g, boolean hot) {
             Theme.Colours th = t();
             boolean on = focused == this || page.equals(SEARCH);
-            int fill = th.bgPanel;
-            Panels.framed(g, ex, ey, ew, eh, 6, 1, on ? th.accent : hot ? th.slateLight
-                    : th.panelBorder, fill);
-            // A magnifying glass: a ring and its handle.
-            int gx = ex + 9;
-            int gy = ey + eh / 2 - 4;
-            int glass = on ? th.highlight : hot ? th.slateLight : th.slate;
-            Panels.framed(g, gx, gy, 8, 8, 4, 1, glass, fill);
-            Panels.rect(g, gx + 7, gy + 7, 3, 3, 1, glass);
-            int room = ew - 30;
+            // Sunk into the sidebar, like the mockup's: darker than it, no icon.
+            Pixel.panel(g, ex, ey, ew, eh, on ? th.accent : hot ? th.slateLight
+                    : th.panelBorder, th.bg);
+            int room = ew - 18;
+            int ty = ey + (eh - 7) / 2;
             if (text.isEmpty() && focused != this) {
-                text(g, "Search", body, ex + 22, ey + (eh - 9) / 2 + 1, on ? th.highlight
+                text(g, "Search", body, ex + 7, ty, on ? th.highlight
                         : hot ? th.text : th.textDim);
                 return;
             }
@@ -1714,10 +2007,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             while (width(shown, body) > room && !shown.isEmpty()) {
                 shown = shown.substring(1);
             }
-            text(g, shown, body, ex + 22, ey + (eh - 9) / 2 + 1, t().text);
+            text(g, shown, body, ex + 7, ty, t().text);
             if (focused == this && System.currentTimeMillis() / 500 % 2 == 0) {
-                Panels.rect(g, ex + 22 + width(shown, body), ey + (eh - 9) / 2, 1, 10, 0,
-                        th.highlight);
+                Panels.rect(g, ex + 8 + width(shown, body), ty - 1, 1, 9, 0, th.accentBright);
             }
         }
 
@@ -1749,18 +2041,22 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             Theme.Colours th = t();
             boolean open = name.equals(page);
             if (open) {
-                // The page that's open: a 1-unit accent border, nothing more.
-                Panels.framed(g, ex, ey, ew, eh, 6, 1, th.accent, th.bgPanel);
+                // The page that's open: an accent edge round a darker box.
+                Pixel.panel(g, ex, ey, ew, eh, th.accent, th.bg);
+            } else if (hot) {
+                Pixel.panel(g, ex, ey, ew, eh, th.panelBorder, th.bgPanel);
             }
             int colour = open ? th.highlight : hot ? th.text : th.textDim;
-            // A route node: a box with a highlight centre for the open page, slate for the rest.
+            // A route node: a hollow accent square round a highlight centre for the open page,
+            // a small slate one for the rest.
+            int cy = ey + eh / 2;
             if (open) {
-                Panels.framed(g, ex + 8, ey + eh / 2 - 4, 8, 8, 0, 2, th.accent, th.bgPanel);
-                Panels.rect(g, ex + 11, ey + eh / 2 - 1, 2, 2, 0, th.highlight);
+                Pixel.panel(g, ex + 7, cy - 4, 8, 8, th.accent, th.bg);
+                Panels.rect(g, ex + 10, cy - 1, 2, 2, 0, th.highlight);
             } else {
-                Panels.rect(g, ex + 10, ey + eh / 2 - 2, 4, 4, 0, hot ? th.slateLight : th.slate);
+                Panels.rect(g, ex + 9, cy - 2, 3, 3, 0, hot ? th.slateLight : th.slate);
             }
-            text(g, label, body, ex + 22, ey + (eh - 9) / 2 + 1, colour);
+            text(g, label, body, ex + 21, cy - 3, colour);
         }
 
         @Override
@@ -1782,13 +2078,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             // Folded with one of its pages open, it shows that the page is in here.
             boolean inside = !pathfinderOpen && pathfinderPage(page) && !page.equals(SEARCH);
             if (inside) {
-                Panels.framed(g, ex, ey, ew, eh, 6, 1, th.accent, th.bgPanel);
+                Pixel.panel(g, ex, ey, ew, eh, th.accent, th.bg);
             }
-            // A section's header: brighter than the pages under it.
-            int colour = inside ? th.highlight : th.text;
-            text(g, fit("Pathfinder settings", body, ew - 22), body, ex + 8,
-                    ey + (eh - 9) / 2 + 1, colour);
-            arrow(g, ex + ew - 11, ey + eh / 2, pathfinderOpen ? 'v' : '>', t().textDim);
+            // A section's header: quieter than the pages under it, as in a pixel game's menu.
+            int colour = inside ? th.highlight : hot ? th.text : th.textDim;
+            text(g, fit("Pathfinder", body, ew - 22), body, ex + 6, ey + eh / 2 - 3, colour);
+            arrow(g, ex + ew - 11, ey + eh / 2, pathfinderOpen ? 'v' : '>',
+                    hot ? th.text : th.slate);
         }
 
         @Override
@@ -1814,7 +2110,10 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             int fill = c.bgPanel;
             // Each tile in its own theme's tokens; only the one in use gets an accent border.
             int edge = active ? c.accent : hot ? c.slateLight : c.panelBorder;
-            Panels.framed(g, ex, ey, ew, eh, 7, 1, edge, fill);
+            Pixel.panel(g, ex, ey, ew, eh, edge, fill);
+            if (active) {
+                Panels.rect(g, ex + 1, ey + 1, ew - 2, 1, 0, c.highlight);
+            }
             text(g, theme.label, title, ex + 12, ey + 11, c.text);
             text(g, active ? "Active" : "Inactive", small, ex + 12, ey + 27,
                     active ? c.highlight : c.textDim);
@@ -1824,10 +2123,10 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             for (int x = ex + 14; x < ex + 100; x += 4) {
                 Panels.rect(g, x, ry, 2, 2, 0, c.slateLight);
             }
-            Panels.framed(g, ex + 10, ry - 4, 10, 10, 3, 2, c.accent, fill);
+            Pixel.panel(g, ex + 10, ry - 4, 10, 10, c.accent, fill);
             Panels.rect(g, ex + 14, ry, 2, 2, 0, c.highlight);
             Panels.rect(g, ex + 52, ry - 2, 6, 6, 0, c.slate);
-            Panels.framed(g, ex + 92, ry - 4, 10, 10, 3, 2, theme.route.leadNow(), fill);
+            Pixel.panel(g, ex + 92, ry - 4, 10, 10, theme.route.leadNow(), fill);
         }
 
         @Override

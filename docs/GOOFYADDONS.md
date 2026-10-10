@@ -151,13 +151,14 @@ later launches. This supports Windows, macOS and Linux on x64/ARM64. First launc
 requires internet access and may take longer; it does not block the game thread
 or install anything system-wide. Runtime failures appear in the Macros page.
 
-Use **G → Macros → Market and account checks**:
+Use **G → Macros → Calculator**:
 
 - Valid settings save automatically: toggles and mode choices save immediately;
   text fields save after 750 ms without editing, when leaving the field, or when
   closing the screen. Invalid fields stay unsaved with an explanation. Changes
   made during trading wait until trading stops while the screen is open. Failed
-  writes remain pending; **Retry save** retries, and **Discard** drops pending edits.
+  writes remain pending with the error in the header; edit the affected value to
+  retry. The obsolete save/discard panel has been removed.
   Calculator restarts happen only after a validated save. Private contributor-key
   enrollment retains its separate explicit save control.
 - **Background service** shows startup/download/running/failure status. When a

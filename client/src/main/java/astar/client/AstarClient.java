@@ -125,7 +125,7 @@ public final class AstarClient implements ClientModInitializer {
      * {@code screen <page>} (and {@code closescreen}) opens (and closes) the mod's window
      * ({@link AstarScreen}) on that page. {@code chat <text>} sends that chat line, {@code type
      * <text>} opens chat with it typed in and {@code key tab|up|down|enter}
-     * presses that key there.
+     * presses that key there; {@code dropdown} opens the window's first list of choices.
      */
     private final List<String> gotoCommands = new ArrayList<>(List.of(
             System.getProperty("astar.goto.commands", "").split(";")));
@@ -566,6 +566,10 @@ public final class AstarClient implements ClientModInitializer {
             } else if (command.startsWith("search ")) {
                 if (client.gui.screen() instanceof AstarScreen window) {
                     window.searchFor(command.substring(7));
+                }
+            } else if (command.equals("dropdown")) {
+                if (client.gui.screen() instanceof AstarScreen window) {
+                    window.dropFirst();
                 }
             } else if (command.equals("closescreen")) {
                 client.gui.setScreen(null);
