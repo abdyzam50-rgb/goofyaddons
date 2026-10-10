@@ -33,9 +33,13 @@ public final class ProductionCommands {
                     catch(java.io.IOException missing){new LiveActions().message("Open the Personal Compactor menu first, then run this command.");}return 1;
                 })))
                 .then(ClientCommands.literal("jobs").executes(c->{
-                    try {var jobs=FeatureManager.INSTANCE.crafting().journal();
-                        if(jobs.isEmpty())new LiveActions().message("No production jobs recorded.");
-                        for(var job:jobs)new LiveActions().message(job.id().substring(0,Math.min(8,job.id().length()))+" · "+job.recipeKey()+" · "+job.state());
+                    try {String account=new LiveWorld().username();
+                        var jobs=FeatureManager.INSTANCE.crafting().journal().stream()
+                            .filter(j->j.account().equals(account) && j.state()!=ProductionJobs.State.DONE && j.state()!=ProductionJobs.State.CANCELLED)
+                            .sorted(java.util.Comparator.comparingInt(j->j.state()==ProductionJobs.State.REVIEW?0:1)).toList();
+                        if(jobs.isEmpty())new LiveActions().message("No unresolved production jobs for this account.");
+                        else new LiveActions().message(jobs.stream().filter(j->j.state()==ProductionJobs.State.REVIEW).count()+" REVIEW jobs. After checking inventory/workstations/listings, use production acknowledge <ID>, or production acknowledge all for every REVIEW job shown.");
+                        for(var job:jobs)new LiveActions().message(job.id().substring(0,Math.min(8,job.id().length()))+" · "+job.recipeKey()+" · "+job.state()+(job.reason()==null?"":" · "+job.reason()));
                     }catch(Exception failure){new LiveActions().message("Production journal unreadable; file preserved.");}return 1;
                 }))
                 .then(ClientCommands.literal("acknowledge").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
@@ -45,8 +49,16 @@ public final class ProductionCommands {
                     try {
                         String account=new LiveWorld().username();
                         if(!new LiveWorld().inWorld())throw new IllegalArgumentException("Join the account whose job you reviewed");
-                        var job=manager.crafting().productionJobs().acknowledgeReview(StringArgumentType.getString(c,"job"),account);
-                        actions.message("Review acknowledged for "+job.id().substring(0,8)+". Journal evidence is retained; no item, purchase, sale or profit was assumed.");
+                        String reference=StringArgumentType.getString(c,"job");
+                        if(reference.equals("all")) {
+                            var reviewed=manager.crafting().productionJobs().acknowledgeAllReviews(account);
+                            actions.message(reviewed.size()+" REVIEW jobs acknowledged for this account. Evidence retained; active jobs unchanged; no item, purchase, sale or profit assumed.");
+                            for(var job:reviewed)com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id()));
+                            return 1;
+                        }
+                        var job=manager.crafting().productionJobs().acknowledgeReview(reference,account);
+                        long remaining=manager.crafting().journal().stream().filter(j->j.account().equals(account)&&j.state()==ProductionJobs.State.REVIEW).count();
+                        actions.message("Review acknowledged for "+job.id().substring(0,8)+". "+remaining+" REVIEW jobs remain. Journal evidence retained; no item, purchase, sale or profit assumed.");
                         com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id()));return 1;
                     }catch(Exception failure){actions.message("Review was not acknowledged: "+failure.getMessage());return 0;}
                 })))

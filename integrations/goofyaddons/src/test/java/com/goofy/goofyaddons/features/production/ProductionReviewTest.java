@@ -29,4 +29,36 @@ class ProductionReviewTest {
         assertEquals(3,jobs.all().stream().filter(j->j.state()==ProductionJobs.State.REVIEW).count());
         assertEquals(ProductionJobs.State.BUYING,jobs.find("33333333-a").orElseThrow().state());
     }
+    @Test void bulkAcknowledgementIsAccountScopedAndLeavesActiveAndCompletedJobsAlone()throws Exception {
+        Path path=dir.resolve("jobs.json");var jobs=new ProductionJobs(path);
+        jobs.put(job("review-a","owner",ProductionJobs.State.REVIEW));
+        jobs.put(job("review-b","owner",ProductionJobs.State.REVIEW));
+        jobs.put(job("foreign","other",ProductionJobs.State.REVIEW));
+        jobs.put(job("active","owner",ProductionJobs.State.BUYING));
+        jobs.put(job("ready","owner",ProductionJobs.State.OUTPUT_READY));
+        jobs.put(job("done","owner",ProductionJobs.State.DONE));
+        assertEquals(2,jobs.acknowledgeAllReviews("owner").size());
+        var loaded=new ProductionJobs(path);
+        for(String id:new String[]{"review-a","review-b"}) {
+            var result=loaded.find(id).orElseThrow();
+            assertEquals(ProductionJobs.State.CANCELLED,result.state());assertEquals(1314.8,result.costBasis());
+            assertTrue(result.reason().contains("Unknown balance"));
+        }
+        assertEquals(ProductionJobs.State.REVIEW,loaded.find("foreign").orElseThrow().state());
+        assertEquals(ProductionJobs.State.BUYING,loaded.find("active").orElseThrow().state());
+        assertEquals(ProductionJobs.State.OUTPUT_READY,loaded.find("ready").orElseThrow().state());
+        assertEquals(ProductionJobs.State.DONE,loaded.find("done").orElseThrow().state());
+        assertTrue(jobs.acknowledgeAllReviews("owner").isEmpty());
+        assertThrows(IllegalArgumentException.class,()->jobs.acknowledgeAllReviews(""));
+    }
+    @Test void failedBulkSaveLeavesAllReviewsUnacknowledged()throws Exception {
+        Path path=dir.resolve("jobs.json");var jobs=new ProductionJobs(path);
+        jobs.put(job("review-a","owner",ProductionJobs.State.REVIEW));
+        jobs.put(job("review-b","owner",ProductionJobs.State.REVIEW));
+        java.nio.file.Files.createDirectory(dir.resolve("jobs.json.tmp"));
+        assertThrows(java.io.IOException.class,()->jobs.acknowledgeAllReviews("owner"));
+        assertEquals(2,jobs.all().stream().filter(j->j.state()==ProductionJobs.State.REVIEW).count());
+        assertEquals(jobs.all(),new ProductionJobs(path).all());
+    }
+
 }

@@ -59,8 +59,21 @@ public final class ProductionJobs {
         if(matches.size()!=1 || matches.getFirst().state()!=State.REVIEW)
             throw new IllegalArgumentException("Name exactly one REVIEW job belonging to this account");
         var job=matches.getFirst();
-        var acknowledged=job.withState(State.CANCELLED,"Player acknowledged manual inventory/workstation/listing review; no sale or profit assumed. Previous: "+job.reason());
+        var acknowledged=acknowledged(job);
         put(acknowledged);return acknowledged;
+    }
+    private static Job acknowledged(Job job) {
+        return job.withState(State.CANCELLED,"Player acknowledged manual inventory/workstation/listing review; no sale or profit assumed. Previous: "+job.reason());
+    }
+    /** Explicit bulk acknowledgement; one durable write, current account's REVIEW entries only. */
+    public List<Job> acknowledgeAllReviews(String account)throws java.io.IOException {
+        if(account==null || account.isBlank())throw new IllegalArgumentException("Join the account whose jobs you reviewed");
+        var reviewed=all().stream().filter(j->j.account().equals(account) && j.state()==State.REVIEW).map(ProductionJobs::acknowledged).toList();
+        if(reviewed.isEmpty())return reviewed;
+        var original=new LinkedHashMap<>(jobs);
+        for(var job:reviewed)jobs.put(job.id(),job);
+        try {save();}catch(java.io.IOException failed){jobs.clear();jobs.putAll(original);throw failed;}
+        return reviewed;
     }
     public boolean occupies(ProductionRecipe.Kind kind,int slot,RecipeCatalog catalog,String account) {
         return jobs.values().stream().anyMatch(j->j.account.equals(account) && j.workstationSlot==slot && j.state!=State.DONE && j.state!=State.CANCELLED

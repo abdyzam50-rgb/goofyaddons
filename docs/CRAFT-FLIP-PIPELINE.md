@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.55
+# Craft flip discovery and execution — 0.2.56
 
 ## Shipped behavior
 
@@ -697,3 +697,24 @@ route; the mod carries buyMode/sellMode through report validation and locally
 revalidates that strategy. Legacy requests keep order/offer behavior. The mod's
 bundled companion is updated; this release does not deploy the public Worker.
 Automatic AH sale/expiry reconciliation remains outside this Bazaar integration.
+
+
+### 0.2.56 accumulated REVIEW recovery
+
+Old interrupted test runs can leave several REVIEW jobs, including both run and
+craft-step entries. Acknowledging one does not resolve the others. Craft discovery
+now reports their count and an example ID. `production jobs` shows unresolved jobs
+for the current account, with reviews first and their recorded reasons; completed
+and cancelled history stays in the journal without flooding chat.
+
+Stop trading with B and inspect inventory, workstations, pending Bazaar orders and
+AH listings before acknowledging leftovers. Use `.a* goofyaddon production acknowledge <ID-prefix>` for one reviewed job. After reviewing all leftovers, use
+`.a* goofyaddon production acknowledge all` to cancel only this account's REVIEW
+entries in one atomic journal write. Active jobs, ready outputs and other accounts
+remain unchanged. Costs and previous reasons are preserved; the command creates no
+purchase, sale, inventory or profit evidence. Pending craft Bazaar orders still
+block acknowledgement until reconciled. A failed save rolls back every change.
+
+After acknowledgement, press B to resume. Discovery clears its old blocker status
+when a new calculation succeeds. Existing 0.2.55 installations support individual
+IDs only; bulk acknowledgement requires this release.

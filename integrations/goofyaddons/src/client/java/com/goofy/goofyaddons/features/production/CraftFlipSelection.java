@@ -84,11 +84,13 @@ final class CraftFlipSelection {
             if(!manager.production().queued() && manager.production().hasRetainedOrders()){
                 routes=List.of();excluded.clear();generatedAt=0;error="Resolve retained craft Bazaar orders before starting another production run";return;
             }
-            for(var job:manager.crafting().journal())if(job.account().equals(world.username())&&job.state()!=ProductionJobs.State.DONE
+            var journal=manager.crafting().journal();
+            long reviews=journal.stream().filter(j->j.account().equals(world.username())&&j.state()==ProductionJobs.State.REVIEW).count();
+            for(var job:journal)if(job.account().equals(world.username())&&job.state()!=ProductionJobs.State.DONE
                     &&job.state()!=ProductionJobs.State.CANCELLED&&job.state()!=ProductionJobs.State.SELLING) {
                 var recipe=RecipeCatalog.instance().byKey(job.recipeKey()).orElse(null);
                 if(recipe!=null){blocked.add(recipe.outputId());blocked.addAll(recipe.ingredients().keySet());}
-                else if(job.state()==ProductionJobs.State.REVIEW){routes=List.of();excluded.clear();generatedAt=0;error="Resolve production jobs marked REVIEW before automatic crafts";return;}
+                else if(job.state()==ProductionJobs.State.REVIEW){routes=List.of();excluded.clear();generatedAt=0;error=reviews+" REVIEW jobs remain (e.g. "+job.id().substring(0,Math.min(8,job.id().length()))+"); stop trading, inspect production jobs, then acknowledge reviewed IDs or all";return;}
             }
             for(var job:manager.crafting().journal())if(job.account().equals(world.username())&&job.state()==ProductionJobs.State.SELLING) {
                 String output=job.recipeKey().startsWith("auction:")?job.recipeKey().substring(job.recipeKey().lastIndexOf(':')+1):null;
@@ -101,7 +103,8 @@ final class CraftFlipSelection {
             routes=CraftFlipPlanner.rank(RecipeCatalog.instance(),market,ah,world.menu(),manager.observedSkills(),manager.observedUnlocks(),blocked,
                 budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded);
             generatedAt=now;lastMarketSource=market.get("lastUpdated").getAsLong();
-            if(error!=null && error.startsWith("Waiting for"))error=null;
+            if(error!=null && (error.startsWith("Waiting for") || error.contains("REVIEW jobs remain")
+                    || error.startsWith("Resolve retained craft Bazaar orders") || error.equals("Production journal or account data unavailable")))error=null;
             com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.ranking_updated",Map.of(
                 "marketAt",lastMarketSource,"eligibleRoutes",routes.stream().filter(CraftFlipPlanner.Route::eligible).count(),
                 "pricedRoutes",routes.size(),"excludedCandidateCounts",Map.copyOf(excluded),"budget",budget));

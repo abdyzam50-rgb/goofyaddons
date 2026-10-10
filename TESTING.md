@@ -355,3 +355,10 @@ Node tests, including the local HTTP server checks. In-game server timing and
 full GUI navigation still require player testing. Production offers currently
 wait for full settlement without repricing; interrupted craft order journals are
 retained for review. No public Worker deployment was performed.
+
+
+The 0.2.56 recovery update passes 1,097 Java tests via
+`./gradlew -p client test build`. New tests verify bulk REVIEW acknowledgement
+preserves cost/reason evidence, leaves foreign accounts and non-REVIEW states
+untouched, survives reload and rolls back all in-memory changes on a failed save.
+Minecraft chat/HUD and live inventory reconciliation require an in-game check.
