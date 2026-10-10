@@ -12,7 +12,7 @@ public final class ProductionCommands {
             dispatcher.register(ClientCommands.literal("craft")
                 .then(ClientCommands.argument("output",StringArgumentType.word())
                     .executes(c->queue(StringArgumentType.getString(c,"output"),1))
-                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,16))
+                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
                         .executes(c->queue(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"))))));
             dispatcher.register(ClientCommands.literal("production")
                 .then(ClientCommands.literal("flips").executes(c->{FeatureManager.INSTANCE.production().showCraftPlans();return 1;}))

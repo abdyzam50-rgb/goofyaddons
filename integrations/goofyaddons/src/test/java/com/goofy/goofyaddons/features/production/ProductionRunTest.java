@@ -88,16 +88,13 @@ class ProductionRunTest {
         env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",32),item(55,"ENCHANTED_ENDER_PEARL",16));
         var run=ProductionRun.start(env,RecipeCatalog.instance(),"ENCHANTED_EYE_OF_ENDER",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
         assertFalse(run.wantsMenu());run.tick(false,0);
-        assertEquals(List.of("BLAZE_POWDERx16"),env.crafts);assertEquals(Stage.PROCURE,run.stage());
+        assertEquals(List.of("BLAZE_POWDERx32"),env.crafts);assertEquals(Stage.PROCURE,run.stage());
         assertEquals(ProductionJobs.State.PROCESSING,env.jobs.find(run.jobId()).orElseThrow().state());
         assertTrue(run.lockedProducts().contains("BLAZE_ROD"));
         env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);
-        env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",16),item(55,"ENCHANTED_ENDER_PEARL",16),item(56,"BLAZE_POWDER",32));
-        run.tick(false,1);run.tick(false,2);assertEquals(List.of("BLAZE_POWDERx16","BLAZE_POWDERx16"),env.crafts);
-        env.craftQueued=false;env.finish("craft-1",ProductionJobs.State.OUTPUT_READY);
         env.menu=ProductionRunTest.menu(null,item(55,"ENCHANTED_ENDER_PEARL",16),item(56,"BLAZE_POWDER",64));
-        run.tick(false,3);run.tick(false,4);assertEquals(Stage.PROCESS,run.stage());
-        run.tick(false,5);assertEquals("ENCHANTED_EYE_OF_ENDERx1",env.crafts.getLast());assertTrue(env.actions.serverEffects().isEmpty());
+        run.tick(false,1);run.tick(false,2);assertEquals(List.of("BLAZE_POWDERx32"),env.crafts);assertEquals(Stage.PROCESS,run.stage());
+        run.tick(false,3);assertEquals("ENCHANTED_EYE_OF_ENDERx1",env.crafts.getLast());assertTrue(env.actions.serverEffects().isEmpty());
     }
     @Test void occupiedBaseIngredientsCannotBeConsumedByPreparation()throws Exception {
         var env=new Env();env.occupied=Set.of("BLAZE_ROD");
@@ -131,7 +128,7 @@ class ProductionRunTest {
         var run=ProductionRun.start(env,RecipeCatalog.instance(),"ENCHANTED_EYE_OF_ENDER",ProductionRecipe.Kind.CRAFT,1,-1,5000,100);
         run.tick(false,0);env.craftQueued=false;env.finish("craft-0",ProductionJobs.State.REVIEW);
         assertEquals(Step.UNCERTAIN,run.tick(false,1));assertEquals(Stage.REVIEW,run.stage());
-        assertEquals(List.of("BLAZE_POWDERx16"),env.crafts);assertTrue(env.listings.isEmpty());
+        assertEquals(List.of("BLAZE_POWDERx32"),env.crafts);assertTrue(env.listings.isEmpty());
     }
 
     @Test void craftRunFromHeldInputsCraftsThenListsAndRecordsEveryBoundary()throws Exception {

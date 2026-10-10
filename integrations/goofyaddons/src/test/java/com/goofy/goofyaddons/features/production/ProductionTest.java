@@ -18,13 +18,13 @@ class ProductionTest {
             new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);}
     class Server implements GameActions {
         final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);final ProductionRecipe r;
-        int clicks;boolean discard,preview,quickCraft,ignoreSplitOnce;String title="Craft Item";
+        int clicks;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime;String title="Craft Item";
         final List<String> inputs=new ArrayList<>();
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
         MenuSnapshot menu(){
             boolean ready=true;int[] grid={10,11,12,19,20,21,28,29,30};
             for(int i=0;i<9;i++){var need=r.grid().get(i);var slot=slots[grid[i]];
-                ready &= need==null?slot.empty():!slot.empty() && need.id().equals(slot.customId()) && need.count()==slot.count();}
+                ready &= need==null?slot.empty():!slot.empty() && need.id().equals(slot.customId()) && slot.count()>=need.count() && slot.count()%need.count()==0;}
             slots[23]=ready || preview?stack(23,r.outputId(),r.outputCount()):stack(23,"",0);
             if(quickCraft)slots[16]=stack(16,"OUTPUT",1);
             return new MenuSnapshot(77,title,cursor.empty(),Arrays.asList(slots.clone()),cursor);
@@ -32,7 +32,15 @@ class ProductionTest {
         public void click(int slot,boolean shift){clicks++;inputs.add((shift?"shift:":"left:")+slot);if(discard)return;
             if(shift && slot==23){
                 assertEquals(r.outputId(),slots[23].customId());int[] grid={10,11,12,19,20,21,28,29,30};
-                for(int i:grid)slots[i]=stack(i,"",0);slots[56]=stack(56,r.outputId(),r.outputCount());return;
+                int crafts=64;
+                for(int i=0;i<9;i++)if(r.grid().get(i)!=null)crafts=Math.min(crafts,slots[grid[i]].count()/r.grid().get(i).count());
+                if(oneAtATime)crafts=1;
+                for(int i=0;i<9;i++)if(r.grid().get(i)!=null)slots[grid[i]]=stack(grid[i],r.grid().get(i).id(),slots[grid[i]].count()-r.grid().get(i).count()*crafts);
+                int output=r.outputCount()*crafts;
+                for(int i=56;i<90&&output>0;i++)if(slots[i].empty()||r.outputId().equals(slots[i].customId())) {
+                    int added=Math.min(output,64-slots[i].count());slots[i]=stack(i,r.outputId(),slots[i].count()+added);output-=added;
+                }
+                assertEquals(0,output,"Simulated inventory has no output capacity");return;
             }
             if(cursor.empty()){var s=slots[slot];cursor=stack(-1,s.customId(),s.count());slots[slot]=stack(slot,"",0);}
             else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));
@@ -44,6 +52,43 @@ class ProductionTest {
             else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));slots[slot]=stack(slot,cursor.customId(),s.count()+1);cursor=stack(-1,cursor.customId(),cursor.count()-1);}
         }
         public void closeMenu(){}public void command(String text){}public void message(String text){}public boolean writeSign(String text){return false;}
+    }
+    @Test void loadsAnEntireRodStackAndVerifiesAll128PowderInOneCollection() {
+        var r=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();var server=new Server(r,0);
+        server.slots[54]=stack(54,"BLAZE_ROD",64);server.slots[55]=stack(55,"",0);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(r,64,server.menu(),server,Map.of(),Map.of(),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(64,executor.completedBatches());assertEquals(64,server.slots[56].count());assertEquals(64,server.slots[57].count());
+        assertEquals(3,server.clicks);assertEquals(List.of("left:54","left:10","shift:23"),server.inputs);
+    }
+    @Test void partialServerCraftsReuseTheLoadedGridWithoutReplacingInputs() {
+        var r=recipe(2);var server=new Server(r,16);server.slots[55]=stack(55,"SECOND",8);server.oneAtATime=true;
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(8,executor.completedBatches());assertEquals(8,server.slots[56].count());
+        assertEquals(4,server.inputs.stream().filter(x->x.startsWith("left:")).count());assertEquals(8,server.inputs.stream().filter(x->x.startsWith("shift:")).count());
+    }
+    @Test void bulkCraftNeverCountsAnOutputWithoutItsExactConsumedIngredients() {
+        var r=recipe(2);var server=new Server(r,16);server.slots[55]=stack(55,"SECOND",8);server.discard=true;
+        var executor=new CraftingExecutor();assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),1000));
+        server.slots[56]=stack(56,"OUTPUT",8);
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),1100));
+        assertEquals(CraftingExecutor.Result.BLOCKED,executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),2700));assertEquals(1,server.clicks);
+    }
+    @Test void unknownUnstackableOutputLimitsTheLoadedBatchToFreeInventorySpace() {
+        var r=recipe(1);var server=new Server(r,64);server.slots[55]=stack(55,"SECOND",64);
+        for(int i=57;i<90;i++)server.slots[i]=stack(i,"OTHER",64);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(r,64,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(1,executor.completedBatches());
+    }
+    @Test void nonPowerOfTwoAmountsAreLoadedOnceUsingHalvesAndExactRemainders() {
+        var base=recipe(1);var r=new ProductionRecipe(base.key(),base.kind(),"BLAZE_POWDER",1,base.ingredients(),base.grid(),0,0,base.requirement(),null);
+        var server=new Server(r,64);server.slots[55]=stack(55,"SECOND",47);var executor=new CraftingExecutor();
+        CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)result=executor.tick(r,47,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(47,executor.completedBatches());assertEquals(17,server.slots[54].count());
+        assertTrue(server.clicks<30,"47 exact inputs should use a half-stack plus remainder, not 47 placements");
     }
     @Test void hypixelsQuickCraftSuggestionIsNotMistakenForTheGridResult() {
         var r=recipe(32);var server=new Server(r,64);server.quickCraft=true;var executor=new CraftingExecutor();

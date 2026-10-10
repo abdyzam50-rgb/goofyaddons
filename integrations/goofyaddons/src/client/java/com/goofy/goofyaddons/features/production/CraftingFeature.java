@@ -32,7 +32,7 @@ public final class CraftingFeature implements Feature {
     }
     public boolean queue(String output,int batches) { return queue(output,batches,null); }
     public boolean queue(String output,int batches,String recipeKey) {
-        if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>16){new LiveActions().message("Finish the queued craft first; batch count must be 1–16.");return false;}
+        if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>64){new LiveActions().message("Finish the queued craft first; batch count must be 1–64.");return false;}
         var menu=new LiveWorld().menu();
         if(menu==null || !menu.cursorEmpty()){new LiveActions().message("Clear the cursor before queueing crafting.");return false;}
         var counts=new HashMap<String,Integer>();
@@ -58,7 +58,7 @@ public final class CraftingFeature implements Feature {
         new LiveActions().message("Queued "+batches+" craft batches of "+RecipeCatalog.instance().name(output)+". Use the trading toggle to run; existing ingredients only.");return true;
     }
     static Optional<ProductionRecipe> selectRecipe(RecipeCatalog catalog,String output,int batches,Map<String,Integer> inventory,Set<String> occupied){
-        if(batches<1 || batches>16)return Optional.empty();
+        if(batches<1 || batches>64)return Optional.empty();
         return catalog.forOutput(output).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT)
             .filter(r->!occupied.contains(r.outputId()) && r.ingredients().keySet().stream().noneMatch(occupied::contains))
             .filter(r->r.ingredients().entrySet().stream().allMatch(e->inventory.getOrDefault(e.getKey(),0)>=(long)e.getValue()*batches)).findFirst();
@@ -110,12 +110,15 @@ public final class CraftingFeature implements Feature {
             // Hypixel answers a click only when it disagrees with the client's prediction, so the
             // client's menu is the state to act on; a rejected click reverts it, and the executor
             // re-reads it after a settle delay before every next click.
-            var result=executor.tick(recipe,menu,actions,FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks(),now);
+            var result=executor.tick(recipe,remaining,menu,actions,FeatureManager.INSTANCE.observedSkills(),FeatureManager.INSTANCE.observedUnlocks(),now);
             if(result==CraftingExecutor.Result.BLOCKED){fail(executor.failure());return;}
             if(result==CraftingExecutor.Result.CRAFTED) {
-                jobs().put(jobs().find(jobId).orElseThrow().completedBatch());
-                remaining--;
-                Diagnostics.event("INFO","production.craft_verified",Map.of("job",jobId,"recipe",recipe.key(),"output",recipe.outputId(),"units",recipe.outputCount(),"remaining",remaining));
+                int completed=executor.completedBatches();
+                var verified=jobs().find(jobId).orElseThrow();
+                for(int i=0;i<completed;i++)verified=verified.completedBatch();
+                jobs().put(verified);
+                remaining-=completed;
+                Diagnostics.event("INFO","production.craft_verified",Map.of("job",jobId,"recipe",recipe.key(),"output",recipe.outputId(),"units",recipe.outputCount()*completed,"remaining",remaining));
                 if(remaining==0) {
                     FeatureManager.INSTANCE.invalidateMarketReport();
                     actions.closeMenu();actions.message("Crafted "+RecipeCatalog.instance().name(recipe.outputId())+"; output verified in inventory.");recipe=null;opening=false;

@@ -32,3 +32,14 @@ requests, shared caching and failure handling. Run
 import, preparation steps, market filters, price refresh and stale-price removal.
 Fixtures validate these flows; live owner deployment and real Coflnet access must
 be verified separately after deploying the website assets and Worker together.
+
+The 0.2.28 stacked-crafting tests simulate a 64-rod/128-powder bulk collection,
+partial server collections using the same loaded grid, false outputs without
+matching ingredient consumption, and capacity limits for unknown unstackable
+outputs. Existing split, dropped-input, cursor, requirement, and journal tests
+remain required. No test launches Minecraft or uses a real account inventory.
+The final 0.2.28 client/test/calculatorIntegrationTest/build run passed 1032 Java
+tests with no failures or errors. It also covers exact non-power-of-two loading
+(47 items), the widened held-input craft command limit, and one-step intermediate
+preparation before the final craft. The release JAR's version and crafting class
+were checked. Live Hypixel behavior is not validated by these simulated tests.

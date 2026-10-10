@@ -6,16 +6,17 @@ import com.goofy.goofyaddons.features.access.ActionRequirements;
 import java.util.*;
 
 /**
- * One exact recipe batch. Every cursor/grid mutation waits until the menu shows it, then a settle
+ * A bounded stack of exact recipe batches. Every cursor/grid mutation waits until the menu shows it, then a settle
  * delay in which a server that rejects the click reverts it, before the next step is chosen.
  */
 public final class CraftingExecutor {
     public enum Result {WAITING,CRAFTED,BLOCKED}
     private static final int[] GRID={10,11,12,19,20,21,28,29,30};
     private static final int RESULT=23;
-    private static final long FAST_SETTLE_MS=100;
+    private static final long FAST_SETTLE_MS=50;
     private ProductionRecipe recipe;
-    private int container,source=-1;
+    private int container,source=-1,batchCount=1,lastCompletedBatches;
+    public int completedBatches(){return lastCompletedBatches;}
     private final Set<Integer> splitTargets=new HashSet<>();
     private Map<String,Integer> before;
     private MenuSnapshot sent;
@@ -36,6 +37,10 @@ public final class CraftingExecutor {
         return tick(wanted,menu,actions,skills,Map.of(),now);
     }
     public Result tick(ProductionRecipe wanted,MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,long now) {
+        return tick(wanted,1,menu,actions,skills,unlocks,now);
+    }
+    public Result tick(ProductionRecipe wanted,int requestedBatches,MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,long now) {
+        if(requestedBatches<1)return block("No craft batches requested");
         if(recipe==null){String reason=com.goofy.goofyaddons.features.access.RouteRequirements.craft(wanted.requirement(),skills,unlocks);if(reason!=null)return block(reason);}
         var compactorConflict=PersonalCompactors.conflict(menu,wanted.ingredients().keySet(),RecipeCatalog.instance());
         if(compactorConflict!=null)return block(compactorConflict);
@@ -45,6 +50,18 @@ public final class CraftingExecutor {
             if(!menu.cursorEmpty())return block("Crafting cannot adopt an occupied cursor");
             for(int slot:GRID)if(!empty(menu.slot(slot)))return block("Crafting grid already contains items; ownership must be reconciled");
             before=inventory(menu);
+            batchCount=Math.min(64,requestedBatches);
+            for(var cell:wanted.grid())if(cell!=null) {
+                int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.customId()))
+                    .mapToInt(v->v.maxStackSize()).min().orElse(1);
+                batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
+            }
+            for(var need:wanted.ingredients().entrySet())batchCount=Math.min(batchCount,before.getOrDefault(need.getKey(),0)/need.getValue());
+            long free=menu.slots().stream().filter(v->v.inPlayerInventory() && v.containerSlot()<36 && v.empty()).count();
+            // Unknown outputs may be unstackable: reserve one space per unit, never assume 64.
+            int outputStack=Set.of("BLAZE_POWDER","STICK","WOOD","PAPER","SUGAR","BOOK","BOWL","CHEST","GOLD_NUGGET","REDSTONE_TORCH_ON","EYE_OF_ENDER","GLASS_BOTTLE","WORKBENCH").contains(wanted.outputId())?64:1;
+            batchCount=Math.min(batchCount,(int)(free*outputStack/wanted.outputCount()));
+            if(batchCount<1)return block("Insufficient ingredients or output space for a whole craft");
             for(var need:wanted.ingredients().entrySet())if(before.getOrDefault(need.getKey(),0)<need.getValue())return block("Missing ingredient: "+need.getKey());
             if(menu.slots().stream().noneMatch(s->s.inPlayerInventory() && s.containerSlot()<36 && s.empty()))return block("Keep one free inventory slot for crafting output");
             recipe=wanted;container=menu.containerId();started=now;next=now;submitted=false;
@@ -62,7 +79,7 @@ public final class CraftingExecutor {
         }
         inconsistentSince=0;
         if(now<cooldownUntil)return Result.WAITING;
-        if(submitted && completed(menu) && now-sentAt>=settleMs){reset();return Result.CRAFTED;}
+        if(submitted && completed(menu) && now-sentAt>=settleMs){lastCompletedBatches=batchCount;reset();return Result.CRAFTED;}
         if(sent!=null) {
             if(!sameContents(sent,menu)) {sent=null;retries=0;next=sentAt+settleMs;}
             else if(now-sentAt>=2000) {
@@ -72,18 +89,22 @@ public final class CraftingExecutor {
             } else return Result.WAITING;
         }
         if(now<next)return Result.WAITING;
-        if(submitted)return Result.WAITING;
+        if(submitted) {
+            int made=convertedBatches(menu);
+            if(made>0 && made<batchCount && remainingGrid(menu,batchCount-made))return takeOutput(menu,actions,skills,now);
+            return Result.WAITING;
+        }
         int target=-1,donor=-1;
         for(int i=0;i<9;i++) {
             var expected=recipe.grid().get(i);var actual=menu.slot(GRID[i]);
             if(expected==null){if(!empty(actual))return block("Unexpected item in recipe grid");continue;}
             if(!empty(actual) && !expected.id().equals(actual.customId()))return block("Recipe grid identity/count mismatch");
-            if(count(actual)>expected.count()) {
-                if(!splitTargets.contains(i) || !canSplit(count(actual),expected.count()))return block("Crafting stack split changed unexpectedly; grid and cursor retained");
+            if(count(actual)>expected.count()*batchCount) {
+                if(!splitTargets.contains(i) || !canPark(count(actual),expected.count()*batchCount))return block("Crafting stack split changed unexpectedly; grid and cursor retained");
                 if(donor<0)donor=i;
             } else {
                 splitTargets.remove(i);
-                if(count(actual)<expected.count() && target<0)target=i;
+                if(count(actual)<expected.count()*batchCount && target<0)target=i;
             }
         }
         if(menu.cursorEmpty() && donor>=0) {
@@ -95,11 +116,11 @@ public final class CraftingExecutor {
             // Reuse this ingredient's halves even if a different ingredient occurs earlier in the grid.
             for(int i=0;i<9;i++) {
                 var expected=recipe.grid().get(i);
-                if(expected!=null && expected.id().equals(cursor.customId()) && count(menu.slot(GRID[i]))<expected.count()) {target=i;break;}
+                if(expected!=null && expected.id().equals(cursor.customId()) && count(menu.slot(GRID[i]))<expected.count()*batchCount) {target=i;break;}
             }
             if(target>=0 && recipe.grid().get(target).id().equals(cursor.customId())) {
-                int remaining=recipe.grid().get(target).count()-count(menu.slot(GRID[target]));
-                if(empty(menu.slot(GRID[target])) && cursor.count()>remaining && canSplit(cursor.count(),remaining)) {
+                int remaining=recipe.grid().get(target).count()*batchCount-count(menu.slot(GRID[target]));
+                if(empty(menu.slot(GRID[target])) && cursor.count()>remaining && canPark(cursor.count(),remaining)) {
                     // Park the whole stack in the grid; reuse each half in another matching cell.
                     splitTargets.add(target);send(menu,actions,GRID[target],false,false,now);return Result.WAITING;
                 }
@@ -117,6 +138,9 @@ public final class CraftingExecutor {
             var stack=available.stream().max(Comparator.comparingInt(SlotView::count)).orElseThrow();
             source=stack.index();send(menu,actions,source,false,false,now);return Result.WAITING;
         }
+        return takeOutput(menu,actions,skills,now);
+    }
+    private Result takeOutput(MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,long now) {
         // Hypixel's Quick Crafting column (16, 25, 34) can show the same item before the grid is
         // full; only the result slot holds the grid's output.
         var outputs=menu.slots().stream().filter(s->s.index()==RESULT && !s.empty() && recipe.outputId().equals(s.customId())).toList();
@@ -130,6 +154,11 @@ public final class CraftingExecutor {
         sent=menu;sentAt=now;retries=0;actionSlot=slot;actionShift=shift;actionRight=right;replay(actions);
     }
     private void replay(GameActions actions){if(actionRight)actions.rightClick(actionSlot);else actions.click(actionSlot,actionShift);}
+    private static boolean canPark(int stack,int required) {
+        // Also halve an almost-full target once, then top it up: 64 -> 32 + 15 for 47,
+        // instead of right-clicking 47 individual items from the inventory stack.
+        return canSplit(stack,required) || required>=(stack+1)/2;
+    }
     private static boolean canSplit(int stack,int required) {
         if(required<1 || stack<=required || stack%required!=0)return false;
         int ratio=stack/required;return (ratio & (ratio-1))==0;
@@ -138,21 +167,34 @@ public final class CraftingExecutor {
         if(!menu.cursorEmpty())return false;
         for(int slot:GRID)if(!empty(menu.slot(slot)))return false;
         var counts=inventory(menu);
-        if(counts.getOrDefault(recipe.outputId(),0)!=before.getOrDefault(recipe.outputId(),0)+recipe.outputCount())return false;
-        for(var e:recipe.ingredients().entrySet())if(counts.getOrDefault(e.getKey(),0)!=before.getOrDefault(e.getKey(),0)-e.getValue())return false;
+        if(counts.getOrDefault(recipe.outputId(),0)!=before.getOrDefault(recipe.outputId(),0)+recipe.outputCount()*batchCount)return false;
+        for(var e:recipe.ingredients().entrySet())if(counts.getOrDefault(e.getKey(),0)!=before.getOrDefault(e.getKey(),0)-e.getValue()*batchCount)return false;
+        return true;
+    }
+    private int convertedBatches(MenuSnapshot menu) {
+        int delta=inventory(menu).getOrDefault(recipe.outputId(),0)-before.getOrDefault(recipe.outputId(),0);
+        return delta>=0 && delta%recipe.outputCount()==0?delta/recipe.outputCount():-1;
+    }
+    private boolean remainingGrid(MenuSnapshot menu,int batches) {
+        if(!menu.cursorEmpty())return false;
+        for(int i=0;i<9;i++) {
+            var need=recipe.grid().get(i);var actual=menu.slot(GRID[i]);
+            if(need==null){if(!empty(actual))return false;}
+            else if(empty(actual)||!need.id().equals(actual.customId())||count(actual)!=need.count()*batches)return false;
+        }
         return true;
     }
     private boolean conserved(MenuSnapshot menu,boolean allowOutput){
         var counts=inventory(menu);
         for(int slot:GRID)add(counts,menu.slot(slot));
         if(!menu.cursorEmpty())add(counts,menu.carried());
-        boolean original=true,converted=allowOutput;
+        int made=allowOutput?convertedBatches(menu):0;
+        if(made<0||made>batchCount)return false;
         var ids=new HashSet<>(before.keySet());ids.addAll(counts.keySet());ids.addAll(recipe.ingredients().keySet());ids.add(recipe.outputId());
         for(String id:ids){int old=before.getOrDefault(id,0),current=counts.getOrDefault(id,0);
-            original &= old==current;
-            converted &= current==old-recipe.ingredients().getOrDefault(id,0)+(id.equals(recipe.outputId())?recipe.outputCount():0);
+            if(current!=old-recipe.ingredients().getOrDefault(id,0)*made+(id.equals(recipe.outputId())?recipe.outputCount()*made:0))return false;
         }
-        return original || converted;
+        return true;
     }
     private static Map<String,Integer> inventory(MenuSnapshot menu){
         var result=new HashMap<String,Integer>();for(var slot:menu.slots())if(slot.inPlayerInventory() && slot.containerSlot()<36)add(result,slot);return result;

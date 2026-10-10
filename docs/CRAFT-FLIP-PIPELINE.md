@@ -124,3 +124,30 @@ redaction and stale-data behavior. Live Minecraft execution and the deployed
 Coflnet gateway still need real-session validation; direct gateway access from
 this development environment returned HTTP 403. The controller/model contract
 was verified from Coflnet's public source instead.
+
+## Stacked crafting (0.2.28)
+
+The executor now loads ingredients for several recipe uses before collecting the
+output. Each grid cell is bounded by its ingredient's observed stack limit,
+available ingredients, remaining requested batches and conservative output space.
+Known basic stackable outputs reserve space at 64 units per slot; unknown outputs
+reserve one slot per unit. Large recipes are split into chunks that fit the grid.
+Intermediate preparation child jobs now accept up to 64 recipe uses instead of 16.
+The existing final-production investment and batch limits remain unchanged.
+
+For 64 blaze rods, the grid is filled once and the 128 powder is checked against
+64 consumed rods. If the server's shift click produces just one recipe use, the
+remaining ingredients stay loaded and the executor collects subsequent outputs.
+No refill occurs between those partial collections. Progress advances only after
+exact ingredient/output conservation and an empty grid/cursor are verified; the
+journal saves the verified chunk's actual completed recipe uses in one write.
+
+Normal acknowledged actions settle for 50 ms (one game tick) rather than 100 ms.
+Slowdown messages increase this delay and impose the existing one-second cooldown.
+Unchanged/rejected inputs retain bounded retries; unexplained inventory changes
+pause execution with owned items retained. This does not batch unacknowledged
+clicks or assume shift-click output succeeded. Live server behavior still needs
+validation with the downloadable mod.
+
+`.a* goofyaddon craft OUTPUT_ID 64` can queue up to 64 uses from held ingredients;
+start it with the usual trading toggle. Smaller requested quantities stay exact.

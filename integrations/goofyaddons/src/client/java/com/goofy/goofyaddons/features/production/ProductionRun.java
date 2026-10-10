@@ -201,11 +201,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if(preparation.crafts().isEmpty())return Outcome.DONE;
             if(env.craftQueued())return Outcome.pending("Waiting for other crafting work");
             var craft=preparation.crafts().getFirst();
-            // The existing executor journals at most 16 batches per child job. Replan from
+            // The existing executor journals at most 64 batches per child job. Replan from
             // actual inventory after completion, so large preparations need no guessed counts.
             try {env.jobs().put(parent().withState(ProductionJobs.State.PROCESSING,"Preparing "+craft.output()+" for "+output));}
             catch(Exception failure){return Outcome.blocked("Intermediate crafting intent could not be saved; no craft queued");}
-            ingredientCraftJob=env.queueCraft(craft.output(),Math.min(16,craft.batches()));
+            ingredientCraftJob=env.queueCraft(craft.output(),Math.min(64,craft.batches()));
             if(ingredientCraftJob==null)return Outcome.blocked("Intermediate craft could not be queued; check ingredients and cursor");
             return Outcome.pending("Crafting "+env.name(craft.output())+" from base materials");
         }
