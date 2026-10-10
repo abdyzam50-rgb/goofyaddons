@@ -19,7 +19,7 @@ if args.database_id and not re.fullmatch(r'[a-f0-9-]{36}', args.database_id):
 if Path(args.output).name != args.output:
     parser.error('Output must be a ZIP filename')
 output = root / 'dist' / args.output
-files = ['worker.mjs', 'profile-lookup.mjs', 'profile-levels.mjs', 'publishing-status.mjs', 'public-market.mjs', 'public-crafts.mjs', 'NEU-LICENSE', 'wrangler.jsonc']
+files = ['worker.mjs', 'profile-lookup.mjs', 'profile-levels.mjs', 'publishing-status.mjs', 'public-market.mjs', 'public-crafts.mjs', 'ah-history.mjs', 'scheduled-ah.mjs', 'NEU-LICENSE', 'wrangler.jsonc']
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for name in files:
         target = f'tools/gameplay-collector/{"wrangler.example.jsonc" if name == "wrangler.jsonc" and args.preserve_config else name}'

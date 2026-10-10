@@ -260,3 +260,34 @@ Existing public installations need only the latest ../bazaar-calc/craft-market.m
 and `npx wrangler@4.147.0 deploy`. The complete public package is
 `dist/goofyaddons-public-website-craft-0.2.44.zip`. Existing site assets/configuration
 remain compatible. This is a public collector patch; no new mod JAR is included.
+
+## Persistent AH market collection (0.2.45)
+
+Download `dist/goofyaddons-public-website-craft-0.2.45.zip` and extract it. Copy
+its `tools` contents into your existing deployment folder, preserving your working
+`tools/gameplay-collector/wrangler.jsonc`. Include `ah-history.mjs` and
+`scheduled-ah.mjs`: updating only craft-market.mjs will not install persistence.
+From tools/gameplay-collector run:
+
+```powershell
+npx wrangler@4.147.0 deploy --config .\wrangler.jsonc
+```
+
+No new database, secret or mandatory schema command is needed. Additive tables
+are initialized automatically in the existing DB. The existing */15 cron trigger
+collects AH data without visitors, retaining 30 days in D1. An indexed daily
+aggregate and 15-minute sampling buckets keep repeated page refreshes from
+creating unlimited samples. Per-item aggregates refresh about hourly and export
+to the gameplay-data branch as ah-market-history.json, separate from real trades.
+
+Visit `/calculator/status` to see "Persistent Auction House market history".
+The first scheduled run may take up to 15 minutes. `/v1/crafts/status` reports the
+last collection, persistent cursor, item coverage and publication failures.
+`/v1/crafts/history` serves the retained aggregates. Collection can work while
+GitHub publication fails; the status page reports each separately. Catalog coverage
+is gradual and includes untradable items that cannot produce positive prices.
+
+The craft page labels historical estimates and requires fresh prices before a
+route is feasible. Historical provider volume is not proof of realized profit or
+a guaranteed daily sales rate. Local calculator users can install
+`dist/astar-client-0.2.45-BETA.jar` to receive this history-aware UI too.

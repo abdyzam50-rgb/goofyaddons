@@ -2,6 +2,8 @@ import {COMMUNITY_PROTOCOL,DAY,DATA_BRANCH,hash,repositoryValid,validateSubmissi
 import {handleProfileLookup} from './profile-lookup.mjs';
 import {PublishingStatus} from './publishing-status.mjs';
 import {publicMarket} from './public-market.mjs';
+import {AHHistory} from './ah-history.mjs';
+import {collectAH,publishAH} from './scheduled-ah.mjs';
 import {publicCrafts} from './public-crafts.mjs';
 const json=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 // Independent lists: a malformed tester list must not disable the original owner list.
@@ -39,6 +41,11 @@ export class Store {
 }
 export async function handleRequest(request,env,now=Date.now()) {
  const path=new URL(request.url).pathname;
+ if(request.method==='GET'&&['/v1/crafts/history','/v1/crafts/status'].includes(path)){
+  if(!env.DB)return json(503,{error:'AH history storage unavailable'});
+  try{const store=new AHHistory(env.DB);return json(200,path.endsWith('status')?await store.status(now):await store.dataset(now));}
+  catch{return json(503,{error:'AH history unavailable; check Worker database binding'});}
+ }
  if(request.method==='GET'&&path==='/v1/crafts/market')return publicCrafts(request,env);
  if(request.method==='GET'&&['/v1/market','/v1/items'].includes(path))return publicMarket(request,{now});
  if(request.method==='GET'&&path==='/v1/publishing-status') {
@@ -112,5 +119,9 @@ export async function publish(env,options={}) {
 }
 export default {
  fetch(request,env){return handleRequest(request,env);},
- async scheduled(_event,env,context){context.waitUntil(publish(env).catch(error=>{console.error(error.message);throw error;}));}
+ async scheduled(_event,env,context){context.waitUntil((async()=>{
+  await Promise.allSettled([publish(env),collectAH(env)]);
+  // Serialize writes to the shared GitHub branch, even when gameplay publication failed.
+  await Promise.allSettled([publishAH(env)]);
+ })());}
 };

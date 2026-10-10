@@ -105,6 +105,10 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
       catch(e){send(e.status===404?404:502,{error:e.status===404?e.message:'Auction price service unavailable; give a price'});}
       return;
     }
+    if(req.method==='GET'&&['/v1/crafts/history','/v1/crafts/status'].includes(url.pathname)) {
+      try{const r=await publishingFetcher(`https://goofy-gameplay-collector.abdyzam50.workers.dev${url.pathname}`,{signal:AbortSignal.timeout(15000)}),body=await r.json();if(!r.ok||!['goofy-ah-history/1','goofy-ah-status/1'].includes(body.protocol))throw new Error();send(200,body);}
+      catch{send(503,{error:'Shared AH history unavailable; update the collector deployment'});}return;
+    }
     if(req.method==='GET'&&url.pathname==='/v1/crafts/market') {
       const products=collector?.market()?.products??{};
       if(!craftMarket.catalog.recipes.length)craftMarket.catalog=JSON.parse(assetBytes(assets.get('/calculator/data/production-recipes.json')));

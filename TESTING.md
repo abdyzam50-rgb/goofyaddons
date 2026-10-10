@@ -212,3 +212,22 @@ was still in flight. Fixed explicit item collection during that global cooldown
 with per-item throttling and in-flight deduplication. All 139 Node tests passed,
 including the public Worker endpoint's general-then-search sequence. No UI code
 changed in this patch. The owner must redeploy to validate it against their page.
+
+### Persistent AH collection 0.2.45
+
+- All 147 Node tests passed, including real SQLite/D1-compatible queries for
+  additive schema creation, persistence across store instances, 15-minute bucket
+  deduplication, 30-day retention, zero sales, persistent rotation, scheduled
+  collection without visitors/tokens, independent failure handling and separate
+  GitHub exports that skip unchanged datasets.
+- Calculator tests show that retained references produce labelled research
+  estimates and cannot become feasible without fresh price checks. Live quotes
+  take priority; stale historical references are excluded.
+- TypeScript/Vite website build passed. Gradle `test calculatorIntegrationTest
+  build` succeeded with the history-aware companion/UI bundle.
+- The owner's Cloudflare deployment and GitHub market publication must be verified
+  after deploying the full new package; fixture success is not a live cron run.
+The final Chromium desktop/mobile run also verified a missing live AH quote falls
+back to a visibly labelled historical estimate. Mod and public ZIP contents were
+verified, including both new Worker runtime modules and config preservation.
+Java result files report 1,075 tests with zero failures, errors or skips.

@@ -479,3 +479,39 @@ actual quantities/variants and final prices must be checked in game. Estimates d
 not add AH procurement or sale settlement to automatic craft selection. Quotes
 expire after 60 seconds; discovery demand expires after five minutes. No synthetic
 coins/hour is inferred from an AH volume with an unknown time window.
+
+## Persistent AH collection (0.2.45)
+
+The existing 15-minute Cloudflare trigger now runs public AH collection independently
+of gameplay publication. It refreshes craft discovery and rotates 12 additional AH
+items plus four leading candidates for BIN prices and provider sales summaries.
+The cursor survives Worker restarts in D1; collection runs without website visitors
+or contributor credentials. Public catalog searches also save verified observations.
+
+D1 stores 30 days of daily price aggregates by item and source (BIN, provider sales
+summary, discovery median). Each item/source contributes at most one sample per
+15-minute bucket, preventing refresh traffic from inflating evidence. Rolling
+provider volume is kept as a latest observation, never summed as new sales. Old
+calendar days are pruned through a day index. No auction UUIDs, player profiles,
+chat, keys or trade receipts enter AH history.
+
+The public history endpoint `/v1/crafts/history` returns compact per-item aggregates;
+`/v1/crafts/status` reports collection, retained coverage and GitHub publication.
+Aggregates refresh about hourly to bound D1 reads. Changed snapshots publish to
+`gameplay-data/ah-market-history.json` using the existing private GitHub token.
+Market collection and gameplay publication continue independently when one fails.
+The live market request still has bounded provider calls and short quote expiry.
+
+The calculator uses historical references up to seven days old to research otherwise
+unpriced AH outputs/components. Historical estimates are labelled and remain blocked
+until all required prices are fresh. Live quotes take priority. Retained provider
+activity can supply liquidity context, but its reporting window is not converted to
+coins/hour, guaranteed sale time or receipt-confirmed profit. Account unlocks,
+budget, taxes and confirmation checks continue to apply. Older retained data stays
+in storage even after it is too stale for a research price reference.
+
+Deployment creates the additive tables lazily; existing D1 data and secrets are
+preserved. Deploy the full public package, including the two new runtime modules
+and website assets. The corrected local mod includes the same history-aware UI and
+proxies the public history endpoints. No separate account-specific data collector
+or new contributor key is required for public market observations.

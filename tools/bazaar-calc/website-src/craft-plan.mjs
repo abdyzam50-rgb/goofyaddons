@@ -25,21 +25,24 @@ export function prepare(recipe,batches,recipes,{canBuy=()=>true,requirements={},
  for(const [id,qty] of Object.entries(recipe.ingredients))require(id,qty*batches,new Set());
  return {purchases,steps,...(coins?{coins}:{}),...(blocked.length?{blocked:[...new Set(blocked)]}:{})};
 }
-export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=10000,maxBatches=16,tax=1.25,requirements={}}){
+export function planCrafts({catalog,market,ah,history,now=Date.now(),budget=0,minProfit=10000,maxBatches=16,tax=1.25,requirements={}}){
  if(!market?.success||!fresh(market.lastUpdated,now))return [];
  const products=market.products??{},best=new Map(),recipes=catalog.recipes.filter(r=>r.kind==='CRAFT');
  const byOutput=new Map();for(const r of recipes){const list=byOutput.get(r.outputId)??[];list.push(r);byOutput.set(r.outputId,list);}
  const ahRows=new Map((fresh(ah?.generatedAt,now)?ah.rows??[]:[]).filter(r=>fresh(r.sourceAt,now,300000)).map(r=>[r.item,r]));
+ const historical=new Map((history?.protocol==='goofy-ah-history/1'&&fresh(history.generatedAt,now,5400000)?history.rows??[]:[]).filter(r=>fresh(r.lastAt,now,7*86400000)&&Number.isFinite(r.price)&&r.price>0&&r.price<=1e13).map(r=>[r.item,r]));
  for(const recipe of recipes){
   const product=products[recipe.outputId],source=ahRows.get(recipe.outputId),venue=product?'BAZAAR':'AH';
 
   for(let batches=1;batches<=Math.min(16,Math.max(1,Math.floor(maxBatches)));batches++){
    if(!product&&batches>1)break;
    const quoteFor=id=>{const q=ahRows.get(id)?.quote;return q?.item===id&&fresh(q.fetchedAt,now)&&Number.isFinite(q.lowest)&&q.lowest>0&&q.lowest<=1e13?q:null;};
-   const prep=prepare(recipe,batches,recipes,{canBuy:id=>!!products[id]||!!quoteFor(id),requirements,byOutput}),units=recipe.outputCount*batches;
+   const prep=prepare(recipe,batches,recipes,{canBuy:id=>!!products[id]||!!quoteFor(id)||historical.has(id),requirements,byOutput}),units=recipe.outputCount*batches;
+   let historicalPricing=false;
    let cost=Math.max(0,recipe.coins??0)*batches+(prep.coins??0),reason=[...(requirements[recipe.key]??[]),...(prep.blocked??[])].join('; '),gross=null,fee=0,liquidity=0;
    for(const [id,qty] of Object.entries(prep.purchases)){
-    const value=products[id]?depth(products[id].buy_summary,qty,true):quoteFor(id)?quoteFor(id).lowest*qty:null;
+    const value=products[id]?depth(products[id].buy_summary,qty,true):quoteFor(id)?quoteFor(id).lowest*qty:historical.has(id)?historical.get(id).price*qty:null;
+    if(!products[id]&&!quoteFor(id)&&historical.has(id)){historicalPricing=true;reason||='Historical AH component prices; verify fresh BINs';}
     if(value===null){reason||=`Missing input price or insufficient Bazaar ask depth: ${catalog.names[id]??id}`;cost=null;break;}
     cost+=value*1.04;
    }
@@ -51,11 +54,15 @@ export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=
     if(!Number.isFinite(daily)||units>daily*.05)reason||='Batch exceeds 5% of estimated daily volume';
     if(gross===null)reason||='Insufficient sell-side bid depth';
    }else{
-    const quote=quoteFor(recipe.outputId);
-    if(quote?.item!==recipe.outputId||!fresh(quote?.fetchedAt,now)||!Number.isFinite(quote?.lowest)||quote.lowest<=0)reason||=source?.quoteError?`Coflnet BIN unavailable: ${source.quoteError}`:'Waiting for a fresh Coflnet BIN quote';
-    else{gross=Math.max(1,Math.floor(quote.lowest)-1)*units;fee=gross*.035+2000*units;}
-    liquidity=Math.min(1,Math.log1p(source?.volume??0)/Math.log(101));
-    if(gross!==null&&!(source?.volume>0))reason||=source?.demandError?`AH demand unavailable: ${source.demandError}`:source?.volume===0?'No reported AH sales; profit estimate only':'AH demand unavailable; profit estimate only';
+    const quote=quoteFor(recipe.outputId),reference=historical.get(recipe.outputId);
+    if(!quote){
+     if(reference){gross=Math.max(1,Math.floor(reference.price)-1)*units;historicalPricing=true;reason||='Historical AH price estimate; verify a fresh BIN quote';}
+     else reason||=source?.quoteError?`Coflnet BIN unavailable: ${source.quoteError}`:'Waiting for a fresh Coflnet BIN quote';
+    }else gross=Math.max(1,Math.floor(quote.lowest)-1)*units;
+    if(gross!==null)fee=gross*.035+2000*units;
+    const volume=source?.volume??(fresh(reference?.demandAt,now,7*86400000)?reference?.volume:null);
+    liquidity=Math.min(1,Math.log1p(volume??0)/Math.log(101));
+    if(gross!==null&&!(volume>0))reason||=source?.demandError?`AH demand unavailable: ${source.demandError}`:volume===0?'No reported AH sales; profit estimate only':'AH demand unavailable; profit estimate only';
    }
    const total=capital===null?null:capital+fee;
    const net=gross===null?null:product?gross*.97*(1-Math.max(0,tax)/100):gross*.90;
@@ -63,7 +70,7 @@ export function planCrafts({catalog,market,ah,now=Date.now(),budget=0,minProfit=
    if(total!==null&&total>budget)reason||='Whole batch exceeds your spendable budget';
    if(profit!==null&&profit<minProfit)reason||='Below your minimum net profit';
    const score=profit===null?0:profit/(60+Object.keys(prep.purchases).length*20+prep.steps.length*15+batches*3)*liquidity;
-   const row={key:recipe.key,output:recipe.outputId,name:catalog.names[recipe.outputId]??recipe.outputId,batches,units,venue,capital:total,profit,score,eligible:!reason,reason,requirement:recipe.requirement,purchases:prep.purchases,steps:prep.steps,binPrice:product?null:gross===null?null:gross/units,sourceAt:product?market.lastUpdated:source?.quote?.fetchedAt??null};
+   const row={pricing:historicalPricing?'HISTORY':gross===null?'UNPRICED':'LIVE',key:recipe.key,output:recipe.outputId,name:catalog.names[recipe.outputId]??recipe.outputId,batches,units,venue,capital:total,profit,score,eligible:!reason,reason,requirement:recipe.requirement,purchases:prep.purchases,steps:prep.steps,binPrice:product?null:gross===null?null:gross/units,sourceAt:product?market.lastUpdated:source?.quote?.fetchedAt??null};
    const prev=best.get(row.output);
    if(!prev||Number(row.eligible)>Number(prev.eligible)||(row.eligible===prev.eligible&&row.score>prev.score))best.set(row.output,row);
   }

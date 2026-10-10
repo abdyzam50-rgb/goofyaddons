@@ -21,9 +21,9 @@ export async function craftDemand(item,{fetcher=fetch,token=null,now=Date.now}={
  return {item,volume:body.volume,median:body.median,fetchedAt:now()};
 }
 export class CraftMarket {
- constructor({fetcher=fetch,token=()=>null,price,demand=null,catalog={recipes:[]},now=Date.now}={}) {
+ constructor({fetcher=fetch,token=()=>null,price,demand=null,rotationSize=4,offset=0,catalog={recipes:[]},now=Date.now}={}) {
   this.demand=demand;this.demands=new Map();this.demandErrors=new Map();this.catalog=catalog;this.fetcher=(...args)=>fetcher(...args);this.token=token;this.price=price;this.now=now;
-  this.rows=[];this.at=0;this.attempt=0;this.offset=0;this.flight=null;this.error=null;this.quotes=new Map();this.quoteErrors=new Map();this.quoteFlights=new Map();this.quoteAttempts=new Map();
+  this.rotationSize=Math.max(1,Math.min(12,rotationSize));this.rows=[];this.at=0;this.attempt=0;this.offset=offset;this.flight=null;this.error=null;this.quotes=new Map();this.quoteErrors=new Map();this.quoteFlights=new Map();this.quoteAttempts=new Map();
  }
  async refresh(products={},focus='') {
   const selected=this.catalog.recipes?.find(r=>r.kind==='CRAFT'&&r.outputId===focus);
@@ -49,8 +49,8 @@ export class CraftMarket {
     }
     const ah=this.candidates(products);
     // Bounded rotation gives new candidates price coverage without flooding Coflnet.
-    const targets=[...new Set([...ah.slice(0,4),...Array.from({length:4},(_,i)=>ah[(this.offset+i)%Math.max(1,ah.length)])].filter(Boolean))];
-    this.offset=(this.offset+4)%Math.max(1,ah.length);
+    const targets=[...new Set([...ah.slice(0,4),...Array.from({length:this.rotationSize},(_,i)=>ah[(this.offset+i)%Math.max(1,ah.length)])].filter(Boolean))];
+    this.offset=(this.offset+this.rotationSize)%Math.max(1,ah.length);
     await Promise.all(targets.map(row=>this.quoteRow(row)));
    }catch(e){this.error=e.message;}
    return this.view(products);

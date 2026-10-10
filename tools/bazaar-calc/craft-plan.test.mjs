@@ -71,3 +71,12 @@ test('the shipped catalog evaluates every distinct craft output, including unpri
  assert.equal(rows.length,new Set(shipped.recipes.filter(r=>r.kind==='CRAFT').map(r=>r.outputId)).size);
  assert.ok(rows.every(r=>!r.eligible&&r.profit===null));
 });
+
+test('persisted AH references estimate profit but never bypass a fresh quote or turn into receipts',()=>{
+ const history={protocol:'goofy-ah-history/1',generatedAt:now,rows:[{item:'RESULT',price:10000,lastAt:now-86400000,volume:42,demandAt:now-86400000}]};
+ const m={...market,products:{INPUT:market.products.INPUT}};
+ const [r]=planCrafts({...options,market:m,history,budget:100000});assert.ok(r.profit>0);assert.equal(r.eligible,false);assert.equal(r.pricing,'HISTORY');assert.match(r.reason,/Historical/);
+ const ah={generatedAt:now,rows:[{item:'RESULT',sourceAt:now,volume:42,quote:{item:'RESULT',lowest:11000,fetchedAt:now}}]};
+ const [live]=planCrafts({...options,market:m,history,ah,budget:100000});assert.equal(live.pricing,'LIVE');assert.equal(live.eligible,true);assert.equal(live.binPrice,10999);
+ history.rows[0].lastAt=now-8*86400000;assert.equal(planCrafts({...options,market:m,history})[0].profit,null);
+});

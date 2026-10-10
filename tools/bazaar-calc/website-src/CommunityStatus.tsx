@@ -11,6 +11,7 @@ export function CommunityStatus(){
   if(!r.ok)throw new Error('Publishing status unavailable. The collector may need the latest deployment.');
   const data=await r.json() as Status;if(data.protocol!=='goofy-publishing-status/1')throw new Error('Publishing status is not supported by this deployment.');return data;
  },refetchInterval:30000,retry:1,refetchOnWindowFocus:true});
+ const ah=useQuery({queryKey:['ah-collection-status'],queryFn:async()=>{const r=await fetch('/v1/crafts/status',{cache:'no-store'});if(!r.ok)throw new Error('AH collector status unavailable');return r.json();},refetchInterval:30000});
  const s=query.data;
  const repository=s&&/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(s.repository)?`https://github.com/${s.repository}`:null;
  const commit=repository&&s?.commitSha&&/^[a-f0-9]{40}$/.test(s.commitSha)?`${repository}/commit/${s.commitSha}`:null;
@@ -31,6 +32,14 @@ export function CommunityStatus(){
    </div>
    {s.lastAttemptAt&&now-s.lastAttemptAt>30*60000&&<p className="note" role="alert">The scheduled publisher has not reported an attempt for over 30 minutes. Check its Cloudflare trigger and logs.</p>}
   </>}
+  <h2>Persistent Auction House market history</h2>
+  <p>Collection runs every 15 minutes without visitors. D1 retains 30 days of daily price/sales summaries; compact aggregates refresh about hourly and publish to gameplay-data/ah-market-history.json. BIN snapshots and provider sales activity are not confirmed player profits or guaranteed selling times.</p>
+  {ah.error&&<p role="alert">{ah.error.message}</p>}
+  {ah.data&&<div className="grid cols-3">
+   <div className="card tile"><div className="label">Last AH collection</div><div className="value">{ah.data.collection.result??'Waiting for first scheduled run'}</div><div className="sub">{time(ah.data.collection.lastAttemptAt)} · {ah.data.collection.quotedItems??0} BIN quotes</div>{ah.data.collection.error&&<p role="alert">{ah.data.collection.error}</p>}</div>
+   <div className="card tile"><div className="label">Retained AH evidence</div><div className="value">{ah.data.items} items</div><div className="sub">{ah.data.observations} price observations · 30-day window</div></div>
+   <div className="card tile"><div className="label">AH GitHub publication</div><div className="value">{ah.data.publishing.result??'Waiting'}</div><div className="sub">Last commit: {time(ah.data.publishing.lastCommitAt)}</div>{ah.data.publishing.error&&<p role="alert">{ah.data.publishing.error}</p>}</div>
+  </div>}
   <p className="small muted">GitHub gameplay commits feed the mods’ shared calibration. The historical market charts below use the bundled site snapshot; publishing gameplay evidence does not rebuild those files. Live Bazaar quotes and rankings refresh separately, about every 20 seconds while this page is visible. Return to a background tab to resume its live updates.</p>
  </section>;
 }
