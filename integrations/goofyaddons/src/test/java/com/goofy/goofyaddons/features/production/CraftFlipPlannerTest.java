@@ -14,7 +14,7 @@ class CraftFlipPlannerTest {
         return new ProductionRecipe(output,ProductionRecipe.Kind.CRAFT,output,1,Map.of(input,units),grid,0,0,requirement,null);
     }
     static JsonObject market(int outputDepth) {
-        return JsonParser.parseString("{\"lastUpdated\":"+NOW+",\"products\":{\"INPUT\":{\"buy_summary\":[{\"pricePerUnit\":5,\"amount\":10000}]},\"OUTPUT\":{\"sell_summary\":[{\"pricePerUnit\":100,\"amount\":"+outputDepth+"}],\"quick_status\":{\"buyMovingWeek\":10000,\"sellMovingWeek\":10000}}}}").getAsJsonObject();
+        return JsonParser.parseString("{\"lastUpdated\":"+NOW+",\"products\":{\"INPUT\":{\"quick_status\":{\"buyMovingWeek\":10000,\"sellMovingWeek\":10000},\"buy_summary\":[{\"pricePerUnit\":5,\"amount\":10000}]},\"OUTPUT\":{\"sell_summary\":[{\"pricePerUnit\":100,\"amount\":"+outputDepth+"}],\"quick_status\":{\"buyMovingWeek\":10000,\"sellMovingWeek\":10000}}}}").getAsJsonObject();
     }
     static List<CraftFlipPlanner.Route> rank(JsonObject market,JsonObject ah,RecipeCatalog catalog,MenuSnapshot menu,double budget,Map<String,Integer> unlocks) {
         return CraftFlipPlanner.rank(catalog,market,ah,menu,Map.of(),unlocks,Set.of(),budget,1,1.25,16,"BOTH",NOW);
@@ -96,6 +96,46 @@ class CraftFlipPlannerTest {
         assertTrue(reserved.getFirst().reason().contains("inventory"));
         var conflicting=CraftFlipPlanner.rank(catalog,market(10000),null,empty,Map.of(),Map.of(),Set.of("INPUT"),1000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),0);
         assertTrue(conflicting.stream().noneMatch(CraftFlipPlanner.Route::eligible));
+    }
+
+    @Test void largerHotspotBaitRunsCountAllOutputStacksAndRespectStrategySelection() {
+        var recipe=RecipeCatalog.instance().forOutput("HOTSPOT_BAIT").stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
+        assertEquals(32,recipe.outputCount());
+        var catalog=new RecipeCatalog(List.of(recipe),Map.of());
+        var market=market(10000);var products=market.getAsJsonObject("products");
+        var input=products.getAsJsonObject("INPUT").deepCopy();
+        input.add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":1,\"amount\":10000}]"));
+        input.getAsJsonObject("quick_status").addProperty("buyMovingWeek",10000000);
+        input.getAsJsonObject("quick_status").addProperty("sellMovingWeek",10000000);
+        for(String id:recipe.ingredients().keySet())products.add(id,input.deepCopy());
+        var output=products.getAsJsonObject("OUTPUT").deepCopy();
+        output.add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":100,\"amount\":10000}]"));
+        output.getAsJsonObject("quick_status").addProperty("buyMovingWeek",10000000);
+        output.getAsJsonObject("quick_status").addProperty("sellMovingWeek",10000000);
+        products.add("HOTSPOT_BAIT",output);
+        var rows=CraftFlipPlanner.rank(catalog,market,null,ProductionRunTest.menu(null),Map.of(),Map.of("pufferfish",8),Set.of(),1000000,
+            100000,1.25,64,"BAZAAR",NOW,new LinkedHashMap<>(),0,"INSTANT_OFFER");
+        assertEquals(1,rows.size());var route=rows.getFirst();assertTrue(route.eligible(),route.reason());
+        assertEquals(64,route.batches());assertEquals(BazaarStrategy.INSTANT_OFFER,route.strategy());
+        assertEquals(34,route.inventorySlots(),"2 input stacks and 32 output stacks");
+        assertEquals(route.score()*3600,route.describe(catalog).get("estimatedCoinsPerHour"));
+        var shortRun=CraftFlipPlanner.rank(catalog,market,null,ProductionRunTest.menu(null),Map.of(),Map.of("pufferfish",8),Set.of(),1000000,
+            100000,1.25,16,"BAZAAR",NOW,new LinkedHashMap<>(),0,"INSTANT_OFFER");
+        assertTrue(shortRun.isEmpty(),"Explicit old batch limit remains respected");
+        var reserved=CraftFlipPlanner.rank(catalog,market,null,ProductionRunTest.menu(null),Map.of(),Map.of("pufferfish",8),Set.of(),1000000,
+            100000,1.25,64,"BAZAAR",NOW,new LinkedHashMap<>(),4,"INSTANT_OFFER").getFirst();
+        assertTrue(reserved.eligible());assertEquals(60,reserved.batches());assertEquals(32,reserved.inventorySlots());
+    }
+
+    @Test void orderRankingRespondsToObservedActivityRatherThanAFixedWait() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",2,"")),Map.of());
+        var slow=market(10000);var products=slow.getAsJsonObject("products");
+        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":100,\"amount\":10000}]"));
+        var fast=slow.deepCopy();fast.getAsJsonObject("products").getAsJsonObject("OUTPUT").getAsJsonObject("quick_status").addProperty("buyMovingWeek",1000000);
+        fast.getAsJsonObject("products").getAsJsonObject("OUTPUT").getAsJsonObject("quick_status").addProperty("sellMovingWeek",1000000);
+        var a=CraftFlipPlanner.rank(catalog,slow,null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),1000000,1,1.25,16,"BAZAAR",NOW,new LinkedHashMap<>(),0,"INSTANT_OFFER").getFirst();
+        var b=CraftFlipPlanner.rank(catalog,fast,null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),1000000,1,1.25,16,"BAZAAR",NOW,new LinkedHashMap<>(),0,"INSTANT_OFFER").getFirst();
+        assertEquals(a.profit(),b.profit());assertTrue(b.score()>a.score()*2);
     }
 
 }

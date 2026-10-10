@@ -439,16 +439,20 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
     private void buildTradingCrafts() {
         var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
-        Card crafts=card("Craft flips","Buy ingredients, prepare intermediates, craft and instant-sell on the Bazaar.");
+        Card crafts=card("Craft flips","Buy ingredients, prepare intermediates, craft and sell using the selected Bazaar strategy.");
         crafts.row("Craft flip mode",()->"Select Craft flips, then use the trading toggle for automatic Bazaar crafting.",
             new Button("Use craft mode",()->editTrading("Mode",cfg->cfg.tradingMode=com.goofy.goofyaddons.features.TradingMode.CRAFT),Button.PLAIN));
         crafts.row("Sale market",()->"Choose which market appears in the craft ranking.",new Mode<>(List.of("BOTH","BAZAAR","AH"),()->draft.view().craftFlips.venue,
             v->v,v->editTrading("Craft sale market",cfg->cfg.craftFlips.venue=v)));
+        crafts.row("Buy / sell strategy",()->"Auto compares all four strategies; instant → offer matches the website's Hotspot Bait example.",
+            new Mode<>(List.of("AUTO","ORDER_OFFER","INSTANT_OFFER","ORDER_INSTANT","INSTANT_INSTANT"),()->draft.view().craftFlips.strategy,
+                v->v.equals("AUTO")?"Auto":com.goofy.goofyaddons.features.production.BazaarStrategy.valueOf(v).label(),
+                v->editTrading("Craft strategy",cfg->cfg.craftFlips.strategy=v)));
         crafts.row("Batch capital",()->"Maximum coins per craft run; zero uses spendable funds.",tradingNumber("Craft capital",()->draft.view().craftFlips.maximumCapital,(cfg,v)->cfg.craftFlips.maximumCapital=v));
         crafts.row("Minimum net profit",()->"Require this profit after depth, taxes and price movement allowance before buying.",tradingNumber("Craft profit",()->draft.view().craftFlips.minimumProfit,(cfg,v)->cfg.craftFlips.minimumProfit=v));
         crafts.row("Active crafts",()->"1–4 independent jobs. Wait on orders in parallel; GUI actions remain sequential.",tradingWhole("Active crafts",()->draft.view().craftFlips.maxActiveCrafts,1,4,(cfg,v)->cfg.craftFlips.maxActiveCrafts=v));
-        crafts.row("Maximum batches",()->"1–16; planning reduces the batch to fit money, depth, volume and inventory.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,16,(cfg,v)->cfg.craftFlips.maxBatches=v));
-        crafts.row("Inspect ranking",()->"Account requirements and route reasons appear in the local dashboard.",new Button("Best crafts",()->manager.production().showCraftPlans(),Button.PLAIN));
+        crafts.row("Maximum batches",()->"1–64; planning reduces the batch to fit money, depth, volume and inventory.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,64,(cfg,v)->cfg.craftFlips.maxBatches=v));
+        crafts.row("Inspect ranking",()->"Show estimated coins/hour, batch profit, strategy and route blockers in chat.",new Button("Best crafts",()->manager.production().showCraftPlans(),Button.PLAIN));
         crafts.row("Current plan",manager.production()::discoveryStatus);
         Card auctionTests=card("Auction House tests","Craft and list one BIN. Automatic sale and claim tracking is still pending.");
         String[] testItem={"ASPECT_OF_THE_END"};

@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.60
+# Craft flip discovery and execution — 0.2.61
 
 ## Shipped behavior
 
@@ -13,7 +13,7 @@ account/profile binding, stop, recovery and menu ownership rules still apply.
 The craft plan is available while stopped too: local dashboard → **Craft production
 plan**, or `.a* goofyaddon production flips`. GUI settings control sale market,
 maximum batch capital (zero uses spendable capital), minimum net profit and batch
-limit (1–16). AH-only selection currently produces previews and no automatic buys.
+limit (1–64). AH-only selection currently produces previews and no automatic buys.
 
 ```mermaid
 flowchart TD
@@ -833,3 +833,37 @@ inventory, reopening the remaining order's options, cancellation/refund verifica
 and handoff of only the 35 acquired units at their known cost. Interrupted orders
 still need explicit `production recoverorders`; this update does not attach old
 orders to a newly selected craft or erase retained evidence.
+
+
+## 0.2.61 — batch sizing, strategy and hourly ranking
+
+Craft settings now offer Auto or any of the four Bazaar buy/sell strategies.
+Auto still compares all strategies; an explicit selection filters Bazaar routes
+before ranking. AH previews keep their existing single-item execution blocker.
+Maximum batches accepts 1–64, matching the final craft executor's existing bound.
+New settings default to 64; an existing explicit 16 remains 16 until edited.
+Batches mean recipe operations: Hotspot Bait outputs 32 per operation, so 16
+operations already make 512 bait and the cap alone does not explain its absence.
+
+Selection replaces the flat 180-second waits with quantity/activity-based waits.
+For buy orders and sell offers, it conservatively uses 5% of the smaller observed
+buy/sell weekly activity divided by 168, with sequential input waits. Instant
+routes retain live depth checks; output activity caps throughput. Recipe work and
+intermediate preparation add to estimated cycle time. Ranking is net profit per
+estimated cycle second, and Best crafts now shows estimated coins/hour, units,
+strategy, batch net and blockers. Weekly activity does not reveal queue position,
+actual fills or guaranteed demand. This is a local conservative model, not the
+website's calibrated order-fill model, so matching settings need not give identical
+rankings. No estimated hourly value is booked as realized profit.
+
+Inventory sizing includes every output stack (previously it reserved only one),
+plus input and intermediate workspace. Higher batch limits cannot bypass depth,
+5%-daily-volume batch limits, money, unlocks or shared inventory reservations.
+The parent rechecks the basket before purchasing and existing child journals
+remain unchanged. No public website/Worker redeployment is needed for this mod fix.
+
+To compare the screenshot's Hotspot Bait strategy, use Bazaar, Instant → offer,
+Maximum batches 64 and Active crafts 1, then inspect Best crafts. One active craft
+avoids dividing capital among concurrent jobs; retained jobs still require their
+normal recovery/review flow. Profit threshold and account requirements remain
+in force: this setting does not force Hotspot Bait when it is ineligible.

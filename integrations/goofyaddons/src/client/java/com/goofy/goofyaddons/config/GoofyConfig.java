@@ -55,12 +55,13 @@ public class GoofyConfig {
     public boolean productionBuysIngredients = false;
     public CraftFlips craftFlips=new CraftFlips();
     public static final class CraftFlips {
-        public String venue="BOTH";
+        public String venue="BOTH",strategy="AUTO";
         public double maximumCapital=0,minimumProfit=10000;
-        public int maxBatches=16,maxActiveCrafts=3;
+        public int maxBatches=64,maxActiveCrafts=3;
         public void validate() {
-            if(!Set.of("BOTH","BAZAAR","AH").contains(venue)||!Double.isFinite(maximumCapital)||maximumCapital<0
-                    ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>16||maxActiveCrafts<1||maxActiveCrafts>4)
+            if(!Set.of("AUTO","ORDER_OFFER","INSTANT_OFFER","ORDER_INSTANT","INSTANT_INSTANT").contains(strategy)
+                    ||!Set.of("BOTH","BAZAAR","AH").contains(venue)||!Double.isFinite(maximumCapital)||maximumCapital<0
+                    ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>64||maxActiveCrafts<1||maxActiveCrafts>4)
                 throw new IllegalArgumentException("Invalid craft-flip limits");
         }
     }

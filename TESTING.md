@@ -402,3 +402,14 @@ wrong tier/type/side refusal, mixed-alias duplicate detection, and the decorated
 Menu fixtures supply readable item stack metadata; unknown stack limits remain
 conservative. Actual server metadata and interrupted account state require a
 fresh debug export if the order is still blocked in game.
+
+
+The 0.2.61 craft batch/ranking update passes 1,123 Java tests via
+`./gradlew -p client test build`. New tests use the catalog's actual 32-output
+Hotspot Bait recipe to verify 64-operation selection, explicit strategy filtering,
+old 16-operation limits, complete output stack reservations and reduction to 60
+operations with four reserved slots. Separate coverage proves offer ranking changes
+with observed sales activity while batch net remains unchanged, and checks new
+strategy/batch defaults and invalid settings. The existing GUI executor still caps
+child jobs at 64. Live fill rates are unverified; hourly values are estimates and
+remain distinct from the public website's calibrated model.

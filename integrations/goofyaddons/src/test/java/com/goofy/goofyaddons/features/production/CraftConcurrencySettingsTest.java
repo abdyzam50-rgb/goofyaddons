@@ -13,4 +13,12 @@ class CraftConcurrencySettingsTest {
         old.maxActiveCrafts=1;assertDoesNotThrow(old::validate);
         old.maxActiveCrafts=4;assertDoesNotThrow(old::validate);
     }
+    @Test void batchAndStrategyDefaultsPreserveOlderExplicitLimits() {
+        var defaults=new GoofyConfig.CraftFlips();assertEquals(64,defaults.maxBatches);assertEquals("AUTO",defaults.strategy);
+        var old=new com.google.gson.Gson().fromJson("{\"maxBatches\":16}",GoofyConfig.CraftFlips.class);
+        assertEquals(16,old.maxBatches);assertEquals("AUTO",old.strategy);assertDoesNotThrow(old::validate);
+        old.maxBatches=64;old.strategy="INSTANT_OFFER";assertDoesNotThrow(old::validate);
+        old.maxBatches=65;assertThrows(IllegalArgumentException.class,old::validate);
+        old.maxBatches=64;old.strategy="UNKNOWN";assertThrows(IllegalArgumentException.class,old::validate);
+    }
 }

@@ -50,7 +50,7 @@ public final class ProductionLoopFeature implements Feature {
         selection.refresh();var actions=new LiveActions();
         var rows=selection.currentRoutes();
         if(rows.isEmpty())actions.message("No feasible craft routes: "+discoveryReason()+". Minimum net profit "+Math.round(GoofyConfig.INSTANCE.craftFlips.minimumProfit)+", maximum batches "+GoofyConfig.INSTANCE.craftFlips.maxBatches+". See debug export for excluded candidate counts.");
-        rows.stream().limit(10).forEach(r->actions.message(RecipeCatalog.instance().name(r.recipe().outputId())+" · "+r.venue()+" · "+r.strategy().label()+" · "+r.batches()+" batches · conservative net "+Math.round(r.profit())+" · "+(r.eligible()?"eligible":r.reason())));
+        rows.stream().limit(10).forEach(r->actions.message(RecipeCatalog.instance().name(r.recipe().outputId())+" · "+r.venue()+" · "+r.strategy().label()+" · "+r.batches()+" batches ("+(r.recipe().outputCount()*r.batches())+" items) · estimated "+Math.round(r.score()*3600)+" coins/h · conservative net "+Math.round(r.profit())+" · "+(r.eligible()?"eligible":r.reason())));
     }
     private String discoveryReason() {
         if(FeatureManager.INSTANCE.accountRequirementsPending())return "Checking account prerequisites";
