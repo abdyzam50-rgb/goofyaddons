@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.61
+# Craft flip discovery and execution — 0.2.62
 
 ## Shipped behavior
 
@@ -867,3 +867,27 @@ Maximum batches 64 and Active crafts 1, then inspect Best crafts. One active cra
 avoids dividing capital among concurrent jobs; retained jobs still require their
 normal recovery/review flow. Profit threshold and account requirements remain
 in force: this setting does not force Hotspot Bait when it is ineligible.
+
+
+## 0.2.62 — crafting-menu to orders handoff
+
+The supplied 0.2.61 diagnostics show the calculator READY, verified account
+requirements and fresh Bazaar responses. Hotspot Bait was selected for 16 batches
+(512 units). The subsequent failure was a menu timeout: after Soulflow crafting,
+the order engine entered OPEN_ORDERS while Craft Item remained open. Its command
+helper only sends commands when no menu is open, so it never requested orders.
+
+OPEN_ORDERS now uses the existing bounded menu-reopen mechanism for an unexpected
+screen, closing it only with an empty cursor, then requesting and verifying the
+orders menu. Waiting for a delegated craft or listing renews only an unstarted
+OPEN_ORDERS navigation deadline. Submission, claim, cancellation and verification
+deadlines are never extended by that yield. Ownership and receipt evidence remain
+required. Stopping an empty portfolio no longer initializes the production journal,
+avoiding the repeated profile-unavailable errors recorded outside SkyBlock.
+
+The diagnostic snapshot is already PAUSED and retains an Alligator Skin buy and a
+Soulflow sell-side inventory position. This fix prevents the handoff timeout on new
+work; it does not silently resume or erase those positions. Mixed buy/sell recovery
+remains conservative and may require inspecting the actual orders/inventory and
+production jobs before requeueing. The saved maximum batches was still 16 and active
+crafts 4 in this export, rather than the suggested comparison settings.

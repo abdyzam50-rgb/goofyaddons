@@ -209,6 +209,7 @@ public final class ProductionLoopFeature implements Feature {
     @Override public void poll() {
         if(!isRunning())return;
         orders.poll();
+        if(FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued())orders.yieldMenu();
         if(recoveringOrders){recoverOrderStep(false);return;}
         boolean manual=work.stream().anyMatch(w->w.budget<=0);
         for(var current:List.copyOf(work)) {
@@ -259,7 +260,7 @@ public final class ProductionLoopFeature implements Feature {
     /** Stops preserve every job and every submitted child order; never clear portfolio ownership. */
     private void interrupt(String why) {
         try {
-            var jobs=FeatureManager.INSTANCE.crafting().productionJobs();
+            var jobs=work.isEmpty()?null:FeatureManager.INSTANCE.crafting().productionJobs();
             for(var current:work) {
                 var run=current.run;var job=jobs.find(run.jobId()).orElse(null);
                 if(job!=null && job.state()!=ProductionJobs.State.WAITING && job.state()!=ProductionJobs.State.DONE) {

@@ -192,4 +192,27 @@ class ProductionOrderHandoffTest {
         assertTrue(restored.orphanProductionOrders(Set.of("parent-first")));
     }
 
+    @Test void craftMenuHandoffClosesBeforeRequestingOrdersAndPreservesTheTrackedBuy()throws Exception {
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("handoff.json"));
+        var world=new FakeWorld().showing(new MenuSnapshot(40,"Craft Item",true,inventory("INPUT",0).slots()));
+        var actions=new RecordingActions();var engine=new GeneralFlipper(world,actions,repo,services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-first","INPUT","Input",2,100,true,103));
+        drive(engine,world,2000);
+        assertTrue(actions.performed().contains("close"));assertTrue(actions.serverEffects().isEmpty());assertFalse(engine.productionFailed());
+        world.showingNothing();drive(engine,world,400);
+        assertTrue(actions.serverEffects().contains("command:managebazaarorders"));
+        assertNotNull(engine.productionPosition("parent-first"));assertFalse(engine.productionPosition("parent-first").submitted);
+    }
+    @Test void delegatedCraftTimeDoesNotExpireUnstartedNavigationButSubmittedVerificationStillTimesOut()throws Exception {
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("yield.json"));
+        var world=new FakeWorld().showingNothing();var engine=new GeneralFlipper(world,new RecordingActions(),repo,services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-first","INPUT","Input",2,100,true,103));
+        drive(engine,world,60);world.advance(40000);engine.yieldProductionMenu();engine.onTick();
+        assertFalse(engine.productionFailed(),"A delegated craft may hold the menu longer than the navigation timeout");
+        var step=GeneralFlipper.class.getDeclaredField("step");step.setAccessible(true);step.set(engine,GeneralFlipper.Step.VERIFY_ORDER);
+        var since=GeneralFlipper.class.getDeclaredField("stepSince");since.setAccessible(true);since.setLong(engine,world.clock());
+        engine.productionPosition("parent-first").submitted=true;world.advance(40000);engine.yieldProductionMenu();engine.onTick();
+        assertTrue(engine.productionFailed("parent-first"),"Submitted order verification must retain its deadline");
+        assertNotNull(repo.load().getFirst());
+    }
 }

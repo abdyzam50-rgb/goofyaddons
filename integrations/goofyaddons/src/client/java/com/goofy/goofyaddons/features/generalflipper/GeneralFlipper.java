@@ -318,6 +318,12 @@ public class GeneralFlipper implements Feature {
             if((trade.selling?active.instantSell:active.instantBuy) && (step==Step.OPEN_PRODUCT || step==Step.PRODUCT)){tickInstant(now);return;}
             switch (step) {
                 case OPEN_ORDERS -> {
+                    // A sibling craft can leave its reusable grid open when it yields.
+                    // Close that settled menu before requesting orders; command() waits for no GUI.
+                    if(view.title()!=null && !TradingSafety.ordersTitle(view.title())) {
+                        if(view.cursorEmpty())recheckOrders("unexpected-orders-menu");
+                        return;
+                    }
                     command("managebazaarorders");
                     if (TradingSafety.ordersTitle(view.title())) transition(Step.ORDERS);
                 }
@@ -735,6 +741,10 @@ public class GeneralFlipper implements Feature {
     String productionMenuParent() {
         if(active!=null)return active.productionParent;
         return positions.stream().filter(p->workDue(p,world.now())).map(p->p.productionParent==null?"legacy":p.productionParent).findFirst().orElse(null);
+    }
+    void yieldProductionMenu() {
+        // Only an unstarted orders navigation can yield. Never extend a submitted transaction.
+        if(services.productionOnly() && active!=null && step==Step.OPEN_ORDERS)stepSince=world.now();
     }
     double productionCommitment(String parent) {
         var p=productionPosition(parent);return p==null||p.completed?0:p.cost();

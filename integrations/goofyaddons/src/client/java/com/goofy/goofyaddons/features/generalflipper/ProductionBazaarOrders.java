@@ -73,6 +73,7 @@ public final class ProductionBazaarOrders {
             "Verified buy-order recovery: "+(p.completed?0:p.quantity)+" units in inventory at "+p.unitCost+" coins/unit; outstanding order removed. Inspect these inputs before acknowledging; no sale or profit assumed.");
     }
     public void poll(){bind();if(engine.hasRetainedPositions())engine.poll();}
+    public void yieldMenu(){engine.yieldProductionMenu();}
     public boolean needsMenu(){return engine.needsMenu();}
     public Map<String,Object> diagnosticState(){return engine.diagnosticState();}
     public boolean acknowledge(){return engine.consumeProduction();}

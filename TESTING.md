@@ -413,3 +413,13 @@ with observed sales activity while batch net remains unchanged, and checks new
 strategy/batch defaults and invalid settings. The existing GUI executor still caps
 child jobs at 64. Live fill rates are unverified; hourly values are estimates and
 remain distinct from the public website's calibrated model.
+
+
+The 0.2.62 crafting-menu/orders handoff fix passes 1,125 Java tests via
+`./gradlew -p client test build`. New driving tests verify closing a yielded Craft
+Item menu before requesting orders, preserving the tracked position without any
+purchase clicks, and excluding delegated crafting time from an unstarted orders
+navigation deadline while submitted verification still times out. Existing
+unexpected-menu, order ownership, cancellation and strategy tests also pass.
+The empty-portfolio stop guard compiles; actual profile transitions and server GUI
+latency still require in-game validation. Previously retained orders are preserved.
