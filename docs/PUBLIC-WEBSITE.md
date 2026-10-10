@@ -309,3 +309,44 @@ Deploy the complete public ZIP into the existing folder, preserving
 JavaScript does not update these pages. This release requires no new secrets or
 database migration. Market/gameplay commits do not automatically rebuild
 bundled Bazaar charts or timing samples.
+
+### Owner-only immediate publication check (website 0.2.48)
+
+`POST /v1/admin/publish` runs the gameplay and AH GitHub publishers immediately,
+serially, using the Worker's existing GitHub token and retained D1 datasets.
+This is a real publication attempt: changed evidence creates normal GitHub
+commits; unchanged evidence does not. It does not force a new market scan or
+rebuild chart assets. Results also appear on Data status at its next refresh.
+The 15-minute schedule remains enabled.
+
+Set the independent `ADMIN_TOKEN` Worker secret to a random private owner key
+(32–128 letters, numbers, hyphens or underscores). Do not give it to contributors,
+put it in the public repo, or put it in browser settings. The endpoint accepts
+only POST with `Authorization: Bearer <owner key>`. Unauthorized calls cannot
+trigger publication. A database lease coordinates manual and scheduled writes;
+HTTP 409 means another run is in progress. HTTP 502 includes sanitized results
+for both datasets when a publisher fails; HTTP 401 on the outer response means
+the owner key is wrong. HTTP 401 inside a dataset result means GitHub rejected
+`GITHUB_TOKEN`.
+
+After deploying the updated Worker, this PowerShell example creates the admin
+key, saves it to Cloudflare, and tests publishing immediately:
+
+```powershell
+$adminKey = [guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N")
+$adminKey | npx wrangler@4.147.0 secret put ADMIN_TOKEN --config ".\wrangler.jsonc"
+Invoke-RestMethod -Method Post -Uri "https://goofy-gameplay-collector.abdyzam50.workers.dev/v1/admin/publish" -Headers @{Authorization="Bearer $adminKey"} | ConvertTo-Json -Depth 8
+```
+
+Keep this owner key privately for later checks. The variable lasts only for the
+current PowerShell session; in a future session read your saved key locally.
+Do not rerun the generation command unless you intend to replace the admin key.
+On older PowerShell, failed HTTP responses appear as errors; the response body
+contains the per-publisher results and Data status also records them. Creating
+an admin key does not repair an invalid GitHub token: rotate `GITHUB_TOKEN` if
+GitHub still returns 401.
+
+The public ZIP contains `admin-publish.mjs` and the updated `worker.mjs`. Deploy
+both; preserve `wrangler.jsonc`. No reset or schema import is required: the small
+lease table is created automatically. This is a Worker-only release; the mod
+and public calculator assets do not need replacing to enable the endpoint.

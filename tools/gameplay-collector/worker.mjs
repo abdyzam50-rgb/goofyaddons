@@ -3,6 +3,7 @@ import {handleProfileLookup} from './profile-lookup.mjs';
 import {PublishingStatus} from './publishing-status.mjs';
 import {publicMarket} from './public-market.mjs';
 import {AHHistory} from './ah-history.mjs';
+import {handleAdminPublish,runPublishers} from './admin-publish.mjs';
 import {collectAH,publishAH} from './scheduled-ah.mjs';
 import {publicCrafts} from './public-crafts.mjs';
 const json=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
@@ -41,6 +42,7 @@ export class Store {
 }
 export async function handleRequest(request,env,now=Date.now()) {
  const path=new URL(request.url).pathname;
+ if(path==='/v1/admin/publish')return handleAdminPublish(request,env,{now,gameplay:()=>publish(env,{now}),ah:()=>publishAH(env,{now})});
  if(request.method==='GET'&&['/v1/crafts/history','/v1/crafts/status'].includes(path)){
   if(!env.DB)return json(503,{error:'AH history storage unavailable'});
   try{const store=new AHHistory(env.DB);return json(200,path.endsWith('status')?await store.status(now):await store.dataset(now));}
@@ -120,8 +122,7 @@ export async function publish(env,options={}) {
 export default {
  fetch(request,env){return handleRequest(request,env);},
  async scheduled(_event,env,context){context.waitUntil((async()=>{
-  await Promise.allSettled([publish(env),collectAH(env)]);
-  // Serialize writes to the shared GitHub branch, even when gameplay publication failed.
-  await Promise.allSettled([publishAH(env)]);
+  await Promise.allSettled([collectAH(env)]);
+  await runPublishers(env,{gameplay:()=>publish(env),ah:()=>publishAH(env)});
  })());}
 };

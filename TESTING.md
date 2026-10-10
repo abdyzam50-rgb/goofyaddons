@@ -244,3 +244,11 @@ and the bundled calculator integration build verify the maintained overlay.
 research-table search: the complete catalog search mirrors it and exposes the
 correct recipe and Minos Relic ingredients. Existing craft refresh, stale-price,
 profile, historical AH and reference-page checks remain part of that run.
+
+### Website 0.2.48 immediate publication check
+
+151 Node tests pass. New tests prove owner-only authentication fails closed,
+GET cannot publish, both datasets execute serially with sanitized results,
+one GitHub failure does not suppress the other publisher, leases block
+concurrent manual/cron writes, locks release after failures, and expired leases
+recover. Existing scheduled AH collection/publishing and public route tests pass.
