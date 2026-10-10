@@ -381,9 +381,8 @@ its output and ingredient product gates before navigation or spending.
 
 The shared product catalog covers all 40 Garden mutations in the current NEU
 snapshot. Mutation-dependent recipes need verified inspection/analysis evidence;
-mutation sacks also retain their Crop Analyzer Milestone gates. The profiles
-endpoint does not establish either fact, so these routes remain blocked as
-unverified. This release preserves the prior general-trading mutation exclusion;
+mutation sacks also retain their Crop Analyzer Milestone gates. The 0.2.37 parser did not read either fact, so these routes remained blocked as
+unverified. The current-field import in 0.2.38 below corrects this. This release preserves the prior general-trading mutation exclusion;
 it does not automate crop analysis or infer it from collection tiers. Explicit
 unmet analysis/inspection text on purchase controls blocks the transaction.
 
@@ -395,3 +394,27 @@ Server crafting controls remain authoritative for additional requirements.
 `.a* goofyaddon production requirements` now includes Catacombs and explains
 mutation evidence. Install the 0.2.37 JAR and redeploy its public website ZIP for
 the profile-import and website changes. Existing deployment secrets are retained.
+
+## Current profile progression fields (0.2.38)
+
+Hypixel's migrated profiles use `skill_tree.experience.mining` for HotM,
+`skill_tree.nodes.mining.quick_forge` for Quick Forge and
+`slayer.slayer_bosses` for Slayers. The importer now reads these first, with
+legacy `mining_core` and top-level `slayer_bosses` fallbacks. A published mining
+node map without Quick Forge means level zero; missing or invalid maps remain
+unknown. Current Slayer maps supersede legacy maps, including empty maps.
+
+Garden analyzed crops come from `garden_player_data.analyzed_greenhouse_crops`,
+normalized to product IDs; discovery alone never proves analysis. Crop Analyzer
+milestones come from claimed `objectives.tutorial` entries matching
+`dna_analysis_rewardskyblock_xp_N` (1–6), rather than counts of discovered crops.
+Fresh account/profile binding and bounds still apply in the mod. These facts
+unblock eligible crafting requirements; the existing general-trading mutation
+exclusion is retained. Missing fields continue to block their dependent routes.
+
+Mappings were checked against SkyCrypt-Backend `5252bf6` (mining, Slayer and
+Garden stats) and SkyCrypt-Types `80de98c` (profile JSON tags). No SkyCrypt service
+is needed for production: the Worker continues to fetch Hypixel directly.
+The `/v1/profiles?username=...` response now includes
+`parserVersion: "2026-10-10-skill-tree"` so deployments can be identified.
+The 0.2.38 public website ZIP must be redeployed to update this parser.

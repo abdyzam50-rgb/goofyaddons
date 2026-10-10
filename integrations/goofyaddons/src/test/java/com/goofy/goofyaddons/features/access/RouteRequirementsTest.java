@@ -6,6 +6,19 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RouteRequirementsTest {
+    @Test void publishedGardenAnalysisUnlocksOnlyAnalyzedCropsAndClaimedMilestones() {
+        var root=profile();var p=root.getAsJsonArray("profiles").get(0).getAsJsonObject();p.addProperty("name","Apple");
+        var stats=p.getAsJsonObject("stats");stats.add("inspectedMutations",JsonParser.parseString("[\"CHORUS_FRUIT\"]"));stats.addProperty("cropAnalyzerMilestone",5);
+        var parsed=AccountUnlocks.parseProfile(root,"Tester","Apple",Map.of(),1000000);
+        assertNull(RouteRequirements.product("CHORUS_FRUIT",parsed.unlocks()));assertNotNull(RouteRequirements.product("GODSEED",parsed.unlocks()));
+        assertNull(RouteRequirements.craft("Crop Analyzer Milestone V",Map.of(),parsed.unlocks()));
+        p.getAsJsonArray("unknown").add("Garden mutation inspections");p.getAsJsonArray("unknown").add("Crop Analyzer Milestone");
+        parsed=AccountUnlocks.parseProfile(root,"Tester","Apple",Map.of(),1000000);
+        assertNotNull(RouteRequirements.product("CHORUS_FRUIT",parsed.unlocks()));assertFalse(parsed.unlocks().containsKey("cropanalyzermilestone"));
+        p.getAsJsonArray("unknown").remove(p.getAsJsonArray("unknown").size()-1);stats.addProperty("cropAnalyzerMilestone",7);
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Apple",Map.of(),1000000));
+    }
+
     @Test void essenceAndMutationRequirementsAreIndependentOfQuotesAndBudget() {
         assertNotNull(RouteRequirements.product("ESSENCE_WITHER",Map.of()));
         assertNotNull(RouteRequirements.product("ESSENCE_WITHER",Map.of("catacombs",19)));

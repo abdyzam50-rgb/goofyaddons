@@ -156,6 +156,20 @@ public final class AccountUnlocks {
             if(!Double.isFinite(value) || value<0 || value>10 || value!=Math.floor(value))throw new IllegalArgumentException("Invalid Heart of the Mountain tier");
             int level=(int)value;result.put("heartofthemountain",level);result.put("hotm",level);
         }
+        if(!unknown.contains("Garden mutation inspections") && stats.has("inspectedMutations") && !stats.get("inspectedMutations").isJsonNull()) {
+            var inspected=stats.getAsJsonArray("inspectedMutations");
+            if(inspected.size()>4096)throw new IllegalArgumentException("Invalid mutation inspections");
+            for(var entry:inspected) {
+                String id=entry.getAsString();
+                if(!id.matches("[A-Z0-9_]{1,80}"))throw new IllegalArgumentException("Invalid mutation inspection");
+                if(com.goofy.goofyaddons.features.generalflipper.BazaarAccess.MUTATIONS.contains(id))result.put("mutation"+RouteRequirements.normalize(id),1);
+            }
+        }
+        if(!unknown.contains("Crop Analyzer Milestone") && stats.has("cropAnalyzerMilestone") && !stats.get("cropAnalyzerMilestone").isJsonNull()) {
+            double level=stats.get("cropAnalyzerMilestone").getAsDouble();
+            if(!Double.isFinite(level)||level<0||level>6||level!=Math.floor(level))throw new IllegalArgumentException("Invalid Crop Analyzer Milestone");
+            result.put("cropanalyzermilestone",(int)level);
+        }
         if(!unknown.contains("Catacombs") && stats.has("catacombsLevel") && !stats.get("catacombsLevel").isJsonNull()) {
             double level=stats.get("catacombsLevel").getAsDouble();
             if(!Double.isFinite(level)||level<0||level>50||level!=Math.floor(level))throw new IllegalArgumentException("Invalid Catacombs level");

@@ -124,3 +124,20 @@ test('Dungeon XP and published normal/master floor clears are imported separatel
  const [bad]=summarizeProfiles(data({...member,dungeons:{dungeon_types:{catacombs:{experience:-1,tier_completions:{'7':-1}},master_catacombs:{tier_completions:{'7':1.5}}}}}),uuid,resources);
  assert.equal(bad.stats.catacombsLevel,null);assert.equal(bad.stats.dungeonCompletions['Catacombs Floor 7'],undefined);assert.equal(bad.stats.dungeonCompletions['Master Catacombs Floor 7'],undefined);
 });
+
+test('current Hypixel skill tree, nested Slayers and Garden analysis import known unlocks',()=>{
+ const current={...member,skill_tree:{experience:{mining:12000},nodes:{mining:{quick_forge:12}}},slayer:{slayer_bosses:{wolf:{xp:1500},enderman:{xp:200}}},garden_player_data:{analyzed_greenhouse_crops:['chorus_fruit','godseed','chorus_fruit'],discovered_greenhouse_crops:['veilshroom']},objectives:{tutorial:['dna_analysis_rewardskyblock_xp_1','dna_analysis_rewardskyblock_xp_5','unrelated_reward','dna_analysis_rewardskyblock_xp_999']}};
+ const [p]=summarizeProfiles(data(current),uuid,resources);
+ assert.equal(p.stats.hotmTier,3);assert.equal(p.stats.quickForgeLevel,12);assert.equal(p.stats.slayers.Wolf,4);assert.equal(p.stats.slayers.Enderman,2);
+ assert.equal(p.stats.slayers.Zombie,undefined,'Modern Slayer map supersedes legacy map');
+ assert.deepEqual(p.stats.inspectedMutations,['CHORUS_FRUIT','GODSEED']);assert.equal(p.stats.cropAnalyzerMilestone,5);
+ for(const field of ['Heart of the Mountain','Quick Forge','slayers','Garden mutation inspections','Crop Analyzer Milestone'])assert.ok(!p.unknown.includes(field),field);
+});
+test('published empty node and analysis maps mean zero unlocks, while missing and invalid data remain unknown',()=>{
+ const [p]=summarizeProfiles(data({...member,skill_tree:{experience:{mining:0},nodes:{mining:{}}},slayer:{slayer_bosses:{}},garden_player_data:{analyzed_greenhouse_crops:[]},objectives:{tutorial:[]}}),uuid,resources);
+ assert.equal(p.stats.hotmTier,1);assert.equal(p.stats.quickForgeLevel,0);assert.deepEqual(p.stats.slayers,{});
+ assert.deepEqual(p.stats.inspectedMutations,[]);assert.equal(p.stats.cropAnalyzerMilestone,0);
+ const [bad]=summarizeProfiles(data({skill_tree:{experience:{mining:-1},nodes:{mining:{quick_forge:20.5}}},slayer:{slayer_bosses:[]},garden_player_data:{analyzed_greenhouse_crops:[123]},objectives:{tutorial:'unpublished'}}),uuid,resources);
+ for(const field of ['Heart of the Mountain','Quick Forge','slayers','Garden mutation inspections','Crop Analyzer Milestone'])assert.ok(bad.unknown.includes(field),field);
+ assert.equal(bad.stats.inspectedMutations,null);assert.equal(bad.stats.cropAnalyzerMilestone,null);
+});

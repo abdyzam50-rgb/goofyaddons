@@ -139,3 +139,15 @@ Desktop/mobile Chromium checks passed. Packaged catalogs and profile modules
 match the source files. Live Hypixel transactions remain for user testing;
 mutation analysis/analyzer reward evidence is unavailable from the profile API
 and remains blocked rather than assumed.
+
+0.2.38 validation: 1,075 Java tests and 122 Node tests passed without
+failures/errors. Full Java tests, bundled-calculator integration tests and the
+release build passed. Profile regressions cover the current skill-tree/nested
+Slayer layout, legacy fallback, modern-field precedence, empty published maps,
+invalid/unpublished fields, analyzed-versus-discovered Garden crops and claimed
+analyzer milestones. The mod verifies published Garden unlocks against profile
+identity, age and value bounds. Desktop/mobile browser checks passed. The live
+Worker reproduced curedmc's missing progression in its prior parser; corrected
+raw Hypixel data could not be fetched here without its private deployment key.
+The field mappings are verified against the current SkyCrypt backend/schema;
+a live user lookup must be checked after redeployment.

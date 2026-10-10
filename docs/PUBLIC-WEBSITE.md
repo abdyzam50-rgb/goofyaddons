@@ -149,3 +149,21 @@ Existing Worker secrets stay on Cloudflare; they need not be entered again.
 Verify `/calculator/flips/craft` and `/v1/crafts/market` after deploying. No schema
 migration or new user installation is required. Building this update does not
 publish it to your Cloudflare account.
+
+## Current progression parser update (0.2.38)
+
+Download `dist/goofyaddons-public-website-craft-0.2.38.zip` and extract it. Copy
+its `tools` contents into your existing deployment's `tools` folder. Keep your
+existing `tools/gameplay-collector/wrangler.jsonc`; the update ships
+`wrangler.example.jsonc` and does not overwrite your database/configuration.
+From that existing `tools/gameplay-collector` folder run:
+
+```powershell
+npx wrangler@4.147.0 deploy
+```
+
+Then click Load / refresh profile on the calculator. The profile JSON endpoint
+`/v1/profiles?username=curedmc` should contain
+`"parserVersion":"2026-10-10-skill-tree"`. This identifies the corrected HotM,
+Quick Forge, Slayer and Garden parser. Existing Worker secrets remain in place.
+Installing the mod alone does not update the hosted profile API.

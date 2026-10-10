@@ -24,7 +24,10 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
    const level=xpLevel(xp,LEVELS.leveling_xp,LEVELS.leveling_caps[name]);
    if(level===null)unknown.push(name);else skills[name[0].toUpperCase()+name.slice(1)]=level;
   }
-  const hotm=xpLevel(member.mining_core?.experience,LEVELS.HOTM);
+  // Current skill-tree layout, with legacy fields for profiles not yet migrated.
+  // Verified against SkyCrypt-Backend stats/mining.go and SkyCrypt-Types profile.go.
+  const miningXp=member.skill_tree?.experience?.mining??member.mining_core?.experience;
+  const hotm=xpLevel(miningXp,LEVELS.HOTM);
   if(hotm===null)unknown.push('Heart of the Mountain');
   const dungeon=member.dungeons?.dungeon_types?.catacombs;
   const catacombsLevel=xpLevel(dungeon?.experience,LEVELS.catacombs,50);
@@ -40,10 +43,22 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
     else if(Number.isSafeInteger(count)&&count>=0)dungeonCompletions[`${label} Floor ${floor}`]=count>0?1:0;
    }
   }
-  // The profiles endpoint does not establish individual mutation analysis or analyzer rewards.
-  unknown.push('Garden mutation inspections','Crop Analyzer Milestone');
-  const quick=member.mining_core?.nodes?.forge_time;
-  if(!present(quick))unknown.push('Quick Forge');
+  const analyzed=member.garden_player_data?.analyzed_greenhouse_crops;
+  const inspectedMutations=Array.isArray(analyzed)&&analyzed.length<=4096&&analyzed.every(id=>typeof id==='string'&&/^[a-z0-9_]{1,80}$/i.test(id))
+   ?[...new Set(analyzed.map(id=>id.toUpperCase()))]:null;
+  if(inspectedMutations===null)unknown.push('Garden mutation inspections');
+  const tutorial=member.objectives?.tutorial;
+  let cropAnalyzerMilestone=null;
+  if(Array.isArray(tutorial)&&tutorial.length<=10000&&tutorial.every(id=>typeof id==='string')) {
+   cropAnalyzerMilestone=Math.max(0,...tutorial.map(id=>/^dna_analysis_rewardskyblock_xp_([1-6])$/.exec(id)).filter(Boolean).map(match=>Number(match[1])));
+  }else unknown.push('Crop Analyzer Milestone');
+  const modernNodes=member.skill_tree?.nodes?.mining;
+  const legacyNodes=member.mining_core?.nodes;
+  const nodes=modernNodes??legacyNodes;
+  const quick=modernNodes!=null?modernNodes.quick_forge:legacyNodes?.forge_time;
+  // A published node map without Quick Forge means this perk has not been purchased.
+  const quickLevel=quick===undefined&&nodes&&typeof nodes==='object'&&!Array.isArray(nodes)?0:quick;
+  if(!Number.isInteger(quickLevel)||quickLevel<0||quickLevel>20)unknown.push('Quick Forge');
   const unlocked=member.player_data?.unlocked_coll_tiers??member.unlocked_coll_tiers;
   if(Array.isArray(unlocked)) {
    for(const value of unlocked) {
@@ -52,7 +67,8 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
     if(name)tiers[name]=Math.max(tiers[name]??0,Number(m[2]));
    }
   }else unknown.push('collections');
-  if(member.slayer_bosses)for(const [id,boss] of Object.entries(member.slayer_bosses)) {
+  const slayerBosses=member.slayer?.slayer_bosses??member.slayer_bosses;
+  if(slayerBosses&&typeof slayerBosses==='object'&&!Array.isArray(slayerBosses))for(const [id,boss] of Object.entries(slayerBosses)) {
    const table=LEVELS.slayer_xp[id];
    if(!table)continue;
    const name=id[0].toUpperCase()+id.slice(1);
@@ -73,7 +89,7 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   const purse=member.currencies?.coin_purse??member.coin_purse;
   return [{id:clean(p.profile_id),name:clean(p.cute_name)||'Profile',selected:p.selected===true,gameMode:clean(p.game_mode)||'normal',
    purse:present(purse)&&purse<=1e13?purse:null,fetchedAt:now,unknown,
-   stats:{catacombsLevel,dungeonCompletions,hotmTier:hotm??0,quickForgeLevel:present(quick)?Math.min(20,quick):0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,collectionIds,slayers,reputation,
+   stats:{catacombsLevel,dungeonCompletions,inspectedMutations,cropAnalyzerMilestone,hotmTier:hotm??0,quickForgeLevel:Number.isInteger(quickLevel)&&quickLevel>=0&&quickLevel<=20?quickLevel:0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,collectionIds,slayers,reputation,
     xpLevels:0,ignoreRequirements:false,coleMoltenForge:false,quadTaxes:false,npcShoppingSpree:false}}];
  });
 }
@@ -116,7 +132,7 @@ export async function lookupProfiles(username,key,fetcher=fetch,now=Date.now()) 
   get(`https://api.hypixel.net/v2/skyblock/profiles?uuid=${player.id}`,{'API-Key':key}),
   get('https://api.hypixel.net/v2/resources/skyblock/collections').catch(()=>null)
  ]);
- return {protocol:'goofy-profile/1',username:clean(player.name),fetchedAt:now,profiles:summarizeProfiles(data,player.id,resources,now)};
+ return {protocol:'goofy-profile/1',parserVersion:'2026-10-10-skill-tree',username:clean(player.name),fetchedAt:now,profiles:summarizeProfiles(data,player.id,resources,now)};
 }
 export async function handleProfileLookup(request,env,now=Date.now(),fetcher=fetch) {
  const username=new URL(request.url).searchParams.get('username')??'';
