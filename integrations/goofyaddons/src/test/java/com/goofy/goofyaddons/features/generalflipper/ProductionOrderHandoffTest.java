@@ -9,6 +9,15 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionOrderHandoffTest {
+    @Test void onlySubmittedUnambiguousSavedSellOffersCanReattach(){
+        var p=new GeneralPosition();p.productionParent="parent-saved";p.item=new GeneralItem("OUTPUT","Output");p.quantity=2;p.submitted=true;p.stage=GeneralPosition.Stage.SELL_ORDER;
+        assertEquals(List.of(new ProductionBazaarOrders.SavedSale("parent-saved","OUTPUT",2)),ProductionBazaarOrders.resumableSales(List.of(p)));
+        p.settlementPending=true;assertTrue(ProductionBazaarOrders.resumableSales(List.of(p)).isEmpty());p.settlementPending=false;
+        p.cancelRequested=true;assertTrue(ProductionBazaarOrders.resumableSales(List.of(p)).isEmpty());p.cancelRequested=false;
+        p.productionBuy=true;assertTrue(ProductionBazaarOrders.resumableSales(List.of(p)).isEmpty());p.productionBuy=false;
+        p.submitted=false;assertTrue(ProductionBazaarOrders.resumableSales(List.of(p)).isEmpty());p.submitted=true;
+        p.productionParent=null;assertTrue(ProductionBazaarOrders.resumableSales(List.of(p)).isEmpty());
+    }
     @Test void createOrderWaitsForProductContainerToSettle()throws Exception {
         var world=new FakeWorld().showing(inventory("INPUT",0));var actions=new RecordingActions();
         var engine=new GeneralFlipper(world,actions,new JsonGeneralOrderRepository(()->dir.resolve("settled.json")),services());engine.start();

@@ -744,6 +744,7 @@ public class GeneralFlipper implements Feature {
         return save();
     }
     GeneralPosition productionPosition(){return positions.isEmpty()?null:positions.getFirst();}
+    java.util.List<GeneralPosition> productionPositions(){restoreBudget();return blocked?java.util.List.of():java.util.List.copyOf(positions);}
     GeneralPosition productionPosition(String parent){return positions.stream().filter(p->java.util.Objects.equals(p.productionParent,parent)).findFirst().orElse(null);}
     boolean consumeProduction(){return consumeProduction(productionPosition());}
     boolean consumeProduction(String parent){return consumeProduction(productionPosition(parent));}

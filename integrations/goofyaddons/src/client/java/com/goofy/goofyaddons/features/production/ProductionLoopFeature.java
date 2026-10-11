@@ -30,6 +30,7 @@ public final class ProductionLoopFeature implements Feature {
     private boolean recoveringOrders;
     private final CraftFlipSelection selection=new CraftFlipSelection();
     private long nextSelection;
+    private long nextSaleRestore;
     public boolean hasRetainedOrders(){return orders.retained();}
     public boolean hasOrphanOrders(){return orders.orphaned(work.stream().map(Work::id).collect(java.util.stream.Collectors.toSet()));}
     private double availableFor(String owner,double purse) {
@@ -275,6 +276,7 @@ public final class ProductionLoopFeature implements Feature {
     /** Waiting jobs advance independently; one foreground lease keeps menu transactions intact. */
     @Override public void poll() {
         if(!isRunning())return;
+        restoreSavedSales();
         orders.poll();
         if(FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued())orders.yieldMenu();
         if(recoveringOrders){recoverOrderStep(false);return;}
@@ -285,6 +287,24 @@ public final class ProductionLoopFeature implements Feature {
             if(!isRunning())return;
         }
         if(!manual)selectAutomatic();
+    }
+    private void restoreSavedSales(){
+        long now=System.currentTimeMillis();
+        if(!work.isEmpty() || recoveringOrders || now<nextSaleRestore || !"CRAFT".equals(FeatureManager.INSTANCE.modeLabel()))return;
+        nextSaleRestore=now+5000;
+        var sales=orders.savedSales();if(sales.isEmpty() || sales.size()>4)return;
+        try {
+            var jobs=FeatureManager.INSTANCE.crafting().productionJobs();var restored=new ArrayList<Work>();
+            for(var sale:sales){
+                var parent=jobs.find(sale.parent()).orElseThrow(()->new IllegalArgumentException("Saved sale parent is missing"));
+                var current=new Work();current.run=ProductionRun.resumeSale(environment(current,false,false),RecipeCatalog.instance(),parent,sale.product(),sale.units());
+                current.budget=Math.max(1,current.run.spent());restored.add(current);
+            }
+            for(var current:restored)jobs.put(jobs.find(current.id()).orElseThrow().withState(ProductionJobs.State.LISTING,"Resuming retained submitted Bazaar sell offer; live ownership checks required"));
+            work.addAll(restored);orders.resumeSavedSales();FeatureManager.INSTANCE.invalidateMarketReport();
+            Diagnostics.event("INFO","production.sales_restored",Map.of("parents",restored.stream().map(Work::id).toList()));
+            new LiveActions().message("Resumed monitoring "+restored.size()+" saved craft sell offers; no purchases or crafts repeated.");
+        }catch(Exception failure){Diagnostics.failure("production.sale_restore_failed",failure);}
     }
     @Override public void onTick() {
         if(!needsMenu())return;

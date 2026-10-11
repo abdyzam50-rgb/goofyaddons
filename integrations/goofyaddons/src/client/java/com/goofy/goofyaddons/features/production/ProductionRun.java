@@ -176,6 +176,21 @@ public final class ProductionRun implements ProductionLoop.Ports {
     public String output() { return output; }
     public boolean isCraftRun(){return kind==ProductionRecipe.Kind.CRAFT;}
     public boolean hasVerifiedInputBasis(){return !basisUnknown;}
+    /** Reattach a stopped sale to its original parent ID; never replay acquisition or crafting. */
+    static ProductionRun resumeSale(Environment env,RecipeCatalog catalog,ProductionJobs.Job job,String product,int units) {
+        boolean stopped=job.state()==ProductionJobs.State.REVIEW && job.reason()!=null
+            && (job.reason().startsWith("Production stopped;")||job.reason().startsWith("Production paused;"));
+        if(!job.account().equals(env.account()) || !job.recipeKey().equals("run:craft:"+product)
+            || !(stopped || job.state()==ProductionJobs.State.LISTING || job.state()==ProductionJobs.State.SELLING))
+            throw new IllegalArgumentException("Saved sale parent requires manual review");
+        var recipe=catalog.forOutput(product).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT
+            && (long)r.outputCount()*job.batches()==units).findFirst().orElseThrow(()->new IllegalArgumentException("Saved sale quantity/recipe differs"));
+        var run=new ProductionRun(env,catalog,product,ProductionRecipe.Kind.CRAFT,recipe,job.batches(),-1,SELL_ON_BAZAAR,0,job.id());
+        run.spent=job.costBasis()==null?0:job.costBasis();run.basisUnknown=job.costBasis()==null;
+        run.strategy=BazaarStrategy.ORDER_OFFER;run.orderActive=true;
+        run.loop=new ProductionLoop(new ProductionLoop.Plan(false,false,true),Stage.SELL,run);
+        return run;
+    }
     /** Allocation changes must not overlap a submitted or delegated transaction. */
     public boolean canExpandProcurementBudget(){
         return stage()==Stage.PROCURE && spent>0 && hasVerifiedInputBasis() && !orderActive && buying==null

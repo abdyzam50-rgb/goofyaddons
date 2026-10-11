@@ -1177,3 +1177,36 @@ positions, not verified proceeds. Do not acknowledge/delete their journals to
 silence the bait loop. Let these offers finish and claim their coins before
 restarting to replace the jar; restart recovery of submitted production sell
 offers is not part of this numerical comparison fix.
+
+## 0.2.74 resume intact submitted craft sell offers
+
+The 1791690278765 export confirms 0.2.73 after a restart: the three submitted
+SELL_ORDER child positions were loaded, but their parents 800c2279, 0f00cd51
+and 3545307c were REVIEW with the explicit Production stopped reason. There
+were no active production runs. The order engine had no step, quotesAt 0 and
+checkedAt 0 on all three positions. It was not monitoring these offers; discovery
+refused orphaned children and no parent started the order engine. Waiting alone
+could not fix this restart state.
+
+CRAFT polling now reattaches an intact portfolio of up to four saved submitted
+sell offers when no production work is active. All children must be sell-side
+SELL_ORDER, parent-scoped, submitted, incomplete and free of cancellation or
+settlement intent. Every parent must match the pinned account, output, craft
+recipe/batch quantity and be LISTING/SELLING or REVIEW specifically from a
+normal stop/pause. True uncertain transaction reviews, buys, unsubmitted sales,
+missing parents and mixed recovery portfolios remain untouched.
+
+Resumed runs start directly in SELL under the original parent IDs, reuse the
+saved acquired cost and existing profit event IDs, and restart the existing
+order engine's live ownership/quantity/claim checks. No input order, craft,
+new sale placement or acquisition event is queued by restoration. Parent
+continuation state is persisted before adopting the portfolio. Verified proceeds
+are required for completion; missing live orders/inconsistent inventory retain
+normal review behavior. Successful restoration emits production.sales_restored
+and a visible count message. Restoration failures remain explicit in diagnostics.
+
+For this exported portfolio, install 0.2.74 and start Craft mode without
+acknowledging these three REVIEW jobs or deleting their journals. The matching
+stopped parents will resume monitoring automatically after account binding is
+ready. This does not force sales or guarantee fills, and does not change the
+existing offer repricing policy.

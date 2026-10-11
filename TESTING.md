@@ -502,3 +502,13 @@ order procurement proceeds at a one-bit budget difference while refusing a
 real shortfall. Existing price-ceiling and portfolio allocation tests remain.
 
 `./gradlew -p client test build --console=plain` passed 1153 Java tests with zero failures/errors. Live Minecraft execution remains unverified.
+
+## 0.2.74 submitted sell-offer continuation
+
+Regressions verify original parent ID/cost retention, a SELL-only continuation
+that queues no purchases/crafts/acquisition, verified-proceeds completion,
+rejection of mismatched quantity/output and genuine uncertain reviews, and
+refusal to reattach pending settlement/cancellation, buys, unsubmitted positions
+or missing parent identity.
+
+`./gradlew -p client test build --console=plain` passed 1156 Java tests with zero failures/errors. Live Minecraft execution remains unverified.

@@ -10,6 +10,19 @@ import java.util.concurrent.CompletableFuture;
 
 /** One production-owned order using the ordinary trader's placement, claim and receipt rules. */
 public final class ProductionBazaarOrders {
+    public record SavedSale(String parent,String product,int units) {}
+    /** Only an intact submitted sell journal may be reattached; other recovery remains manual. */
+    public List<SavedSale> savedSales(){
+        if(AccountStorage.INSTANCE.pinned()==null)return List.of();bind();
+        return resumableSales(engine.productionPositions());
+    }
+    static List<SavedSale> resumableSales(List<GeneralPosition> positions){
+        if(positions.isEmpty() || positions.stream().anyMatch(p->p.productionBuy || p.productionParent==null
+            || !p.submitted || p.cancelRequested || p.settlementPending
+            || p.stage!=GeneralPosition.Stage.SELL_ORDER || p.completed))return List.of();
+        return positions.stream().map(p->new SavedSale(p.productionParent,p.item.id(),p.quantity)).toList();
+    }
+    public void resumeSavedSales(){bind();engine.start();}
     public record Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason,boolean rejected){
         public Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason){this(done,failed,units,cost,proceeds,reason,false);}
     }

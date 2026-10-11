@@ -10,6 +10,27 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
+    @Test void stoppedSubmittedSaleResumesOriginalParentWithoutBuyingOrCrafting()throws Exception {
+        var env=new Env();var catalog=catalog();
+        var original=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        var job=env.jobs.find(original.jobId()).orElseThrow().withCost(100.0,"Verified inputs").withState(ProductionJobs.State.REVIEW,"Production stopped; inspect inventory");env.jobs.put(job);
+        var resumed=ProductionRun.resumeSale(env,catalog,job,"OUTPUT",1);
+        assertEquals(original.jobId(),resumed.jobId());assertEquals(Stage.SELL,resumed.stage());assertEquals(100,resumed.spent());
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,1,0,null,"Checking saved offer");
+        assertEquals(Step.PENDING,resumed.tick(true,1000));assertTrue(env.orders.isEmpty());assertTrue(env.crafts.isEmpty());
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,1,0,500.0,"Verified sale proceeds");
+        assertEquals(Step.DONE,resumed.tick(true,1100));assertEquals(List.of(500.0),env.confirmedSales);
+        assertTrue(env.confirmedCosts.isEmpty());assertEquals(1,env.orderAcknowledgements);
+    }
+    @Test void unsafeReviewOrMismatchedQuantityCannotResumeSavedSale()throws Exception {
+        var env=new Env();var catalog=catalog();
+        var original=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        var job=env.jobs.find(original.jobId()).orElseThrow().withState(ProductionJobs.State.REVIEW,"Production stopped; inspect inventory");
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job,"OUTPUT",2));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job,"OTHER",1));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job.withState(ProductionJobs.State.REVIEW,"Sale claim is uncertain"),"OUTPUT",1));
+        assertTrue(env.actions.serverEffects().isEmpty());
+    }
     @Test void procurementAllowsRoundingDustButStillBlocksARealCapitalShortfall()throws Exception {
         for(boolean shortfall:List.of(false,true)) {
             var env=new Env();env.buying=true;env.purse=shortfall?102.99:Math.nextDown(103.0);
