@@ -1253,3 +1253,9 @@ The Craft Item executor now checks the Quick Crafting slots (16, 25, 34) before 
 Quick crafting waits for observed ingredient consumption and output acquisition; it does not count a click as a completed craft. A partial but exact receipt completes only the verified batches and lets the same menu handle the remainder. Repeated clicks wait for acknowledgement, and a changed quick-craft control prevents retrying an unacknowledged transaction. The HUD shows Quick crafting while that path is active; debug exports include production.quick_craft with recipe, batch count, slot and container.
 
 The supplied export showed Hotspot Bait in slot 16, output count 32, Craftable: 15x, and one Enchanted Pufferfish plus one Scorched Crab Stick per recipe. This permits a bounded 15-batch shift-click when the job requests at least 15 batches and has space for 480 Bait. Live-server shift-click behavior still needs gameplay validation; exact partial results are supported.
+
+### 0.2.77 — Job-specific review acknowledgement
+
+The 0.2.76 diagnostic export had two unrelated Hotspot Bait REVIEW jobs (a paused parent and interrupted craft child), while three submitted sell offers resumed normally. No production.quick_craft event occurred in that new session; review gating prevented reaching crafting. The inventory still contained 15 Enchanted Pufferfish, 15 Scorched Crab Sticks, and 32 Hotspot Bait from the older interrupted run.
+
+Specific production acknowledge <ID> now resolves the current account’s exact REVIEW job and blocks only if that job owns retained Bazaar orders. Unrelated sell offers no longer block that acknowledgement. Unreadable order state and ownerless legacy positions still block it conservatively. Bulk acknowledge all retains its broad order guard. Acknowledgement preserves original evidence and cost basis; it does not claim items, sell outputs, or record profit. The user must still stop trading and inspect the reviewed items first.

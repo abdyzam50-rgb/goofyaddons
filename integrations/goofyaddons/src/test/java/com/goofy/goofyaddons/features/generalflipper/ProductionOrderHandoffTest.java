@@ -9,6 +9,13 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionOrderHandoffTest {
+    @Test void acknowledgementIsBlockedOnlyByOwnedOrdersOrUnknownOrderOwnership(){
+        var sale=new GeneralPosition();sale.productionParent="saved-sale-parent";sale.submitted=true;sale.stage=GeneralPosition.Stage.SELL_ORDER;
+        assertFalse(ProductionBazaarOrders.reviewBlockedByOrders(List.of(sale),"bait-parent"));
+        assertTrue(ProductionBazaarOrders.reviewBlockedByOrders(List.of(sale),"saved-sale-parent"));
+        sale.completed=true;assertTrue(ProductionBazaarOrders.reviewBlockedByOrders(List.of(sale),"saved-sale-parent"));
+        sale.productionParent=null;assertTrue(ProductionBazaarOrders.reviewBlockedByOrders(List.of(sale),"bait-parent"));
+    }
     @Test void basketQueuesAllIngredientsAndHandsOffOnlyWhenEveryChildIsVerified()throws Exception {
         var world=new FakeWorld().showing(inventory("NONE",0));var actions=new RecordingActions();var repo=new JsonGeneralOrderRepository(()->dir.resolve("basket.json"));
         var engine=new GeneralFlipper(world,actions,repo,services());engine.start();

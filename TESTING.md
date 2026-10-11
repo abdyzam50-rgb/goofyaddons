@@ -529,3 +529,9 @@ claim, baseline, recovery and journal-integrity coverage remains passing.
 Added regression coverage for the exported 15-batch Hotspot Bait quick slot (one shift-click, 480 verified output), excessive craftable amounts falling back to the grid, mismatched ingredient lore, exact partial receipts, and delayed acknowledgements with invalid output-only changes. Existing grid crafting, menu reuse, conservation checks, procurement baskets, and sale recovery remain covered. No live Minecraft GUI was available.
 
 Validation: client test/build succeeded; 1,165 tests passed with zero failures or skips. Release jar metadata verifies 0.2.76-BETA.
+
+### 0.2.77 Review acknowledgement ownership
+
+Regression coverage verifies that unrelated retained sell offers allow a specific reviewed job to be acknowledged, while its own orders (including completed but unreconciled children) and unknown legacy ownership block it. A journal test checks the full resolved ID reaches the ownership predicate, blocked acknowledgement does not write, unrelated reviews stay unchanged, and the Bait parent’s original cost evidence remains intact. No live Minecraft GUI was available.
+
+Validation: client test/build succeeded; 1,167 tests passed with zero failures or skips. Release jar metadata verifies 0.2.77-BETA.

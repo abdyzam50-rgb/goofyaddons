@@ -75,6 +75,19 @@ class ProductionTest {
         }
         public void closeMenu(){}public void command(String text){}public void message(String text){}public boolean writeSign(String text){return false;}
     }
+    @Test void specificReviewChecksItsResolvedOwnerBeforeWritingAndPreservesOtherReviews()throws Exception {
+        var path=dir.resolve("scoped-review.json");var jobs=new ProductionJobs(path);
+        var bait=new ProductionJobs.Job("43bbdc42-bait","run:craft:HOTSPOT_BAIT","account",ProductionJobs.State.REVIEW,16,-1,0,0,4352247.2,null,null,"Production paused");
+        var sale=new ProductionJobs.Job("800c2279-sale","run:craft:FLAWLESS_SAPPHIRE_GEM","account",ProductionJobs.State.REVIEW,2,-1,0,0,3519388.3,null,null,"Production stopped");
+        jobs.put(bait);jobs.put(sale);
+        var checked=new ArrayList<String>();
+        jobs.acknowledgeReview("43bbdc42","account",id->{checked.add(id);return id.equals(sale.id());});
+        assertEquals(List.of(bait.id()),checked);assertEquals(ProductionJobs.State.CANCELLED,jobs.find(bait.id()).orElseThrow().state());
+        String before=Files.readString(path);
+        assertThrows(IllegalArgumentException.class,()->jobs.acknowledgeReview("800c2279","account",id->true));
+        assertEquals(before,Files.readString(path));assertEquals(sale,jobs.find(sale.id()).orElseThrow());
+        assertEquals(4352247.2,jobs.find(bait.id()).orElseThrow().costBasis());
+    }
     @Test void quickCraftsFifteenHotspotBaitBatchesWithOneShiftClickAndExactReceipt() {
         var r=RecipeCatalog.instance().forOutput("HOTSPOT_BAIT").stream().filter(v->v.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
         var server=new Server(r,0);int slot=54;

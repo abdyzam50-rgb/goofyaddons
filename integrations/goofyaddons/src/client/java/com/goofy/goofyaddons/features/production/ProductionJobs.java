@@ -54,11 +54,15 @@ public final class ProductionJobs {
     }
     /** Explicit player acknowledgement after inspecting an uncertain job; retains its evidence. */
     public Job acknowledgeReview(String prefix,String account)throws java.io.IOException {
+        return acknowledgeReview(prefix,account,id->false);
+    }
+    public Job acknowledgeReview(String prefix,String account,java.util.function.Predicate<String> retainedOrders)throws java.io.IOException {
         if(prefix==null || prefix.length()<8)throw new IllegalArgumentException("Use at least eight characters of the job ID");
         var matches=all().stream().filter(j->j.account().equals(account) && j.id().startsWith(prefix)).toList();
         if(matches.size()!=1 || matches.getFirst().state()!=State.REVIEW)
             throw new IllegalArgumentException("Name exactly one REVIEW job belonging to this account");
         var job=matches.getFirst();
+        if(retainedOrders.test(job.id()))throw new IllegalArgumentException("This job still owns retained Bazaar orders; reconcile those orders before acknowledging it");
         var acknowledged=acknowledged(job);
         put(acknowledged);return acknowledged;
     }

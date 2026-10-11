@@ -51,18 +51,18 @@ public final class ProductionCommands {
                 .then(ClientCommands.literal("acknowledge").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
                     var manager=FeatureManager.INSTANCE;var actions=new LiveActions();
                     if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()){actions.message("Stop production/trading before acknowledging a reviewed job.");return 0;}
-                    if(manager.production().hasRetainedOrders()){actions.message("Retained craft Bazaar orders still own items/coins; inspect and reconcile them before acknowledging the parent run.");return 0;}
                     try {
                         String account=new LiveWorld().username();
                         if(!new LiveWorld().inWorld())throw new IllegalArgumentException("Join the account whose job you reviewed");
                         String reference=StringArgumentType.getString(c,"job");
                         if(reference.equals("all")) {
+                            if(manager.production().hasRetainedOrders()){actions.message("Retained craft Bazaar orders still own items/coins. Acknowledge a specific reviewed ID without its own orders, or reconcile retained orders before acknowledging all.");return 0;}
                             var reviewed=manager.crafting().productionJobs().acknowledgeAllReviews(account);
                             actions.message(reviewed.size()+" REVIEW jobs acknowledged for this account. Evidence retained; active jobs unchanged; no item, purchase, sale or profit assumed.");
                             for(var job:reviewed)com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id()));
                             return 1;
                         }
-                        var job=manager.crafting().productionJobs().acknowledgeReview(reference,account);
+                        var job=manager.crafting().productionJobs().acknowledgeReview(reference,account,manager.production()::hasRetainedOrders);
                         long remaining=manager.crafting().journal().stream().filter(j->j.account().equals(account)&&j.state()==ProductionJobs.State.REVIEW).count();
                         actions.message("Review acknowledged for "+job.id().substring(0,8)+". "+remaining+" REVIEW jobs remain. Journal evidence retained; no item, purchase, sale or profit assumed.");
                         com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id()));return 1;

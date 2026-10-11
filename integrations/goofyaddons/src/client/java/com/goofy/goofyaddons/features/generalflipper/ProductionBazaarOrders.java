@@ -110,6 +110,14 @@ public final class ProductionBazaarOrders {
     public boolean needsMenu(){return engine.needsMenu();}
     public Map<String,Object> diagnosticState(){return engine.diagnosticState();}
     public boolean acknowledge(){return engine.consumeProduction();}
+    public boolean retained(String parent){
+        if(AccountStorage.INSTANCE.pinned()==null)return true;
+        bind();engine.restoreBudget();
+        return engine.hasStateError() || reviewBlockedByOrders(engine.productionPositions(),parent);
+    }
+    static boolean reviewBlockedByOrders(List<GeneralPosition> positions,String parent){
+        return parent==null || positions.stream().anyMatch(p->p.productionParent==null || parent.equals(p.productionParent));
+    }
     public boolean retained(){if(AccountStorage.INSTANCE.pinned()==null)return false;bind();engine.restoreBudget();return engine.hasRetainedPositions()||engine.hasStateError();}
     public void stop(){engine.stop();}
 }
