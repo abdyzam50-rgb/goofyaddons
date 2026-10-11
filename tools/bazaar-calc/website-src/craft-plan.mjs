@@ -89,9 +89,10 @@ export const strategyLabel=s=>`${STRATEGY[s][0]?'instant':'order'} → ${STRATEG
 const INSTANT_BUY_FEE=1.04,SALE_FLOOR=0.97;
 const INTERMEDIATES=BASIC;
 const BOOK=/^ENCHANTMENT_[A-Z][A-Z0-9_]*_(?:[1-9][0-9]?|100)$/;
-export function inventorySlotsForProduct(id,units){
+/** Books and catalogued unstackable items take one slot per unit; everything else stacks to 64. */
+export function inventorySlotsForProduct(id,units,unstackable=new Set()){
  if(units<0)throw new Error('Negative inventory quantity');
- return id!=null&&BOOK.test(id)?units:Math.floor((units+63)/64);
+ return id!=null&&(unstackable.has(id)||BOOK.test(id))?units:Math.floor((units+63)/64);
 }
 const sortedKeys=o=>Object.keys(o).sort((a,b)=>a<b?-1:a>b?1:0);
 function intermediate(byOutput,id){
@@ -196,6 +197,7 @@ export function rankLikeMod({catalog,market,ah,now,budget,minimumProfit,bazaarTa
  const products=market.products;if(!products||typeof products!=='object'){exclude('Bazaar products unavailable');return result;}
  const auctions=new Map();for(const row of Array.isArray(ah?.rows)?ah.rows:[])if(row&&typeof row.item==='string')auctions.set(row.item,row);
  const recipes=catalog.recipes,byOutput=indexRecipes(recipes),book=books(products),activity=new Map(),best=new Map();
+ const single=new Set(catalog.unstackable??[]);
  for(const recipe of recipes){
   if(recipe.kind!=='CRAFT')continue;
   const output=recipe.outputId,bz=Object.hasOwn(products,output),sale=bz?'BAZAAR':'AH';
@@ -210,13 +212,13 @@ export function rankLikeMod({catalog,market,ah,now,budget,minimumProfit,bazaarTa
    if(!preparations.has(batches)){const quantities={};for(const [id,n] of Object.entries(recipe.ingredients))quantities[id]=n*batches;preparations.set(batches,modPreparation(byOutput,quantities));}
    const preparation=preparations.get(batches);
    let reason=requirement;
-   const outputSlots=inventorySlotsForProduct(output,recipe.outputCount*batches);
+   const outputSlots=inventorySlotsForProduct(output,recipe.outputCount*batches,single);
    let slots=outputSlots,cost=0,orderWait=0,priced=true;
    for(const [id,units] of Object.entries(preparation.purchases)){
     const product=products[id];
     const amount=product&&typeof product==='object'&&!Array.isArray(product)?book.buy(strategy,id,units):null;
     if(amount===null){priced=false;break;}
-    cost+=amount;slots+=inventorySlotsForProduct(id,units);
+    cost+=amount;slots+=inventorySlotsForProduct(id,units,single);
     if(!instantBuy){
      if(!activity.has(id))activity.set(id,hourlyActivity(product));
      const rate=activity.get(id)*0.05;
@@ -227,7 +229,7 @@ export function rankLikeMod({catalog,market,ah,now,budget,minimumProfit,bazaarTa
    if(!priced||cost<=0){exclude('Missing input prices or insufficient buy depth',output);continue;}
    for(const craft of preparation.crafts){
     const mid=(byOutput.get(craft.output)??[]).find(r=>r.kind==='CRAFT');if(!mid)throw new Error('Missing intermediate');
-    slots=Math.max(slots,outputSlots+inventorySlotsForProduct(mid.outputId,mid.outputCount*craft.batches)+Object.entries(mid.ingredients).reduce((n,[id,q])=>n+inventorySlotsForProduct(id,q*craft.batches),0));
+    slots=Math.max(slots,outputSlots+inventorySlotsForProduct(mid.outputId,mid.outputCount*craft.batches,single)+Object.entries(mid.ingredients).reduce((n,[id,q])=>n+inventorySlotsForProduct(id,q*craft.batches,single),0));
    }
    if(slots>Math.max(0,freeSlots))reason='Insufficient empty inventory slots for inputs, intermediate crafts and output';
    let fee=0,net,liquidity,price=null;const units=recipe.outputCount*batches;

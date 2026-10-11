@@ -44,7 +44,7 @@ public final class ProductionLoopFeature implements Feature {
     double selectionBudget(double purse){return availableFor(null,purse)/Math.max(1,GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts-work.size());}
     int reservedInventorySlots(MenuSnapshot menu) {
         return CraftPortfolioInventory.reserved(menu,work.stream().map(w->new CraftPortfolioInventory.Allocation(
-            w.run.stage()==ProductionLoop.Stage.SELL?CraftFlipPlanner.inventorySlotsForProduct(w.run.output(),w.run.outputUnits()):w.inventorySlots,w.run.lockedProducts())).toList());
+            w.run.stage()==ProductionLoop.Stage.SELL?CraftFlipPlanner.inventorySlotsForProduct(RecipeCatalog.instance(),w.run.output(),w.run.outputUnits()):w.inventorySlots,w.run.lockedProducts())).toList());
     }
     public void refreshSelection(){selection.refresh();}
     public Map<String,Object> craftPlan(){

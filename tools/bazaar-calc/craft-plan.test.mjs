@@ -108,3 +108,11 @@ test('free inventory slots limit batches exactly like the mod',()=>{
  const [full]=planCrafts({...options,maxBatches:64,budget:1e9,freeSlots:36}),[tight]=planCrafts({...options,maxBatches:64,budget:1e9,freeSlots:2});
  assert.ok(full.inventorySlots<=36);assert.ok(tight.inventorySlots<=2||!tight.eligible);
 });
+
+test('unstackable catalogue items take one inventory slot per unit',async()=>{
+ const {inventorySlotsForProduct}=await import('./website-src/craft-plan.mjs');
+ const single=new Set(['SUPER_COMPACTOR_3000']);
+ assert.equal(inventorySlotsForProduct('SUPER_COMPACTOR_3000',13,single),13);
+ assert.equal(inventorySlotsForProduct('ENCHANTED_MITHRIL',728,single),12);
+ assert.equal(inventorySlotsForProduct('ENCHANTMENT_SHARPNESS_1',3),3);
+});

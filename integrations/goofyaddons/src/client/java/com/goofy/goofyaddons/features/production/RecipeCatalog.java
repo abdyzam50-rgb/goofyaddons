@@ -9,15 +9,18 @@ public final class RecipeCatalog {
     private final Map<String,String> names;
     public record UnsupportedCraft(String key,String outputId,String reason) {}
     private final List<UnsupportedCraft> unsupported;
+    /** Items that take one inventory slot per unit (accessories, minion upgrades, gear). */
+    private final Set<String> unstackable;
     // Planners look recipes up per candidate batch; a linear catalog scan there costs whole seconds per ranking.
     private final Map<String,List<ProductionRecipe>> byOutput;
     private final Map<String,ProductionRecipe> byKey;
-    public RecipeCatalog(List<ProductionRecipe> recipes,Map<String,String> names){this(recipes,names,List.of());}
-    private RecipeCatalog(List<ProductionRecipe> recipes,Map<String,String> names,List<UnsupportedCraft> unsupported){this.recipes=List.copyOf(recipes);this.names=Map.copyOf(names);this.unsupported=List.copyOf(unsupported);
+    public RecipeCatalog(List<ProductionRecipe> recipes,Map<String,String> names){this(recipes,names,List.of(),Set.of());}
+    private RecipeCatalog(List<ProductionRecipe> recipes,Map<String,String> names,List<UnsupportedCraft> unsupported,Set<String> unstackable){this.recipes=List.copyOf(recipes);this.names=Map.copyOf(names);this.unsupported=List.copyOf(unsupported);this.unstackable=Set.copyOf(unstackable);
         var outputs=new HashMap<String,List<ProductionRecipe>>();var keys=new HashMap<String,ProductionRecipe>();
         for(var recipe:this.recipes){outputs.computeIfAbsent(recipe.outputId(),id->new ArrayList<>()).add(recipe);keys.putIfAbsent(recipe.key(),recipe);}
         outputs.replaceAll((id,list)->List.copyOf(list));byOutput=Map.copyOf(outputs);byKey=Map.copyOf(keys);}
     public List<UnsupportedCraft> unsupportedCrafts(){return unsupported;}
+    public boolean unstackable(String id){return id!=null && unstackable.contains(id);}
     public static RecipeCatalog instance(){return Holder.INSTANCE;}
     public List<ProductionRecipe> recipes(){return recipes;}
     public List<ProductionRecipe> forOutput(String id){return id==null?List.of():byOutput.getOrDefault(id,List.of());}
@@ -62,6 +65,8 @@ public final class RecipeCatalog {
             var row=value.getAsJsonObject();
             unsupported.add(new UnsupportedCraft(row.get("key").getAsString(),row.get("outputId").getAsString(),row.get("reason").getAsString()));
         }
-        return new RecipeCatalog(recipes,names,unsupported);
+        var single=new HashSet<String>();
+        if(root.has("unstackable"))for(var value:root.getAsJsonArray("unstackable"))single.add(value.getAsString());
+        return new RecipeCatalog(recipes,names,unsupported,single);
     }
 }

@@ -398,6 +398,37 @@
     "inputPet": null
    },
    {
+    "key": "craft:GADGET:0",
+    "kind": "CRAFT",
+    "outputId": "GADGET",
+    "outputCount": 1,
+    "ingredients": {
+     "SMELTER": 1,
+     "A": 56
+    },
+    "grid": [
+     {
+      "id": "SMELTER",
+      "count": 1
+     },
+     {
+      "id": "A",
+      "count": 56
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
     "key": "forge:IGNORED:0",
     "kind": "FORGE",
     "outputId": "IGNORED",
@@ -411,6 +442,10 @@
     "requirement": "",
     "inputPet": null
    }
+  ],
+  "unstackable": [
+   "SMELTER",
+   "GADGET"
   ]
  },
  "market": {
@@ -854,6 +889,88 @@
      "sellMovingWeek": 500000
     }
    },
+   "SMELTER": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 2000,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 2020,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 2040,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 1900,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 1881,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 1862,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 400000,
+     "sellMovingWeek": 380000
+    }
+   },
+   "GADGET": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 16000,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 16160,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 16320,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 15200,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 15048,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 14896,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 300000,
+     "sellMovingWeek": 280000
+    }
+   },
    "NO_SELL": {
     "product_id": "NO_SELL",
     "buy_summary": [
@@ -981,6 +1098,20 @@
       "eligible": true,
       "reason": null,
       "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:GADGET:0",
+      "batches": 12,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 33195.20256,
+      "profit": 141521.19744,
+      "score": 1040.5970399999999,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 35,
       "binPrice": null,
       "fee": 0
      },
@@ -1170,6 +1301,20 @@
       "fee": 0
      },
      {
+      "recipeKey": "craft:GADGET:0",
+      "batches": 12,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 33195.20256,
+      "profit": 141521.19744,
+      "score": 1040.5970399999999,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 35,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
       "recipeKey": "craft:ENCHANTMENT_TEST_1:0",
       "batches": 34,
       "venue": "BAZAAR",
@@ -1308,6 +1453,20 @@
       "eligible": false,
       "reason": "Whole batch exceeds spendable budget",
       "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:GADGET:0",
+      "batches": 2,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 5532.53376,
+      "profit": 23586.866240000003,
+      "score": 222.51760603773587,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 6,
       "binPrice": null,
       "fee": 0
      },

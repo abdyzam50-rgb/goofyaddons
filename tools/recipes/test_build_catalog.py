@@ -3,9 +3,18 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from build_catalog import build, import_recipe, canonical_id, parsed_requirements, merge_requirements
+from build_catalog import build, import_recipe, canonical_id, parsed_requirements, merge_requirements, unstackable
 
 class CatalogImportTest(unittest.TestCase):
+    def test_unstackable_items_come_from_lore_type_and_category(self):
+        item = lambda name, lore: {'internalname': name, 'lore': lore}
+        self.assertTrue(unstackable(item('SUPER_COMPACTOR_3000', ['§8Minion Upgrade', '', '§9§lRARE'])))
+        self.assertTrue(unstackable(item('ASPECT_OF_THE_END', ['§7Damage: §c+100', '§9§lRARE SWORD'])))
+        self.assertTrue(unstackable(item('COAL_GENERATOR_4', ['§9§lRARE'])))
+        self.assertFalse(unstackable(item('ENCHANTED_MITHRIL', ['§8Collection Item', '', '§9§lRARE DWARVEN METAL'])))
+        self.assertFalse(unstackable(item('HOTSPOT_BAIT', ['§8Fishing Bait', '§9§lRARE BAIT'])))
+        self.assertFalse(unstackable(item('ENCHANTED_PAPER', ['§a§lUNCOMMON'])))
+
     def test_variant_and_book_ids_use_hypixel_ids(self):
         self.assertEqual('LOG:1', canonical_id('LOG-1', set()))
         self.assertEqual('ENCHANTMENT_SHARPNESS_4', canonical_id('SHARPNESS;4', {'SHARPNESS'}))
