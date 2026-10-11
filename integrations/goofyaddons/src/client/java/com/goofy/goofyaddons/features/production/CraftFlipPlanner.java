@@ -81,13 +81,13 @@ final class CraftFlipPlanner {
                 if(menu.countInInventory(recipe.outputId())>0)reason="Output already held; move it before automatic production";
                 if(blocked.contains(recipe.outputId())||preparation.products().stream().anyMatch(blocked::contains))reason="Product belongs to another position or unresolved production job";
                 String conflict=CompactorClearance.unreadable(menu);if(conflict!=null)reason=conflict;
-                int outputSlots=(Math.multiplyExact(recipe.outputCount(),batches)+63)/64;
+                int outputSlots=inventorySlotsForProduct(recipe.outputId(),Math.multiplyExact(recipe.outputCount(),batches));
                 int slots=outputSlots;double cost=0,orderWait=0;boolean priced=true;
                 for(var entry:preparation.purchases().entrySet()) {
                     var product=products.get(entry.getKey());
                     Double amount=product!=null&&product.isJsonObject()?strategy.buy(product.getAsJsonObject(),entry.getValue()):null;
                     if(amount==null){priced=false;break;}
-                    cost+=amount;slots+=(entry.getValue()+63)/64;
+                    cost+=amount;slots+=inventorySlotsForProduct(entry.getKey(),entry.getValue());
                     if(!strategy.instantBuy) {
                         double rate=hourlyActivity(product.getAsJsonObject())*0.05;
                         if(rate<=0){reason="Input order activity unavailable";}
@@ -99,8 +99,8 @@ final class CraftFlipPlanner {
                 if(!priced||cost<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Missing input prices or insufficient buy depth");continue;}
                 for(var craft:preparation.crafts()) {
                     var intermediate=catalog.forOutput(craft.output()).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
-                    slots=Math.max(slots,outputSlots+(intermediate.outputCount()*craft.batches()+63)/64+
-                        intermediate.ingredients().entrySet().stream().mapToInt(e->(e.getValue()*craft.batches()+63)/64).sum());
+                    slots=Math.max(slots,outputSlots+inventorySlotsForProduct(intermediate.outputId(),Math.multiplyExact(intermediate.outputCount(),craft.batches()))+
+                        intermediate.ingredients().entrySet().stream().mapToInt(e->inventorySlotsForProduct(e.getKey(),Math.multiplyExact(e.getValue(),craft.batches()))).sum());
                 }
                 if(slots>Math.max(0,menu.emptyInventorySlots()-reservedSlots))reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;
@@ -139,6 +139,11 @@ final class CraftFlipPlanner {
             }catch(RuntimeException malformed){exclude(excluded,excludedByOutput,recipe.outputId(),"Malformed quote or unsupported recipe: "+malformed.getClass().getSimpleName());}
         }
         return best.values().stream().sorted(Comparator.comparingDouble(Route::score).reversed().thenComparing(r->r.recipe().key())).toList();
+    }
+    /** Books can be unstackable; reserve every unit until an actual stack proves otherwise. */
+    static int inventorySlotsForProduct(String id,int units) {
+        if(units<0)throw new IllegalArgumentException("Negative inventory quantity");
+        return id!=null && id.matches("ENCHANTMENT_[A-Z][A-Z0-9_]*_(?:[1-9][0-9]?|100)")?units:Math.toIntExact((units+63L)/64);
     }
     private static double hourlyActivity(JsonObject product) {
         var quick=product.getAsJsonObject("quick_status");

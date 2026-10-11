@@ -11,7 +11,7 @@ final class CraftPortfolioInventory {
         if(menu==null)return 36;
         int reserved=4; // The shared claim engine retains four empty slots.
         for(var job:jobs) {
-            long occupied=menu.slots().stream().filter(s->s.inPlayerInventory() && s.containerSlot()<36 && !s.empty() && job.products().contains(s.customId())).count();
+            long occupied=menu.slots().stream().filter(s->s.inPlayerInventory() && s.containerSlot()<36 && !s.empty() && job.products().contains(s.bazaarProductId())).count();
             reserved+=Math.max(0,job.requiredSlots()-(int)occupied);
         }
         return reserved;

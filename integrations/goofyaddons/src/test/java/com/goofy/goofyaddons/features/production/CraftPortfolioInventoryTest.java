@@ -21,4 +21,15 @@ class CraftPortfolioInventoryTest {
         assertEquals(16,CraftPortfolioInventory.reserved(menu,List.of(new CraftPortfolioInventory.Allocation(12,Set.of("INPUT_B")))));
         assertEquals(36,CraftPortfolioInventory.reserved(null,List.of()));
     }
+    @Test void onlyAnExactBookVariantOccupiesItsCraftWorkspaceReservation() {
+        var allocation=List.of(new CraftPortfolioInventory.Allocation(1,Set.of("ENCHANTMENT_QUICK_BITE_1")));
+        var exact=com.goofy.goofyaddons.menu.SlotView.enchantedBook(54,true,0,"quick_bite",1,List.of(),"Enchanted Book");
+        var higher=com.goofy.goofyaddons.menu.SlotView.enchantedBook(54,true,0,"quick_bite",2,List.of(),"Enchanted Book");
+        var combined=new com.goofy.goofyaddons.menu.SlotView(54,true,0,false,"Enchanted Book","Enchanted Book",List.of(),
+            com.goofy.goofyaddons.menu.SlotView.ENCHANTED_BOOK,Map.of("quick_bite",1,"sharpness",5),1,1);
+        assertEquals(4,CraftPortfolioInventory.reserved(ProductionRunTest.menu(null,exact),allocation),
+            "An owned exact output replaces its future slot reservation");
+        assertEquals(5,CraftPortfolioInventory.reserved(ProductionRunTest.menu(null,higher),allocation));
+        assertEquals(5,CraftPortfolioInventory.reserved(ProductionRunTest.menu(null,combined),allocation));
+    }
 }

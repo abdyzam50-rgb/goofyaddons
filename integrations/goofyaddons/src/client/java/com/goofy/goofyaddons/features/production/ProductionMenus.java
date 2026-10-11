@@ -11,7 +11,7 @@ public final class ProductionMenus {
     public record ForgeSlot(int slot,String productId,String name,long remainingSeconds,boolean complete) {}
     private static final Pattern TIME=Pattern.compile("^Time Remaining: (Completed!|(?:(\\d+)d ?)?(?:(\\d+)h ?)?(?:(\\d+)m ?)?(?:(\\d+)s)?)$");
     private static final Pattern COINS=Pattern.compile("(?i)^(?:Item price|Price|BIN Price|Buy it now|Cost|Total cost):\\s*([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?) coins[!.]?$",Pattern.MULTILINE);
-    public static String productId(SlotView slot){return slot==null?null:"PET".equals(slot.customId())?slot.metadata().petVariant():slot.customId();}
+    public static String productId(SlotView slot){return slot==null?null:"PET".equals(slot.customId())?slot.metadata().petVariant():slot.bazaarProductId();}
     public static List<ForgeSlot> forgeSlots(MenuSnapshot menu) {
         if(menu==null || !"The Forge".equals(Chat.strip(menu.title())))return List.of();
         var result=new ArrayList<ForgeSlot>();

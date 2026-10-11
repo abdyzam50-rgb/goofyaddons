@@ -169,4 +169,44 @@ class CraftFlipPlannerTest {
         }
     }
 
+    @Test void unstackableBookInputsAndOutputsReduceBatchSizeBeforeOrdersArePlaced() {
+        var plain=limitedInventoryRank(new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",2,"")),Map.of()),capacityMarket(),6);
+        assertTrue(plain.eligible(),plain.reason());assertEquals(16,plain.batches());assertEquals(2,plain.inventorySlots());
+        String book="ENCHANTMENT_QUICK_BITE_1";
+
+        var outputMarket=capacityMarket();var outputProducts=outputMarket.getAsJsonObject("products");
+        outputProducts.add(book,outputProducts.remove("OUTPUT"));
+        var output=limitedInventoryRank(new RecipeCatalog(List.of(recipe(book,"INPUT",2,"")),Map.of()),outputMarket,6);
+        assertTrue(output.eligible(),output.reason());assertEquals(5,output.batches());assertEquals(6,output.inventorySlots(),"Five output books plus one ingredient stack");
+
+        var inputMarket=capacityMarket();var inputProducts=inputMarket.getAsJsonObject("products");
+        inputProducts.add(book,inputProducts.remove("INPUT"));
+        var input=limitedInventoryRank(new RecipeCatalog(List.of(recipe("OUTPUT",book,2,"")),Map.of()),inputMarket,6);
+        assertTrue(input.eligible(),input.reason());assertEquals(2,input.batches());assertEquals(5,input.inventorySlots(),"Four ingredient books plus one output stack");
+    }
+
+    @Test void intermediateCraftWorkspaceIncludesEveryUnstackableBookInput() {
+        String book="ENCHANTMENT_QUICK_BITE_1";
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,null));grid.set(0,new ProductionRecipe.Ingredient(book,2));
+        var intermediate=new ProductionRecipe("synthetic:STICK",ProductionRecipe.Kind.CRAFT,"STICK",4,Map.of(book,2),grid,0,0,"",null);
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","STICK",2,""),intermediate),Map.of());
+        var market=capacityMarket();var products=market.getAsJsonObject("products");products.add(book,products.remove("INPUT"));
+        var route=limitedInventoryRank(catalog,market,6);
+        assertTrue(route.eligible(),route.reason());assertEquals(4,route.batches());
+        assertEquals(6,route.inventorySlots(),"Four books, one intermediate output stack and one final output stack share the workspace");
+    }
+
+    private static JsonObject capacityMarket() {
+        var market=market(10000);
+        for(var value:market.getAsJsonObject("products").asMap().values()) {
+            var quick=value.getAsJsonObject().getAsJsonObject("quick_status");
+            quick.addProperty("buyMovingWeek",10000000);quick.addProperty("sellMovingWeek",10000000);
+        }
+        return market;
+    }
+    private static CraftFlipPlanner.Route limitedInventoryRank(RecipeCatalog catalog,JsonObject market,int emptySlots) {
+        return CraftFlipPlanner.rank(catalog,market,null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),1000000,
+            1,1.25,16,"BAZAAR",NOW,new LinkedHashMap<>(),36-emptySlots,"INSTANT_INSTANT").getFirst();
+    }
+
 }

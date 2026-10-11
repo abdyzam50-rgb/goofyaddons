@@ -14,6 +14,7 @@ public class CapitalManager {
     private double limit = 300_000_000;
     private double reserve = 50_000_000;
     private long lastPurchaseMs;
+    private static final java.util.regex.Pattern BOOK_VARIANT=java.util.regex.Pattern.compile("^(ENCHANTMENT_[A-Z][A-Z0-9_]*)_([1-9][0-9]*)$");
 
     public CapitalManager() { this(System::currentTimeMillis); }
     CapitalManager(LongSupplier clock) { this.clock = clock; }
@@ -72,13 +73,21 @@ public class CapitalManager {
         return null;
     }
     public int positionCount() { return allocations.size(); }
-    public Set<String> occupiedProducts() { return Set.copyOf(allocations.keySet()); }
+    public Set<String> occupiedProducts() {
+        var products=new java.util.HashSet<>(allocations.keySet());
+        for(String held:allocations.keySet()) {
+            String base=bookVariantBase(held);
+            if(base!=null)products.add(base);
+            else if(baseBookRoute(held))for(int level=1;level<=100;level++)products.add(held+"_"+level);
+        }
+        return Set.copyOf(products);
+    }
     public int ownerPositionCount(String owner) {
         return (int) allocations.values().stream().filter(a -> a.owner().equals(owner)).count();
     }
 
     public boolean reserve(String owner, String product, double cost, double purse) {
-        if (!Double.isFinite(cost) || cost <= 0 || allocations.containsKey(product)
+        if (!Double.isFinite(cost) || cost <= 0 || occupied(product)
                 || cost > available(purse)) return false;
         allocations.put(product, new Allocation(owner, cost, cost, 0.0));
         return true;
@@ -95,7 +104,23 @@ public class CapitalManager {
     }
 
     public boolean occupied(String product) {
-        return allocations.containsKey(product);
+        if(allocations.containsKey(product))return true;
+        String base=bookVariantBase(product);
+        if(base!=null)return allocations.containsKey(base);
+        return baseBookRoute(product) && allocations.keySet().stream().anyMatch(held->product.equals(bookVariantBase(held)));
+    }
+
+    private static String bookVariantBase(String product) {
+        if(product==null)return null;
+        var match=BOOK_VARIANT.matcher(product);if(!match.matches())return null;
+        try{return Integer.parseInt(match.group(2))<=100?match.group(1):null;}
+        catch(NumberFormatException invalid){return null;}
+    }
+
+    private static boolean baseBookRoute(String product) {
+        if(product==null || !product.matches("ENCHANTMENT_[A-Z][A-Z0-9_]*"))return false;
+        String suffix=product.substring(product.lastIndexOf('_')+1);
+        return !suffix.matches("[0-9]+");
     }
 
     public void restore(String owner, String product, double cost, boolean pending) {

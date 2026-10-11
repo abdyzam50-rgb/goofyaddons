@@ -29,6 +29,11 @@ public final class RouteRequirements {
         return null;
     }
     private RouteRequirements() {}
+    /** Exact Bazaar display name from the same bundled enchantment rules as the unlocks. */
+    public static String bookName(String id) {
+        var rule=BOOKS.getAsJsonObject(id);
+        return rule==null?null:rule.get("name").getAsString();
+    }
     public static String book(String id,Map<String,Integer> skills) {
         var rule=BOOKS.getAsJsonObject(id);
         if(rule==null || rule.get("minimumEnchanting").isJsonNull())return "Enchanting requirement is unverified for "+id;

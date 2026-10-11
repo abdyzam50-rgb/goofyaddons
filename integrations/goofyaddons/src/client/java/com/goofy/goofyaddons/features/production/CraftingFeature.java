@@ -41,8 +41,8 @@ public final class CraftingFeature implements Feature {
         var menu=new LiveWorld().menu();
         if(menu==null || !menu.cursorEmpty()){new LiveActions().message("Clear the cursor before queueing crafting.");return false;}
         var counts=new HashMap<String,Integer>();
-        for(var slot:menu.slots())if(slot.inPlayerInventory() && slot.containerSlot()<36 && !slot.empty() && slot.customId()!=null)
-            counts.merge(slot.customId(),slot.count(),Integer::sum);
+        for(var slot:menu.slots())if(slot.inPlayerInventory() && slot.containerSlot()<36 && !slot.empty() && slot.bazaarProductId()!=null)
+            counts.merge(slot.bazaarProductId(),slot.count(),Integer::sum);
         var manager=FeatureManager.INSTANCE;
         var catalog=RecipeCatalog.instance();
         if(recipeKey!=null)catalog=new RecipeCatalog(catalog.recipes().stream().filter(r->r.key().equals(recipeKey)&&r.outputId().equals(output)).toList(),Map.of());

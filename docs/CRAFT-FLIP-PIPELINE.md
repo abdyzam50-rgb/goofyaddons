@@ -1273,3 +1273,46 @@ The pipeline audit also corrected three efficiency gaps:
 - Accept the validated 1–64 craft-batch setting in the actual runtime and manual craft command. The previous runtime limit of 16 could reject a valid ranked route. Forge and Kat command limits are unchanged.
 
 Sell status now exposes the child’s current order step or profit-floor wait. Debug snapshots include accumulated sold units, receipt event, unknown-proceeds state, and repricing events. GUI actions remain sequential and require acknowledgements. When fills or ownership cannot be proven, the macro retains the position for review rather than guessing. Live-game timing still needs gameplay verification.
+
+### 0.2.79 — Exact crafted-book variants
+
+Crafting and production inventory now identify a single-enchantment book from
+its raw `ENCHANTED_BOOK` ID plus its exact enchantment key and level. For example,
+`quick_bite:1` counts as `ENCHANTMENT_QUICK_BITE_1`; Quick Bite II and books with
+additional enchantments cannot satisfy that recipe, result or sale. Ordinary
+book combining still reads the original raw book identity.
+
+The same variant travels through ingredient selection, cursor/grid checks,
+Quick Crafting, consumed-input/output receipts, held-product locks, production
+buy-order baselines and sell-offer handoffs. Production-scoped Bazaar order
+journals accept canonical book products; ordinary general flipping keeps its
+existing book exclusion. Search results and product icons require exact book
+metadata. Search and receipt names come from the bundled enchantment rules,
+including `Quick Bite I`, `Turbo-Cane I` and `Ultimate Wise V`, rather than the
+catalog's generic `Enchanted Book` label. Unsupported names remain explicit IDs.
+
+When a full recipe grid has no verified result for eight seconds, the executor
+retains the ingredients and reports the expected and observed result identity.
+A `production.craft_result_wait` diagnostic records the first such observation;
+a delayed correct result can still complete within that interval. The
+`production.craft_result_submit` event retains the raw ID and enchantment
+metadata of the result before its shift-click.
+
+The 0.2.78 diagnostic session verified three repriced offers and their coin
+claims (Condensed Helianthus, two Flawless Sapphire Gemstones and sixteen Match
+Sticks), totaling approximately 1.57M coins of confirmed profit. Its Quick Bite
+inputs were placed in the grid, but no result click appeared before restart.
+The exact historical result-slot metadata was not retained in that export;
+regression tests reproduce the raw-book/catalog-variant mismatch independently.
+This update retains both interrupted Quick Bite review jobs and their original
+cost evidence. After stopping, inspecting the returned ingredients and checking
+for retained orders, acknowledge the specific parent `3767fc85` and crafting
+child `7094be8a` to unblock new selection. No purchase, craft or profit is assumed
+by acknowledgement.
+
+Book slots are conservatively budgeted at one item per inventory slot. A held
+exact output variant counts toward its allocated workspace; other levels and
+multi-enchantment books do not. Existing book-flipper reservations use a family
+ID, so that reservation also blocks crafting or ordering any of its levels.
+Exact craft-level reservations block the family combining route while retaining
+their original costs and quantities in the capital ledger.

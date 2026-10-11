@@ -211,7 +211,7 @@ public record MenuSnapshot(int containerId, String title, boolean cursorEmpty, L
         int count = 0;
         for (SlotView slot : slots) {
             if (!slot.inPlayerInventory() || slot.empty()) continue;
-            if (customId.equals(slot.customId())) count += slot.count();
+            if (matchesProduct(slot,customId)) count += slot.count();
         }
         return count;
     }
@@ -226,7 +226,7 @@ public record MenuSnapshot(int containerId, String title, boolean cursorEmpty, L
         int limit = 1;
         if (customId == null) return limit;
         for (SlotView slot : slots) {
-            if (slot.empty() || !customId.equals(slot.customId())) continue;
+            if (slot.empty() || !matchesProduct(slot,customId)) continue;
             limit = Math.max(1, Math.min(64, slot.maxStackSize()));
         }
         return limit;
@@ -238,10 +238,14 @@ public record MenuSnapshot(int containerId, String title, boolean cursorEmpty, L
         int space = 0;
         for (SlotView slot : slots) {
             if (!ownInventorySlot(slot) || slot.empty()) continue;
-            if (!customId.equals(slot.customId())) continue;
+            if (!matchesProduct(slot,customId)) continue;
             space += Math.max(0, slot.maxStackSize() - slot.count());
         }
         return space;
+    }
+
+    private static boolean matchesProduct(SlotView slot,String requested) {
+        return requested.equals(slot.customId()) || requested.equals(slot.bazaarProductId());
     }
 
     /**

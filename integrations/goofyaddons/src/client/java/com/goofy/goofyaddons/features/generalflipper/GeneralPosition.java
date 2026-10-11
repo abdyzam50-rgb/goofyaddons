@@ -36,6 +36,15 @@ public final class GeneralPosition {
     double cost() { return quantity * unitCost; }
     int acquiredInventory(int total) { return total - (productionBuy ? productionInventoryBefore : 0); }
 
+    /** Ordinary flips keep books in their own engine; scoped craft jobs may use one exact Bazaar enchantment. */
+    static boolean validProduct(String id,boolean production) {
+        if(id==null || !id.matches("[A-Z0-9_]+"))return false;
+        if(!id.startsWith("ENCHANTMENT_"))return true;
+        if(!production || !id.matches("ENCHANTMENT_[A-Z][A-Z0-9_]*_[1-9][0-9]*"))return false;
+        try{return Integer.parseInt(id.substring(id.lastIndexOf('_')+1))<=100;}
+        catch(NumberFormatException invalid){return false;}
+    }
+
     /** Validate the full batch before an engine can adopt any ownership from a storage adapter. */
     static java.util.List<GeneralPosition> validated(java.util.List<GeneralPosition> positions) {
         if (positions == null) throw new IllegalArgumentException("Missing order state");
@@ -45,7 +54,7 @@ public final class GeneralPosition {
             if (position == null || position.item == null || position.item.id() == null || position.item.name() == null
                     || position.quantity <= 0 || position.quantity > 4096 || !Double.isFinite(position.unitCost)
                     || position.unitCost <= 0 || !Double.isFinite(position.cost())
-                    || !position.item.id().matches("[A-Z0-9_]+") || position.item.id().startsWith("ENCHANTMENT_")
+                    || !validProduct(position.item.id(),position.productionParent!=null)
                     || position.item.name().isBlank()
                     || position.confirmedCancelRefund != null && (!position.cancelRequested || position.stage != GeneralPosition.Stage.BUY_ORDER
                         || !position.purchasePriceKnown || !Double.isFinite(position.confirmedCancelRefund)

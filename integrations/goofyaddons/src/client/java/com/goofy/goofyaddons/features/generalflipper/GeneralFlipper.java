@@ -750,7 +750,7 @@ public class GeneralFlipper implements Feature {
             ||basket==null||basket.isEmpty()||positions.size()+basket.size()>32
             ||positions.stream().anyMatch(p->java.util.Objects.equals(parent,p.productionParent)))return false;
         var ids=new java.util.HashSet<String>();
-        for(var order:basket)if(order==null||order.product()==null||!order.product().matches("[A-Z0-9_]+")||order.product().startsWith("ENCHANTMENT_")
+        for(var order:basket)if(order==null||!GeneralPosition.validProduct(order.product(),true)
             ||order.name()==null||order.name().isBlank()||!ids.add(order.product())||capital.occupied(order.product())
             ||order.units()<1||order.units()>4096||!Double.isFinite(order.price())||order.price()<=0
             ||!Double.isFinite(order.limit())||order.limit()<order.price())return false;
@@ -770,6 +770,7 @@ public class GeneralFlipper implements Feature {
     boolean enqueueProduction(String parent,String id,String name,int units,double unitPrice,boolean buy,double limit) {
         restoreBudget();observe();
         if(parent!=null && (!services.productionOnly() || !parent.matches("[A-Za-z0-9_-]{8,80}")))return false;
+        if(!GeneralPosition.validProduct(id,services.productionOnly()&&parent!=null) || name==null || name.isBlank())return false;
         if(blocked||paused||(parent==null?!positions.isEmpty():positions.size()>=32 || positions.stream().anyMatch(p->java.util.Objects.equals(p.productionParent,parent)))||units<1||units>4096||unitPrice<=0||!Double.isFinite(unitPrice))return false;
         if(buy && parent==null && itemCount(id)>0 || !buy && itemCount(id)!=units || capital.occupied(id))return false;
         if(buy && !capital.reserve(OWNER,id,units*unitPrice,services.purse()))return false;

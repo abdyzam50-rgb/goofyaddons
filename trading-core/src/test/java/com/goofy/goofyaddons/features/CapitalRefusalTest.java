@@ -9,6 +9,45 @@ import static org.junit.jupiter.api.Assertions.*;
  * that the diagnosis agrees with the decision {@link CapitalManager#resize} actually makes.
  */
 class CapitalRefusalTest {
+    @Test void combiningRouteBlocksEveryExactCraftBookLevelWithoutDuplicatingItsCapital() {
+        CapitalManager c=ledger(10000,0);String base="ENCHANTMENT_QUICK_BITE";
+        assertTrue(c.reserve("books",base,1000,10000));
+        assertTrue(c.occupied(base+"_1"));assertTrue(c.occupied(base+"_100"));
+        assertFalse(c.reserve("craft",base+"_1",500,10000));
+        assertTrue(c.occupiedProducts().containsAll(java.util.Set.of(base,base+"_1",base+"_100")));
+        assertFalse(c.occupied(base+"_101"));assertFalse(c.occupiedProducts().contains(base+"_101"));
+        assertEquals(1,c.positionCount());assertEquals(1000,c.committed());assertEquals(1000,c.pending());
+        assertEquals(1000,c.cost("books",base));assertEquals(0,c.cost("books",base+"_1"));
+        assertFalse(c.owns("books",base+"_1"));
+        c.release("craft",base);c.release("books",base+"_1");assertEquals(1,c.positionCount());
+        c.release("books",base);assertEquals(0,c.positionCount());assertTrue(c.occupiedProducts().isEmpty());
+    }
+
+    @Test void exactCraftBooksBlockTheCombiningRouteButDistinctLevelsKeepIndependentOwnership() {
+        CapitalManager c=ledger(10000,0);String base="ENCHANTMENT_QUICK_BITE";
+        assertTrue(c.reserve("craft",base+"_1",1000,10000));
+        assertTrue(c.occupied(base));assertFalse(c.reserve("books",base,500,10000));
+        assertFalse(c.occupied(base+"_2"));assertFalse(c.occupiedProducts().contains(base+"_2"));
+        assertTrue(c.reserve("craft-second",base+"_2",2000,10000));
+        assertEquals(2,c.positionCount());assertEquals(3000,c.committed());assertEquals(3000,c.pending());
+        c.purchased("craft",base+"_1");assertEquals(1000.0,c.funded());
+        c.release("books",base);assertEquals(2,c.positionCount());
+        c.release("craft",base+"_1");assertTrue(c.occupied(base));assertFalse(c.occupied(base+"_1"));
+        assertEquals(2000,c.cost("craft-second",base+"_2"));assertEquals(1,c.positionCount());
+        c.release("craft-second",base+"_2");assertFalse(c.occupied(base));assertEquals(0,c.committed());
+    }
+
+    @Test void restoringHistoricalBookAliasesRetainsEachOriginalCostAndExactOwner() {
+        CapitalManager c=ledger(10000,0);String base="ENCHANTMENT_QUICK_BITE";
+        c.restore("books",base,1000,false);c.restore("craft",base+"_1",2000,true);
+        assertEquals(2,c.positionCount());assertEquals(3000,c.committed());assertEquals(2000,c.pending());
+        assertEquals(1000,c.cost("books",base));assertEquals(2000,c.cost("craft",base+"_1"));
+        assertEquals(2,c.fundingUnknown());assertNull(c.funded());
+        assertFalse(c.reserve("new-craft",base+"_2",500,10000));
+        c.release("books",base);assertEquals(1,c.positionCount());assertEquals(2000,c.committed());
+        assertTrue(c.occupied(base));assertTrue(c.occupied(base+"_1"));assertFalse(c.occupied(base+"_2"));
+        c.release("craft",base+"_1");assertEquals(0,c.positionCount());assertEquals(0,c.pending());
+    }
     @Test void cancelledPartialBooksReleaseFundedEscrowButKeepFutureBudgetSafety() {
         CapitalManager c=new CapitalManager();c.configure(10000,0);
         assertTrue(c.reserve("books","GREEN_THUMB",6000,10000));

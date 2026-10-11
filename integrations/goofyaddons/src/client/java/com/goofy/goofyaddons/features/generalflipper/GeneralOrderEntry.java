@@ -63,7 +63,7 @@ final class GeneralOrderEntry {
             return;
         }
         if (create < 0 && ctx.menu("Bazaar")) {
-            int item = ctx.find(active.item.name(), true);
+            int item = searchResult(ctx);
             if (item >= 0) ctx.click(item);
         }
     }
@@ -105,6 +105,10 @@ final class GeneralOrderEntry {
         if (!side.confirmationPreconditions(ctx)) return;
         int confirm = 13;
         if (!ctx.loadedSlot(confirm)) return;
+        if(active.item.id().startsWith("ENCHANTMENT_") && view.slot(confirm).enchantedBook()
+            && !com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(view.slot(confirm),active.item.id())) {
+            ctx.fail("Confirmation enchantment or level differs from the crafted book; no order submitted.");return;
+        }
         if (!confirmationStability.ready(view.containerId(),
                 view.title() + "\n" + view.slot(confirm).hoverName() + "\n" + ctx.lore(confirm),
                 !ctx.lore(confirm).isBlank(), ctx.now())) return;
@@ -165,12 +169,12 @@ final class GeneralOrderEntry {
                 if (reason == null && icon != null) reason = BazaarAccess.unmet(icon.lore());
             } else {
                 var icon = view.slot(13);
-                if (icon != null && !icon.inPlayerInventory() && !icon.empty() && (active.item.id().equals(icon.customId())
-                        || active.item.name().equals(com.goofy.goofyaddons.utils.Chat.strip(icon.hoverName()))))
+                if (icon != null && !icon.inPlayerInventory() && !icon.empty() && (com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(icon,active.item.id())
+                        || !active.item.id().startsWith("ENCHANTMENT_") && active.item.name().equals(com.goofy.goofyaddons.utils.Chat.strip(icon.hoverName()))))
                     reason = BazaarAccess.unmet(icon.lore());
             }
             if (reason == null && ctx.menu("Bazaar")) {
-                int item = ctx.find(active.item.name(), true);
+                int item = searchResult(ctx);
                 if (item >= 0) reason = BazaarAccess.unmet(ctx.lore(item));
             }
             if (reason != null) {
@@ -183,6 +187,18 @@ final class GeneralOrderEntry {
     /** Hypixel truncates product breadcrumb titles; verify the actual product and control. */
     private boolean productMenuMatches(GeneralContext ctx, int create) {
         var active = ctx.active();
+        if(active.item.id().startsWith("ENCHANTMENT_") && !com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(
+            ctx.view().slot(com.goofy.goofyaddons.features.transaction.ProductIdentity.ICON_SLOT),active.item.id()))return false;
         return com.goofy.goofyaddons.features.transaction.ProductIdentity.productPage(ctx.view(), active.item.id(), active.item.name(), create);
+    }
+
+    private int searchResult(GeneralContext ctx) {
+        if(!ctx.active().item.id().startsWith("ENCHANTMENT_"))return ctx.find(ctx.active().item.name(),true);
+        int found=-1;
+        for(var slot:ctx.view().slots())if(!slot.inPlayerInventory()
+            && com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(slot,ctx.active().item.id())) {
+            if(found>=0)return -1;found=slot.index();
+        }
+        return found;
     }
 }

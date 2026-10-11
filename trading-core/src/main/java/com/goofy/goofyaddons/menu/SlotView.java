@@ -77,6 +77,14 @@ public record SlotView(
         return ENCHANTED_BOOK.equals(customId);
     }
 
+    /** Bazaar variant identity, preserving the raw book ID used by the combining engine. */
+    public String bazaarProductId() {
+        if(!enchantedBook() || enchantments==null || enchantments.size()!=1)return customId;
+        var entry=enchantments.entrySet().iterator().next();String key=entry.getKey();Integer level=entry.getValue();
+        if(key==null || !key.matches("[a-zA-Z0-9_]+") || level==null || level<1 || level>100)return customId;
+        return "ENCHANTMENT_"+key.toUpperCase(java.util.Locale.ROOT)+"_"+level;
+    }
+
     /** The lore as the engines read it: raw lines joined by newlines, never null. */
     public String lore() {
         return loreLines == null ? "" : String.join("\n", loreLines);

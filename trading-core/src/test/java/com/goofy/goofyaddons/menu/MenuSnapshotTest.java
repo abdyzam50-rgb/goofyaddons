@@ -129,6 +129,23 @@ class MenuSnapshotTest {
         assertEquals(34, snapshot.emptyInventorySlots());
     }
 
+    @Test void exactBazaarBookCountsAndStackSpaceExcludeOtherLevelsAndCombinedBooks() {
+        var exact=new SlotView(9,true,0,false,"Book","Book",List.of(),SlotView.ENCHANTED_BOOK,Map.of("quick_bite",1),3,16);
+        var higher=new SlotView(10,true,1,false,"Book","Book",List.of(),SlotView.ENCHANTED_BOOK,Map.of("quick_bite",2),2,64);
+        var combined=new SlotView(11,true,2,false,"Book","Book",List.of(),SlotView.ENCHANTED_BOOK,Map.of("quick_bite",1,"sharpness",5),4,32);
+        var containerBook=new SlotView(1,false,1,false,"Book","Book",List.of(),SlotView.ENCHANTED_BOOK,Map.of("quick_bite",1),1,32);
+        var ordinary=new SlotView(12,true,3,false,"Blaze Powder","Blaze Powder",List.of(),"BLAZE_POWDER",null,8,64);
+        var snapshot=menu(9,List.of(exact,higher,combined,containerBook,ordinary));
+        assertEquals(3,snapshot.countInInventory("ENCHANTMENT_QUICK_BITE_1"));assertEquals(2,snapshot.countInInventory("ENCHANTMENT_QUICK_BITE_2"));
+        assertEquals(0,snapshot.countInInventory("ENCHANTMENT_QUICK_BITE_3"));assertEquals(16,snapshot.stackLimitFor("ENCHANTMENT_QUICK_BITE_1"));
+        assertEquals(13,snapshot.partialStackSpace("ENCHANTMENT_QUICK_BITE_1"));assertEquals(62,snapshot.partialStackSpace("ENCHANTMENT_QUICK_BITE_2"));
+        assertEquals(0,snapshot.partialStackSpace("ENCHANTMENT_QUICK_BITE_3"));
+        assertEquals(9,snapshot.countInInventory(SlotView.ENCHANTED_BOOK),"Raw book counts preserve aggregate combining-engine semantics");
+        assertEquals(103,snapshot.partialStackSpace(SlotView.ENCHANTED_BOOK));assertEquals(List.of(9,10),snapshot.matchingBookInInventory("quick_bite"));
+        assertEquals(8,snapshot.countInInventory("BLAZE_POWDER"));assertEquals(64,snapshot.stackLimitFor("BLAZE_POWDER"));
+        assertEquals(56,snapshot.partialStackSpace("BLAZE_POWDER"));
+    }
+
     @Test void aMenuIsOnlyLoadedOnceTheProbedSlotHoldsSomething() {
         MenuSnapshot snapshot = menu(18, List.of(book(8, false, 8, 1, "Ultimate Wise I")));
         assertTrue(snapshot.loaded(8));

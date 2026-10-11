@@ -541,3 +541,29 @@ Validation: client test/build succeeded; 1,167 tests passed with zero failures o
 Regression checks cover production undercut detection with zero general reprice allowance, cooldown, minimum-profit waiting, and returned-stock waiting; a complete 3-of-10 partial claim/cancel/relist of only the remaining 7/final coin-claim cycle; aggregate receipt idempotency and unknown proceeds; partially sold and completed receipt-backed restart handoffs; tax and original quote floors; consumed versus leftover ingredient locks at the verified sell boundary; new sibling purchases staying independent; concurrent input wait ranking; and the 64/65 batch boundary. Initial focused suites passed before the full release run. No live Minecraft GUI was available.
 
 Final validation: client test/build succeeded; 1,188 tests passed with zero failures or skips. Release jar metadata verifies 0.2.78-BETA.
+
+### 0.2.79 Exact production book variants
+
+Regression coverage uses raw `ENCHANTED_BOOK` stacks carrying Quick Bite I
+metadata through the real grid executor, its shift-click result, Quick Crafting,
+book ingredient cursor/grid accounting and unchanged foreign-level stock. Wrong
+levels and multi-enchantment results never click; a delayed correct result can
+recover before the eight-second bounded result wait. Search/receipt names use
+the bundled enchantment rules, including hyphenated names and Ultimate Wise;
+ordinary Enchantment Table naming is preserved. Production order tests cover
+scoped journal round trips, invalid levels/identities, funded book ingredient
+baskets, exact sale ownership, replacement baselines, actual book claims, exact
+search metadata and wrong/multi-book product/confirmation refusal. Core tests
+cover canonical identity without changing raw book-flipper behavior, exact
+counts/capacity versus aggregate books, workspace ownership and book-family
+capital conflicts while preserving exact costs, quantities and release owners.
+
+The uploaded 0.2.78 session independently confirms three repriced offers and
+coin receipts, totaling approximately 1.57M coins of confirmed profit. Its
+historical Quick Bite result-slot metadata was not retained; the catalog/raw
+book mismatch is demonstrated by the regression fixture. No live Minecraft
+GUI was available for this update.
+
+Limited-inventory planner regressions also verify book input/output batches and intermediate workspace shrink before any orders are placed.
+
+Final validation: client test/build succeeded; 1,212 tests passed with zero failures, errors or skips. Release jar metadata verifies 0.2.79-BETA.

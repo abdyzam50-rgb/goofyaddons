@@ -14,25 +14,37 @@ class ProductionTest {
         grid.set(0,new ProductionRecipe.Ingredient("INPUT",amount));grid.set(4,new ProductionRecipe.Ingredient("SECOND",1));
         return new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",amount,"SECOND",1),grid,0,0,"Collection II",null);
     }
-    SlotView stack(int index,String id,int count){return count==0?SlotView.empty(index,index>=54,index>=54?index-54:index):
-            new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);}
+    SlotView stack(int index,String id,int count){
+        if(count==0)return SlotView.empty(index,index>=54,index>=54?index-54:index);
+        if(id.startsWith("ENCHANTMENT_")) {
+            int split=id.lastIndexOf('_');
+            return new SlotView(index,index>=54,index>=54?index-54:index,false,"Enchanted Book","Enchanted Book",List.of(),
+                "ENCHANTED_BOOK",Map.of(id.substring(12,split).toLowerCase(Locale.ROOT),Integer.parseInt(id.substring(split+1))),count,1);
+        }
+        return new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);
+    }
     class Server implements GameActions {
         final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);ProductionRecipe r;
-        int quickAvailable;boolean wrongQuickRecipe;
+        int quickAvailable;boolean wrongQuickRecipe;Map<String,Integer> resultEnchantments;
         int clicks;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime;String title="Craft Item";
         final List<String> inputs=new ArrayList<>();
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
         MenuSnapshot menu(){
             boolean ready=true;int[] grid={10,11,12,19,20,21,28,29,30};
             for(int i=0;i<9;i++){var need=r.grid().get(i);var slot=slots[grid[i]];
-                ready &= need==null?slot.empty():!slot.empty() && need.id().equals(slot.customId()) && slot.count()>=need.count() && slot.count()%need.count()==0;}
+                ready &= need==null?slot.empty():!slot.empty() && need.id().equals(slot.bazaarProductId()) && slot.count()>=need.count() && slot.count()%need.count()==0;}
             slots[23]=ready || preview?stack(23,r.outputId(),r.outputCount()):stack(23,"",0);
+            if(resultEnchantments!=null && !slots[23].empty()) {
+                var output=slots[23];slots[23]=new SlotView(23,false,23,false,"Enchanted Book","Enchanted Book",List.of(),
+                    "ENCHANTED_BOOK",resultEnchantments,output.count(),1);
+            }
             if(quickCraft)slots[16]=stack(16,"OUTPUT",1);
             if(quickAvailable>0) {
                 var lore=new ArrayList<String>(List.of("Craftable: "+quickAvailable+"x","Ingredients:"));
                 r.ingredients().forEach((id,qty)->lore.add(qty+"x "+(wrongQuickRecipe?"Wrong ingredient":RecipeCatalog.instance().name(id))));
                 lore.add("");lore.add("Click to craft!");
-                slots[16]=new SlotView(16,false,16,false,r.outputId(),r.outputId(),lore,r.outputId(),null,r.outputCount(),64);
+                var output=stack(16,r.outputId(),r.outputCount());
+                slots[16]=new SlotView(16,false,16,false,output.customName(),output.hoverName(),lore,output.customId(),output.enchantments(),r.outputCount(),output.maxStackSize());
             } else if(!quickCraft)slots[16]=stack(16,"",0);
             return new MenuSnapshot(77,title,cursor.empty(),Arrays.asList(slots.clone()),cursor);
         }
@@ -41,39 +53,103 @@ class ProductionTest {
                 int crafts=oneAtATime?1:quickAvailable;
                 for(var need:r.ingredients().entrySet()) {
                     int remaining=need.getValue()*crafts;
-                    for(int i=54;i<90&&remaining>0;i++)if(need.getKey().equals(slots[i].customId())) {
+                    for(int i=54;i<90&&remaining>0;i++)if(need.getKey().equals(slots[i].bazaarProductId())) {
                         int take=Math.min(remaining,slots[i].count());slots[i]=stack(i,need.getKey(),slots[i].count()-take);remaining-=take;
                     }
                     assertEquals(0,remaining);
                 }
                 int output=r.outputCount()*crafts;
-                for(int i=56;i<90&&output>0;i++)if(slots[i].empty()||r.outputId().equals(slots[i].customId())) {
-                    int added=Math.min(output,64-slots[i].count());slots[i]=stack(i,r.outputId(),slots[i].count()+added);output-=added;
+                for(int i=56;i<90&&output>0;i++)if(slots[i].empty()||r.outputId().equals(slots[i].bazaarProductId())) {
+                    int added=Math.min(output,(r.outputId().startsWith("ENCHANTMENT_")?1:64)-slots[i].count());slots[i]=stack(i,r.outputId(),slots[i].count()+added);output-=added;
                 }
                 assertEquals(0,output);quickAvailable-=crafts;return;
             }
             if(shift && slot==23){
-                assertEquals(r.outputId(),slots[23].customId());int[] grid={10,11,12,19,20,21,28,29,30};
+                assertEquals(r.outputId(),slots[23].bazaarProductId());int[] grid={10,11,12,19,20,21,28,29,30};
                 int crafts=64;
                 for(int i=0;i<9;i++)if(r.grid().get(i)!=null)crafts=Math.min(crafts,slots[grid[i]].count()/r.grid().get(i).count());
                 if(oneAtATime)crafts=1;
                 for(int i=0;i<9;i++)if(r.grid().get(i)!=null)slots[grid[i]]=stack(grid[i],r.grid().get(i).id(),slots[grid[i]].count()-r.grid().get(i).count()*crafts);
                 int output=r.outputCount()*crafts;
-                for(int i=56;i<90&&output>0;i++)if(slots[i].empty()||r.outputId().equals(slots[i].customId())) {
-                    int added=Math.min(output,64-slots[i].count());slots[i]=stack(i,r.outputId(),slots[i].count()+added);output-=added;
+                for(int i=56;i<90&&output>0;i++)if(slots[i].empty()||r.outputId().equals(slots[i].bazaarProductId())) {
+                    int added=Math.min(output,(r.outputId().startsWith("ENCHANTMENT_")?1:64)-slots[i].count());slots[i]=stack(i,r.outputId(),slots[i].count()+added);output-=added;
                 }
                 assertEquals(0,output,"Simulated inventory has no output capacity");return;
             }
-            if(cursor.empty()){var s=slots[slot];cursor=stack(-1,s.customId(),s.count());slots[slot]=stack(slot,"",0);}
-            else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));
-                slots[slot]=stack(slot,cursor.customId(),s.count()+cursor.count());cursor=stack(-1,"",0);}
+            if(cursor.empty()){var s=slots[slot];cursor=stack(-1,s.bazaarProductId(),s.count());slots[slot]=stack(slot,"",0);}
+            else {var s=slots[slot];assertTrue(s.empty() || s.bazaarProductId().equals(cursor.bazaarProductId()));
+                slots[slot]=stack(slot,cursor.bazaarProductId(),s.count()+cursor.count());cursor=stack(-1,"",0);}
         }
         public void rightClick(int slot){clicks++;inputs.add("right:"+slot);if(discard)return;
             if(ignoreSplitOnce && slot==10 && cursor.empty()){ignoreSplitOnce=false;return;}
-            if(cursor.empty()){var s=slots[slot];int half=(s.count()+1)/2;cursor=stack(-1,s.customId(),half);slots[slot]=stack(slot,s.customId(),s.count()-half);}
-            else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));slots[slot]=stack(slot,cursor.customId(),s.count()+1);cursor=stack(-1,cursor.customId(),cursor.count()-1);}
+            if(cursor.empty()){var s=slots[slot];int half=(s.count()+1)/2;cursor=stack(-1,s.bazaarProductId(),half);slots[slot]=stack(slot,s.bazaarProductId(),s.count()-half);}
+            else {var s=slots[slot];assertTrue(s.empty() || s.bazaarProductId().equals(cursor.bazaarProductId()));slots[slot]=stack(slot,cursor.bazaarProductId(),s.count()+1);cursor=stack(-1,cursor.bazaarProductId(),cursor.count()-1);}
         }
         public void closeMenu(){}public void command(String text){}public void message(String text){}public boolean writeSign(String text){return false;}
+    }
+    @Test void quickBiteGridCollectsTheRawBookVariantAndPreservesOtherLevels() {
+        var r=RecipeCatalog.instance().forOutput("ENCHANTMENT_QUICK_BITE_1").getFirst();var server=new Server(r,0);
+        server.slots[54]=stack(54,"ENCHANTED_PAPER",3);server.slots[55]=stack(55,"ALLIGATOR_SKIN",8);
+        server.slots[60]=stack(60,"ENCHANTMENT_QUICK_BITE_2",1);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(1,executor.completedBatches());
+        assertTrue(server.inputs.contains("shift:23"));assertEquals(1,server.menu().countInInventory(r.outputId()));
+        assertEquals(1,server.menu().countInInventory("ENCHANTMENT_QUICK_BITE_2"));
+        assertEquals("ENCHANTED_BOOK",server.slots[56].customId());assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+    }
+    @Test void quickBiteQuickCraftVerifiesExactRawBookMetadata() {
+        var r=RecipeCatalog.instance().forOutput("ENCHANTMENT_QUICK_BITE_1").getFirst();var server=new Server(r,0);
+        server.slots[54]=stack(54,"ENCHANTED_PAPER",3);server.slots[55]=stack(55,"ALLIGATOR_SKIN",8);server.quickAvailable=1;
+        var executor=new CraftingExecutor();executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),1000);
+        assertEquals(List.of("shift:16"),server.inputs);
+        assertEquals(CraftingExecutor.Result.CRAFTED,executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),1100),executor.failure());
+        assertEquals(1,server.menu().countInInventory(r.outputId()));assertEquals(1,executor.completedBatches());
+    }
+    @Test void wrongLevelAndMultiEnchantCraftResultsNeverClickAndReportTheirIdentity() {
+        for(var enchants:List.of(Map.of("quick_bite",2),Map.of("quick_bite",1,"sharpness",1))) {
+            var r=RecipeCatalog.instance().forOutput("ENCHANTMENT_QUICK_BITE_1").getFirst();var server=new Server(r,0);
+            server.slots[54]=stack(54,"ENCHANTED_PAPER",3);server.slots[55]=stack(55,"ALLIGATOR_SKIN",8);server.resultEnchantments=enchants;
+            var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+            for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+                result=executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),now);
+            assertEquals(CraftingExecutor.Result.BLOCKED,result);assertFalse(server.inputs.contains("shift:23"));
+            assertTrue(executor.failure().contains("expected 1x ENCHANTMENT_QUICK_BITE_1"));
+            assertTrue(executor.failure().contains(enchants.size()==1?"observed 1x ENCHANTMENT_QUICK_BITE_2":"observed 1x ENCHANTED_BOOK"));
+            assertEquals(8,server.slots[30].count());assertTrue(server.cursor.empty());
+        }
+    }
+    @Test void delayedBookResultCanRecoverBeforeTheBoundedWait() {
+        var r=RecipeCatalog.instance().forOutput("ENCHANTMENT_QUICK_BITE_1").getFirst();var server=new Server(r,0);
+        server.slots[54]=stack(54,"ENCHANTED_PAPER",3);server.slots[55]=stack(55,"ALLIGATOR_SKIN",8);server.resultEnchantments=Map.of("quick_bite",2);
+        var executor=new CraftingExecutor();
+        for(long now=1000;now<=2000;now+=50)assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),now));
+        assertFalse(server.inputs.contains("shift:23"));server.resultEnchantments=null;
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),2050));
+        assertEquals(CraftingExecutor.Result.CRAFTED,executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),2150));
+    }
+    @Test void bookIngredientUsesExactVariantInCursorGridAndConservation() {
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,null));
+        grid.set(0,new ProductionRecipe.Ingredient("ENCHANTMENT_QUICK_BITE_1",1));
+        var r=new ProductionRecipe("craft:BOOK_INPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,
+            Map.of("ENCHANTMENT_QUICK_BITE_1",1),grid,0,0,"",null);var server=new Server(r,0);
+        server.slots[54]=stack(54,"ENCHANTMENT_QUICK_BITE_1",1);server.slots[55]=stack(55,"ENCHANTMENT_QUICK_BITE_2",1);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(0,server.menu().countInInventory("ENCHANTMENT_QUICK_BITE_1"));
+        assertEquals(1,server.menu().countInInventory("ENCHANTMENT_QUICK_BITE_2"));assertEquals(List.of("left:54","left:10","shift:23"),server.inputs);
+        assertEquals("ENCHANTMENT_QUICK_BITE_2",ProductionMenus.productId(server.slots[55]));
+    }
+    @Test void catalogUsesBundledEnchantmentNamesForSearchAndReceipts() {
+        var catalog=RecipeCatalog.instance();
+        assertEquals("Quick Bite I",catalog.name("ENCHANTMENT_QUICK_BITE_1"));assertEquals("Quick Bite V",catalog.name("ENCHANTMENT_QUICK_BITE_5"));
+        assertEquals("Turbo-Cane I",catalog.name("ENCHANTMENT_TURBO_CANE_1"));assertEquals("Ultimate Wise V",catalog.name("ENCHANTMENT_ULTIMATE_WISE_5"));
+        assertEquals("ENCHANTMENT_QUICK_BITE_0",catalog.name("ENCHANTMENT_QUICK_BITE_0"));
+        assertEquals("ENCHANTMENT_UNDOCUMENTED_1",catalog.name("ENCHANTMENT_UNDOCUMENTED_1"));
+        assertEquals("Enchanted Paper",catalog.name("ENCHANTED_PAPER"));
+        assertEquals("Enchantment Table",catalog.name("ENCHANTMENT_TABLE"));
     }
     @Test void specificReviewChecksItsResolvedOwnerBeforeWritingAndPreservesOtherReviews()throws Exception {
         var path=dir.resolve("scoped-review.json");var jobs=new ProductionJobs(path);

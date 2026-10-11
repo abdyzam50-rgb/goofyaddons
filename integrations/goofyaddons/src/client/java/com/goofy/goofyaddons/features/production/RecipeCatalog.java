@@ -16,7 +16,22 @@ public final class RecipeCatalog {
     public List<ProductionRecipe> recipes(){return recipes;}
     public List<ProductionRecipe> forOutput(String id){return recipes.stream().filter(r->r.outputId().equals(id)).toList();}
     public Optional<ProductionRecipe> byKey(String key){return recipes.stream().filter(r->r.key().equals(key)).findFirst();}
-    public String name(String id){return names.getOrDefault(id,id);}
+    public String name(String id){
+        if(id!=null && id.startsWith("ENCHANTMENT_")) {
+            int split=id.lastIndexOf('_');
+            try {
+                int level=Integer.parseInt(id.substring(split+1));
+                String base=com.goofy.goofyaddons.features.access.RouteRequirements.bookName(id.substring(0,split));
+                if(base!=null && level>=1 && level<=100 && Integer.toString(level).equals(id.substring(split+1))) {
+                    String roman=switch(level){case 1->"I";case 2->"II";case 3->"III";case 4->"IV";case 5->"V";
+                        case 6->"VI";case 7->"VII";case 8->"VIII";case 9->"IX";case 10->"X";default->Integer.toString(level);};
+                    return base+" "+roman;
+                }
+            }catch(NumberFormatException invalid) { return names.getOrDefault(id,id); }
+            return id;
+        }
+        return names.getOrDefault(id,id);
+    }
     private static RecipeCatalog load() {
         try(var in=RecipeCatalog.class.getResourceAsStream("/goofyaddons/production-recipes.json")) {
             if(in==null)throw new IllegalStateException("Production catalog missing");

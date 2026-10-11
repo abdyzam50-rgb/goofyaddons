@@ -20,7 +20,7 @@ public final class CraftingExecutor {
     private final Set<Integer> splitTargets=new HashSet<>();
     private Map<String,Integer> before;
     private MenuSnapshot sent;
-    private long sentAt,started,next,inconsistentSince;
+    private long sentAt,started,next,inconsistentSince,resultSince;
     private long settleMs=FAST_SETTLE_MS,cooldownUntil;
     private int retries;
     private boolean submitted,quick;
@@ -28,7 +28,7 @@ public final class CraftingExecutor {
     public String failure(){return failure;}
     public boolean busy(){return recipe!=null;}
     public boolean quickCrafting(){return recipe!=null && quick;}
-    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;}
+    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;resultSince=0;}
     public void slowdown(long now) {
         if(recipe==null)return;
         settleMs=Math.min(500,settleMs+100);cooldownUntil=Math.max(cooldownUntil,now+1000);
@@ -54,7 +54,7 @@ public final class CraftingExecutor {
             batchCount=Math.min(64,requestedBatches);
             var quickSlot=quickSlot(wanted,menu,before);
             for(var cell:wanted.grid())if(cell!=null && quickSlot==null) {
-                int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.customId()))
+                int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.bazaarProductId()))
                     .mapToInt(v->v.maxStackSize()).min().orElse(1);
                 batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
             }
@@ -68,7 +68,7 @@ public final class CraftingExecutor {
             else {
                 quickSlot=null;
                 for(var cell:wanted.grid())if(cell!=null) {
-                    int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.customId()))
+                    int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.bazaarProductId()))
                         .mapToInt(SlotView::maxStackSize).min().orElse(1);
                     batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
                 }
@@ -119,7 +119,7 @@ public final class CraftingExecutor {
         for(int i=0;i<9;i++) {
             var expected=recipe.grid().get(i);var actual=menu.slot(GRID[i]);
             if(expected==null){if(!empty(actual))return block("Unexpected item in recipe grid");continue;}
-            if(!empty(actual) && !expected.id().equals(actual.customId()))return block("Recipe grid identity/count mismatch");
+            if(!empty(actual) && !expected.id().equals(actual.bazaarProductId()))return block("Recipe grid identity/count mismatch");
             if(count(actual)>expected.count()*batchCount) {
                 if(!splitTargets.contains(i) || !canPark(count(actual),expected.count()*batchCount))return block("Crafting stack split changed unexpectedly; grid and cursor retained");
                 if(donor<0)donor=i;
@@ -133,13 +133,13 @@ public final class CraftingExecutor {
         }
         if(!menu.cursorEmpty()) {
             var cursor=menu.carried();
-            if(cursor==null || cursor.empty() || cursor.customId()==null)return block("Unreadable crafting cursor");
+            if(cursor==null || cursor.empty() || cursor.bazaarProductId()==null)return block("Unreadable crafting cursor");
             // Reuse this ingredient's halves even if a different ingredient occurs earlier in the grid.
             for(int i=0;i<9;i++) {
                 var expected=recipe.grid().get(i);
-                if(expected!=null && expected.id().equals(cursor.customId()) && count(menu.slot(GRID[i]))<expected.count()*batchCount) {target=i;break;}
+                if(expected!=null && expected.id().equals(cursor.bazaarProductId()) && count(menu.slot(GRID[i]))<expected.count()*batchCount) {target=i;break;}
             }
-            if(target>=0 && recipe.grid().get(target).id().equals(cursor.customId())) {
+            if(target>=0 && recipe.grid().get(target).id().equals(cursor.bazaarProductId())) {
                 int remaining=recipe.grid().get(target).count()*batchCount-count(menu.slot(GRID[target]));
                 if(empty(menu.slot(GRID[target])) && cursor.count()>remaining && canPark(cursor.count(),remaining)) {
                     // Park the whole stack in the grid; reuse each half in another matching cell.
@@ -148,13 +148,13 @@ public final class CraftingExecutor {
                 send(menu,actions,GRID[target],false,cursor.count()>remaining,now);return Result.WAITING;
             }
             var origin=menu.slot(source);
-            if(origin==null || !origin.inPlayerInventory() || (!origin.empty() && !cursor.customId().equals(origin.customId()))
+            if(origin==null || !origin.inPlayerInventory() || (!origin.empty() && !cursor.bazaarProductId().equals(origin.bazaarProductId()))
                     || count(origin)+cursor.count()>origin.maxStackSize())return block("Cursor return slot no longer matches owned ingredients");
             send(menu,actions,source,false,false,now);return Result.WAITING;
         }
         if(target>=0) {
             var need=recipe.grid().get(target);
-            var available=menu.slots().stream().filter(s->s.inPlayerInventory() && s.containerSlot()<36 && !s.empty() && need.id().equals(s.customId())).toList();
+            var available=menu.slots().stream().filter(s->s.inPlayerInventory() && s.containerSlot()<36 && !s.empty() && need.id().equals(s.bazaarProductId())).toList();
             if(available.isEmpty())return block("Ingredient moved out of accessible inventory");
             var stack=available.stream().max(Comparator.comparingInt(SlotView::count)).orElseThrow();
             source=stack.index();send(menu,actions,source,false,false,now);return Result.WAITING;
@@ -164,10 +164,23 @@ public final class CraftingExecutor {
     private Result takeOutput(MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,long now) {
         // Hypixel's Quick Crafting column (16, 25, 34) can show the same item before the grid is
         // full; only the result slot holds the grid's output.
-        var outputs=menu.slots().stream().filter(s->s.index()==RESULT && !s.empty() && recipe.outputId().equals(s.customId())).toList();
-        if(outputs.size()!=1 || outputs.getFirst().count()!=recipe.outputCount())return Result.WAITING;
+        var outputs=menu.slots().stream().filter(s->s.index()==RESULT && !s.empty() && recipe.outputId().equals(s.bazaarProductId())).toList();
+        if(outputs.size()!=1 || outputs.getFirst().count()!=recipe.outputCount()) {
+            if(resultSince==0) {
+                resultSince=now;
+                com.goofy.goofyaddons.diagnostics.Diagnostics.event("WARN","production.craft_result_wait",Map.of(
+                    "recipe",recipe.key(),"expected",recipe.outputCount()+"x "+recipe.outputId(),"observed",describe(menu.slot(RESULT)),"container",container));
+            }
+            if(now-resultSince>=8000)return block("Craft result was not verified: expected "+recipe.outputCount()+"x "+recipe.outputId()
+                +", observed "+describe(menu.slot(RESULT))+"; ingredients retained in grid");
+            return Result.WAITING;
+        }
+        resultSince=0;
         var output=outputs.getFirst();String reason=ActionRequirements.blocked(output.lore(),skills,unlocks,ActionRequirements.Action.CRAFT);
         if(reason!=null)return block("Crafting requirement: "+reason);
+        com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.craft_result_submit",Map.of(
+            "recipe",recipe.key(),"output",recipe.outputId(),"batches",batchCount,"observed",describe(output),
+            "rawId",Objects.toString(output.customId(),"unknown"),"enchantments",Objects.toString(output.enchantments(),"absent"),"container",container));
         submitted=true;send(menu,actions,output.index(),true,false,now);return Result.WAITING;
     }
     // Shift quick crafting may consume every available recipe. Never send it when that
@@ -178,7 +191,7 @@ public final class CraftingExecutor {
         wanted.ingredients().forEach((id,qty)->expected.add(qty+"x "+RecipeCatalog.instance().name(id)));
         for(int index:new int[]{16,25,34}) {
             var slot=menu.slot(index);
-            if(empty(slot)||!wanted.outputId().equals(slot.customId())||slot.count()!=wanted.outputCount()
+            if(empty(slot)||!wanted.outputId().equals(slot.bazaarProductId())||slot.count()!=wanted.outputCount()
                     ||craftable(slot)!=available||available<1)continue;
             var lines=slot.loreLines()==null?List.<String>of():slot.loreLines().stream().map(Chat::strip).toList();
             int start=lines.indexOf("Ingredients:");
@@ -226,7 +239,7 @@ public final class CraftingExecutor {
         for(int i=0;i<9;i++) {
             var need=recipe.grid().get(i);var actual=menu.slot(GRID[i]);
             if(need==null){if(!empty(actual))return false;}
-            else if(empty(actual)||!need.id().equals(actual.customId())||count(actual)!=need.count()*batches)return false;
+            else if(empty(actual)||!need.id().equals(actual.bazaarProductId())||count(actual)!=need.count()*batches)return false;
         }
         return true;
     }
@@ -245,7 +258,7 @@ public final class CraftingExecutor {
     private static Map<String,Integer> inventory(MenuSnapshot menu){
         var result=new HashMap<String,Integer>();for(var slot:menu.slots())if(slot.inPlayerInventory() && slot.containerSlot()<36)add(result,slot);return result;
     }
-    private static void add(Map<String,Integer> counts,SlotView slot){if(!empty(slot) && slot.customId()!=null)counts.merge(slot.customId(),slot.count(),Integer::sum);}
+    private static void add(Map<String,Integer> counts,SlotView slot){if(!empty(slot) && slot.bazaarProductId()!=null)counts.merge(slot.bazaarProductId(),slot.count(),Integer::sum);}
     private static int count(SlotView slot){return empty(slot)?0:slot.count();}
     private static boolean empty(SlotView slot){return slot==null || slot.empty();}
     public static boolean reusableMenu(MenuSnapshot menu) {
@@ -268,7 +281,7 @@ public final class CraftingExecutor {
     }
     private static String describe(SlotView slot){
         if(empty(slot))return "empty";
-        return slot.count()+"x "+(slot.customId()==null?Chat.strip(slot.hoverName()):slot.customId())+(slot.metadata()==null?"":" "+slot.metadata().vanillaId());
+        return slot.count()+"x "+(slot.bazaarProductId()==null?Chat.strip(slot.hoverName()):slot.bazaarProductId())+("ENCHANTED_BOOK".equals(slot.bazaarProductId())?" enchantments="+slot.enchantments():"")+(slot.metadata()==null?"":" "+slot.metadata().vanillaId());
     }
     private static boolean sameContents(MenuSnapshot a,MenuSnapshot b){
         if(a.containerId()!=b.containerId() || a.cursorEmpty()!=b.cursorEmpty() || !sameItem(a.carried(),b.carried()) || a.slots().size()!=b.slots().size())return false;
