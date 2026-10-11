@@ -46,4 +46,24 @@ class ProductIdentityTest {
         assertFalse(ProductIdentity.matches(mixed,"ENCHANTMENT_OVERLOAD_4"));
     }
 
+
+    private static MenuSnapshot results(SlotView... items) {
+        var slots=new ArrayList<SlotView>();for(int i=0;i<90;i++)slots.add(SlotView.empty(i,i>=54,i>=54?i-54:i));
+        for(var s:items)slots.set(s.index(),s);
+        return new MenuSnapshot(3,"Bazaar ➜ \"Gold\"",true,slots);
+    }
+    private static SlotView result(int index,String id,String name){return new SlotView(index,false,index,false,name,name,List.of(),id,null,1,64);}
+
+    @Test void searchResultPrefersIdentityThenAUniqueExactName() {
+        assertEquals(12,ProductIdentity.searchResult(results(result(11,"ENCHANTED_GOLD","Gold Ingot"),result(12,"GOLD_INGOT","Gold Ingot")),"GOLD_INGOT","Gold Ingot"));
+        assertEquals(-1,ProductIdentity.searchResult(results(result(11,"ENCHANTED_GOLD","Gold Ingot")),"GOLD_INGOT","Gold Ingot"));
+        assertEquals(12,ProductIdentity.searchResult(results(result(11,null,"Enchanted Gold Ingot"),result(12,null,"Gold Ingot")),"GOLD_INGOT","Gold Ingot"));
+        assertEquals(-1,ProductIdentity.searchResult(results(result(11,null,"Gold Ingot"),result(12,null,"Gold Ingot")),"GOLD_INGOT","Gold Ingot"));
+        assertEquals(-1,ProductIdentity.searchResult(new MenuSnapshot(1,"Auction House",true,List.of(result(11,"GOLD_INGOT","Gold Ingot"))),"GOLD_INGOT","Gold Ingot"));
+    }
+    @Test void searchResultFindsTheExactBookLevel() {
+        var four=SlotView.enchantedBook(11,false,11,"sharpness",4,List.of(),"Sharpness IV");
+        var five=SlotView.enchantedBook(12,false,12,"sharpness",5,List.of(),"Sharpness V");
+        assertEquals(12,ProductIdentity.searchResult(results(four,five),"ENCHANTMENT_SHARPNESS_5","Sharpness V"));
+    }
 }

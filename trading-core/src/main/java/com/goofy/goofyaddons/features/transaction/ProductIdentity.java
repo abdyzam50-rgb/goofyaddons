@@ -24,6 +24,29 @@ public final class ProductIdentity {
         try{return java.util.Objects.equals(slot.enchantments().get(id.substring(12,split).toLowerCase(java.util.Locale.ROOT)),Integer.parseInt(id.substring(split+1)));}
         catch(RuntimeException invalid){return false;}
     }
+    /**
+     * The search result to click on a "/bz name" results page: the single result whose item
+     * identity is this product, falling back to a unique exact name only for results without an
+     * item id. -1 when the page is not a results page or the choice is ambiguous. Every
+     * pipeline that searches the Bazaar picks its result here.
+     */
+    public static int searchResult(MenuSnapshot menu, String productId, String name) {
+        if (menu == null || menu.title() == null || !Chat.strip(menu.title()).startsWith("Bazaar")) return -1;
+        int identified=-1,found=-1;boolean ambiguousName=false;
+        for (var slot : menu.slots()) {
+            if (slot.empty() || slot.inPlayerInventory()) continue;
+            if (slot.customId()!=null && !slot.customId().isBlank()) {
+                if (!matches(slot,productId)) continue;
+                if (identified>=0) return -1;
+                identified=slot.index();continue;
+            }
+            if (slot.hoverName()==null || name==null || !Chat.strip(slot.hoverName()).equalsIgnoreCase(name)) continue;
+            if (found>=0) ambiguousName=true;
+            found=slot.index();
+        }
+        return identified>=0?identified:ambiguousName?-1:found;
+    }
+
     public static final int ICON_SLOT = 13;
 
     /**

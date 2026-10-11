@@ -59,10 +59,9 @@ final class CraftFlipPlanner {
             var row=value.getAsJsonObject();auctions.put(row.get("item").getAsString(),row);
         }catch(RuntimeException ignored){}
         var best=new HashMap<String,Route>();
-        var books=new Books(products);
+        var books=new com.goofy.goofyaddons.features.market.BazaarQuotes.Snapshot(products);
         String compactorConflict=CompactorClearance.unreadable(menu);
         int freeSlots=Math.max(0,menu.emptyInventorySlots()-reservedSlots);
-        var activity=new HashMap<String,Double>();
         for(var recipe:catalog.recipes()) {
             if(recipe.kind()!=ProductionRecipe.Kind.CRAFT)continue;
             boolean bz=books.has(recipe.outputId());String sale=bz?"BAZAAR":"AH";
@@ -90,11 +89,11 @@ final class CraftFlipPlanner {
                 int slots=outputSlots;double cost=0,orderWait=0;boolean priced=true;
                 for(var entry:preparation.purchases().entrySet()) {
                     var product=books.element(entry.getKey());
-                    Double amount=product!=null&&product.isJsonObject()?books.buy(strategy,entry.getKey(),entry.getValue()):null;
+                    Double amount=product!=null&&product.isJsonObject()?(strategy.instantBuy?books.instantBuyCost(entry.getKey(),entry.getValue()):strategy.buy(product.getAsJsonObject(),entry.getValue())):null;
                     if(amount==null){priced=false;break;}
                     cost+=amount;slots+=inventorySlotsForProduct(entry.getKey(),entry.getValue());
                     if(!strategy.instantBuy) {
-                        double rate=activity.computeIfAbsent(entry.getKey(),id->hourlyActivity(product.getAsJsonObject()))*0.05;
+                        double rate=books.hourlyActivity(entry.getKey())*0.05;
                         if(rate<=0){reason="Input order activity unavailable";}
                         // The funded ingredient basket is submitted before any fill wait;
                         // its orders fill concurrently, so the slowest input sets that wait.
@@ -111,11 +110,10 @@ final class CraftFlipPlanner {
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;
                 if(bz) {
                     var product=books.object(recipe.outputId());
-                    Double gross=books.sell(strategy,recipe.outputId(),recipe.outputCount()*batches);
+                    Double gross=strategy.instantSell?books.instantSellValue(recipe.outputId(),recipe.outputCount()*batches):strategy.sell(product,recipe.outputCount()*batches);
                     if(gross==null){exclude(excluded,excludedByOutput,recipe.outputId(),"Insufficient Bazaar sell depth");continue;}
                     net=gross*ProductionRun.SALE_FLOOR*(1-bazaarTax/100);
-                    var quick=product.getAsJsonObject("quick_status");
-                    double week=quick==null?0:Math.min(quick.get("buyMovingWeek").getAsDouble(),quick.get("sellMovingWeek").getAsDouble());
+                    double week=com.goofy.goofyaddons.features.market.BazaarQuotes.weeklyFlow(product);
                     if(!Double.isFinite(week)||week<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Daily volume unavailable");continue;}
                     if(recipe.outputCount()*batches>week/7*0.05)reason="Batch exceeds 5% of observed daily market volume";
                     liquidity=week/168;
@@ -160,61 +158,6 @@ final class CraftFlipPlanner {
     static int inventorySlotsForProduct(String id,int units) {
         if(units<0)throw new IllegalArgumentException("Negative inventory quantity");
         return id!=null && BOOK_IDS.computeIfAbsent(id,key->BOOK.matcher(key).matches())?units:Math.toIntExact((units+63L)/64);
-    }
-    /**
-     * Order books parsed and sorted once per ranking. Ranking walks the same books for every
-     * strategy and batch size; re-reading Gson numbers and re-sorting each time cost most of a
-     * second on the client thread. Arithmetic and validation match ProductionPlanner exactly.
-     */
-    private static final class Books {
-        private record Level(double price,double amount) {}
-        private final Map<String,JsonElement> products=new HashMap<>();
-        private final Map<String,Optional<List<Level>>> asks=new HashMap<>(),bids=new HashMap<>();
-        Books(JsonObject products){for(var entry:products.entrySet())this.products.put(entry.getKey(),entry.getValue());}
-        boolean has(String id){return products.containsKey(id);}
-        JsonElement element(String id){return products.get(id);}
-        JsonObject object(String id){return (JsonObject)products.get(id);}
-        Double buy(BazaarStrategy strategy,String id,int units) {
-            var product=object(id);
-            if(product==null||units<1)return null;
-            if(!strategy.instantBuy)return strategy.buy(product,units);
-            Double book=walk(ladder(asks,id,"buy_summary",false),units);
-            return book==null?null:book*ProductionPlanner.INSTANT_BUY_FEE;
-        }
-        Double sell(BazaarStrategy strategy,String id,int units) {
-            var product=object(id);
-            if(product==null||units<1)return null;
-            if(!strategy.instantSell)return strategy.sell(product,units);
-            return walk(ladder(bids,id,"sell_summary",true),units);
-        }
-        private Optional<List<Level>> ladder(Map<String,Optional<List<Level>>> cache,String id,String side,boolean descending) {
-            return cache.computeIfAbsent(id,key->{
-                var product=object(key);
-                if(product==null||!product.has(side))return Optional.empty();
-                try {
-                    var levels=new ArrayList<Level>();
-                    for(var value:product.getAsJsonArray(side)){var level=value.getAsJsonObject();levels.add(new Level(level.get("pricePerUnit").getAsDouble(),level.get("amount").getAsDouble()));}
-                    Comparator<Level> order=Comparator.comparingDouble(Level::price);
-                    levels.sort(descending?order.reversed():order);
-                    return Optional.of(List.copyOf(levels));
-                }catch(RuntimeException invalid){return Optional.empty();}
-            });
-        }
-        private static Double walk(Optional<List<Level>> ladder,int units) {
-            if(ladder.isEmpty())return null;
-            double total=0;int remaining=units;
-            for(var level:ladder.get()){double price=level.price(),amount=level.amount();
-                if(!Double.isFinite(price) || price<=0 || !Double.isFinite(amount) || amount<0)return null;
-                int take=(int)Math.min(remaining,Math.floor(amount));total+=take*price;remaining-=take;if(remaining==0)return Double.isFinite(total)?total:null;
-            }
-            return null;
-        }
-    }
-    private static double hourlyActivity(JsonObject product) {
-        var quick=product.getAsJsonObject("quick_status");
-        if(quick==null || !quick.has("buyMovingWeek") || !quick.has("sellMovingWeek"))return 0;
-        double week=Math.min(quick.get("buyMovingWeek").getAsDouble(),quick.get("sellMovingWeek").getAsDouble());
-        return Double.isFinite(week)&&week>0?week/168:0;
     }
     private static void exclude(Map<String,Integer> excluded,Map<String,Map<String,Integer>> byOutput,String output,String reason) {
         exclude(excluded,reason);byOutput.computeIfAbsent(output,id->new LinkedHashMap<>()).merge(reason,1,Integer::sum);

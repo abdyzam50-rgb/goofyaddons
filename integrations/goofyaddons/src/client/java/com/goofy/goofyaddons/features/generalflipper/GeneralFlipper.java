@@ -497,7 +497,7 @@ public class GeneralFlipper implements Feature {
         if (services.productionOnly() && ((!sell && !active.productionBuy) || active.cancelRequested)) return false;
         JsonObject product = products.getAsJsonObject(active.item.id());
         if (product == null) return false;
-        double price = GeneralCalculator.topPrice(product, sell ? "buy_summary" : "sell_summary");
+        double price = com.goofy.goofyaddons.features.market.BazaarQuotes.topPrice(product, sell ? "buy_summary" : "sell_summary");
         return sell ? price > 0 && price < active.sellPrice - 0.01 : price > active.unitCost + 0.01;
     }
 
@@ -521,7 +521,7 @@ public class GeneralFlipper implements Feature {
 
     private double currentAsk() {
         JsonObject product = products == null ? null : products.getAsJsonObject(active.item.id());
-        return product == null ? -1 : GeneralCalculator.topPrice(product, active!=null && active.instantSell?"sell_summary":"buy_summary");
+        return product == null ? -1 : com.goofy.goofyaddons.features.market.BazaarQuotes.topPrice(product, active!=null && active.instantSell?"sell_summary":"buy_summary");
     }
     /** Pure: whether the quotes this engine already adopted are usable right now. */
     private boolean freshQuotes() {

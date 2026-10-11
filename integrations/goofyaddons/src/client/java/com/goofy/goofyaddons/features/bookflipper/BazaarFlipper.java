@@ -1248,7 +1248,7 @@ public class BazaarFlipper implements Feature {
             double exit = -1;
             if (latest != null) {
                 com.google.gson.JsonObject product = latest.getAsJsonObject("products").getAsJsonObject(task.getBook().getLevel(task.getBook().sellLevel()));
-                if (product != null) exit = com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(product, "buy_summary")
+                if (product != null) exit = com.goofy.goofyaddons.features.market.BazaarQuotes.bestAsk(product)
                         * (1 - settings().bazaarTaxPercentage() / 100);
             }
             if (TradingSafety.holdingLimit(since, now, settings().maxBookHoldingSeconds(),
@@ -1496,7 +1496,7 @@ public class BazaarFlipper implements Feature {
         com.google.gson.JsonObject product = latest == null ? null
                 : latest.getAsJsonObject("products").getAsJsonObject(task.getBook().getLevel(task.getBook().sellLevel()));
         double exit = sale ? price : product == null ? -1
-                : com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(product, task.instaSell?"sell_summary":"buy_summary");
+                : com.goofy.goofyaddons.features.market.BazaarQuotes.topPrice(product, task.instaSell?com.goofy.goofyaddons.features.market.BazaarQuotes.BIDS:com.goofy.goofyaddons.features.market.BazaarQuotes.ASKS);
         var check=BookPricePolicy.check(sale,latest!=null,price,task.getReservedUnitCost(),
                 task.getBook().getQtyAmount(task.getBook().level()),exit,
                 settings().bazaarTaxPercentage(),settings().minNetProfit());

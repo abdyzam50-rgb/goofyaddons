@@ -188,7 +188,7 @@ final class BookPlacement {
     private static Double expectedProfit(BookContext ctx, Book book, int units, double price) {
         var latest = ctx.services().latestQuotes(); var products = latest == null ? null : latest.getAsJsonObject("products");
         var output = products == null ? null : products.getAsJsonObject(book.getLevel(book.sellLevel()));
-        double ask = output == null ? -1 : com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(output, "buy_summary");
+        double ask = output == null ? -1 : com.goofy.goofyaddons.features.market.BazaarQuotes.bestAsk(output);
         double expected = ask * (1 - ctx.settings().bazaarTaxPercentage() / 100) - units * price;
         return ask > 0 && Double.isFinite(expected) && expected > 0 ? expected : null;
     }

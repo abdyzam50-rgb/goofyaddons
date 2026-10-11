@@ -136,7 +136,7 @@ final class GeneralCancel {
             boolean agedOut = held > 0 && ctx.now() - held >= settings.maxHoldingSeconds * 1000L;
             if (!ctx.services().productionOnly() && !trade.selling && !agedOut && active.reprices < settings.maxReprices && ctx.freshQuotes()) {
                 JsonObject product = ctx.products().getAsJsonObject(active.item.id());
-                double bid = product == null ? -1 : GeneralCalculator.topPrice(product, "sell_summary");
+                double bid = product == null ? -1 : com.goofy.goofyaddons.features.market.BazaarQuotes.bestBid(product);
                 double net = ctx.currentAsk() * (1 - ctx.services().taxPercentage() / 100) - bid;
                 if (bid > 0 && net * active.quantity >= settings.minProfitPerBatch
                         && net / bid * 100 >= settings.minMarginPercentage

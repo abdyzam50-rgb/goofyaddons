@@ -192,13 +192,8 @@ final class GeneralOrderEntry {
         return com.goofy.goofyaddons.features.transaction.ProductIdentity.productPage(ctx.view(), active.item.id(), active.item.name(), create);
     }
 
+    /** The same result choice as every other Bazaar search: identity first, then a unique exact name. */
     private int searchResult(GeneralContext ctx) {
-        if(!ctx.active().item.id().startsWith("ENCHANTMENT_"))return ctx.find(ctx.active().item.name(),true);
-        int found=-1;
-        for(var slot:ctx.view().slots())if(!slot.inPlayerInventory()
-            && com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(slot,ctx.active().item.id())) {
-            if(found>=0)return -1;found=slot.index();
-        }
-        return found;
+        return com.goofy.goofyaddons.features.transaction.ProductIdentity.searchResult(ctx.view(),ctx.active().item.id(),ctx.active().item.name());
     }
 }

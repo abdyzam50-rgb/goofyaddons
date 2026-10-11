@@ -2,7 +2,6 @@ package com.goofy.goofyaddons.features.bookflipper.helper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 
@@ -119,9 +118,9 @@ public class BazaarMonitor {
             JsonObject product = products.getAsJsonObject(item.book.getLevel(
                     item.isSellOrder ? item.book.sellLevel() : item.book.level()));
             if (product == null) return Double.NaN;
-            JsonArray orders = product.getAsJsonArray(item.isSellOrder ? "buy_summary" : "sell_summary");
-            if (orders == null || orders.isEmpty()) return Double.NaN;
-            return orders.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
+            double price = item.isSellOrder ? com.goofy.goofyaddons.features.market.BazaarQuotes.bestAsk(product)
+                    : com.goofy.goofyaddons.features.market.BazaarQuotes.bestBid(product);
+            return price > 0 ? price : Double.NaN;
         } catch (RuntimeException malformed) {
             return Double.NaN;
         }

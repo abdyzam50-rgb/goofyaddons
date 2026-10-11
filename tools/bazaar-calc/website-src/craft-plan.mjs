@@ -155,6 +155,9 @@ function books(products){
    return walk(cached(bids,id,'sell_summary',true),units);},
  };
 }
+// BazaarQuotes.weeklyVolume / weeklyFlow: missing or invalid volumes count as zero.
+function weeklyVolume(quick,key){if(!quick||!(key in quick))return 0;const v=Number(quick[key]);return Number.isFinite(v)?Math.max(0,v):0;}
+function weeklyFlow(product){const quick=product?.quick_status;return Math.min(weeklyVolume(quick,'sellMovingWeek'),weeklyVolume(quick,'buyMovingWeek'));}
 function hourlyActivity(product){
  const quick=product?.quick_status;
  if(!quick||!('buyMovingWeek' in quick)||!('sellMovingWeek' in quick))return 0;
@@ -232,9 +235,7 @@ export function rankLikeMod({catalog,market,ah,now,budget,minimumProfit,bazaarTa
     const product=products[output],gross=book.sell(strategy,output,units);
     if(gross===null){exclude('Insufficient Bazaar sell depth',output);continue;}
     net=gross*SALE_FLOOR*(1-bazaarTax/100);
-    const quick=product.quick_status;
-    if(quick&&(typeof quick.buyMovingWeek!=='number'||typeof quick.sellMovingWeek!=='number'))throw new Error('Malformed quick status');
-    const week=quick?Math.min(quick.buyMovingWeek,quick.sellMovingWeek):0;
+    const week=weeklyFlow(product);
     if(!Number.isFinite(week)||week<=0){exclude('Daily volume unavailable',output);continue;}
     if(units>week/7*0.05)reason='Batch exceeds 5% of observed daily market volume';
     liquidity=week/168;

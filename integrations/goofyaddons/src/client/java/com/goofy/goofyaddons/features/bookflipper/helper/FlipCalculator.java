@@ -1,9 +1,9 @@
 package com.goofy.goofyaddons.features.bookflipper.helper;
 
+import com.goofy.goofyaddons.features.market.BazaarQuotes;
 import com.goofy.goofyaddons.config.GoofyConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.goofy.goofyaddons.features.TradingSafety;
 import net.minecraft.client.Minecraft;
@@ -109,10 +109,10 @@ public class FlipCalculator {
         JsonObject buy = products.getAsJsonObject(book.getLevel(book.level()));
         JsonObject sell = products.getAsJsonObject(book.getLevel(book.sellLevel()));
         if (buy == null || sell == null) return null;
-        double bid = topPrice(buy, "sell_summary");
-        double ask = topPrice(buy, "buy_summary");
-        double sellBid = topPrice(sell, "sell_summary");
-        double sellAsk = topPrice(sell, "buy_summary");
+        double bid = BazaarQuotes.bestBid(buy);
+        double ask = BazaarQuotes.bestAsk(buy);
+        double sellBid = BazaarQuotes.bestBid(sell);
+        double sellAsk = BazaarQuotes.bestAsk(sell);
         if (bid <= 0 || ask <= 0 || sellBid <= 0 || sellAsk <= 0) return null;
         return evaluateStrategy(products,book,taxPercentage,minimumProfit,com.goofy.goofyaddons.features.production.BazaarStrategy.of(
                 (ask-bid)/ask*100<=book.instaBuyPercentage(),(sellAsk-sellBid)/sellAsk*100<=book.instaSellPercentage()));
@@ -130,26 +130,13 @@ public class FlipCalculator {
         JsonObject sellQuick = sell.getAsJsonObject("quick_status");
         if (buyQuick == null || sellQuick == null) return null;
         // Historical execution flow, rather than standing order depth.
-        double buyFlow = movingWeek(buyQuick, instaBuy ? "buyMovingWeek" : "sellMovingWeek")
+        double buyFlow = BazaarQuotes.weeklyVolume(buyQuick, instaBuy ? "buyMovingWeek" : "sellMovingWeek")
                 / book.getQtyAmount(book.level());
-        double sellFlow = movingWeek(sellQuick, instaSell ? "sellMovingWeek" : "buyMovingWeek");
+        double sellFlow = BazaarQuotes.weeklyVolume(sellQuick, instaSell ? "sellMovingWeek" : "buyMovingWeek");
         double flow = Math.min(buyFlow, sellFlow);
         if (flow <= 0) return null;
         double score = profit * Math.log10(flow + 1) / Math.sqrt(cost);
         return new FlipItem(book, cost, score, instaBuy, instaSell);
-    }
-
-    private static double movingWeek(JsonObject quick, String key) {
-        if (!quick.has(key)) return 0;
-        double value = quick.get(key).getAsDouble();
-        return Double.isFinite(value) ? Math.max(0, value) : 0;
-    }
-
-    private static double topPrice(JsonObject product, String side) {
-        JsonArray orders = product.getAsJsonArray(side);
-        if (orders == null || orders.isEmpty()) return -1;
-        double price = orders.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
-        return Double.isFinite(price) ? price : -1;
     }
 
     public List<FlipItem> getFlipItemsList() {
