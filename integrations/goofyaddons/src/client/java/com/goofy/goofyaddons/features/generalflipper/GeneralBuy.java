@@ -79,7 +79,7 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
 
     @Override public boolean filledBeforeVisible(GeneralContext ctx) {
         var active = ctx.active();
-        if (ctx.itemCount(active.item.id()) < active.quantity) return false;
+        if (active.acquiredInventory(ctx.itemCount(active.item.id())) < active.quantity) return false;
         ctx.capital().purchased(OWNER, active.item.id());
         active.stage = Stage.INVENTORY;
         if (!ctx.recordAcquisition()) return true;

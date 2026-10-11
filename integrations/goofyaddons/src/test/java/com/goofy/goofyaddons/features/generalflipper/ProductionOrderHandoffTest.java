@@ -46,6 +46,36 @@ class ProductionOrderHandoffTest {
         String trade=engine.productionPosition().tradeId;
         assertFalse(engine.enqueueProduction("OTHER","Other",1,50,true,55));assertEquals(trade,engine.productionPosition().tradeId);
     }
+    @Test void parentReplacementPersistsBaselineAndOnlyHandsOffNewInventory()throws Exception {
+        var world=new FakeWorld().showing(inventory("INPUT",20));var actions=new RecordingActions();
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("replacement.json"));
+        var engine=new GeneralFlipper(world,actions,repo,services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-replacement","INPUT","Input",2,100,true,103));
+        assertEquals(20,repo.load().getFirst().productionInventoryBefore);
+        var active=GeneralFlipper.class.getDeclaredField("active");active.setAccessible(true);active.set(engine,engine.productionPosition());
+        var field=GeneralFlipper.class.getDeclaredField("session");field.setAccessible(true);var ctx=(GeneralContext)field.get(engine);
+        assertFalse(new GeneralBuy().filledBeforeVisible(ctx),"Existing stock must not verify the replacement");
+        world.showing(inventory("INPUT",21));engine.poll();assertFalse(new GeneralBuy().filledBeforeVisible(ctx));
+        world.showing(inventory("INPUT",22));engine.poll();assertTrue(new GeneralBuy().filledBeforeVisible(ctx));
+        assertEquals(2,engine.productionPosition().quantity);assertEquals(200,engine.productionPosition().cost());
+        assertTrue(engine.consumeProduction());assertTrue(repo.load().isEmpty());assertTrue(actions.serverEffects().isEmpty());
+    }
+    @Test void fullyFilledReplacementClaimUsesDeltaAboveOriginalStock()throws Exception {
+        var world=new FakeWorld().showing(inventory("INPUT",20));var repo=new JsonGeneralOrderRepository(()->dir.resolve("full-replacement.json"));
+        var engine=new GeneralFlipper(world,new RecordingActions(),repo,services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-replacement","INPUT","Input",2,100,true,103));
+        var active=GeneralFlipper.class.getDeclaredField("active");active.setAccessible(true);active.set(engine,engine.productionPosition());
+        var field=GeneralFlipper.class.getDeclaredField("session");field.setAccessible(true);var ctx=(GeneralContext)field.get(engine);
+        ctx.trade().inventoryBefore=20;
+        var slots=new ArrayList<SlotView>();for(int i=0;i<54;i++)slots.add(SlotView.empty(i,false,i));
+        slots.set(49,SlotView.named(49,"Close",List.of()));
+        for(int i=0;i<36;i++)slots.add(SlotView.empty(54+i,true,i));
+        slots.set(54,new SlotView(54,true,0,false,"Input","Input",List.of(),"INPUT",null,22,64));
+        world.showing(new MenuSnapshot(44,"Your Bazaar Orders",true,slots));engine.poll();
+        var cancel=new GeneralCancel();cancel.detail(ctx);world.advance(1000);engine.poll();
+        assertTrue(ctx.ordersReady());assertEquals(22,ctx.itemCount("INPUT"));assertEquals(20,ctx.trade().inventoryBefore);
+        cancel.detail(ctx);assertEquals(2,ctx.trade().expectedClaim);
+    }
     @Test void recoveryCancelsOnlyARetainedVerifiedIngredientOrderWithoutQueueingPurchases()throws Exception {
         var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
         var p=new GeneralPosition();p.item=new GeneralItem("INPUT","Input");p.quantity=1280;p.unitCost=11717.8;
@@ -77,14 +107,21 @@ class ProductionOrderHandoffTest {
     @Test void decoratedGemstonePartialFillIsClaimedAndCancelledForItsParent()throws Exception {
         verifiedCancellation(false,35);
     }
-    private void verifiedCancellation(boolean recovery,int filled)throws Exception {
+    @Test void replacementOrderCancellationPreservesPreviouslyHeldIngredients()throws Exception {
+        verifiedCancellation(false,0,20);
+        verifiedCancellation(false,35,20);
+    }
+    private void verifiedCancellation(boolean recovery,int filled)throws Exception {verifiedCancellation(recovery,filled,0);}
+    private void verifiedCancellation(boolean recovery,int filled,int baseline)throws Exception {
         var services=services();
         var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));
         var p=new GeneralPosition();p.item=new GeneralItem("FINE_AMBER_GEM","Fine Amber Gem");p.quantity=1280;p.unitCost=100;
         p.stage=GeneralPosition.Stage.BUY_ORDER;p.productionBuy=true;p.maximumBuyPrice=103;p.purchasePriceKnown=true;p.submitted=true;p.tradeId="retained";
+        p.productionInventoryBefore=baseline;if(baseline>0)p.productionParent="parent-replacement";
         var world=new FakeWorld();p.placedAt=world.clock()-61_000;repo.save(List.of(p));
         var slots=new ArrayList<SlotView>();for(int i=0;i<54;i++)slots.add(SlotView.empty(i,false,i));
         for(int i=0;i<36;i++)slots.add(SlotView.empty(54+i,true,i));
+        if(baseline>0)slots.set(54,new SlotView(54,true,0,false,"Fine Amber Gem","Fine Amber Gem",List.of(),"FINE_AMBER_GEM",null,baseline,64));
         slots.set(49,SlotView.named(49,"Close",List.of()));
         slots.set(11,SlotView.named(11,"BUY ✧ Fine Amber Gemstone",List.of("Order amount: 1,280x","Filled: "+filled+"/1.3k (2.7%)",filled>0?"You have "+filled+" items to claim!":"Click to view options!")));
         // Describe a readable gemstone icon with its item identity and stack limit.
@@ -102,7 +139,7 @@ class ProductionOrderHandoffTest {
         assertFalse(engine.productionFailed());assertTrue(actions.serverEffects().contains("click:11"),actions.performed().toString());
         if(filled>0) {
             var claimed=new ArrayList<>(slots);
-            claimed.set(54,new SlotView(54,true,0,false,"✧ Fine Amber Gemstone","✧ Fine Amber Gemstone",List.of(),"FINE_AMBER_GEM",null,filled,64));
+            claimed.set(54,new SlotView(54,true,0,false,"✧ Fine Amber Gemstone","✧ Fine Amber Gemstone",List.of(),"FINE_AMBER_GEM",null,baseline+filled,64));
             claimed.set(11,new SlotView(11,false,11,false,"BUY ✧ Fine Amber Gemstone","BUY ✧ Fine Amber Gemstone",
                 List.of("Order amount: 1,280x","Filled: 35/1.3k (2.7%)","Click to view options!"),"FINE_AMBER_GEM",null,1,64));
             world.showing(new MenuSnapshot(42,"Your Bazaar Orders",true,claimed));drive(engine,world,1400);
@@ -110,7 +147,7 @@ class ProductionOrderHandoffTest {
             assertEquals(2,actions.serverEffects().stream().filter("click:11"::equals).count(),"Claim first, then open the same owned order's options");
         }
         var options=new ArrayList<>(slots);options.set(11,SlotView.empty(11,false,11));options.set(13,SlotView.named(13,"Cancel Order",List.of()));
-        if(filled>0)options.set(54,new SlotView(54,true,0,false,"✧ Fine Amber Gemstone","✧ Fine Amber Gemstone",List.of(),"FINE_AMBER_GEM",null,filled,64));
+        if(filled>0)options.set(54,new SlotView(54,true,0,false,"✧ Fine Amber Gemstone","✧ Fine Amber Gemstone",List.of(),"FINE_AMBER_GEM",null,baseline+filled,64));
         world.showing(new MenuSnapshot(43,"Buy Order Options",true,options));drive(engine,world,180);
         assertFalse(engine.productionPosition().completed);
         engine.onNotice("[Bazaar] Cancelled! Refunded "+String.format(java.util.Locale.ROOT,"%,d",(1280-filled)*100)+" coins from cancelling Buy Order!");

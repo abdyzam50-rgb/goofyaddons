@@ -466,3 +466,12 @@ cost, input ownership and the 30-second delay. The existing delayed-retry and
 fresh-basket blocking coverage remains applicable to retained/manual runs.
 
 `./gradlew -p client test build --console=plain` passed 1142 Java tests with zero failures/errors. Live Minecraft execution remains unverified.
+
+## 0.2.70 partial ingredient replacement
+
+Regressions cover a parent-scoped replacement with existing stock, durable
+baseline persistence, full-fill detection requiring additional units, partial
+and zero-fill cancellations preserving existing stock, and full claims using
+inventory deltas. Legacy unscoped inventory refusal remains covered.
+
+`./gradlew -p client test build --console=plain` passed 1145 Java tests with zero failures/errors. Live Minecraft execution remains unverified.

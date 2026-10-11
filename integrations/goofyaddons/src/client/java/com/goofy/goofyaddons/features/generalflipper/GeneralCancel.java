@@ -55,7 +55,7 @@ final class GeneralCancel {
         if (!trade.selling && ctx.ordersReady() && ctx.itemCount(active.item.id()) > trade.inventoryBefore && ctx.findOrder(false) < 0) {
             // More units may fill between reading the order and claiming it. Use the
             // acknowledged whole position, not the earlier partial-fill estimate.
-            trade.expectedClaim = active.quantity - trade.inventoryBefore;
+            trade.expectedClaim = active.quantity - active.acquiredInventory(trade.inventoryBefore);
             ctx.actions().closeMenu();
             ctx.transition(Step.VERIFY_CANCEL);
             return;
@@ -68,6 +68,8 @@ final class GeneralCancel {
         var trade = ctx.trade();
         var settings = ctx.settings();
         int count = ctx.itemCount(active.item.id());
+        int acquired=active.acquiredInventory(count);
+        if(acquired<0){ctx.fail("Previously held production ingredients changed; manual reconciliation required.");return;}
         // A sell can complete after its options were opened. Cancellation then
         // returns no inventory: the verified full offer needs a coin claim.
         if (trade.selling && trade.cancelSoldUnits == 0 && ctx.ordersReady() && !ctx.ambiguousOrders()) {
@@ -91,9 +93,9 @@ final class GeneralCancel {
             int order = ctx.findOrder(false);
             if (order >= 0) {
                 if (!ctx.orderMatchesPosition(order)) return;
-                int claimable = OrderLore.claimable(ctx.lore(order), count);
+                int claimable = OrderLore.claimable(ctx.lore(order), acquired);
                 if (claimable > 0) {
-                    if (claimable > ctx.capacityFor(active.item.id()) || count + claimable > active.quantity) {
+                    if (claimable > ctx.capacityFor(active.item.id()) || acquired + claimable > active.quantity) {
                         ctx.fail("Cannot safely claim newly filled units before cancellation; position retained."); return;
                     }
                     trade.inventoryBefore = count; trade.expectedClaim = claimable; trade.receipt = false;
@@ -128,7 +130,7 @@ final class GeneralCancel {
             trade.cancelSoldUnits = 0;
             active.settlementPending = false;
         }
-        if (count == 0) {
+        if (acquired == 0) {
             ctx.capital().funding(OWNER, active.item.id(), 0.0);
             long held = active.heldSince > 0 ? active.heldSince : active.placedAt;
             boolean agedOut = held > 0 && ctx.now() - held >= settings.maxHoldingSeconds * 1000L;
@@ -153,8 +155,8 @@ final class GeneralCancel {
             ctx.completePosition();
             return;
         }
-        if (count > active.quantity) { ctx.fail("Inventory exceeds tracked quantity; manual reconciliation required."); return; }
-        active.quantity = count;
+        if (acquired > active.quantity) { ctx.fail("Inventory exceeds tracked quantity; manual reconciliation required."); return; }
+        active.quantity = acquired;
         active.cancelRequested = false;
         active.confirmedCancelRefund = null;
         active.stage = Stage.INVENTORY;
@@ -178,7 +180,7 @@ final class GeneralCancel {
             return true;
         }
         if (!trade.selling && active.stage == Stage.BUY_ORDER && active.purchasePriceKnown && active.cancelRequested
-                && (step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && trade.expectedClaim == 0 && trade.inventoryBefore == 0) {
+                && (step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && trade.expectedClaim == 0 && trade.inventoryBefore == active.productionInventoryBefore) {
             Double refund = TradeReceipts.buyCancellationRefund(message, active.cost());
             if (refund != null) {
                 trade.receipt = true; active.confirmedCancelRefund = refund;

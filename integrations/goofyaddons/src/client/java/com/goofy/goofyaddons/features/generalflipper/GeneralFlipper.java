@@ -142,6 +142,7 @@ public class GeneralFlipper implements Feature {
             details.put("purchasePriceKnown",position.purchasePriceKnown);
             details.put("settlementPending",position.settlementPending);
             details.put("parent",position.productionParent==null?"legacy":position.productionParent);
+            details.put("productionInventoryBefore",position.productionInventoryBefore);
             details.put("unitCost",position.unitCost);details.put("maximumBuyPrice",position.maximumBuyPrice);details.put("minimumSellPrice",position.minimumSellPrice);
             details.put("placedAt",position.placedAt);details.put("checkedAt",position.checkedAt);details.put("completed",position.completed);details.put("rejectedReason",position.rejectedReason);details.put("verifiedProceeds",position.verifiedProceeds);
             details.put("submitted",position.submitted);details.put("cancelRequested",position.cancelRequested);details.put("reprices",position.reprices);
@@ -730,11 +731,12 @@ public class GeneralFlipper implements Feature {
         restoreBudget();observe();
         if(parent!=null && (!services.productionOnly() || !parent.matches("[A-Za-z0-9_-]{8,80}")))return false;
         if(blocked||paused||(parent==null?!positions.isEmpty():positions.size()>=8 || positions.stream().anyMatch(p->java.util.Objects.equals(p.productionParent,parent)))||units<1||units>4096||unitPrice<=0||!Double.isFinite(unitPrice))return false;
-        if(buy && itemCount(id)>0 || !buy && itemCount(id)!=units || capital.occupied(id))return false;
+        if(buy && parent==null && itemCount(id)>0 || !buy && itemCount(id)!=units || capital.occupied(id))return false;
         if(buy && !capital.reserve(OWNER,id,units*unitPrice,services.purse()))return false;
         if(!buy)capital.restore(OWNER,id,units*unitPrice,false);
         var p=new GeneralPosition();p.item=new GeneralItem(id,name);p.quantity=units;p.unitCost=unitPrice;p.sellPrice=unitPrice;
         p.stage=buy?Stage.PLANNED:Stage.INVENTORY;p.productionBuy=buy;p.productionParent=parent;p.tradeId=java.util.UUID.randomUUID().toString();
+        p.productionInventoryBefore=buy && parent!=null?itemCount(id):0;
         p.purchasePriceKnown=buy;p.maximumBuyPrice=limit;p.minimumSellPrice=limit;positions.add(p);
         if(!buy){capital.purchased(OWNER,id);capital.funding(OWNER,id,null);}
         return save();

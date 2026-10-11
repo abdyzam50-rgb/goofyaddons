@@ -23,7 +23,8 @@ final class GeneralOrderReview {
         if (!ctx.ordersReady() || ctx.ambiguousOrders()) return;
         int buy = ctx.findOrder(false);
         int sell = ctx.findOrder(true);
-        int inventory = ctx.itemCount(active.item.id());
+        int inventory = active.acquiredInventory(ctx.itemCount(active.item.id()));
+        if(inventory<0){ctx.fail("Previously held production ingredients changed; manual reconciliation required.");return;}
         if(ctx.recoveringProduction() && !active.productionBuy) {
             if(active.stage!=Stage.INVENTORY || active.submitted || active.settlementPending
                     || buy>=0 || sell>=0 || inventory!=active.quantity) {
@@ -40,7 +41,7 @@ final class GeneralOrderReview {
         if (buy < 0 && sell < 0 && inventory == 0 && active.stage == Stage.BUY_ORDER && active.cancelRequested
                 && active.confirmedCancelRefund != null && Double.isFinite(active.confirmedCancelRefund)
                 && Math.abs(active.confirmedCancelRefund - active.cost()) <= 0.51) {
-            trade.selling = false; trade.receipt = true; trade.inventoryBefore = 0; trade.expectedClaim = 0;
+            trade.selling = false; trade.receipt = true; trade.inventoryBefore = ctx.itemCount(active.item.id()); trade.expectedClaim = 0;
             ctx.transition(Step.VERIFY_CANCEL); return;
         }
         OrderLore.Fill saleFill = sell < 0 ? null : OrderLore.fill(ctx.lore(sell));
@@ -105,7 +106,7 @@ final class GeneralOrderReview {
                 || ctx.now() - active.placedAt >= ctx.settings().orderTimeoutSeconds * 1000L;
         if (!cancel) { ctx.finishWork(); return; }
         trade.selling = false;
-        trade.inventoryBefore = inventory;
+        trade.inventoryBefore = ctx.itemCount(active.item.id());
         trade.expectedClaim = claimable;
         if (claimable > ctx.capacityFor(active.item.id())) {
             ctx.fail("Insufficient inventory space to claim the tracked buy order."); return;

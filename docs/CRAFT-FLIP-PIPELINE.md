@@ -1056,3 +1056,28 @@ intent, outstanding orders, nonempty cursors and acquired stock still prevent
 empty-plan cancellation. Price ceilings and profit checks remain unchanged.
 Moving prices can still reject a new plan; this change does not guarantee that
 an API quote will match the later GUI quote.
+
+## 0.2.70 partial-fill replacement inventory baseline
+
+The 1791680896352 export is the same 0.2.68 session as the preceding export, not
+an execution of 0.2.69. It advanced to a verified partial claim: 237 Enchanted
+Raw Fish at a retained cost basis of 114,755.4. The child cancellation/handoff
+completed and its position was archived. Parent 24b46db1 then entered REVIEW
+when enqueueProduction refused a replacement for the remaining 1,523 units:
+its legacy no-existing-inventory guard rejected the parent's claimed inputs.
+The calculator was READY; this failure was local order ownership logic.
+
+Parent-scoped production buy orders now persist productionInventoryBefore.
+Only these orders may queue with existing, unoccupied ingredients; legacy
+unscoped queues retain their original refusal. Placement, review, full-fill
+claims and cancellation use newly acquired units above that baseline for child
+quantity and cost. Claim retries still compare actual total inventory against
+the pre-click total. Existing stock cannot verify a new fill or trigger an early
+cancellation, and stock disappearing below the baseline requires reconciliation.
+The default zero baseline preserves legacy journals; diagnostics include it.
+
+This fix does not resume saved REVIEW jobs or invent cost for pre-existing stock.
+For the exported 24b46db1 review, no child orders remain and the verified 237
+inputs remain unsold. Stop trading, put those inputs aside, then acknowledge
+that specific reviewed ID before restarting automatic discovery. Retained cost
+and review history remain in the journal; no sale or profit is inferred.
