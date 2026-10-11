@@ -14,6 +14,15 @@ public enum BazaarStrategy {
         if(instantBuy)return BazaarQuotes.instantBuyCost(product,units);
         double price=BazaarQuotes.bestBid(product);return price>0 && units>0?price*units:null;
     }
+    /**
+     * Craft-input cost: like {@link #buy}, except an input whose bids are too far below its sell
+     * offers to fill is priced, and later bought, instantly rather than at its placeholder bid.
+     */
+    public Double ingredientBuy(JsonObject product,int units){
+        if(product==null||units<1)return null;
+        if(!instantBuy && !BazaarQuotes.orderableBid(product))return BazaarQuotes.instantBuyCost(product,units);
+        return buy(product,units);
+    }
     public Double sell(JsonObject product,int units){
         if(product==null||units<1)return null;
         if(instantSell)return BazaarQuotes.instantSellValue(product,units);

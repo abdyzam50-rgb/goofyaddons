@@ -158,6 +158,8 @@ class ProductionRunTest {
         final List<String> orders=new ArrayList<>();int orderAcknowledgements;
         double orderUnit=50;final List<double[]> orderPrices=new ArrayList<>();
         public Double orderBuyCost(String id,int units){return units*orderUnit;}
+        Set<String> unorderable=Set.of();
+        public boolean orderable(String id){return !unorderable.contains(id);}
         public Double offerSellValue(String id,int units){return units*2000.0;}
         public boolean queueOrder(String id,int units,double price,boolean buy,double limit){orders.add((buy?"BUY":"SELL")+":"+id+":"+units);orderPrices.add(new double[]{price,limit});return true;}
         public boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){
@@ -680,6 +682,14 @@ class ProductionRunTest {
         assertEquals(1.0,env.orderPrices.getFirst()[0],1e-9);
         assertTrue(env.orderPrices.getFirst()[1]>=1.1,"Ceiling "+env.orderPrices.getFirst()[1]+" must allow the GUI's 1.1 bid");
         assertTrue(env.orderPrices.getFirst()[1]<1.11);
+    }
+
+    @Test void anInputWithoutAFillableBidIsInstantBoughtInsteadOfOrdered()throws Exception {
+        var env=new Env();env.buying=true;env.unorderable=Set.of("INPUT");var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        assertEquals(Step.PENDING,run.tick(true,1000));
+        assertTrue(env.orders.isEmpty(),"No buy order for an input whose bid never fills: "+env.orders);
+        assertTrue(run.reason().contains("Buying"),run.reason());
     }
 
     @Test void verifiedEmptyCancellationCanRetireAStaleBudgetWithoutReview()throws Exception {

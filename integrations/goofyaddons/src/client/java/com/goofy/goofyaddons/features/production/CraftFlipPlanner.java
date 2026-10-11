@@ -100,10 +100,11 @@ final class CraftFlipPlanner {
                 int slots=outputSlots;double cost=0,orderWait=0;boolean priced=true;
                 for(var entry:preparation.purchases().entrySet()) {
                     var product=books.element(entry.getKey());
-                    Double amount=product!=null&&product.isJsonObject()?(strategy.instantBuy?books.instantBuyCost(entry.getKey(),entry.getValue()):strategy.buy(product.getAsJsonObject(),entry.getValue())):null;
+                    Double amount=product!=null&&product.isJsonObject()?(strategy.instantBuy?books.instantBuyCost(entry.getKey(),entry.getValue()):strategy.ingredientBuy(product.getAsJsonObject(),entry.getValue())):null;
                     if(amount==null){priced=false;break;}
                     cost+=amount;slots+=inventorySlotsForProduct(catalog,entry.getKey(),entry.getValue());
-                    if(!strategy.instantBuy) {
+                    // An input without a fillable bid is bought instantly, so it adds no order wait.
+                    if(!strategy.instantBuy && com.goofy.goofyaddons.features.market.BazaarQuotes.orderableBid(product.getAsJsonObject())) {
                         double rate=books.hourlyActivity(entry.getKey())*0.05;
                         if(rate<=0){reason="Input order activity unavailable";}
                         // The funded ingredient basket is submitted before any fill wait;

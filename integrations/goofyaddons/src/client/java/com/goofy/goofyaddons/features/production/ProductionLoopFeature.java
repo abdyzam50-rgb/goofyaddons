@@ -561,11 +561,18 @@ public final class ProductionLoopFeature implements Feature {
                 return product != null && product.isJsonObject() ? com.goofy.goofyaddons.features.market.BazaarQuotes.instantSellValue(product.getAsJsonObject(), units) : null;
             }
             public Double orderBuyCost(String id,int units){return strategyQuote(id,units,true);}
+            public boolean orderable(String id){
+                var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
+                if(market==null||!market.has("products"))return true;
+                var product=market.getAsJsonObject("products").get(id);
+                try{return product==null||!product.isJsonObject()||com.goofy.goofyaddons.features.market.BazaarQuotes.orderableBid(product.getAsJsonObject());}
+                catch(RuntimeException malformed){return true;}
+            }
             public Double offerSellValue(String id,int units){return strategyQuote(id,units,false);}
             private Double strategyQuote(String id,int units,boolean buy){
                 var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
                 if(market==null)return null;var product=market.getAsJsonObject("products").getAsJsonObject(id);
-                return buy?BazaarStrategy.ORDER_OFFER.buy(product,units):BazaarStrategy.ORDER_OFFER.sell(product,units);
+                return buy?BazaarStrategy.ORDER_OFFER.ingredientBuy(product,units):BazaarStrategy.ORDER_OFFER.sell(product,units);
             }
             public boolean queueOrder(String id,int units,double price,boolean buy,double limit){return orders.queue(current.id(),id,name(id),units,price,buy,limit);}
             public boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){return orders.queueBasket(current.id(),basket);}

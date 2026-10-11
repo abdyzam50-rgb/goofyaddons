@@ -32,6 +32,17 @@ public final class BazaarQuotes {
     public static double bestAsk(JsonObject product){return topPrice(product,ASKS);}
     /** Highest buy order: what one unit receives when instantly sold. */
     public static double bestBid(JsonObject product){return topPrice(product,BIDS);}
+    /** A top buy order below this share of the lowest sell offer is a placeholder, not a market. */
+    public static final double DEAD_BID_RATIO=0.5;
+    /**
+     * False when the top bid sits so far under the sell offers that an order placed just above
+     * it would never be met: a lone 1-coin bid under a 48k offer (Auto Smelter). A side with no
+     * price leaves the quote to the caller.
+     */
+    public static boolean orderableBid(JsonObject product){
+        double bid=bestBid(product),ask=bestAsk(product);
+        return bid<=0 || ask<=0 || bid>=ask*DEAD_BID_RATIO;
+    }
 
     /** Coins an instant buy of these units costs: the order book walked, plus Hypixel's fee. */
     public static Double instantBuyCost(JsonObject product,int units) {

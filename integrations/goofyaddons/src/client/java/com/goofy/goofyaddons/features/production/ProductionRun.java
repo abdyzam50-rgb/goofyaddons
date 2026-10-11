@@ -48,6 +48,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
         /** Instant-sell value of these units from fresh quotes, before tax, or null when unknown. */
         Double instantSellValue(String id, int units);
         default Double orderBuyCost(String id,int units){return null;}
+        /** Whether a buy order for this input can be expected to fill; inputs that can't are bought instantly. */
+        default boolean orderable(String id){return true;}
         default Double offerSellValue(String id,int units){return null;}
         default boolean queueOrder(String id,int units,double price,boolean buy,double limit){return false;}
         default boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){
@@ -397,8 +399,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(!basket.complete())return Outcome.blocked("No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct()));
         if(ProductionPlanner.exceedsFunds(basket.total(),env.spendable()))return Outcome.blocked("All remaining ingredients would exceed spendable capital; nothing bought");
         var first = missing.entrySet().iterator().next();
+        // Instant-buy inputs whose bids would never fill before ordering the rest.
+        var unorderable=strategy.instantBuy?null:missing.entrySet().stream().filter(e->!env.orderable(e.getKey())).findFirst().orElse(null);
+        if(unorderable!=null)first=unorderable;
         double limit=basket.limits().get(first.getKey());
-        if(!strategy.instantBuy) {
+        if(!strategy.instantBuy && unorderable==null) {
             var orders=new ArrayList<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder>();
             for(var purchase:missing.entrySet()){
                 double planned=basket.limits().get(purchase.getKey())/purchase.getValue()/1.03;

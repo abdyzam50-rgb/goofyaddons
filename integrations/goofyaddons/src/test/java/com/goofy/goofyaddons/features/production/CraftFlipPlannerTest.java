@@ -100,13 +100,25 @@ class CraftFlipPlannerTest {
         var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
         var market=market(100);var products=market.getAsJsonObject("products");
         products.getAsJsonObject("INPUT").getAsJsonArray("buy_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",90);
-        products.getAsJsonObject("INPUT").add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":1,\"amount\":10000}]"));
-        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":200,\"amount\":10000}]"));
+        products.getAsJsonObject("INPUT").add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":46,\"amount\":10000}]"));
+        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":400,\"amount\":10000}]"));
         products.getAsJsonObject("OUTPUT").getAsJsonArray("sell_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",3);
         var rows=rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of());
         assertEquals(1,rows.size());var route=rows.getFirst();assertTrue(route.eligible());
         assertEquals(BazaarStrategy.ORDER_OFFER,route.strategy());assertTrue(route.profit()>0);
         assertEquals("order → offer",route.describe(catalog).get("buySell"));
+    }
+
+    @Test void anInputBidFarBelowItsOffersIsPricedAtTheInstantBuy(){
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
+        var market=market(100);var products=market.getAsJsonObject("products");
+        products.getAsJsonObject("INPUT").getAsJsonArray("buy_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",90);
+        products.getAsJsonObject("INPUT").add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":1,\"amount\":10000}]"));
+        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":200,\"amount\":10000}]"));
+        // A 1-coin bid under a 90-coin offer never fills, so the 4 inputs cost 374 coins, not 4.
+        assertTrue(rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of()).stream().noneMatch(CraftFlipPlanner.Route::eligible));
+        assertEquals(4*90*1.04,BazaarStrategy.ORDER_OFFER.ingredientBuy(products.getAsJsonObject("INPUT"),4),1e-9);
+        assertEquals(4.0,BazaarStrategy.ORDER_OFFER.buy(products.getAsJsonObject("INPUT"),4),1e-9);
     }
 
     @Test void anotherCraftsReservedWorkspaceCanReduceBatchSizeOrExcludeTheRoute() {

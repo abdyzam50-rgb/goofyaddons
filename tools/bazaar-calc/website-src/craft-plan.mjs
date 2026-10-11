@@ -144,12 +144,16 @@ function topPrice(product,side){
  const value=summary[0]?.pricePerUnit;if(typeof value!=='number')throw new Error('Malformed order book');
  return Number.isFinite(value)&&value>0?value:-1;
 }
+const DEAD_BID_RATIO=0.5;
 function books(products){
  const asks=new Map(),bids=new Map();
  const cached=(cache,id,side,descending)=>{if(!cache.has(id)){let value;try{value=ladder(products[id],side,descending);}catch{value=null;}cache.set(id,value);}return cache.get(id);};
  return {
+  // BazaarQuotes.orderableBid: a top bid under half the lowest offer never fills.
+  orderable(id){const product=products[id];const bid=topPrice(product,'sell_summary'),ask=topPrice(product,'buy_summary');return bid<=0||ask<=0||bid>=ask*DEAD_BID_RATIO;},
   buy(strategy,id,units){const product=products[id];if(!product||units<1)return null;
-   if(!STRATEGY[strategy][0]){const price=topPrice(product,'sell_summary');return price>0?price*units:null;}
+   // BazaarStrategy.ingredientBuy: inputs without a fillable bid are priced at the instant buy.
+   if(!STRATEGY[strategy][0]&&this.orderable(id)){const price=topPrice(product,'sell_summary');return price>0?price*units:null;}
    const book=walk(cached(asks,id,'buy_summary',false),units);return book===null?null:book*INSTANT_BUY_FEE;},
   sell(strategy,id,units){const product=products[id];if(!product||units<1)return null;
    if(!STRATEGY[strategy][1]){const price=topPrice(product,'buy_summary');return price>0?price*units:null;}
@@ -219,7 +223,7 @@ export function rankLikeMod({catalog,market,ah,now,budget,minimumProfit,bazaarTa
     const amount=product&&typeof product==='object'&&!Array.isArray(product)?book.buy(strategy,id,units):null;
     if(amount===null){priced=false;break;}
     cost+=amount;slots+=inventorySlotsForProduct(id,units,single);
-    if(!instantBuy){
+    if(!instantBuy&&book.orderable(id)){
      if(!activity.has(id))activity.set(id,hourlyActivity(product));
      const rate=activity.get(id)*0.05;
      if(rate<=0)reason='Input order activity unavailable';

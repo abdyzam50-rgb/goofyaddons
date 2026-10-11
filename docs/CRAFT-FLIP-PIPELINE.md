@@ -805,6 +805,15 @@ orders still require manual reconciliation. New concurrency does not bypass an
 existing unresolved ownership block.
 
 
+## Ingredients with placeholder bids
+
+An ingredient's order price is its top bid, but a lone bid far under the sell offers
+(a 1-coin Auto Smelter bid under 48k offers) is a placeholder that sellers never meet.
+When the top bid is below half the lowest sell offer, the planner, the website port and
+order-strategy runs price that ingredient at its instant-buy cost and add no order wait
+for it. A run in an order strategy instant-buys such ingredients first, then places buy
+orders for the rest. An ingredient with no bids at all still has no order price.
+
 ## 0.2.59 — outbid ingredient-order replacement
 
 Craft ingredient buy orders now check fresh top bids during ordinary order reviews.
