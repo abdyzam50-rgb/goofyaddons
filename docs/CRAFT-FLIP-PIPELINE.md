@@ -1081,3 +1081,34 @@ For the exported 24b46db1 review, no child orders remain and the verified 237
 inputs remain unsold. Stop trading, put those inputs aside, then acknowledge
 that specific reviewed ID before restarting automatic discovery. Retained cost
 and review history remain in the journal; no sale or profit is inferred.
+
+## 0.2.71 profitable partial-fill allocation expansion
+
+The 1791682789088 export confirms 0.2.70 and parent 40d964d9 waiting in
+PROCURE with 58 verified Enchanted Raw Fish, spent 28,222.8, no retained child
+orders and no REVIEW jobs. Its original allocation was 881,745.92. The fresh
+remaining 1,702 inputs required 910,188.752, making total cost 938,411.552.
+The configured cap was 5M, the expected output value was 1,618,563.1, and other
+portfolio reservations left ample funds. Empty-run reselection correctly refused
+to discard purchased inputs, but the immutable original allocation prevented
+this still-profitable run from buying the rest.
+
+Before advancing an automatic PROCURE run with verified acquired cost, the
+scheduler may expand its allocation to spent plus the fresh remaining basket.
+Expansion requires positive verified spending, fresh full input/output quotes,
+profit after the existing sale floor and tax above the configured minimum,
+total cost within the configured cap (zero means no per-run cap), and remaining
+cost covered by liquid/global capital after sibling reservations. It cannot
+resize while an order, instant purchase, compactor verification, intermediate
+craft or retry delay is active. Other jobs retain their allocations. The
+procurement guard also enforces the current configured cap if settings decrease.
+Each change emits production.budget_expanded with previous/new allocation,
+spent, remaining and configured cap. Diagnostic reads do not change budgets.
+
+This preserves the run's batch, strategy and acquired inputs rather than
+restarting it or raising an already queued order's ceiling. Unprofitable or
+unfunded expansions still wait. Installing a new jar requires a restart; the
+exported current job is not automatically resumed across that restart. Stop,
+set aside its 58 verified ingredients, and acknowledge 40d964d9 after inspecting
+the resulting REVIEW record, with no outstanding craft orders. No sale/profit
+is inferred; the journal preserves the recorded acquired cost.

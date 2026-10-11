@@ -176,6 +176,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
     public String output() { return output; }
     public boolean isCraftRun(){return kind==ProductionRecipe.Kind.CRAFT;}
     public boolean hasVerifiedInputBasis(){return !basisUnknown;}
+    /** Allocation changes must not overlap a submitted or delegated transaction. */
+    public boolean canExpandProcurementBudget(){
+        return stage()==Stage.PROCURE && spent>0 && hasVerifiedInputBasis() && !orderActive && buying==null
+            && ingredientCraftJob==null && craftJob==null && !compactorClearance.inProgress() && !waitingForOrderRetry;
+    }
 
     /** Read-only evidence for exports: never tick a child, acknowledge an order or save a job. */
     public Map<String,Object> diagnosticState() {

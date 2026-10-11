@@ -5,6 +5,22 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CraftPortfolioBudgetTest {
+    @Test void verifiedPartialFillCanExpandToFreshBasketWithinConfiguredCap() {
+        double spent=28222.8,remaining=910188.752;
+        assertEquals(spent+remaining,CraftPortfolioBudget.expanded(881745.92,spent,remaining,1500000,10000,5000000,2000000),0.001);
+        assertEquals(spent+remaining,CraftPortfolioBudget.expanded(881745.92,spent,remaining,1500000,10000,0,2000000),0.001);
+    }
+    @Test void expansionCannotSpendOtherJobsReservationsOrBreakProfitAndCapitalLimits() {
+        double available=CraftPortfolioBudget.available(1000,1000,List.of(
+            new CraftPortfolioBudget.Allocation("own",400,100,0,0),
+            new CraftPortfolioBudget.Allocation("other",500,0,0,0)),"own");
+        assertEquals(400,available);
+        assertEquals(400,CraftPortfolioBudget.expanded(400,100,450,1000,10,1000,available));
+        assertEquals(400,CraftPortfolioBudget.expanded(400,100,450,1000,10,500,1000));
+        assertEquals(400,CraftPortfolioBudget.expanded(400,100,450,559,10,1000,1000));
+        assertEquals(400,CraftPortfolioBudget.expanded(400,0,450,1000,10,1000,1000));
+        assertEquals(400,CraftPortfolioBudget.expanded(400,100,Double.NaN,1000,10,1000,1000));
+    }
     @Test void wholeRecipeReservationLeavesFundsForRemainingInputsAcrossJobs() {
         var first=new CraftPortfolioBudget.Allocation("first",200,0,100,100);
         // First order already owns 100; reserve only the other 100, not another full 200.

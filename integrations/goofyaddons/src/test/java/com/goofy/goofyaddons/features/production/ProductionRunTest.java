@@ -638,4 +638,13 @@ class ProductionRunTest {
         assertEquals(50,run.spent());assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state());
         assertEquals(Step.PENDING,run.tick(false,30000));assertEquals(2,env.orders.size());assertFalse(run.wantsMenu());
     }
+    @Test void partialFillBudgetCanExpandOnlyBetweenVerifiedTransactions()throws Exception {
+        var env=new Env();env.buying=true;var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        assertFalse(run.canExpandProcurementBudget());run.tick(true,1000);assertFalse(run.canExpandProcurementBudget());
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,1,50,null,"Partial claim verified");
+        env.menu=menu(null,item(54,"INPUT",1));run.tick(true,1100);
+        assertTrue(run.canExpandProcurementBudget());assertEquals(50,run.spent());
+        run.tick(true,1200);assertFalse(run.canExpandProcurementBudget(),"A new queued order must retain its original ceiling");
+    }
 }

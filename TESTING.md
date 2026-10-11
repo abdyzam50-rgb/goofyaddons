@@ -475,3 +475,12 @@ and zero-fill cancellations preserving existing stock, and full claims using
 inventory deltas. Legacy unscoped inventory refusal remains covered.
 
 `./gradlew -p client test build --console=plain` passed 1145 Java tests with zero failures/errors. Live Minecraft execution remains unverified.
+
+## 0.2.71 partial-fill allocation expansion
+
+New regressions use the exported 28,222.8 spent/910,188.752 remaining basket,
+verify configured and zero-cap behavior, refuse profit/capital/sibling-reservation
+violations and invalid quotes, and restrict run expansion to the interval after
+verified partial handoff and before queueing another order.
+
+`./gradlew -p client test build --console=plain` passed 1148 Java tests with zero failures/errors. Live Minecraft execution remains unverified.

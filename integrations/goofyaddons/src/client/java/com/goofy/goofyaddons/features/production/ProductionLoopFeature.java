@@ -297,6 +297,7 @@ public final class ProductionLoopFeature implements Feature {
         current.lastTickAt=now;
         current.nextAction=now+(run.hasReusableCraftMenu() && (run.stage()==ProductionLoop.Stage.PROCURE || run.stage()==ProductionLoop.Stage.PROCESS)?50:com.goofy.goofyaddons.utils.ActionDelay.next());
         try {
+            expandProcurementBudget(current);
             var result=run.tick(ownsMenu,now);
             observeRun(current,result,ownsMenu,now);
             switch(result) {
@@ -326,6 +327,20 @@ public final class ProductionLoopFeature implements Feature {
             // Keep every unfinished run available to the interruption journal below.
             FeatureManager.INSTANCE.safetyPause("Production run failed; inspect inventory and menus before restarting");
         }
+    }
+    private void expandProcurementBudget(Work current) {
+        var run=current.run;
+        if(current.budget<=0 || !run.canExpandProcurementBudget())return;
+        Double remaining=run.remainingPurchaseCost(),sale=run.expectedBazaarSale();
+        if(remaining==null || sale==null)return;
+        var cfg=GoofyConfig.INSTANCE;
+        double expanded=CraftPortfolioBudget.expanded(current.budget,run.spent(),remaining,
+            sale*ProductionRun.SALE_FLOOR*(1-cfg.bazaarTaxPercentage/100),cfg.craftFlips.minimumProfit,
+            cfg.craftFlips.maximumCapital,availableFor(current.id(),new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse()));
+        if(expanded<=current.budget)return;
+        double previous=current.budget;current.budget=expanded;
+        Diagnostics.event("INFO","production.budget_expanded",Map.of("job",current.id(),"previous",previous,
+            "budget",expanded,"spent",run.spent(),"remaining",remaining,"maximumCapital",cfg.craftFlips.maximumCapital));
     }
     /** Stops preserve every job and every submitted child order; never clear portfolio ownership. */
     private void interrupt(String why) {
@@ -370,6 +385,8 @@ public final class ProductionLoopFeature implements Feature {
                 if(value==null||remaining==null)return "Fresh input/output depth is unavailable; automatic purchases are waiting";
                 double currentCost=current.run.spent()+remaining;
                 if(!current.run.hasVerifiedInputBasis())currentCost=Math.max(currentCost,current.budget); // Held materials are not free.
+                if(GoofyConfig.INSTANCE.craftFlips.maximumCapital>0 && currentCost>GoofyConfig.INSTANCE.craftFlips.maximumCapital)
+                    return "Remaining ingredients exceed the configured craft capital limit; waiting before further purchases";
                 if(currentCost>current.budget)return "Remaining ingredients exceed the selected craft budget; waiting before further purchases";
                 return value*ProductionRun.SALE_FLOOR*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-currentCost<GoofyConfig.INSTANCE.craftFlips.minimumProfit?
                     "Market moved below the craft profit target; waiting before further purchases":null;
