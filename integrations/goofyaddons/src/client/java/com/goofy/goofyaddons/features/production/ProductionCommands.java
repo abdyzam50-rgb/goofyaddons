@@ -95,6 +95,11 @@ public final class ProductionCommands {
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,0,0))
                         .then(sale((c,price,fee)->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,price,fee))))))
+                .then(ClientCommands.literal("pipeline").then(ClientCommands.argument("output",StringArgumentType.string())
+                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
+                        .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),null))
+                        .then(ClientCommands.argument("strategy",StringArgumentType.word())
+                            .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),StringArgumentType.getString(c,"strategy")))))))
                 .then(ClientCommands.literal("test").then(ClientCommands.argument("output",StringArgumentType.string())
                     .executes(c->test(StringArgumentType.getString(c,"output"),0))
                     .then(ClientCommands.argument("binPrice",LongArgumentType.longArg(1,1_000_000_000_000L))
@@ -227,6 +232,33 @@ public final class ProductionCommands {
     private static boolean onBazaar(String id){
         var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
         return market!=null && market.has("products") && market.getAsJsonObject("products").has(id);
+    }
+    /** One named craft through the automatic pipeline (order or instant buys, craft, Bazaar sale) for a chosen batch count. */
+    static int pipeline(String output,int batches,String strategy){
+        var actions=new LiveActions();
+        if(!FeatureManager.INSTANCE.prepareCrafting()){actions.message("Stop trading and resolve config/order recovery before starting a pipeline test.");return 0;}
+        String id;BazaarStrategy chosen;
+        try{id=testItem(output,false);chosen=strategy(strategy);}catch(IllegalArgumentException invalid){actions.message(invalid.getMessage());return 0;}
+        if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null) {
+            actions.message("Fetching Bazaar prices…");
+            com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch().whenComplete((market,error)->new com.goofy.goofyaddons.menu.LiveWorld().onClientThread(()->{
+                if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null)actions.message("Bazaar prices could not be fetched; try again.");
+                else pipeline(output,batches,strategy);
+            }));
+            return 1;
+        }
+        if(!onBazaar(id)){actions.message("Pipeline tests sell on the Bazaar, and "+RecipeCatalog.instance().name(id)+" is not a Bazaar product. Use production testah for auction items.");return 0;}
+        if(!FeatureManager.INSTANCE.production().queuePipeline(id,batches,chosen))return 0;
+        return FeatureManager.INSTANCE.startProductionTest()?1:0;
+    }
+    /** "order", "instant" or a strategy name such as ORDER_OFFER; empty for the planner's pick. */
+    static BazaarStrategy strategy(String text){
+        if(text==null)return null;
+        String key=text.trim().toUpperCase(java.util.Locale.ROOT).replace('-','_');
+        if(key.equals("ORDER"))return BazaarStrategy.ORDER_OFFER;
+        if(key.equals("INSTANT"))return BazaarStrategy.INSTANT_INSTANT;
+        try{return BazaarStrategy.valueOf(key);}
+        catch(IllegalArgumentException unknown){throw new IllegalArgumentException("Strategy must be order, instant, ORDER_OFFER, INSTANT_OFFER, ORDER_INSTANT or INSTANT_INSTANT");}
     }
     private static int claim(String job,long price,long fee){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before claiming.");return 0;}

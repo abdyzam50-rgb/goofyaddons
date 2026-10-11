@@ -251,6 +251,38 @@ public final class ProductionLoopFeature implements Feature {
         }
     }
 
+    /**
+     * Runs one craft the player names through the automatic pipeline for exactly this many
+     * batches: inputs are bought by the strategy (the planner's own pick for this craft when it
+     * has one), crafted, and the output sold on the Bazaar. Spendable capital caps the buying.
+     */
+    public boolean queuePipeline(String output, int batches, BazaarStrategy strategy) {
+        var actions = new LiveActions();
+        if (queued() || hasOrphanOrders() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
+            actions.message("Finish the queued production work first."); return false;
+        }
+        try {
+            var catalog = RecipeCatalog.instance();
+            var route = selection.routes().stream().filter(r -> r.recipe().outputId().equals(output) && "BAZAAR".equals(r.venue())).findFirst().orElse(null);
+            var recipe = route != null ? route.recipe() : catalog.forOutput(output).stream().filter(r -> r.kind() == ProductionRecipe.Kind.CRAFT).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("no verified crafting recipe for " + output));
+            var chosen = strategy != null ? strategy : route != null ? route.strategy() : BazaarStrategy.ORDER_OFFER;
+            var current = new Work();
+            current.run = ProductionRun.startCraft(environment(current, true, false), catalog, recipe, batches, ProductionRun.SELL_ON_BAZAAR, 0, chosen);
+            work.add(current);
+            FeatureManager.INSTANCE.invalidateMarketReport();
+            actions.message("Pipeline test: " + catalog.name(output) + " · " + batches + (batches == 1 ? " batch" : " batches") + " · " + chosen.label()
+                    + (GoofyConfig.INSTANCE.craftFlips.useStorage ? " · storage on" : "") + ". The trading toggle or stop ends it.");
+            Diagnostics.event("INFO", "production.pipeline_test", Map.of("job", current.id(), "output", output, "batches", batches, "strategy", chosen.name()));
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            actions.message("Cannot start the pipeline test: " + invalid.getMessage()); return false;
+        } catch (Exception failure) {
+            Diagnostics.failure("production.pipeline_queue_failed", failure);
+            actions.message("Production journal could not be saved; no action performed."); return false;
+        }
+    }
+
     /** Claims a Forge or Kat job that is waiting in the journal, optionally listing the result. */
     public boolean claim(String jobPrefix, long binPrice, double maximumFee) {
         var actions = new LiveActions();

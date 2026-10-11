@@ -105,6 +105,16 @@ increase within the quoted range. An unrelated large purse change is uncertain
 and cannot create confirmed profit. Publication of an AH listing never counts as
 a completed sale. Saved interrupted transactions continue to require review.
 
+## Testing one craft through the pipeline
+
+`.a* goofyaddon production pipeline ITEM_ID BATCHES [strategy]` runs one named
+Bazaar craft through the automatic pipeline for exactly that many batches (1–64):
+inputs are bought by buy orders or instantly, crafted, and the output is sold on
+the Bazaar. Without a strategy it uses the planner's pick for that craft, or
+`order` (ORDER_OFFER) when the planner has none; `instant` means INSTANT_INSTANT,
+and the four strategy names are accepted too. Trading must be stopped; the run
+starts at once, spendable capital caps the buying, and Use storage applies.
+
 ## Remaining AH pipeline work
 
 AH crafts appear in the plan with an explicit settlement blocker. The existing
