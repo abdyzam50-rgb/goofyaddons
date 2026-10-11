@@ -14,7 +14,9 @@ public final class CraftingExecutor {
     private static final int[] GRID={10,11,12,19,20,21,28,29,30};
     private static final int RESULT=23;
     private static final long FAST_SETTLE_MS=50;
-    private ProductionRecipe recipe;
+    private ProductionRecipe recipe,capacityWaitRecipe;
+    private int capacityWaitContainer;
+    private long capacityWaitSince;
     private int container,source=-1,batchCount=1,lastCompletedBatches;
     public int completedBatches(){return lastCompletedBatches;}
     private final Set<Integer> splitTargets=new HashSet<>();
@@ -28,7 +30,8 @@ public final class CraftingExecutor {
     public String failure(){return failure;}
     public boolean busy(){return recipe!=null;}
     public boolean quickCrafting(){return recipe!=null && quick;}
-    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;resultSince=0;}
+    public boolean outputCapacityWaiting(){return capacityWaitRecipe!=null;}
+    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;resultSince=0;capacityWaitRecipe=null;capacityWaitSince=0;}
     public void slowdown(long now) {
         if(recipe==null)return;
         settleMs=Math.min(500,settleMs+100);cooldownUntil=Math.max(cooldownUntil,now+1000);
@@ -48,6 +51,8 @@ public final class CraftingExecutor {
         if(menu==null || !"Craft Item".equals(Chat.strip(menu.title())))return block("Open the SkyBlock Craft Item menu before crafting");
         if(wanted.kind()!=ProductionRecipe.Kind.CRAFT)return block("Not a crafting recipe");
         if(recipe==null) {
+            if(capacityWaitRecipe!=null && (!wanted.equals(capacityWaitRecipe) || menu.containerId()!=capacityWaitContainer))
+                return block("Crafting owner/container changed while waiting for output capacity; no craft submitted");
             if(!menu.cursorEmpty())return block("Crafting cannot adopt an occupied cursor");
             for(int slot:GRID)if(!empty(menu.slot(slot)))return block("Crafting grid already contains items; ownership must be reconciled");
             before=inventory(menu);
@@ -59,11 +64,29 @@ public final class CraftingExecutor {
                 batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
             }
             for(var need:wanted.ingredients().entrySet())batchCount=Math.min(batchCount,before.getOrDefault(need.getKey(),0)/need.getValue());
+            if(batchCount<1)return block("Insufficient ingredients or ingredient stack capacity for a whole craft");
             long free=menu.slots().stream().filter(v->v.inPlayerInventory() && v.containerSlot()<36 && v.empty()).count();
-            // Unknown outputs may be unstackable: reserve one space per unit, never assume 64.
-            int outputStack=Set.of("BLAZE_POWDER","STICK","WOOD","PAPER","SUGAR","BOOK","BOWL","CHEST","GOLD_NUGGET","REDSTONE_TORCH_ON","EYE_OF_ENDER","GLASS_BOTTLE","WORKBENCH").contains(wanted.outputId())?64:1;
-            if(quickSlot!=null)outputStack=Math.max(1,Math.min(64,quickSlot.maxStackSize()));
-            batchCount=Math.min(batchCount,(int)(free*outputStack/wanted.outputCount()));
+            if(free==0)return block("Keep one free inventory slot for crafting output");
+            // Stack capacity is an item fact, independent of whether a Quick Craft control
+            // proves the requested recipe and amount. Read only exact output identities.
+            Integer observedStack=outputStack(wanted,menu);
+            int fallback=Set.of("BLAZE_POWDER","STICK","WOOD","PAPER","SUGAR","BOOK","BOWL","CHEST","GOLD_NUGGET","REDSTONE_TORCH_ON","EYE_OF_ENDER","GLASS_BOTTLE","WORKBENCH").contains(wanted.outputId())?64:1;
+            int outputStack=observedStack==null?fallback:observedStack;
+            int outputBatches=(int)(free*outputStack/wanted.outputCount());
+            if(outputBatches<1 && observedStack==null && fallback==1) {
+                if(capacityWaitRecipe==null) {
+                    capacityWaitRecipe=wanted;capacityWaitContainer=menu.containerId();capacityWaitSince=now;
+                    com.goofy.goofyaddons.diagnostics.Diagnostics.event("WARN","production.craft_capacity_wait",Map.of(
+                        "recipe",wanted.key(),"output",wanted.outputId(),"outputPerCraft",wanted.outputCount(),"freeSlots",free,"container",menu.containerId(),"quickSlot",describe(menu.slot(16))));
+                }
+                if(now-capacityWaitSince>=8000)return block("Craft output stack size is still unreadable for "+wanted.outputId()
+                    +"; "+free+" free slots, "+wanted.outputCount()+" output per craft; no crafting click sent");
+                return Result.WAITING;
+            }
+            capacityWaitRecipe=null;capacityWaitSince=0;
+            if(outputBatches<1)return block("Insufficient crafting output space for "+wanted.outputId()+": "+free
+                +" free slots, stack limit "+outputStack+", "+wanted.outputCount()+" output per craft");
+            batchCount=Math.min(batchCount,outputBatches);
             if(quickSlot!=null && craftable(quickSlot)<=batchCount){quick=true;batchCount=craftable(quickSlot);}
             else {
                 quickSlot=null;
@@ -73,7 +96,7 @@ public final class CraftingExecutor {
                     batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
                 }
             }
-            if(batchCount<1)return block("Insufficient ingredients or output space for a whole craft");
+            if(batchCount<1)return block("Ingredient grid stack limits do not fit a whole craft of "+wanted.outputId());
             for(var need:wanted.ingredients().entrySet())if(before.getOrDefault(need.getKey(),0)<need.getValue())return block("Missing ingredient: "+need.getKey());
             if(menu.slots().stream().noneMatch(s->s.inPlayerInventory() && s.containerSlot()<36 && s.empty()))return block("Keep one free inventory slot for crafting output");
             recipe=wanted;container=menu.containerId();started=now;next=now;submitted=false;
@@ -201,6 +224,11 @@ public final class CraftingExecutor {
             if(actual.equals(expected))return slot;
         }
         return null;
+    }
+    private static Integer outputStack(ProductionRecipe wanted,MenuSnapshot menu) {
+        return menu.slots().stream().filter(s->!empty(s) && wanted.outputId().equals(s.bazaarProductId())
+                && (s.inPlayerInventory() && s.containerSlot()<36 || !s.inPlayerInventory() && (s.index()==RESULT || s.index()==16 || s.index()==25 || s.index()==34)))
+            .map(s->Math.max(1,Math.min(64,s.maxStackSize()))).min(Integer::compareTo).orElse(null);
     }
     private static int craftable(SlotView slot) {
         if(slot==null)return -1;

@@ -87,6 +87,68 @@ class ProductionTest {
         }
         public void closeMenu(){}public void command(String text){}public void message(String text){}public boolean writeSign(String text){return false;}
     }
+    private Server baitServer(int pairs) {
+        var r=RecipeCatalog.instance().forOutput("HOTSPOT_BAIT").getFirst();var server=new Server(r,0);
+        int slot=54;for(var need:r.ingredients().entrySet())server.slots[slot]=stack(slot++,need.getKey(),pairs);
+        // Export: seven occupied inventory slots, 29 free, no output held.
+        for(int i=56;i<61;i++)server.slots[i]=stack(i,"OTHER_"+i,1);
+        return server;
+    }
+    @Test void loadingBaitQuickSlotWaitsWithoutClickingThenVerifiesAllSixteenBatches() {
+        var server=baitServer(16);var r=server.r;var executor=new CraftingExecutor();
+        assertEquals(29,server.menu().emptyInventorySlots());
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),1000));
+        assertTrue(executor.outputCapacityWaiting());assertEquals(0,server.clicks);assertFalse(executor.busy());
+        // The dynamic controls arrive after the first Craft Item screen update.
+        server.quickAvailable=16;
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),1200));
+        assertFalse(executor.outputCapacityWaiting());assertEquals(List.of("shift:16"),server.inputs);
+        assertEquals(CraftingExecutor.Result.CRAFTED,executor.tick(r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),1300),executor.failure());
+        assertEquals(16,executor.completedBatches());assertEquals(512,server.menu().countInInventory("HOTSPOT_BAIT"));
+    }
+    @Test void readableBaitStackCapacityDoesNotAuthorizeAnExcessiveQuickCraft() {
+        var server=baitServer(32);server.quickAvailable=32;var executor=new CraftingExecutor();
+        CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(server.r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(16,executor.completedBatches());
+        assertFalse(server.inputs.contains("shift:16"));assertTrue(server.inputs.contains("shift:23"));
+        assertEquals(512,server.menu().countInInventory("HOTSPOT_BAIT"));
+        for(var input:server.r.ingredients().keySet())assertEquals(16,server.menu().countInInventory(input));
+    }
+    @Test void unreadableQuickRecipeStillUsesExactOutputStackFactForSafeGridCraft() {
+        var server=baitServer(16);server.quickAvailable=16;server.wrongQuickRecipe=true;var executor=new CraftingExecutor();
+        CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(server.r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(16,executor.completedBatches());
+        assertFalse(server.inputs.contains("shift:16"));assertTrue(server.inputs.contains("shift:23"));
+    }
+    @Test void missingExactOutputMetadataHasABoundedNoClickWaitDespiteWrongStackableIcon() {
+        var server=baitServer(16);server.quickCraft=true;var executor=new CraftingExecutor();
+        assertEquals("OUTPUT",server.menu().slot(16).customId(),"Lookalike stackable icon is another product");
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(server.r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),1000));
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(server.r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),8999));
+        assertEquals(CraftingExecutor.Result.BLOCKED,executor.tick(server.r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),9000));
+        assertTrue(executor.failure().contains("stack size is still unreadable for HOTSPOT_BAIT"));assertEquals(0,server.clicks);
+        assertEquals(16,server.menu().countInInventory("SCORCHED_CRAB_STICK"));assertTrue(server.cursor.empty());
+        executor.reset();assertFalse(executor.outputCapacityWaiting());
+    }
+    @Test void observedUnstackableOutputCannotUseAnotherProductsSixtyFourStackLimit() {
+        var server=baitServer(16);var slots=new ArrayList<>(server.menu().slots());
+        slots.set(16,new SlotView(16,false,16,false,"Hotspot Bait","Hotspot Bait",List.of(),"HOTSPOT_BAIT",null,1,1));
+        slots.set(25,stack(25,"UNRELATED",64));var menu=new MenuSnapshot(77,"Craft Item",true,slots);
+        var executor=new CraftingExecutor();
+        assertEquals(CraftingExecutor.Result.BLOCKED,executor.tick(server.r,16,menu,server,Map.of(),Map.of("pufferfish",8),1000));
+        assertTrue(executor.failure().contains("29 free slots, stack limit 1, 32 output per craft"));assertEquals(0,server.clicks);
+    }
+    @Test void capacityWaitCannotAdoptAnotherCraftContainer() {
+        var server=baitServer(16);var executor=new CraftingExecutor();var menu=server.menu();
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(server.r,16,menu,server,Map.of(),Map.of("pufferfish",8),1000));
+        var other=new MenuSnapshot(78,"Craft Item",true,menu.slots());
+        assertEquals(CraftingExecutor.Result.BLOCKED,executor.tick(server.r,16,other,server,Map.of(),Map.of("pufferfish",8),1200));
+        assertEquals(0,server.clicks);assertTrue(executor.failure().contains("owner/container changed"));
+    }
     @Test void quickBiteGridCollectsTheRawBookVariantAndPreservesOtherLevels() {
         var r=RecipeCatalog.instance().forOutput("ENCHANTMENT_QUICK_BITE_1").getFirst();var server=new Server(r,0);
         server.slots[54]=stack(54,"ENCHANTED_PAPER",3);server.slots[55]=stack(55,"ALLIGATOR_SKIN",8);

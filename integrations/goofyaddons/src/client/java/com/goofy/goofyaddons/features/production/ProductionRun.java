@@ -61,6 +61,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         String queueCraft(String output, int batches);
         default String queueCraftRecipe(String output,int batches,String key){return queueCraft(output,batches);}
         boolean craftQueued();
+        default String craftActivity(){return "Crafting";}
         /** Queues a published BIN listing through the auction feature; returns its job id or null. */
         String queueListing(String product, long price, double maximumFee);
         boolean listingQueued();
@@ -302,7 +303,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(now<orderRetryAfter)return Outcome.pending("Waiting for fresh ingredient prices; retrying in "+Math.max(1,(orderRetryAfter-now+999)/1000)+" seconds");
         waitingForOrderRetry=false;
         if(ingredientCraftJob!=null) {
-            if(env.craftQueued())return Outcome.pending("Crafting intermediate ingredients");
+            if(env.craftQueued())return Outcome.pending(env.craftActivity());
             var result=childFinished(ingredientCraftJob,Set.of(ProductionJobs.State.OUTPUT_READY,ProductionJobs.State.DONE),"Ingredient craft");
             if(result!=Outcome.DONE)return result;
             ingredientCraftJob=null;
@@ -392,7 +393,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 if (craftJob == null) return Outcome.blocked("Craft could not be queued; inputs changed or another production step is queued");
                 return Outcome.pending("Crafting");
             }
-            if (env.craftQueued()) return Outcome.pending("Crafting");
+            if (env.craftQueued()) return Outcome.pending(env.craftActivity());
             return childFinished(craftJob, Set.of(ProductionJobs.State.OUTPUT_READY, ProductionJobs.State.DONE), "Craft");
         }
         if(workstation==null || workstationState()==ProductionJobs.State.PLANNED) {

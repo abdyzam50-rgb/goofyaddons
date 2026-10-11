@@ -21,12 +21,19 @@ public final class ProductionBazaarOrders {
         return resumableSales(engine.productionPositions());
     }
     static List<SavedSale> resumableSales(List<GeneralPosition> positions){
-        if(positions.isEmpty() || positions.stream().anyMatch(p->p.productionBuy || p.productionParent==null
-            || !p.submitted || p.cancelRequested || p.stage!=GeneralPosition.Stage.SELL_ORDER
-            || (p.completed ? p.verifiedProceeds==null || p.productionProceedsUnknown : p.settlementPending)))return List.of();
-        return positions.stream().map(p->new SavedSale(p.productionParent,p.item.id(),ProductionSaleAccounting.totalUnits(p))).toList();
+        if(positions.isEmpty() || positions.stream().anyMatch(p->!resumableSale(p) && !intactRetainedBuy(p)))return List.of();
+        return positions.stream().filter(ProductionBazaarOrders::resumableSale)
+            .map(p->new SavedSale(p.productionParent,p.item.id(),ProductionSaleAccounting.totalUnits(p))).toList();
     }
-    public void resumeSavedSales(){bind();engine.start();}
+    static boolean resumableSale(GeneralPosition p){
+        return !p.productionBuy && p.productionParent!=null && p.submitted && !p.cancelRequested && p.stage==GeneralPosition.Stage.SELL_ORDER
+            && (p.completed ? p.verifiedProceeds!=null && !p.productionProceedsUnknown : !p.settlementPending);
+    }
+    private static boolean intactRetainedBuy(GeneralPosition p){
+        return p.productionBuy && p.productionParent!=null && p.purchasePriceKnown && !p.cancelRequested && !p.settlementPending
+            && (p.stage==GeneralPosition.Stage.BUY_ORDER && p.submitted || p.stage==GeneralPosition.Stage.INVENTORY);
+    }
+    public boolean resumeSavedSales(){bind();return engine.resumeProductionSales();}
     public record Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason,boolean rejected){
         public Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason){this(done,failed,units,cost,proceeds,reason,false);}
     }
@@ -104,6 +111,7 @@ public final class ProductionBazaarOrders {
         return new Result(done,engine.productionFailed(),p.productionBuy?(p.completed?0:p.quantity):ProductionSaleAccounting.totalUnits(p),p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,p.rejectedReason==null?engine.activity():p.rejectedReason,p.rejectedReason!=null);
     }
     public boolean recoverBuy(){bind();return engine.recoverProductionBuy();}
+    public boolean recoveryRemaining(){return engine.productionRecoveryRemaining();}
     public com.goofy.goofyaddons.features.production.ProductionJobs.Job recoveryEvidence(String account) {
         var p=engine.productionPosition();
         if(p!=null && !p.productionBuy && p.completed && !p.submitted && p.stage==GeneralPosition.Stage.INVENTORY)

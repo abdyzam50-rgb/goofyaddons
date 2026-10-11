@@ -22,7 +22,7 @@ public final class CraftingFeature implements Feature {
     public boolean queued(){return recipe!=null;}
     /** The journal id of the most recently queued job, for callers that follow it. */
     public String jobId(){return jobId;}
-    public String activity(){return recipe==null?"No craft queued":(executor.quickCrafting()?"Quick crafting ":"Crafting ")+recipe.outputId()+" · "+remaining+" batches remaining"+(compactorStatus==null?"":" · "+compactorStatus);}
+    public String activity(){return recipe==null?"No craft queued":(executor.outputCapacityWaiting()?"Waiting for output stack size: ":executor.quickCrafting()?"Quick crafting ":"Crafting ")+RecipeCatalog.instance().name(recipe.outputId())+" · "+remaining+" batches remaining"+(compactorStatus==null?"":" · "+compactorStatus);}
     public Set<String> lockedProducts(){if(recipe==null)return Set.of();var ids=new HashSet<>(recipe.ingredients().keySet());ids.add(recipe.outputId());return Set.copyOf(ids);}
     private ProductionJobs jobs()throws java.io.IOException {
         if(jobs==null) {

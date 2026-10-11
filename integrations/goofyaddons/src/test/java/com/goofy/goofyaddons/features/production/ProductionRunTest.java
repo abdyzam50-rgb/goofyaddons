@@ -167,7 +167,7 @@ class ProductionRunTest {
         final List<Double> confirmedCosts=new ArrayList<>(),confirmedSales=new ArrayList<>();
         public void outputConfirmed(String id,String output,int units,Double cost){confirmedCosts.add(cost);}
         public void saleConfirmed(String id,String output,int units,double proceeds){confirmedSales.add(proceeds);}
-        Map<String,Integer> unlocks=Map.of("hotm",10);boolean requirementsPending;String procurementBlock,pinnedKey;
+        Map<String,Integer> unlocks=Map.of("hotm",10);boolean requirementsPending;String procurementBlock,pinnedKey,craftActivity="Crafting";
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
         public String account(){return "account";}
@@ -191,6 +191,7 @@ class ProductionRunTest {
                 crafts.add(output+"x"+batches);craftQueued=true;return id;}catch(Exception e){return null;}
         }
         public boolean craftQueued(){return craftQueued;}
+        public String craftActivity(){return craftActivity;}
         public String queueListing(String product,long price,double fee){
             try{String id="list-"+listings.size();jobs.put(new ProductionJobs.Job(id,"auction:prepare:"+product,"account",ProductionJobs.State.OUTPUT_READY,1,-1,0,0,null,null,null,null));
                 listings.add(product+"@"+price);listingQueued=true;return id;}catch(Exception e){return null;}
@@ -213,6 +214,15 @@ class ProductionRunTest {
         assertEquals(com.goofy.goofyaddons.features.production.ProductionLoop.Step.PENDING,run.tick(true,3000));
         assertTrue(run.reason().contains("Buying"));
         run.tick(true,4000);assertFalse(env.actions.serverEffects().isEmpty());
+    }
+    @Test void delegatedCraftCapacityWaitAppearsInTheParentWithoutRepeatedQueueing()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"INPUT",2));
+        var run=ProductionRun.startCraft(env,catalog(),catalog().forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0);
+        run.tick(false,1000);run.tick(false,1100);assertEquals(List.of("OUTPUTx1"),env.crafts);
+        env.craftActivity="Waiting for output stack size: Output";
+        assertEquals(Step.PENDING,run.tick(false,1200));assertEquals(env.craftActivity,run.reason());
+        assertEquals(Stage.PROCESS,run.stage());assertEquals(List.of("OUTPUTx1"),env.crafts);
+        assertTrue(env.orders.isEmpty());assertTrue(env.confirmedCosts.isEmpty());assertTrue(env.actions.serverEffects().isEmpty());
     }
     @Test void eyeIngredientsAreCraftedFromRodsInJournaledChunksBeforeFinalCraft()throws Exception {
         var env=new Env();env.unlocks=Map.of("enderpearl",6);

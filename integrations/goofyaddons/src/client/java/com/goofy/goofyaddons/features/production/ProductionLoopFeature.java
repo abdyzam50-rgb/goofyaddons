@@ -265,9 +265,9 @@ public final class ProductionLoopFeature implements Feature {
             FeatureManager.INSTANCE.crafting().productionJobs().put(evidence);
             if(!orders.acknowledge())throw new java.io.IOException("Could not save the recovered order handoff");
             Diagnostics.event("INFO","production.order_recovered",Map.of("job",evidence.id(),"reason",evidence.reason()));
-            if(orders.retained())return;
+            if(orders.recoveryRemaining())return;
             recoveringOrders=false;orders.stop();
-            FeatureManager.INSTANCE.safetyPause("Craft positions recovered. Inspect inventory and recovered evidence, then use production acknowledge all before restarting crafts.");
+            FeatureManager.INSTANCE.safetyPause("Ingredient positions recovered. Inspect inventory and recovered evidence before acknowledging reviewed jobs. Submitted sell offers remain tracked and can resume monitoring in Craft mode.");
         }catch(Exception failed) {
             recoveringOrders=false;orders.stop();Diagnostics.failure("production.order_recovery_failed",failed);
             FeatureManager.INSTANCE.safetyPause("Craft order recovery could not be saved; evidence retained");
@@ -302,7 +302,8 @@ public final class ProductionLoopFeature implements Feature {
                 current.budget=Math.max(1,current.run.spent());restored.add(current);
             }
             for(var current:restored)jobs.put(jobs.find(current.id()).orElseThrow().withState(ProductionJobs.State.LISTING,"Resuming retained submitted Bazaar sell offer; live ownership checks required"));
-            work.addAll(restored);orders.resumeSavedSales();FeatureManager.INSTANCE.invalidateMarketReport();
+            if(!orders.resumeSavedSales())throw new IllegalStateException("Saved sale ownership could not be scoped safely");
+            work.addAll(restored);FeatureManager.INSTANCE.invalidateMarketReport();
             Diagnostics.event("INFO","production.sales_restored",Map.of("parents",restored.stream().map(Work::id).toList()));
             new LiveActions().message("Resumed monitoring "+restored.size()+" saved craft sell offers; no purchases or crafts repeated.");
         }catch(Exception failure){Diagnostics.failure("production.sale_restore_failed",failure);}
@@ -448,6 +449,7 @@ public final class ProductionLoopFeature implements Feature {
                 var crafting=FeatureManager.INSTANCE.crafting();return (current.run!=null && current.run.isCraftRun()?crafting.queueForProduction(output,batches,key):crafting.queue(output,batches,key))?crafting.jobId():null;
             }
             public boolean craftQueued() { return FeatureManager.INSTANCE.crafting().queued(); }
+            public String craftActivity(){return FeatureManager.INSTANCE.crafting().activity();}
             public String queueListing(String product, long price, double maximumFee) {
                 if(foreground!=null && foreground!=current && foreground.run.wantsMenu())return null;
                 var auction = FeatureManager.INSTANCE.auction();

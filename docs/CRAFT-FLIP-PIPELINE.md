@@ -1316,3 +1316,57 @@ multi-enchantment books do not. Existing book-flipper reservations use a family
 ID, so that reservation also blocks crafting or ordering any of its levels.
 Exact craft-level reservations block the family combining route while retaining
 their original costs and quantities in the capital ledger.
+
+### 0.2.80 — Craft menu loading and mixed-position recovery
+
+The Hotspot Bait export captured the failure before any crafting click, about
+119 ms after opening `/craft`: the initial Quick Crafting control was still a
+blank placeholder. All sixteen input pairs were verified in inventory, with
+29 free slots. Before a readable output icon arrived, the unstackable fallback
+made even one 32-bait recipe appear to need 32 slots. The later same-container
+snapshot showed the correct 32-bait output and sixteen craftable batches.
+
+The executor now reads stack capacity from exact output identities in the
+result, Quick Crafting column or accessible inventory. This item fact is
+separate from authorization to click Quick Crafting: excessive craftable
+amounts or unreadable ingredient lore still use the exact grid recipe. If an
+unknown multi-output recipe cannot fit the conservative fallback, the executor
+waits up to eight seconds for output metadata without clicking or claiming
+success. The HUD identifies that wait and `production.craft_capacity_wait`
+records the recipe, free slots and initial Quick Crafting observation. A real
+capacity failure reports the output quantity and observed stack limit. Changing
+the recipe owner or container during the wait is refused.
+
+The same pause retained one submitted Precursor Apparatus sell offer and two
+ingredient buy orders. Six Precursor Apparatus outputs and their 4,566,950.4-coin
+input cost were verified; the server later reported the offer filled, but its
+coin claim was not yet verified. Quick Bite held seven Alligator Skins and
+three Enchanted Paper, with one skin still ordered. Jade held 47 Fine Jade
+Gemstones, with 353 still ordered. Bait held all sixteen input pairs and had no
+verified output. A server fill notice alone does not count as sale proceeds.
+
+An intact submitted sell offer can now resume in a portfolio that also retains
+known-cost ingredient buys. The resumed engine owns only the sell positions;
+it does not advance, cancel or acknowledge the ingredient siblings. Explicit
+`production recoverorders` instead owns only recoverable ingredient positions
+and verified unsubmitted outputs, leaving submitted sell offers intact. Each
+claim or cancellation still requires the existing live-order, inventory and
+receipt checks. Recovery ends when its own positions are reconciled, rather
+than treating an unrelated retained sell offer as another missing buy order.
+Diagnostic state includes the active recovery flag and scoped parent IDs.
+Cancellation or settlement uncertainty continues to block restoration.
+
+For this export, install 0.2.80, stop trading and run
+`.a* goofyaddon production recoverorders`. Wait for “Ingredient positions
+recovered,” inspect the recovered inventory and retain the recovery evidence.
+Restart Craft mode to monitor and claim the retained Precursor Apparatus offer;
+its sale remains pending until the coin receipt is verified. After it completes,
+stop trading and inspect `.a* goofyaddon production jobs`. Acknowledge only the
+reviewed entries with `.a* goofyaddon production acknowledge <ID>`; the original
+Bait parent is `0b4825a0`, its crafting child is `f6d1ac1a`, Quick Bite is
+`37e4a0d0` and Jade is `ddfc846a`. Ingredient recovery also creates reviewed
+receipt evidence under `0bd44234` and `1174b779`. Once every review has been
+inspected and no craft order remains, `production acknowledge all` performs
+the same acknowledgement in one write. These acknowledgements retain the
+original evidence and do not assume a sale or profit. Restart Craft mode for
+new selection. Ordinary trader orders are stored separately and are untouched.

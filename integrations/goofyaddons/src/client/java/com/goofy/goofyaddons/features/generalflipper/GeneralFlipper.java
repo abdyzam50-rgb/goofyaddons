@@ -74,6 +74,8 @@ public class GeneralFlipper implements Feature {
     private boolean paused;
     private boolean blocked;
     private boolean productionRecovery;
+    /** Transient ownership scope: restored sales never advance orphaned ingredient buys. */
+    private java.util.Set<GeneralPosition> productionWorkScope;
     private CompletableFuture<JsonObject> request;
     private int generation;
     private JsonObject products;
@@ -155,6 +157,9 @@ public class GeneralFlipper implements Feature {
         }
         state.put("quotesAt",quotesAt);state.put("quotesFresh",freshQuotes());state.put("nextPollAt",nextPoll);state.put("nextActionAt",nextAction);
         state.put("productionWait",productionWait);
+        state.put("productionRecovery",productionRecovery);
+        state.put("productionWorkParents",productionWorkScope==null?"all":productionWorkScope.stream()
+            .filter(positions::contains).map(p->p.productionParent==null?"legacy:"+p.tradeId:p.productionParent).distinct().sorted().toList());
         state.put("lastFailure",lastFailure);state.put("lastFailureParent",lastFailureParent);
         state.put("positions",retained);return state;
     }
@@ -186,7 +191,7 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void start() {
-        productionRecovery=false;
+        productionRecovery=false;productionWorkScope=null;
         bedrockRecovery.reset();
         restoreBudget();
         if (blocked) { actions.message("General flipper is blocked; resolve the logged order-state error first."); return; }
@@ -201,7 +206,7 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void stop() {
-        productionRecovery=false;
+        productionRecovery=false;productionWorkScope=null;
         running = false;
         paused = false;
         invalidateRequest();
@@ -271,7 +276,7 @@ public class GeneralFlipper implements Feature {
         if (!running || paused || blocked) return false;
         if (active != null) return true;
         long now = world.now();
-        if (positions.stream().anyMatch(position -> workDue(position, now))) return true;
+        if (workPositions().stream().anyMatch(position -> workDue(position, now))) return true;
         return snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
                 && !snapshotCandidates.isEmpty();
     }
@@ -414,7 +419,8 @@ public class GeneralFlipper implements Feature {
         }
     }
     private java.util.List<GeneralPosition> workPositions(){
-        return services.productionOnly()?positions.stream().sorted(java.util.Comparator.comparingInt(p->p.stage==Stage.PLANNED?0:1)).toList():positions;
+        return services.productionOnly()?positions.stream().filter(p->productionWorkScope==null || productionWorkScope.contains(p))
+            .sorted(java.util.Comparator.comparingInt(p->p.stage==Stage.PLANNED?0:1)).toList():positions;
     }
 
     private void tickInstant(long now)throws Exception {
@@ -738,7 +744,7 @@ public class GeneralFlipper implements Feature {
     }
 
     void resetProductionAccount(){
-        invalidateRequest();positions.clear();active=null;loaded=false;blocked=false;running=false;paused=false;productionRecovery=false;
+        invalidateRequest();positions.clear();active=null;loaded=false;blocked=false;running=false;paused=false;productionRecovery=false;productionWorkScope=null;
         instantPosition=null;instantBuying=null;instantSelling=null;clearSnapshot();
     }
     boolean enqueueProduction(String id,String name,int units,double unitPrice,boolean buy,double limit) {
@@ -782,7 +788,7 @@ public class GeneralFlipper implements Feature {
         if(!buy){capital.purchased(OWNER,id);capital.funding(OWNER,id,null);}
         return save();
     }
-    GeneralPosition productionPosition(){return positions.isEmpty()?null:positions.getFirst();}
+    GeneralPosition productionPosition(){return productionRecovery?positions.stream().filter(p->productionWorkScope.contains(p)).findFirst().orElse(null):positions.isEmpty()?null:positions.getFirst();}
     java.util.List<GeneralPosition> productionPositions(){restoreBudget();return blocked?java.util.List.of():java.util.List.copyOf(positions);}
     GeneralPosition productionPosition(String parent){return positions.stream().filter(p->java.util.Objects.equals(p.productionParent,parent)).findFirst().orElse(null);}
     boolean consumeProduction(){return consumeProduction(productionPosition());}
@@ -814,15 +820,33 @@ public class GeneralFlipper implements Feature {
         restoreBudget();return blocked || positions.stream().anyMatch(p->p.productionParent==null || !parents.contains(p.productionParent));
     }
     boolean productionFailed(String parent){return blocked || paused && java.util.Objects.equals(lastFailureParent,parent);}
+    boolean resumeProductionSales(){
+        restoreBudget();
+        if(!services.productionOnly() || blocked || active!=null)return false;
+        var sales=ProductionBazaarOrders.resumableSales(positions);if(sales.isEmpty())return false;
+        var parents=sales.stream().map(ProductionBazaarOrders.SavedSale::parent).collect(java.util.stream.Collectors.toSet());
+        var scoped=positions.stream().filter(p->parents.contains(p.productionParent) && ProductionBazaarOrders.resumableSale(p)).collect(java.util.stream.Collectors.toSet());
+        startProductionScope(scoped,false);
+        return true;
+    }
+    private void startProductionScope(java.util.Set<GeneralPosition> scoped,boolean recovery){
+        invalidateRequest();bedrockRecovery.reset();running=true;paused=false;
+        lastBlockedItem=null;lastFailure=null;lastFailureParent=null;nextPoll=0;
+        productionRecovery=recovery;productionWorkScope=scoped;
+        for(var p:scoped){p.checkedAt=0;restoreFunding(p);}
+        active=null;navigationRetry.reset();claim.reset();inputRestarts=0;
+    }
+    boolean productionRecoveryRemaining(){return productionRecovery && positions.stream().anyMatch(p->productionWorkScope.contains(p));}
     boolean recoverProductionBuy() {
         restoreBudget();
-        if(!services.productionOnly() || blocked || positions.isEmpty())return false;
+        if(!services.productionOnly() || blocked || positions.isEmpty() || active!=null)return false;
         if(positions.stream().anyMatch(p->p.productionBuy
-                ? !p.purchasePriceKnown || p.stage==Stage.PLANNED && !p.submitted
-                : p.stage!=Stage.INVENTORY || p.submitted || p.settlementPending))return false;
-        start();
-        productionRecovery=true;
-        for(var p:positions)if(!p.completed) {
+                ? !p.purchasePriceKnown || p.settlementPending || p.stage==Stage.PLANNED && !p.submitted
+                : !ProductionBazaarOrders.resumableSale(p) && (p.stage!=Stage.INVENTORY || p.submitted || p.settlementPending)))return false;
+        var scoped=positions.stream().filter(p->p.productionBuy || !p.submitted && p.stage==Stage.INVENTORY).collect(java.util.stream.Collectors.toSet());
+        if(scoped.isEmpty())return false;
+        startProductionScope(scoped,true);
+        for(var p:scoped)if(!p.completed) {
             // The existing claim/cancel engine verifies live ownership, inventory and refunds.
             if(p.productionBuy && p.stage!=Stage.INVENTORY)p.cancelRequested=true;
             p.checkedAt=0;

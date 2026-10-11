@@ -567,3 +567,24 @@ GUI was available for this update.
 Limited-inventory planner regressions also verify book input/output batches and intermediate workspace shrink before any orders are placed.
 
 Final validation: client test/build succeeded; 1,212 tests passed with zero failures, errors or skips. Release jar metadata verifies 0.2.79-BETA.
+
+### 0.2.80 Craft menu loading and mixed-position recovery
+
+The exported Hotspot Bait race is reproduced with sixteen ingredient pairs,
+seven occupied inventory slots and an initially unreadable Quick Crafting
+control. Tests verify a no-click wait followed by one shift-click and 512
+verified outputs; excessive craftable amounts or mismatched recipe lore still
+use the exact grid recipe. Missing metadata times out after eight seconds with
+ingredients intact, unrelated icons cannot supply stack capacity, and a changed
+container cannot adopt the pending wait. A parent-run test verifies that the
+capacity wait reaches the HUD without repeated craft queueing.
+
+Mixed-position tests exercise actual sale receipts with a retained ingredient
+buy and actual buy refunds with a retained sell offer. They verify scoped menu
+ownership, unchanged sibling timing and costs, preserved capital reservations,
+recovery completion with a sell offer still present, and rejection of unsettled
+or interrupted cancellation journals.
+
+Validation: client test/build succeeded; 1,223 tests passed with zero failures,
+errors or skips. Release jar metadata verifies 0.2.80-BETA. No live Minecraft
+GUI was available; gameplay timing still needs verification.
