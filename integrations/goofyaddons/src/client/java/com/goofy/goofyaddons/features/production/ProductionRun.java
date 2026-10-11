@@ -401,8 +401,10 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(!strategy.instantBuy) {
             var orders=new ArrayList<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder>();
             for(var purchase:missing.entrySet()){
-                double ceiling=basket.limits().get(purchase.getKey())/purchase.getValue();
-                orders.add(new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder(purchase.getKey(),env.name(purchase.getKey()),Math.min(4096,purchase.getValue()),ceiling/1.03,ceiling));
+                double planned=basket.limits().get(purchase.getKey())/purchase.getValue()/1.03;
+                // The order GUI bids 0.1 above the top order, which is more than 3% below about 3.3 coins.
+                double ceiling=Math.max(planned*1.03,planned+0.1+1e-6);
+                orders.add(new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder(purchase.getKey(),env.name(purchase.getKey()),Math.min(4096,purchase.getValue()),planned,ceiling));
             }
             try{env.jobs().put(parent().withState(ProductionJobs.State.BUYING,"Ingredient buy-order basket intent: "+orders.size()+" products"));}
             catch(Exception failure){return Outcome.blocked("Ingredient order intent could not be saved");}

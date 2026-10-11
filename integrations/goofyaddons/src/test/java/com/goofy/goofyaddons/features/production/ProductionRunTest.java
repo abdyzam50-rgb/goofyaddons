@@ -156,9 +156,10 @@ class ProductionRunTest {
         Set<String> occupied=Set.of(),unquoted=Set.of();
         com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result orderResult;
         final List<String> orders=new ArrayList<>();int orderAcknowledgements;
-        public Double orderBuyCost(String id,int units){return units*50.0;}
+        double orderUnit=50;final List<double[]> orderPrices=new ArrayList<>();
+        public Double orderBuyCost(String id,int units){return units*orderUnit;}
         public Double offerSellValue(String id,int units){return units*2000.0;}
-        public boolean queueOrder(String id,int units,double price,boolean buy,double limit){orders.add((buy?"BUY":"SELL")+":"+id+":"+units);return true;}
+        public boolean queueOrder(String id,int units,double price,boolean buy,double limit){orders.add((buy?"BUY":"SELL")+":"+id+":"+units);orderPrices.add(new double[]{price,limit});return true;}
         public boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){
             basket.forEach(o->queueOrder(o.product(),o.units(),o.price(),true,o.limit()));return true;
         }
@@ -670,6 +671,15 @@ class ProductionRunTest {
             assertEquals(List.of("BUY:INPUT:2","BUY:INPUT:"+(2-filled)),env.orders);
             assertEquals(filled*50,env.jobs.find(run.jobId()).orElseThrow().costBasis());
         }
+    }
+
+    @Test void aCheapIngredientOrderMayBidTheGuisTenthOfACoinAboveTheTopOrder()throws Exception {
+        var env=new Env();env.buying=true;env.orderUnit=1.0;var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);assertEquals(List.of("BUY:INPUT:2"),env.orders);
+        assertEquals(1.0,env.orderPrices.getFirst()[0],1e-9);
+        assertTrue(env.orderPrices.getFirst()[1]>=1.1,"Ceiling "+env.orderPrices.getFirst()[1]+" must allow the GUI's 1.1 bid");
+        assertTrue(env.orderPrices.getFirst()[1]<1.11);
     }
 
     @Test void verifiedEmptyCancellationCanRetireAStaleBudgetWithoutReview()throws Exception {
