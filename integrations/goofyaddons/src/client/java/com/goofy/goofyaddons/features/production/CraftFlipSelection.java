@@ -115,16 +115,29 @@ final class CraftFlipSelection {
             generatedAt=now;lastMarketSource=market.get("lastUpdated").getAsLong();
             if(error!=null && (error.startsWith("Waiting for") || error.contains("REVIEW jobs remain")
                     || error.startsWith("Resolve retained craft Bazaar orders") || error.equals("Production journal or account data unavailable")))error=null;
-            com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.ranking_updated",Map.of(
-                "marketAt",lastMarketSource,"eligibleRoutes",routes.stream().filter(CraftFlipPlanner.Route::eligible).count(),
-                "pricedRoutes",routes.size(),"excludedCandidateCounts",Map.copyOf(excluded),"budget",budget));
+            var ranking=new LinkedHashMap<String,Object>();
+            ranking.put("at",now);ranking.put("marketAt",lastMarketSource);ranking.put("marketAgeMs",now-lastMarketSource);
+            ranking.put("purse",purse);ranking.put("budget",budget);ranking.put("freeSlots",world.menu()==null?-1:world.menu().emptyInventorySlots());
+            ranking.put("reservedSlots",manager.production().reservedInventorySlots(world.menu()));ranking.put("storageSlots",manager.production().storageSlots());
+            ranking.put("blockedProducts",new TreeSet<>(blocked));ranking.put("ahAvailable",ah!=null);
+            ranking.put("settings",Map.of("strategy",cfg.craftFlips.strategy,"venue",cfg.craftFlips.venue,"minimumProfit",cfg.craftFlips.minimumProfit,"maxBatches",cfg.craftFlips.maxBatches,"bazaarTax",cfg.bazaarTaxPercentage));
+            ranking.put("eligibleRoutes",routes.stream().filter(CraftFlipPlanner.Route::eligible).count());ranking.put("pricedRoutes",routes.size());
+            ranking.put("excludedCandidateCounts",Map.copyOf(excluded));
+            ranking.put("topRoutes",routes.stream().limit(20).map(r->r.describe(RecipeCatalog.instance())).toList());
+            synchronized(rankings){rankings.addLast(ranking);while(rankings.size()>5)rankings.removeFirst();}
+            var event=new LinkedHashMap<>(ranking);event.put("topRoutes",routes.stream().limit(5).map(r->r.describe(RecipeCatalog.instance())).toList());
+            com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.ranking_updated",event);
         }catch(Exception unavailable){routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error="Production journal or account data unavailable";com.goofy.goofyaddons.diagnostics.Diagnostics.failure("production.ranking_failed",unavailable);}
     }
+    /** The last five rankings with their inputs, so an export explains a past pick, not only the current state. */
+    private final ArrayDeque<Map<String,Object>> rankings=new ArrayDeque<>();
+    List<Map<String,Object>> recentRankings(){synchronized(rankings){return List.copyOf(rankings);}}
+    Map<String,Object> latestRanking(){synchronized(rankings){var last=rankings.peekLast();return last==null?Map.of():Map.of("at",last.get("at"),"marketAgeMs",last.get("marketAgeMs"),"purse",last.get("purse"),"budget",last.get("budget"),"freeSlots",last.get("freeSlots"),"reservedSlots",last.get("reservedSlots"),"storageSlots",last.get("storageSlots"));}}
     List<CraftFlipPlanner.Route> currentRoutes(){rebuild(System.currentTimeMillis());return routes;}
     Map<String,Object> diagnosticState() {
         var result=new LinkedHashMap<>(view());
         result.put("excludedByOutput",Map.copyOf(excludedByOutput));
-        result.put("rows",routes.stream().map(r->r.describe(RecipeCatalog.instance())).toList());
+        result.put("rows",routes.stream().limit(100).map(r->r.describe(RecipeCatalog.instance())).toList());
         result.put("blockedProducts",FeatureManager.INSTANCE.production().lockedProducts());
         return result;
     }

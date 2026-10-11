@@ -21,14 +21,29 @@ public final class Diagnostics {
     private static java.util.Map<String,String> exportVersions=Map.of();
     private static final java.util.concurrent.atomic.AtomicBoolean exporting=new java.util.concurrent.atomic.AtomicBoolean();
     private static long heartbeat;
+    private static final ChatHistory CHAT=new ChatHistory();
+    /** Identical error types within this window skip the heavy snapshot, so a loop cannot rotate history away. */
+    static final long REPEAT_WINDOW_MS=10_000;
+    private static final Map<String,long[]> FAILURES=new HashMap<>();
+    /** Every game message, so exports and incidents show what the server said around a failure. */
+    public static void chat(String text){CHAT.add(text,System.currentTimeMillis());}
+    /**
+     * Decision and lifecycle events must survive a full queue: selection, cancel, relist, claim,
+     * craft and workstation steps explain a run; only context churn and heartbeats are droppable.
+     */
+    static boolean critical(String level,String type){
+        if(level.equals("ERROR") || level.equals("WARN"))return true;
+        if(type.equals("context.changed") || type.equals("heartbeat") || type.equals("menu.click") || type.equals("command.sent") || type.equals("bazaar.receipt"))return false;
+        for(String prefix:List.of("trade.","order.","safety.","session.","production.","general.","books.","auction.","craft.","account.","scheduler.","api."))if(type.startsWith(prefix))return true;
+        return false;
+    }
     private static long lastSample;
     private Diagnostics() {}
     public static void event(String level,String type,Map<String,?> data) {
         if(LOG==null) return;
         try {
             var captured=LOG.capture(level,type,data);
-            boolean critical=level.equals("ERROR") || level.equals("WARN") || type.startsWith("trade.")
-                    || type.startsWith("production.order.") || type.equals("production.run_observed") || type.startsWith("order.") || type.startsWith("safety.") || type.startsWith("session.");
+            boolean critical=critical(level,type);
             boolean accepted=WORKER.submit(critical,()->{
                 long dropped=WORKER.takePendingDropped();
                 try {
@@ -52,6 +67,10 @@ public final class Diagnostics {
         if(LOG==null) return;
         java.io.StringWriter out=new java.io.StringWriter();failure.printStackTrace(new java.io.PrintWriter(out));
         var data=new LinkedHashMap<String,Object>();data.put("exception",out.toString());
+        long now=System.currentTimeMillis();long[] seen;
+        synchronized(FAILURES){seen=FAILURES.computeIfAbsent(type,k->new long[]{0,0});
+            if(now-seen[0]<REPEAT_WINDOW_MS){seen[1]++;data.put("repeatsSinceSnapshot",seen[1]);event("ERROR",type,data);return;}
+            seen[0]=now;if(seen[1]>0)data.put("repeatsBeforeThis",seen[1]);seen[1]=0;}
         try { if(Minecraft.getInstance().isSameThread()) data.put("context",snapshot(true)); } catch(RuntimeException ignored) { data.put("context","unavailable"); }
         event("ERROR",type,data);
     }
@@ -138,6 +157,7 @@ public final class Diagnostics {
             data.put("engines",manager.diagnosticState());
             data.put("productionDebug",manager.production().diagnosticState());
             data.put("currentMenu",DebugMenuCapture.describe(new com.goofy.goofyaddons.menu.LiveWorld().menu()));
+            data.put("recentChat",CHAT.last(20));
         }
         data.put("droppedEvents",WORKER.totalDropped());data.put("criticalDroppedEvents",WORKER.criticalDropped());data.put("logError",error==null?"none":error);
         return data;
@@ -164,9 +184,11 @@ public final class Diagnostics {
     public static void command(String command) {
         if(com.goofy.goofyaddons.features.access.BazaarNpcAccess.route(command))return;
         // Only record recognised game commands, never arbitrary configured text.
-        String safe=command.matches("(?i)(bz .*|managebazaarorders|anvil|ec( 2)?|hub|is)")?command:"<custom command>";
+        String safe=command.matches("(?i)(bz .*|managebazaarorders|anvil|ec( \\d{1,2})?|enderchest( \\d{1,2})?|backpack( \\d{1,2})?|craft|pickupstash|hub|is|forge|bazaar)")?command:"<custom command>";
         event("INFO","command.sent",Map.of("command",safe));
-        Minecraft.getInstance().player.connection.sendCommand(command);
+        var player=Minecraft.getInstance().player;
+        if(player==null){event("WARN","command.dropped",Map.of("command",safe,"reason","player absent"));return;}
+        player.connection.sendCommand(command);
     }
     public static void register() {
         LOG=new DiagnosticLog(FabricLoader.getInstance().getGameDir().resolve("logs/goofyaddons"),2*1024*1024,5);
@@ -216,10 +238,22 @@ public final class Diagnostics {
                     com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_STORAGE)) {
                 var path=storage.displayPath(name);if(path!=null)journals.put(name,path);
             }
+            var extras=new LinkedHashMap<String,Object>();
+            extras.put("chat",CHAT.last(ChatHistory.CAPACITY));
+            if(GoofyConfig.INSTANCE!=null)extras.put("config",GoofyConfig.INSTANCE);
+            try {
+                var production=FeatureManager.INSTANCE.production();
+                extras.put("market",com.goofy.goofyaddons.features.market.MarketSnapshot.of(BazaarApi.latestFresh(),production.referencedProducts(),System.currentTimeMillis()));
+                extras.put("rankings",production.recentRankings());
+                extras.put("catalog",com.goofy.goofyaddons.features.production.RecipeCatalog.instance().diagnosticState());
+            }catch(RuntimeException unavailable){extras.put("captureErrors",Map.of("production",unavailable.getClass().getSimpleName()));}
             feedback.accept("Creating diagnostic bundle with the current GUI...");
             boolean accepted=WORKER.submit(false,()->{
-                try {var file=LOG.export(state,journals);mc.execute(()->feedback.accept("Saved diagnostics: "+file));}
-                catch(Exception failed){mc.execute(()->feedback.accept("Diagnostic export failed: "+failed.getClass().getSimpleName()));}
+                try {var file=LOG.export(state,journals,extras);mc.execute(()->feedback.accept("Saved diagnostics: "+file));}
+                catch(Exception failed){
+                    try{LOG.append("ERROR","diagnostics.export_failed",Map.of("exception",String.valueOf(failed)));}catch(Exception ignored){}
+                    mc.execute(()->feedback.accept("Diagnostic export failed: "+failed.getClass().getSimpleName()));
+                }
                 finally {exporting.set(false);}
             });
             if(!accepted){exporting.set(false);feedback.accept("Diagnostic queue full; retry export shortly.");return 0;}

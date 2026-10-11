@@ -805,6 +805,17 @@ orders still require manual reconciliation. New concurrency does not bypass an
 existing unresolved ownership block.
 
 
+## What a diagnostics export now contains
+
+- `chat.json`: the last 200 game messages (private, party, guild and player chat are never kept). Incidents and pauses carry the last 20.
+- `config.json`: the full settings, with secret-looking keys redacted.
+- `market.json`: top 3 order levels, spread, weekly movement and whether the bid is fillable, for products in active runs and the top 20 routes.
+- `rankings.json`: the last 5 rankings with their inputs (purse, budget, free, reserved and storage slots, market age, blocked products, settings) and top 20 routes.
+- `catalog.json`: recipe count and the NEU revision the client ranks with.
+- `bundle.json`: what was included. Events and incidents are capped at 16 MB, newest first, and the menu and production state are no longer duplicated inside `snapshot.json`.
+
+New or changed events: `production.auto_selected` carries the quotes and ranking inputs behind the pick; `production.run_blocked` carries the menu on the first block of each kind; `production.instant_buy_verified`, `production.instant_sale_verified`, `production.stage_exception` (with stack trace), `production.selection_skipped`, `general.positions_released`. Decision and lifecycle events can no longer be dropped when the queue fills; only context changes, heartbeats, clicks, commands and receipts can. Repeated identical errors within 10 seconds skip the heavy snapshot. Countdown numbers no longer reset the stall detector. Storage, craft and stash commands are named in `command.sent`. A safety pause snapshots state before the engines reset.
+
 ## Loops and dead ends removed
 
 - A craft that blocks before spending is skipped for 1 minute, doubling on each repeat up to 30 minutes. A finished run clears it; the third block in a row warns in chat.

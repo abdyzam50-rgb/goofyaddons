@@ -64,6 +64,8 @@ public final class BazaarInstantBuy {
     public int requested() { return requested; }
     /** Coins the verified purchase took from the purse; zero until it is verified. */
     public double spent() { return spent; }
+    public double maximumCost() { return maximumCost; }
+    public boolean usedStash() { return stashPicked; }
 
     public Result tick(MenuSnapshot menu, boolean signOpen, GameActions actions, double purse, long now) {
         if (step == Step.DONE) return Result.BOUGHT;

@@ -109,11 +109,14 @@ class ProductionLoopTest {
 
     @Test
     void portExceptionsAreUncertainNotRetried() {
+        var reported = new ArrayList<String>();
         var loop = new ProductionLoop(new Plan(false, false, false), new Script() {
             @Override public Outcome process(long now) { throw new IllegalStateException("menu vanished"); }
+            @Override public void failed(String what, Stage stage, Exception failure) { reported.add(what + ":" + stage + ":" + failure.getMessage()); }
         });
         assertEquals(Step.UNCERTAIN, loop.tick(0));
         assertTrue(loop.reason().contains("menu vanished"));
+        assertEquals(List.of("stage:PROCESS:menu vanished"), reported, "The exception reaches the port so its stack trace can be logged");
     }
 
     @Test

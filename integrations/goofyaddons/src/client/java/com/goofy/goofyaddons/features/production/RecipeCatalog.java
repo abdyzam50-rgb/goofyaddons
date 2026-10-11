@@ -22,6 +22,9 @@ public final class RecipeCatalog {
     public List<UnsupportedCraft> unsupportedCrafts(){return unsupported;}
     public boolean unstackable(String id){return id!=null && unstackable.contains(id);}
     public static RecipeCatalog instance(){return Holder.INSTANCE;}
+    private static volatile String loadedRevision;
+    /** Which recipe data this client ranks with, so website and mod drift shows up in an export. */
+    public Map<String,Object> diagnosticState(){return Map.of("recipes",recipes.size(),"unstackable",unstackable.size(),"unsupported",unsupported.size(),"sourceRevision",Objects.toString(loadedRevision,"unknown"));}
     public List<ProductionRecipe> recipes(){return recipes;}
     public List<ProductionRecipe> forOutput(String id){return id==null?List.of():byOutput.getOrDefault(id,List.of());}
     public Optional<ProductionRecipe> byKey(String key){return key==null?Optional.empty():Optional.ofNullable(byKey.get(key));}
@@ -44,7 +47,9 @@ public final class RecipeCatalog {
     private static RecipeCatalog load() {
         try(var in=RecipeCatalog.class.getResourceAsStream("/goofyaddons/production-recipes.json")) {
             if(in==null)throw new IllegalStateException("Production catalog missing");
-            return parse(JsonParser.parseReader(new java.io.InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject());
+            var root=JsonParser.parseReader(new java.io.InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+            if(root.has("sourceRevision"))loadedRevision=root.get("sourceRevision").getAsString();
+            return parse(root);
         } catch(java.io.IOException failed){throw new IllegalStateException("Cannot load production catalog",failed);}
     }
     /** The production-recipes.json schema, also used by the website and the shared planner fixtures. */

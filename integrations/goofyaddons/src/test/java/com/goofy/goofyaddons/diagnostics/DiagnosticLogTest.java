@@ -78,6 +78,24 @@ class DiagnosticLogTest {
         }
     }
 
+    @Test void exportWritesExtrasOnceAndKeepsTheNewestLogsWithinItsBudget() throws Exception {
+        var log=new DiagnosticLog(directory,DiagnosticLog.EXPORT_LOG_BUDGET/2+1000,4);
+        String big="x".repeat(64*1024);
+        for(int i=0;i<200;i++)log.append("INFO","heartbeat",Map.of("index",i,"padding",big));
+        var menu=Map.of("title","Craft Item");
+        try(var zip=new ZipFile(log.export(Map.of("currentMenu",menu,"status","RUNNING"),Map.of(),Map.of("chat",List.of("Your inventory is full!"),"config",Map.of("apiKey","secret-value","minActionDelay",80))).toFile())) {
+            String snapshot=new String(zip.getInputStream(zip.getEntry("snapshot.json")).readAllBytes());
+            assertFalse(snapshot.contains("Craft Item"),"The menu is only in current-menu.json");
+            assertNotNull(zip.getEntry("chat.json"));
+            assertFalse(new String(zip.getInputStream(zip.getEntry("config.json")).readAllBytes()).contains("secret-value"));
+            assertNotNull(zip.getEntry("events.jsonl"));
+            String bundle=new String(zip.getInputStream(zip.getEntry("bundle.json")).readAllBytes());
+            assertTrue(bundle.contains("omittedForSize"));
+            long logBytes=zip.stream().filter(e->e.getName().startsWith("events")).mapToLong(java.util.zip.ZipEntry::getSize).sum();
+            assertTrue(logBytes<=DiagnosticLog.EXPORT_LOG_BUDGET,"Logs "+logBytes);
+        }
+    }
+
     @Test void incidentsSurviveEventRotationAndRestartWithBoundedRedactedEvidence()throws Exception {
         var log=new DiagnosticLog(directory,200,1);
         log.append("WARN","production.run_review",Map.of("job","blocked-job","reason","Unverified claim","apiKey","private-secret"));

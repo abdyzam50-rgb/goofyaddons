@@ -89,7 +89,10 @@ public final class WorkstationExecutor {
                 return Result.WAITING;
             }
             return block("Workstation job is not in an executable state: "+job.state());
-        }catch(Exception failed){failure="Workstation journal/evidence failed; no replay authorized";return Result.BLOCKED;}
+        }catch(Exception failed){
+            com.goofy.goofyaddons.diagnostics.Diagnostics.failure("production.workstation_failed",failed);
+            failure="Workstation journal/evidence failed ("+failed.getClass().getSimpleName()+"); no replay authorized";return Result.BLOCKED;
+        }
     }
     private Result review(ProductionJobs.Job job,String reason)throws java.io.IOException {journal.put(job.withState(ProductionJobs.State.REVIEW,reason));return block(reason);}
     private Result block(String reason){failure=reason;return Result.BLOCKED;}

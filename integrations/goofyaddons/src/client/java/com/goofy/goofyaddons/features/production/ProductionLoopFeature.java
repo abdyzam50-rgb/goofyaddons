@@ -19,7 +19,7 @@ public final class ProductionLoopFeature implements Feature {
         int inventorySlots;
         long nextAction;
         String lastReason;
-        String lastObservation;
+        String lastObservation,lastBlockCaptured;
         long lastObserved,lastChanged;
         long lastTickAt=System.currentTimeMillis();
         final ProductionWaitEvidence waitEvidence=new ProductionWaitEvidence();
@@ -144,7 +144,7 @@ public final class ProductionLoopFeature implements Feature {
         catch(RuntimeException failed){return Map.of("job",run.jobId(),"observationError",failed.getClass().getSimpleName());}
     }
     private void checkWait(Work current,long now) {
-        String signature=current.run.stage()+":"+current.run.reason()+":"+current.run.spent();
+        String signature=current.run.stage()+":"+stableReason(current.run.reason())+":"+current.run.spent();
         if(current.waitEvidence.due(signature,now)) {
             var data=new LinkedHashMap<>(incident(current,"State unchanged for at least 120 seconds; this is evidence, not proof of a failed order"));
             data.put("lastTickAt",current.lastTickAt);data.put("craftDelegateQueued",FeatureManager.INSTANCE.crafting().queued());
@@ -153,8 +153,13 @@ public final class ProductionLoopFeature implements Feature {
         }
     }
     private void observeRun(Work current,ProductionLoop.Step result,boolean ownsMenu,long now) {
-        String signature=current.run.stage()+":"+result+":"+current.run.reason()+":"+current.run.spent();
+        String signature=current.run.stage()+":"+result+":"+stableReason(current.run.reason())+":"+current.run.spent();
         boolean changed=!Objects.equals(signature,current.lastObservation);
+        if(changed && result==ProductionLoop.Step.BLOCKED && !Objects.equals(stableReason(current.run.reason()),current.lastBlockCaptured)) {
+            // The first block of each kind carries the menu, which reviews already get but blocks did not.
+            current.lastBlockCaptured=stableReason(current.run.reason());
+            Diagnostics.event("WARN","production.run_blocked",incident(current,current.run.reason()));
+        }
         if(changed){current.lastObservation=signature;current.lastChanged=now;}
         if(!changed && now-current.lastObserved<30000)return;
         current.lastObserved=now;
@@ -163,6 +168,8 @@ public final class ProductionLoopFeature implements Feature {
         data.put("unchangedForMs",now-current.lastChanged);data.put("orders",orders.diagnosticState());
         Diagnostics.event("INFO","production.run_observed",data);
     }
+    /** Countdowns ("Ready in 3 min", "retrying in 12 seconds") would reset the stall detector and flood the log. */
+    static String stableReason(String reason){return reason==null?null:reason.replaceAll("\\d+(?:[.,]\\d+)?","#");}
     private Map<String,Object> incident(Work current,String reason) {
         var data=new LinkedHashMap<String,Object>();data.put("job",current.id());data.put("reason",reason);
         data.put("run",safeRunState(current.run));data.put("orders",orders.diagnosticState());
@@ -170,6 +177,14 @@ public final class ProductionLoopFeature implements Feature {
         data.put("foregroundJob",foreground==null?null:foreground.id());return data;
     }
 
+    /** Products in active runs and the leading routes, for the export's market snapshot. */
+    public Set<String> referencedProducts(){
+        var ids=new TreeSet<String>();
+        for(var w:work){ids.add(w.run.output());ids.addAll(w.run.lockedProducts());}
+        selection.routes().stream().limit(20).forEach(r->{ids.add(r.recipe().outputId());ids.addAll(r.recipe().ingredients().keySet());});
+        return ids;
+    }
+    public List<Map<String,Object>> recentRankings(){return selection.recentRankings();}
     public void showCraftPlans(){
         selection.refresh();var actions=new LiveActions();
         var rows=selection.currentRoutes();
@@ -207,6 +222,9 @@ public final class ProductionLoopFeature implements Feature {
             new LiveActions().message("Automatic craft "+work.size()+"/"+GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts+": "+RecipeCatalog.instance().name(current.run.output())+" · "+candidate.strategy().label()+" · "+candidate.batches()+" batches · budget "+Math.round(current.budget)+" · conservative net "+Math.round(candidate.profit()));
             var evidence=new LinkedHashMap<>(candidate.describe(RecipeCatalog.instance()));
             evidence.put("estimatedCapital",current.estimatedCapital);evidence.put("reservedCapital",current.budget);
+            var products=new TreeSet<>(candidate.recipe().ingredients().keySet());products.add(candidate.recipe().outputId());
+            evidence.put("quotes",com.goofy.goofyaddons.features.market.MarketSnapshot.of(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh(),products,now));
+            evidence.put("ranking",selection.latestRanking());
             Diagnostics.event("INFO","production.auto_selected",evidence);
         }catch(Exception failed){Diagnostics.failure("production.auto_queue_failed",failed);FeatureManager.INSTANCE.safetyPause("Automatic craft could not be journaled; review production jobs");}
     }
@@ -584,6 +602,7 @@ public final class ProductionLoopFeature implements Feature {
                 return product != null && product.isJsonObject() ? com.goofy.goofyaddons.features.market.BazaarQuotes.instantSellValue(product.getAsJsonObject(), units) : null;
             }
             public Double orderBuyCost(String id,int units){return strategyQuote(id,units,true);}
+            public void event(String level,String type,Map<String,Object> data){Diagnostics.event(level,type,data);}
             public boolean orderable(String id){
                 var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
                 if(market==null||!market.has("products"))return true;

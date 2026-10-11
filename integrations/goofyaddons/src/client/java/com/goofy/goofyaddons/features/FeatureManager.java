@@ -103,7 +103,7 @@ public class FeatureManager {
             if(accountUnlocks.pending())return; // Fast profile request first; Skills remains the fallback.
             try {skillPreflight.tick(new com.goofy.goofyaddons.menu.LiveWorld().menu(),new com.goofy.goofyaddons.menu.LiveActions(),System.currentTimeMillis());
                 if(!skillPreflight.pending()){com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().reevaluateSkills(observedSkills());invalidateMarketReport();}}
-            catch(RuntimeException failure){safetyPause("Account prerequisite check failed; close the current menu and review inventory");}
+            catch(RuntimeException failure){Diagnostics.failure("account.preflight_failed",failure);safetyPause("Account prerequisite check failed; close the current menu and review inventory");}
             return;
         }
         if(com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.finishing() || com.goofy.goofyaddons.features.discord.DiscordRemote.INSTANCE.finishing()) {
@@ -299,8 +299,9 @@ public class FeatureManager {
             previousOwner = null;
         }, failure -> org.slf4j.LoggerFactory.getLogger(FeatureManager.class)
                 .error("Safety cleanup failed; trading remains paused", failure),
-                com.goofy.goofyaddons.features.access.BazaarNpcAccess::cancel, marketAnalysis::stop, books::pause, general::pause, production::pause, crafting::pause, auction::pause,
+                // Captured before the engines pause: pausing resets crafting state, which the snapshot used to miss.
                 () -> Diagnostics.event("ERROR","safety.pause",java.util.Map.of("reason",reason,"context",Diagnostics.detailedSnapshot())),
+                com.goofy.goofyaddons.features.access.BazaarNpcAccess::cancel, marketAnalysis::stop, books::pause, general::pause, production::pause, crafting::pause, auction::pause,
                 () -> ChatUtils.clientMessage("Trading paused: " + reason + " Check tracked orders before restarting."));
     }
 

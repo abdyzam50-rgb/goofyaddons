@@ -48,6 +48,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
         /** Instant-sell value of these units from fresh quotes, before tax, or null when unknown. */
         Double instantSellValue(String id, int units);
         default Double orderBuyCost(String id,int units){return null;}
+        /** A diagnostics event about this run; tests ignore it. */
+        default void event(String level,String type,Map<String,Object> data){}
         /** Whether a buy order for this input can be expected to fill; inputs that can't are bought instantly. */
         default boolean orderable(String id){return true;}
         default Double offerSellValue(String id,int units){return null;}
@@ -361,7 +363,12 @@ public final class ProductionRun implements ProductionLoop.Ports {
             }
             var result = buying.tick(env.menu(), env.signOpen(), env.actions(), env.purse(), now);
             switch (result) {
-                case BOUGHT -> { addCost(buying); buying = null; env.actions().closeMenu(); return Outcome.pending("Bought inputs; checking the rest"); }
+                case BOUGHT -> {
+                    var evidence=new LinkedHashMap<String,Object>();evidence.put("job",jobId);evidence.put("product",buying.productId());
+                    evidence.put("requested",buying.requested());evidence.put("bought",buying.amount());evidence.put("spent",buying.spent());
+                    evidence.put("limit",buying.maximumCost());evidence.put("usedStash",buying.usedStash());evidence.put("purseAfter",env.purse());
+                    env.event("INFO","production.instant_buy_verified",evidence);
+                    addCost(buying); buying = null; env.actions().closeMenu(); return Outcome.pending("Bought inputs; checking the rest"); }
                 case UNCERTAIN -> { return Outcome.uncertain(buying.failure()); }
                 case BLOCKED -> { String why = buying.failure(); buying = null; env.actions().closeMenu(); return Outcome.blocked(why); }
                 default -> { return Outcome.PENDING; }
@@ -549,13 +556,19 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         var result = selling.tick(env.menu(), env.actions(), env.purse(), now);
         return switch (result) {
-            case SOLD -> { if(kind==ProductionRecipe.Kind.CRAFT)env.saleConfirmed(jobId,output,selling.amount(),selling.proceeds());env.actions().closeMenu();yield Outcome.DONE; }
+            case SOLD -> {
+                env.event("INFO","production.instant_sale_verified",Map.of("job",jobId,"product",output,"units",selling.amount(),"proceeds",selling.proceeds(),"spent",spent));
+                if(kind==ProductionRecipe.Kind.CRAFT)env.saleConfirmed(jobId,output,selling.amount(),selling.proceeds());env.actions().closeMenu();yield Outcome.DONE; }
             case UNCERTAIN -> Outcome.uncertain(selling.failure());
             case BLOCKED -> { String why = selling.failure(); selling = null; env.actions().closeMenu(); yield Outcome.blocked(why); }
             default -> Outcome.pending("Selling " + env.name(output));
         };
     }
 
+    @Override public void failed(String what,Stage stage,Exception failure) {
+        var out=new java.io.StringWriter();failure.printStackTrace(new java.io.PrintWriter(out));
+        env.event("ERROR","production.stage_exception",Map.of("job",jobId,"output",output,"what",what,"stage",stage.name(),"exception",out.toString()));
+    }
     @Override public void persist(Stage stage, String reason) throws Exception {
         var state = switch (stage) {
             case PROCURE -> ProductionJobs.State.PLANNED;
