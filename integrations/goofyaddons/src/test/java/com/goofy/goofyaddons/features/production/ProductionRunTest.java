@@ -789,4 +789,81 @@ class ProductionRunTest {
         assertTrue(run.canExpandProcurementBudget());assertEquals(50,run.spent());
         run.tick(true,1200);assertFalse(run.canExpandProcurementBudget(),"A new queued order must retain its original ceiling");
     }
+
+    // ---- Bazaar trade tests ---------------------------------------------------------------
+    static final String COMPACTOR="DWARVEN_COMPACTOR";
+    @Test void dwarvenCompactorTradeTestInstantBuysOneThenInstantSellsItWithoutCrafting()throws Exception {
+        var catalog=RecipeCatalog.instance();assertTrue(catalog.unstackable(COMPACTOR),"Dwarven Super Compactor takes a slot per unit");
+        var env=new Env();env.buying=true;
+        var run=ProductionRun.startTrade(env,catalog,COMPACTOR,1,ProductionRun.TradePart.BOTH,BazaarStrategy.INSTANT_INSTANT);
+        assertTrue(run.isTradeTest());assertEquals(Set.of(COMPACTOR),run.lockedProducts());
+        assertEquals("run:trade:"+COMPACTOR,env.jobs.find(run.jobId()).orElseThrow().recipeKey());
+        run.tick(true,1000);run.tick(true,1100);
+        assertTrue(env.actions.serverEffects().contains("command:bz "+COMPACTOR),env.actions.serverEffects().toString());
+        env.menu=menu(COMPACTOR,item(13,COMPACTOR,1),SlotView.named(10,"Buy Instantly",List.of(COMPACTOR,"Price per unit: 100 coins")));
+        run.tick(true,1200);assertTrue(env.actions.serverEffects().contains("click:10"));
+        env.menu=menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of()),
+            SlotView.named(10,"Buy only one!",List.of(COMPACTOR,"","Amount: 1x","","Price: 100 coins")));
+        run.tick(true,1300);
+        assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state(),"intent saved before the preset click");
+        env.menu=menu(null,item(54,COMPACTOR,1));env.purse=9900;run.tick(true,1400);
+        assertEquals(100,run.spent(),0.001);
+        run.tick(true,1500);assertEquals(Stage.PROCESS,run.stage());
+        run.tick(false,1600);assertEquals(Stage.SELL,run.stage());
+        assertTrue(env.crafts.isEmpty(),"A trade test never crafts");assertTrue(env.orders.isEmpty());
+        assertTrue(env.actions.performed().stream().anyMatch(m->m.startsWith("message:Trade test: bought 1 ")),env.actions.performed().toString());
+        assertTrue(run.wantsMenu());run.tick(true,1700);
+        env.menu=menu(COMPACTOR,item(13,COMPACTOR,1),SlotView.named(11,"Sell Instantly",List.of(COMPACTOR,"Price per unit: 990 coins")),item(54,COMPACTOR,1));
+        run.tick(true,1800);assertTrue(env.actions.serverEffects().contains("click:11"));
+        env.menu=menu(null);env.purse+=978;
+        assertEquals(Step.DONE,run.tick(true,1900));run.tick(true,2000);
+        assertEquals(ProductionJobs.State.DONE,env.jobs.find(run.jobId()).orElseThrow().state());
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.equals("click:11")).count());
+        assertTrue(env.confirmedSales.isEmpty() && env.confirmedCosts.isEmpty(),"Test trades stay out of the craft profit ledger");
+        assertTrue(env.actions.performed().stream().anyMatch(m->m.startsWith("message:Trade test: sold 1 ")&&m.contains("bought for 100.0, result 878.0")),env.actions.performed().toString());
+    }
+    @Test void tradeTestBuyOnlyPlacesTheBuyOrderItWasToldToAndKeepsTheUnits()throws Exception {
+        var env=new Env();env.buying=true;env.unorderable=Set.of("INPUT");
+        var run=ProductionRun.startTrade(env,catalog(),"INPUT",5,ProductionRun.TradePart.BUY,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);assertEquals(List.of("BUY:INPUT:5"),env.orders,"The player's buy-order choice is honoured even with a weak bid");
+        env.menu=menu(null,item(54,"INPUT",5));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,5,250,null,"claimed");
+        run.tick(true,1100);assertEquals(250,run.spent());
+        run.tick(true,1200);run.tick(false,1300);
+        assertEquals(Step.DONE,run.tick(false,1400));
+        assertEquals(List.of("BUY:INPUT:5"),env.orders,"Buy-only never sells");assertTrue(env.crafts.isEmpty());
+        assertEquals(ProductionJobs.State.DONE,env.jobs.find(run.jobId()).orElseThrow().state());
+    }
+    @Test void tradeTestSellOnlyOffersEveryHeldUnitAndReportsTheProceeds()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"OUTPUT",3));
+        var run=ProductionRun.startTrade(env,catalog(),"OUTPUT",0,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_OFFER);
+        assertEquals(3,run.outputUnits());assertEquals(Stage.PROCESS,run.stage());
+        run.tick(false,1000);assertEquals(Stage.SELL,run.stage());
+        run.tick(true,1100);assertEquals(List.of("SELL:OUTPUT:3"),env.orders);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,3,0,5900.0,"claimed");
+        assertEquals(Step.DONE,run.tick(true,1200));
+        assertTrue(env.confirmedSales.isEmpty());
+        assertTrue(env.actions.performed().stream().anyMatch(m->m.startsWith("message:Trade test: sold 3 ")&&m.contains("sell offer")),env.actions.performed().toString());
+    }
+    @Test void tradeTestRefusesHeldUnitsForABuyAndSellNothingToSellOrMoreThanFits()throws Exception {
+        var held=new Env();held.menu=menu(null,item(54,"OUTPUT",1));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(held,catalog(),"OUTPUT",1,ProductionRun.TradePart.BOTH,BazaarStrategy.INSTANT_INSTANT));
+        var empty=new Env();
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(empty,catalog(),"OUTPUT",0,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_INSTANT));
+        var tooMany=assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(empty,RecipeCatalog.instance(),COMPACTOR,37,ProductionRun.TradePart.BUY,BazaarStrategy.INSTANT_INSTANT));
+        assertTrue(tooMany.getMessage().contains("37 free inventory slots"),tooMany.getMessage());
+        var occupied=new Env();occupied.occupied=Set.of("OUTPUT");
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(occupied,catalog(),"OUTPUT",1,ProductionRun.TradePart.BUY,BazaarStrategy.INSTANT_INSTANT));
+        assertTrue(empty.jobs.all().isEmpty(),"A refused test journals nothing");
+    }
+    @Test void stoppedTradeTestSellOfferResumesWithoutBuyingAgain()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"OUTPUT",2));
+        var original=ProductionRun.startTrade(env,catalog(),"OUTPUT",0,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_OFFER);
+        var job=env.jobs.find(original.jobId()).orElseThrow().withState(ProductionJobs.State.REVIEW,"Production stopped; inspect inventory");env.jobs.put(job);
+        var resumed=ProductionRun.resumeSale(env,catalog(),job,"OUTPUT",2);
+        assertEquals(Stage.SELL,resumed.stage());assertTrue(resumed.isTradeTest());
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog(),job,"OUTPUT",3));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,2,0,3900.0,"Verified sale proceeds");
+        assertEquals(Step.DONE,resumed.tick(true,1000));assertTrue(env.orders.isEmpty());assertTrue(env.confirmedSales.isEmpty());
+    }
 }

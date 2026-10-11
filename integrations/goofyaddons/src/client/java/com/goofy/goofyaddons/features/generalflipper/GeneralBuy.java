@@ -25,7 +25,7 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
     @Override public boolean confirmationAllowed(GeneralContext ctx, double expectedPrice, double purse) {
         var active = ctx.active();
         var settings = ctx.settings();
-        if(ctx.services().productionOnly()) {
+        if(ctx.services().productionOnly() || active.test!=null) {
             if(expectedPrice>active.maximumBuyPrice || !ctx.capital().resize(OWNER,active.item.id(),active.cost(),purse)){
                 rejectUnsubmitted(ctx,"Craft ingredient order exceeds its verified price/capital ceiling; no order submitted.");return false;
             }return true;
@@ -43,7 +43,7 @@ final class GeneralBuy implements GeneralOrderEntry.Side {
         var settings = ctx.settings();
         double purse = ctx.services().purse();
         if (!ctx.purchasePurseReady(purse)) return false;
-        if(ctx.services().productionOnly()) {
+        if(ctx.services().productionOnly() || active.test!=null) {
             if(price>active.maximumBuyPrice || !ctx.capital().resize(OWNER,active.item.id(),price*active.quantity,purse)){
                 rejectUnsubmitted(ctx,"Ingredient order price or capital changed: GUI unit price "+price+", ceiling "+active.maximumBuyPrice+"; no order submitted.");return false;
             }active.unitCost=price;active.purchasePriceKnown=true;return true;

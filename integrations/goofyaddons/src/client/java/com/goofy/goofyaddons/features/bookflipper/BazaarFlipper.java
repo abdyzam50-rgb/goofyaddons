@@ -362,6 +362,7 @@ public class BazaarFlipper implements Feature {
     @Override
     public boolean needsMenu() {
         if (!running || paused || recoveryAwaitQuotes) return false;
+        if (state == State.FETCHING && testing) return pendingTest != null;
         if (state == State.FETCHING) return settings().automaticSelection()
                 ? !automaticFlips().isEmpty() : !flipCalculator.isRunning() && !eligibleManualFlips().isEmpty();
         if (state == State.IDLE) return taskList.stream().anyMatch(Task::retiring) || needToStoreExcessBook || world.now() >= nextFetchMs
@@ -488,6 +489,8 @@ public class BazaarFlipper implements Feature {
             }
 
             case FETCHING -> {
+                // A book test works its one task only.
+                if (testing) { if (pendingTest != null) startTestTask(); return; }
                 if (!settings().automaticSelection() && flipCalculator.isRunning()) return;
                 flipItemList.clear();
                 flipItemList.addAll(settings().automaticSelection()?automaticFlips():eligibleManualFlips());
@@ -886,41 +889,7 @@ public class BazaarFlipper implements Feature {
             if (taskList.size() >= settings().maxActiveBooks()) break;
             if (!capital.owns("books", flipItem.book().id())
                     && !capital.reserve("books", flipItem.book().id(), flipItem.totalCost(), purse)) continue;
-            debug("[BazaarFlipper] PROCESSDATA: creating task for " + flipItem.book().getRomanLevel(flipItem.book().level()) + " (cost=" + flipItem.totalCost() + ", instaBuy=" + flipItem.instaBuy() + ", instaSell=" + flipItem.instaSell() + ")");
-            Task task = new Task(flipItem.book(), flipItem.instaBuy(), flipItem.instaSell());
-            task.forecast(services.executionForecast(
-                    task.getBook().getLevel(task.getBook().level()),task.getBook().getLevel(task.getBook().sellLevel()),1));
-            task.setReservedUnitCost(flipItem.totalCost() / flipItem.book().getQtyAmount(flipItem.book().level()));
-            taskList.add(task);
-
-            Iterator<BookList> iterator = bookLists.iterator();
-
-            while (iterator.hasNext()) {
-                BookList bookList = iterator.next();
-
-                if (!bookList.book.equals(flipItem.book())) continue;
-
-                int attempt = task.assignBook(bookList.book, bookList.level, bookList.location, 1);
-
-                if (attempt != -1) {
-                    if (bookList.found) accounting.acquire(task.getProfitTradeId(),"books",task.getBook().name(),
-                            java.util.UUID.randomUUID().toString(),bookList.book.baseUnits(bookList.level),0.0);
-                    debug("[BazaarFlipper] PROCESSDATA: pre-existing book level " + bookList.level + " (location=" + bookList.location + ") folded into new task for " + task.getBook());
-                    iterator.remove();
-                }
-            }
-
-            if (task.getAmountToOrder() == 0) {
-                task.setBookState(Task.BookState.ANVIL);
-                continue;
-            }
-
-            if (task.isCombinable()) {
-                task.setBookState(Task.BookState.SELECTED);
-                task.actionSchedule = Task.ActionSchedule.SELECTED_COMBINE_STORE_BUYORDER;
-                continue;
-            }
-            task.setBookState(Task.BookState.SELECTED);
+            createTask(flipItem, false);
         }
 
         if (overFlowProt) {
@@ -929,6 +898,109 @@ public class BazaarFlipper implements Feature {
             return;
         }
         state = taskList.isEmpty() || isStartUpCheckCompleted ? State.IDLE : State.STARTUP_CHECK;
+    }
+
+    /** Adds the task for one selected flip, folding books already held into it. Capital is already reserved. */
+    private Task createTask(FlipItem flipItem, boolean test) {
+        debug("[BazaarFlipper] PROCESSDATA: creating task for " + flipItem.book().getRomanLevel(flipItem.book().level()) + " (cost=" + flipItem.totalCost() + ", instaBuy=" + flipItem.instaBuy() + ", instaSell=" + flipItem.instaSell() + ")");
+        Task task = new Task(flipItem.book(), flipItem.instaBuy(), flipItem.instaSell());
+        if (test) task.markTest();
+        task.forecast(services.executionForecast(
+                task.getBook().getLevel(task.getBook().level()),task.getBook().getLevel(task.getBook().sellLevel()),1));
+        task.setReservedUnitCost(flipItem.totalCost() / flipItem.book().getQtyAmount(flipItem.book().level()));
+        taskList.add(task);
+
+        Iterator<BookList> iterator = bookLists.iterator();
+
+        while (iterator.hasNext()) {
+            BookList bookList = iterator.next();
+
+            if (!bookList.book.equals(flipItem.book())) continue;
+
+            int attempt = task.assignBook(bookList.book, bookList.level, bookList.location, 1);
+
+            if (attempt != -1) {
+                if (bookList.found) accounting.acquire(task.getProfitTradeId(),"books",task.getBook().name(),
+                        java.util.UUID.randomUUID().toString(),bookList.book.baseUnits(bookList.level),0.0);
+                debug("[BazaarFlipper] PROCESSDATA: pre-existing book level " + bookList.level + " (location=" + bookList.location + ") folded into new task for " + task.getBook());
+                iterator.remove();
+            }
+        }
+
+        if (task.getAmountToOrder() == 0) {
+            task.setBookState(Task.BookState.ANVIL);
+            return task;
+        }
+
+        if (task.isCombinable()) {
+            task.setBookState(Task.BookState.SELECTED);
+            task.actionSchedule = Task.ActionSchedule.SELECTED_COMBINE_STORE_BUYORDER;
+            return task;
+        }
+        task.setBookState(Task.BookState.SELECTED);
+        return task;
+    }
+
+    // ---- Book flip test -------------------------------------------------------------------
+    private FlipItem pendingTest;
+    private Task testTask;
+    private boolean testing;
+
+    /**
+     * One flip of a configured book with the chosen buy and sell modes. The profit target is
+     * skipped at entry (a buy may cost at most 5% over the quote it started from); every order,
+     * storage, anvil and receipt check of the engine still applies. Returns why it cannot start, or null.
+     */
+    public String startTest(String reference, boolean instantBuy, boolean instantSell) {
+        if (running) return "Stop trading first";
+        if (!restoreBudget()) return "Saved book orders could not be read";
+        if (recoveryPending() || hasRetainedTasks()) return "Saved book positions must be recovered by a normal start first";
+        String key = reference == null ? "" : reference.trim().toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
+        Book book = null;
+        for (Book candidate : settings().books()) {
+            String id = candidate.id().toUpperCase(java.util.Locale.ROOT);
+            if (id.equals(key) || id.equals("ENCHANTMENT_" + key) || id.replaceFirst("^ENCHANTMENT_", "").equals(key)
+                    || candidate.name().toUpperCase(java.util.Locale.ROOT).replace(' ', '_').equals(key)) { book = candidate; break; }
+        }
+        if (book == null) return "No configured book matches " + reference + "; configured: "
+                + settings().books().stream().map(Book::name).distinct().collect(java.util.stream.Collectors.joining(", "));
+        var market = services.latestQuotes();
+        var products = market == null ? null : market.getAsJsonObject("products");
+        var buyProduct = products == null ? null : products.getAsJsonObject(book.getLevel(book.level()));
+        var sellProduct = products == null ? null : products.getAsJsonObject(book.getLevel(book.sellLevel()));
+        if (buyProduct == null || sellProduct == null) return "No fresh Bazaar quotes for " + book.getRomanLevel(book.level()) + " and " + book.getRomanLevel(book.sellLevel());
+        var strategy = com.goofy.goofyaddons.features.production.BazaarStrategy.of(instantBuy, instantSell);
+        Double cost = strategy.buy(buyProduct, book.getQtyAmount(book.level())), sale = strategy.sell(sellProduct, 1);
+        if (cost == null || cost <= 0) return "No " + (instantBuy ? "instant-buy" : "buy-order") + " price covers " + book.getQtyAmount(book.level()) + " " + book.getRomanLevel(book.level());
+        if (sale == null || sale <= 0) return "No " + (instantSell ? "instant-sell" : "sell-offer") + " price for " + book.getRomanLevel(book.sellLevel());
+        if (capital.occupied(book.id())) return book.name() + " is owned by other trading work";
+        pendingTest = new FlipItem(book, cost, 0, instantBuy, instantSell);
+        testTask = null; testing = true;
+        start();
+        if (!running) { pendingTest = null; testing = false; return "Book flipper could not start"; }
+        services.event("INFO", "books.test_started", java.util.Map.of("book", book.id(), "buy", book.getLevel(book.level()), "sell", book.getLevel(book.sellLevel()),
+                "instantBuy", instantBuy, "instantSell", instantSell, "quotedCost", cost, "quotedSale", sale));
+        return null;
+    }
+    public String testLabel() {
+        var book = pendingTest != null ? pendingTest.book() : testTask != null ? testTask.getBook() : null;
+        return book == null ? "book" : book.getRomanLevel(book.level()) + " → " + book.getRomanLevel(book.sellLevel());
+    }
+    /** True once the test's task has left the engine: sold, or never started. */
+    public boolean testFinished() { return testing && pendingTest == null && (testTask == null || !taskList.contains(testTask)); }
+    public void endTest() { testing = false; pendingTest = null; testTask = null; }
+
+    private void startTestTask() {
+        var flipItem = pendingTest; pendingTest = null;
+        double purse = services.purse();
+        if (!Double.isFinite(purse) || purse < 0 || !capital.owns("books", flipItem.book().id())
+                && !capital.reserve("books", flipItem.book().id(), flipItem.totalCost() * 1.05, purse)) {
+            actions.message("Book test: not enough spendable capital for " + flipItem.book().getRomanLevel(flipItem.book().level()) + "; nothing bought.");
+            state = State.IDLE; return;
+        }
+        testTask = createTask(flipItem, true);
+        services.event("INFO", "books.test_task", java.util.Map.of("trade", testTask.getProfitTradeId(), "book", flipItem.book().id(), "state", testTask.getBookState().name()));
+        state = isStartUpCheckCompleted ? State.IDLE : State.STARTUP_CHECK;
     }
 
     private void refreshFlips() {
@@ -1493,6 +1565,14 @@ public class BazaarFlipper implements Feature {
 
     private boolean bookPriceAllowed(Task task, double price, boolean sale) {
         com.google.gson.JsonObject latest = services.latestQuotes();
+        if (task.test() && !sale) {
+            // A test buy skips the profit target, within 5% of the quote it started from.
+            double ceiling = Math.max(task.getReservedUnitCost() * 1.05, task.getReservedUnitCost() + 0.2);
+            boolean allowed = latest != null && Double.isFinite(price) && price > 0 && price <= ceiling;
+            services.event(allowed ? "INFO" : "WARN", "books.price_check", java.util.Map.of("trade", task.getProfitTradeId(), "item", task.getBook().id(),
+                    "selling", false, "test", true, "price", Double.isFinite(price) ? price : "unreadable", "ceiling", ceiling, "quotesFresh", latest != null, "allowed", allowed));
+            return allowed;
+        }
         com.google.gson.JsonObject product = latest == null ? null
                 : latest.getAsJsonObject("products").getAsJsonObject(task.getBook().getLevel(task.getBook().sellLevel()));
         double exit = sale ? price : product == null ? -1

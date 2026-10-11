@@ -40,6 +40,10 @@ public class Task {
     public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(){return forecast;}
     public void forecast(com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast value){forecast=value;}
     private final String profitTradeId;
+    /** A player-started book test: entry skips the profit target, within a price ceiling. */
+    private boolean test;
+    public boolean test(){return test;}
+    public void markTest(){test=true;}
     private boolean retiring;
     private boolean orphanCleanup;
     public boolean orphanCleanup(){return orphanCleanup;}

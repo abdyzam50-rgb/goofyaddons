@@ -23,4 +23,15 @@ class ProductionCommandsTest {
         assertEquals("CRAFT",TradingMode.CRAFT.name());assertEquals("Craft flips",TradingMode.CRAFT.label());
         assertEquals(TradingMode.CRAFT,TradingMode.BOTH.next());assertEquals(TradingMode.BOOKS,TradingMode.CRAFT.next());
     }
+    @Test void buyingAndSellingEachTakeTheirOwnMode() {
+        assertEquals(BazaarStrategy.ORDER_INSTANT,ProductionCommands.strategy("order instant"));
+        assertEquals(BazaarStrategy.INSTANT_OFFER,ProductionCommands.strategy("insta offer"));
+        assertEquals(BazaarStrategy.ORDER_OFFER,ProductionCommands.strategy("order"));
+        assertEquals(BazaarStrategy.INSTANT_INSTANT,ProductionCommands.strategy("INSTANT_INSTANT"));
+        assertTrue(ProductionCommands.buyMode("instant"));assertFalse(ProductionCommands.buyMode("order"));
+        assertTrue(ProductionCommands.sellMode("insta"));assertFalse(ProductionCommands.sellMode("offer"));
+        assertThrows(IllegalArgumentException.class,()->ProductionCommands.buyMode("offer"),"a sell offer is not a way to buy");
+        assertThrows(IllegalArgumentException.class,()->ProductionCommands.sellMode("order"));
+        assertThrows(IllegalArgumentException.class,()->ProductionCommands.strategy("order sideways"));
+    }
 }

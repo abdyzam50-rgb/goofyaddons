@@ -15,6 +15,7 @@ public final class ProductionCommands {
                     .executes(c->queue(StringArgumentType.getString(c,"output"),1))
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
                         .executes(c->queue(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"))))));
+            dispatcher.register(testCommands());
             dispatcher.register(ClientCommands.literal("production")
                 .then(ClientCommands.literal("flips").executes(c->{FeatureManager.INSTANCE.production().showCraftPlans();return 1;}))
                 .then(ClientCommands.literal("compactor").executes(c->{
@@ -113,7 +114,10 @@ public final class ProductionCommands {
                     .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
                         .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),null))
                         .then(ClientCommands.argument("strategy",StringArgumentType.word())
-                            .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),StringArgumentType.getString(c,"strategy")))))))
+                            .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),StringArgumentType.getString(c,"strategy")))
+                            .then(ClientCommands.argument("sell",StringArgumentType.word())
+                                .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),
+                                        StringArgumentType.getString(c,"strategy")+" "+StringArgumentType.getString(c,"sell"))))))))
                 .then(ClientCommands.literal("test").then(ClientCommands.argument("output",StringArgumentType.string())
                     .executes(c->test(StringArgumentType.getString(c,"output"),0))
                     .then(ClientCommands.argument("binPrice",LongArgumentType.longArg(1,1_000_000_000_000L))
@@ -155,6 +159,95 @@ public final class ProductionCommands {
                 }))));
         });
     }
+    static final String TEST_HELP=".a* goofyaddon test: buy <item> <units> <instant|order> · sell <item> <instant|offer> · trade <item> <units> <instant|order> <instant|offer>"
+        +" · general buy|sell|flip … · book <book> <instant|order> <instant|offer> · pipeline <item> <batches> <instant|order> <instant|offer> · compactor";
+    private static String arg(com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> c,String name){return StringArgumentType.getString(c,name);}
+    private static int units(com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> c){return IntegerArgumentType.getInteger(c,"units");}
+    /**
+     * Tests for each part of trading. Buying and selling are separate parts, each with its own
+     * mode, so they can be mixed: Bazaar trades on the production steps, a general flip, a book
+     * flip, or a craft pipeline.
+     */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> testCommands() {
+        return ClientCommands.literal("test").executes(c->{new LiveActions().message(TEST_HELP);return 1;})
+            .then(ClientCommands.literal("buy").then(ClientCommands.argument("item",StringArgumentType.string())
+                .then(ClientCommands.argument("units",IntegerArgumentType.integer(1,4096))
+                    .then(ClientCommands.argument("buy",StringArgumentType.word())
+                        .executes(c->trade(arg(c,"item"),units(c),ProductionRun.TradePart.BUY,arg(c,"buy"),null))))))
+            .then(ClientCommands.literal("sell").then(ClientCommands.argument("item",StringArgumentType.string())
+                .then(ClientCommands.argument("sell",StringArgumentType.word())
+                    .executes(c->trade(arg(c,"item"),0,ProductionRun.TradePart.SELL,null,arg(c,"sell"))))))
+            .then(ClientCommands.literal("trade").then(ClientCommands.argument("item",StringArgumentType.string())
+                .then(ClientCommands.argument("units",IntegerArgumentType.integer(1,4096))
+                    .then(ClientCommands.argument("buy",StringArgumentType.word())
+                        .then(ClientCommands.argument("sell",StringArgumentType.word())
+                            .executes(c->trade(arg(c,"item"),units(c),ProductionRun.TradePart.BOTH,arg(c,"buy"),arg(c,"sell"))))))))
+            .then(ClientCommands.literal("compactor")
+                .executes(c->trade("DWARVEN_COMPACTOR",1,ProductionRun.TradePart.BOTH,"instant","instant")))
+            .then(ClientCommands.literal("general")
+                .then(ClientCommands.literal("buy").then(ClientCommands.argument("item",StringArgumentType.string())
+                    .then(ClientCommands.argument("units",IntegerArgumentType.integer(1,4096))
+                        .then(ClientCommands.argument("buy",StringArgumentType.word())
+                            .executes(c->general(arg(c,"item"),units(c),com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.TestPart.BUY,arg(c,"buy"),null))))))
+                .then(ClientCommands.literal("sell").then(ClientCommands.argument("item",StringArgumentType.string())
+                    .then(ClientCommands.argument("sell",StringArgumentType.word())
+                        .executes(c->general(arg(c,"item"),0,com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.TestPart.SELL,null,arg(c,"sell"))))))
+                .then(ClientCommands.literal("flip").then(ClientCommands.argument("item",StringArgumentType.string())
+                    .then(ClientCommands.argument("units",IntegerArgumentType.integer(1,4096))
+                        .then(ClientCommands.argument("buy",StringArgumentType.word())
+                            .then(ClientCommands.argument("sell",StringArgumentType.word())
+                                .executes(c->general(arg(c,"item"),units(c),com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.TestPart.BOTH,arg(c,"buy"),arg(c,"sell")))))))))
+            .then(ClientCommands.literal("book").then(ClientCommands.argument("book",StringArgumentType.string())
+                .then(ClientCommands.argument("buy",StringArgumentType.word())
+                    .then(ClientCommands.argument("sell",StringArgumentType.word())
+                        .executes(c->book(arg(c,"book"),arg(c,"buy"),arg(c,"sell")))))))
+            .then(ClientCommands.literal("pipeline").then(ClientCommands.argument("item",StringArgumentType.string())
+                .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
+                    .then(ClientCommands.argument("buy",StringArgumentType.word())
+                        .then(ClientCommands.argument("sell",StringArgumentType.word())
+                            .executes(c->pipeline(arg(c,"item"),IntegerArgumentType.getInteger(c,"batches"),arg(c,"buy")+" "+arg(c,"sell"))))))));
+    }
+
+    /** A general flip test of one Bazaar product on the real general flipper. */
+    static int general(String output,int units,com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.TestPart part,String buy,String sell){
+        var actions=new LiveActions();
+        String id=output.trim().toUpperCase(java.util.Locale.ROOT).replace(' ','_');
+        boolean instantBuy,instantSell;
+        try{instantBuy=part==com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.TestPart.SELL||buyMode(buy);
+            instantSell=part==com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.TestPart.BUY||sellMode(sell);}
+        catch(IllegalArgumentException invalid){actions.message(invalid.getMessage());return 0;}
+        if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null) {
+            actions.message("Fetching Bazaar prices…");
+            com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch().whenComplete((market,error)->new com.goofy.goofyaddons.menu.LiveWorld().onClientThread(()->{
+                if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null)actions.message("Bazaar prices could not be fetched; try again.");
+                else general(output,units,part,buy,sell);
+            }));
+            return 1;
+        }
+        if(!onBazaar(id)){actions.message(RecipeCatalog.instance().name(id)+" is not a Bazaar product.");return 0;}
+        // A configured item keeps its configured Bazaar name; anything else uses the catalog name.
+        String name=com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.general.items.stream().filter(i->i.id().equals(id)).map(com.goofy.goofyaddons.features.generalflipper.GeneralItem::name)
+            .findFirst().orElse(RecipeCatalog.instance().name(id));
+        return FeatureManager.INSTANCE.startGeneralTest(new com.goofy.goofyaddons.features.generalflipper.GeneralItem(id,name),units,instantBuy,instantSell,part)?1:0;
+    }
+
+    /** One flip of a configured book on the real book flipper. */
+    static int book(String book,String buy,String sell){
+        var actions=new LiveActions();
+        boolean instantBuy,instantSell;
+        try{instantBuy=buyMode(buy);instantSell=sellMode(sell);}
+        catch(IllegalArgumentException invalid){actions.message(invalid.getMessage());return 0;}
+        if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null) {
+            actions.message("Fetching Bazaar prices…");
+            com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch().whenComplete((market,error)->new com.goofy.goofyaddons.menu.LiveWorld().onClientThread(()->{
+                if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null)actions.message("Bazaar prices could not be fetched; try again.");
+                else book(book,buy,sell);
+            }));
+            return 1;
+        }
+        return FeatureManager.INSTANCE.startBookTest(book,instantBuy,instantSell)?1:0;
+    }
+
     @FunctionalInterface private interface Sale {int run(com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> c,long price,long fee);}
     /** "<binPrice> <maximumFee>": list the output as a BIN once it is made. */
     private static com.mojang.brigadier.builder.RequiredArgumentBuilder<FabricClientCommandSource,Long> sale(Sale then) {
@@ -248,7 +341,7 @@ public final class ProductionCommands {
         return market!=null && market.has("products") && market.getAsJsonObject("products").has(id);
     }
     /** One named craft through the automatic pipeline (order or instant buys, craft, Bazaar sale) for a chosen batch count. */
-    static int pipeline(String output,int batches,String strategy){
+    public static int pipeline(String output,int batches,String strategy){
         var actions=new LiveActions();
         if(!FeatureManager.INSTANCE.prepareCrafting()){actions.message("Stop trading and resolve config/order recovery before starting a pipeline test.");return 0;}
         String id;BazaarStrategy chosen;
@@ -265,15 +358,63 @@ public final class ProductionCommands {
         if(!FeatureManager.INSTANCE.production().queuePipeline(id,batches,chosen))return 0;
         return FeatureManager.INSTANCE.startProductionTest()?1:0;
     }
-    /** "order", "instant" or a strategy name such as ORDER_OFFER; empty for the planner's pick. */
+    /**
+     * "order", "instant", a strategy name such as ORDER_OFFER, or a buy and a sell mode such as
+     * "order instant"; empty for the planner's pick.
+     */
     static BazaarStrategy strategy(String text){
         if(text==null)return null;
+        var words=text.trim().split("\\s+");
+        if(words.length==2)return BazaarStrategy.of(buyMode(words[0]),sellMode(words[1]));
         String key=text.trim().toUpperCase(java.util.Locale.ROOT).replace('-','_');
         if(key.equals("ORDER"))return BazaarStrategy.ORDER_OFFER;
         if(key.equals("INSTANT"))return BazaarStrategy.INSTANT_INSTANT;
         try{return BazaarStrategy.valueOf(key);}
-        catch(IllegalArgumentException unknown){throw new IllegalArgumentException("Strategy must be order, instant, ORDER_OFFER, INSTANT_OFFER, ORDER_INSTANT or INSTANT_INSTANT");}
+        catch(IllegalArgumentException unknown){throw new IllegalArgumentException("Strategy must be order, instant, ORDER_OFFER, INSTANT_OFFER, ORDER_INSTANT, INSTANT_INSTANT, or a buy and a sell mode such as \"order instant\"");}
     }
+    /** True for an instant buy, false for a buy order. */
+    public static boolean buyMode(String text){
+        return switch(text.trim().toLowerCase(java.util.Locale.ROOT)){
+            case "instant","insta","instabuy","i" -> true;
+            case "order","buyorder","o" -> false;
+            default -> throw new IllegalArgumentException("Buy mode must be instant or order, not "+text);
+        };
+    }
+    /** True for an instant sell, false for a sell offer. */
+    public static boolean sellMode(String text){
+        return switch(text.trim().toLowerCase(java.util.Locale.ROOT)){
+            case "instant","insta","instasell","i" -> true;
+            case "offer","selloffer","o" -> false;
+            default -> throw new IllegalArgumentException("Sell mode must be instant or offer, not "+text);
+        };
+    }
+
+    /**
+     * A Bazaar trade test with no crafting: buy units of one product, sell every unit of it
+     * held, or buy and then sell. Each half picks its own mode.
+     */
+    public static int trade(String output,int units,ProductionRun.TradePart part,String buy,String sell){
+        var actions=new LiveActions();
+        if(!FeatureManager.INSTANCE.prepareCrafting()){actions.message("Stop trading and resolve config/order recovery before starting a trade test.");return 0;}
+        String id=output.trim().toUpperCase(java.util.Locale.ROOT).replace(' ','_');
+        BazaarStrategy chosen;
+        try {
+            if(!ProductionRecipe.validId(id))throw new IllegalArgumentException("Unknown product "+id);
+            chosen=BazaarStrategy.of(part.buys()?buyMode(buy):true,part.sells()?sellMode(sell):true);
+        }catch(IllegalArgumentException invalid){actions.message(invalid.getMessage());return 0;}
+        if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null) {
+            actions.message("Fetching Bazaar prices…");
+            com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch().whenComplete((market,error)->new com.goofy.goofyaddons.menu.LiveWorld().onClientThread(()->{
+                if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null)actions.message("Bazaar prices could not be fetched; try again.");
+                else trade(output,units,part,buy,sell);
+            }));
+            return 1;
+        }
+        if(!onBazaar(id)){actions.message(RecipeCatalog.instance().name(id)+" is not a Bazaar product.");return 0;}
+        if(!FeatureManager.INSTANCE.production().queueTrade(id,units,part,chosen))return 0;
+        return FeatureManager.INSTANCE.startProductionTest()?1:0;
+    }
+
     private static int claim(String job,long price,long fee){
         if(!FeatureManager.INSTANCE.prepareCrafting()){new LiveActions().message("Stop trading and resolve config/order recovery before claiming.");return 0;}
         return FeatureManager.INSTANCE.production().claim(job,price,fee)?1:0;

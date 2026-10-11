@@ -828,6 +828,29 @@ New or changed events: `production.auto_selected` carries the quotes and ranking
 - The menu owner keeps the menu mid-transaction even if it leaves the enabled engine list.
 - `.a* goofyaddon orders` lists ordinary flip records; `orders release <id|all>` drops them after you claim or cancel by hand, while trading is stopped.
 
+## Test commands for each trading part
+
+Every test runs only while trading is stopped; the trading toggle or stop ends it. Buy
+modes are `instant` or `order`, sell modes `instant` or `offer`. Spendable capital, the
+purse reserve, inventory room, order checks and receipts still apply.
+
+| Command | What it does |
+| --- | --- |
+| `test buy <item> <units> <instant\|order>` | Buys units of one Bazaar product and leaves them in the inventory. |
+| `test sell <item> <instant\|offer>` | Sells every unit of that product held. |
+| `test trade <item> <units> <buy> <sell>` | Buys, then sells what it bought. |
+| `test compactor` | `test trade DWARVEN_COMPACTOR 1 instant instant`. |
+| `test general buy\|sell\|flip …` | The same three on the real general flipper, skipping its profit filters. |
+| `test book <book> <buy> <sell>` | One flip of a configured book (`ultimate_wisdom`), skipping the profit target. |
+| `test pipeline <item> <batches> <buy> <sell>` | A craft pipeline; `production pipeline` takes the same two modes. |
+
+`buy`, `sell` and `trade` use the production steps (instant buy, buy orders, instant sell,
+sell offers) with no crafting, and print what was bought, sold and the result. Test
+trades are not written to the craft profit ledger; `production.trade_test_*` events
+carry their numbers. A general flip test records profit only when it both buys and
+sells. Test buys may cost at most 5% over the quote they started from, and test sales
+never go below 90% of it.
+
 ## Ingredients with placeholder bids
 
 An ingredient's order price is its top bid, but a lone bid far under the sell offers

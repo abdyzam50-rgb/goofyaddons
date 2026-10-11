@@ -302,7 +302,7 @@ public class GeneralFlipper implements Feature {
         if (active != null) return true;
         long now = world.now();
         if (workPositions().stream().anyMatch(position -> workDue(position, now))) return true;
-        return snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
+        return testTradeId == null && snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
                 && !snapshotCandidates.isEmpty();
     }
 
@@ -401,6 +401,9 @@ public class GeneralFlipper implements Feature {
     private void selectWork() {
         long now = world.now();
         for (GeneralPosition position : workPositions()) {
+            if("BUY".equals(position.test) && position.stage==Stage.INVENTORY && !position.settlementPending) {
+                active=position;finishTestBuy();return;
+            }
             if(position.settlementPending && !position.completed) {
                 active=position;
                 fail("A settlement was interrupted; reconcile the retained order and profit records before restarting.");
@@ -416,7 +419,7 @@ public class GeneralFlipper implements Feature {
                 return;
             }
         }
-        if (services.productionOnly() || !snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
+        if (testTradeId != null || services.productionOnly() || !snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
         // Reserving capital stays on a live purse read; only ranking uses the snapshot.
         double purse = services.purse();
         for (GeneralCalculator.Candidate candidate : snapshotCandidates) {
@@ -474,8 +477,10 @@ public class GeneralFlipper implements Feature {
                 if(!freshQuotes())return;
                 if(active.quantity>capacityFor(active.item.id())){fail("Not enough inventory capacity for instant purchase; no purchase submitted.");return;}
                 Double cost=strategy.buy(product,active.quantity),exit=strategy.sell(product,active.quantity);
-                if(cost==null||exit==null||cost>settings().maxCoinsPerItem||exit*.97*(1-services.taxPercentage()/100)-cost*1.03<settings().minProfitPerBatch || cost!=null&&exit!=null&&(exit*.97*(1-services.taxPercentage()/100)-cost*1.03)/cost*100<settings().minMarginPercentage){fail("Instant entry no longer meets profit/depth limits; no purchase submitted.");return;}
-                double limit=Math.min(cost*1.03,settings().maxCoinsPerItem);if(!capital.resize(OWNER,active.item.id(),limit,services.purse())){fail("Instant entry exceeds spendable capital.");return;}
+                if(active.test!=null){
+                    if(cost==null){fail("No fresh instant-buy quote covers "+active.quantity+" "+active.item.name()+"; no purchase submitted.");return;}
+                }else if(cost==null||exit==null||cost>settings().maxCoinsPerItem||exit*.97*(1-services.taxPercentage()/100)-cost*1.03<settings().minProfitPerBatch || cost!=null&&exit!=null&&(exit*.97*(1-services.taxPercentage()/100)-cost*1.03)/cost*100<settings().minMarginPercentage){fail("Instant entry no longer meets profit/depth limits; no purchase submitted.");return;}
+                double limit=active.test!=null?cost*1.03:Math.min(cost*1.03,settings().maxCoinsPerItem);if(!capital.resize(OWNER,active.item.id(),limit,services.purse())){fail("Instant entry exceeds spendable capital.");return;}
                 instantBuying=new com.goofy.goofyaddons.features.production.BazaarInstantBuy(active.item.id(),active.item.name(),active.quantity,limit,reason->{
                     active.stage=Stage.RECONCILE;active.submitted=true;active.purchasePriceKnown=false;if(!save())throw new IllegalStateException("Buy intent failed");
                 });
@@ -497,6 +502,8 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean saleAllowed(double price) {
+        // A flip test sells at the live price, but never far below the quote it started from.
+        if(active.test!=null)return Double.isFinite(price) && price>0 && price>=active.minimumSellPrice;
         // Profit and margin are entry filters. Existing stock exits at a readable
         // market price within the drawdown guard. Age cannot block an exit.
         if(services.productionOnly()) {
@@ -711,6 +718,8 @@ public class GeneralFlipper implements Feature {
     }
     private boolean recordAcquisition() {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
+        // A one-sided test has no matching sale or purchase, so it stays out of the profit ledger.
+        if (active.test != null && !"BOTH".equals(active.test)) { testEvent("general.test_bought"); return true; }
         services.acquire(active);
         return true;
     }
@@ -718,6 +727,12 @@ public class GeneralFlipper implements Feature {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
         if (active.saleEvent == null) { active.saleEvent=active.tradeId+":legacy-sale:"+active.placedAt; if(!save()) return false; }
         if(services.productionOnly()) {ProductionSaleAccounting.record(active,units,proceeds);if(!save())return false;}
+        if (active.test != null) {
+            var evidence=testEvidence();evidence.put("units",units);evidence.put("proceeds",proceeds);
+            services.event("INFO","general.test_sold",evidence);
+            actions.message(String.format(java.util.Locale.ROOT,"General test: sold %d %s for %s.",units,active.item.name(),proceeds==null?"unconfirmed coins":String.format(java.util.Locale.ROOT,"%,.1f coins",proceeds)));
+            if (!"BOTH".equals(active.test)) return true;
+        }
         services.sell(active, units, proceeds);
         return true;
     }
@@ -754,6 +769,89 @@ public class GeneralFlipper implements Feature {
     }
 
     private GeneralOrderEntry.Side side() { return trade.selling ? sellSide : buySide; }
+
+    // ---- Flip tests -----------------------------------------------------------------------
+    public enum TestPart { BUY, SELL, BOTH }
+    private String testTradeId;
+
+    /**
+     * Starts a flip test of one product: buy it, sell every unit held, or both, each with its own
+     * mode. Only the test position is worked and the profit filters are skipped; capital, inventory
+     * room, order verification and receipts still apply. Returns why it cannot start, or null.
+     */
+    public String startTest(GeneralItem item,int quantity,boolean instantBuy,boolean instantSell,TestPart part) {
+        if (services.productionOnly()) return "Craft order engine cannot run flip tests";
+        if (running) return "Stop trading first";
+        restoreBudget();
+        if (blocked) return "General order state is blocked; resolve the logged error first";
+        if (!positions.isEmpty()) return "Ordinary flip orders are still tracked; finish them or use: orders release <id>";
+        if (item == null || !GeneralPosition.validProduct(item.id(), false)) return "Not a Bazaar product the general flipper trades";
+        JsonObject latest = services.latestQuotes();
+        JsonObject product = latest == null || !latest.has("products") ? null : latest.getAsJsonObject("products").getAsJsonObject(item.id());
+        if (product == null) return "No fresh Bazaar quote for " + item.name();
+        observe();
+        var strategy = com.goofy.goofyaddons.features.production.BazaarStrategy.of(instantBuy, instantSell);
+        GeneralPosition position = new GeneralPosition();
+        position.item = item; position.test = part.name(); position.tradeId = java.util.UUID.randomUUID().toString();
+        position.instantBuy = instantBuy; position.instantSell = instantSell;
+        if (part == TestPart.SELL) {
+            int held = itemCount(item.id());
+            if (held <= 0) return "Put the " + item.name() + " you want to sell in your inventory first";
+            if (held > 4096) return "Hold at most 4096 " + item.name();
+            position.quantity = held;
+        } else {
+            if (quantity < 1 || quantity > 4096) return "Buy between 1 and 4096 units";
+            int room = capacityFor(item.id());
+            if (quantity > room) return "The general flipper only counts room for " + Math.max(0, room) + " " + item.name() + " (it keeps 4 slots free and assumes 1 per slot until one is held)";
+            if (part == TestPart.BOTH && itemCount(item.id()) > 0) return "Move the " + item.name() + " you already hold out of your inventory first";
+            position.quantity = quantity;
+        }
+        Double buy = strategy.buy(product, 1), sell = strategy.sell(product, 1);
+        if (part != TestPart.SELL && (buy == null || buy <= 0)) return "No fresh " + (instantBuy ? "instant-buy" : "buy-order") + " price for " + item.name();
+        if (part != TestPart.BUY && (sell == null || sell <= 0)) return "No fresh " + (instantSell ? "instant-sell" : "sell-offer") + " price for " + item.name();
+        position.unitCost = part == TestPart.SELL ? sell : buy;
+        position.sellPrice = sell == null || sell <= 0 ? position.unitCost : sell;
+        // The GUI bids 0.1 above the top order; allow that and a small move before confirming.
+        position.maximumBuyPrice = part == TestPart.SELL ? 0 : Math.max(buy * 1.05, buy + 0.2);
+        position.minimumSellPrice = sell == null || sell <= 0 ? 0 : sell * 0.9;
+        if (part == TestPart.SELL) { position.stage = Stage.INVENTORY; position.purchasePriceKnown = false; position.heldSince = world.now(); }
+        else position.stage = Stage.PLANNED;
+        double purse = services.purse();
+        if (part != TestPart.SELL && !capital.reserve(OWNER, item.id(), position.cost() * 1.05, purse))
+            return "Not enough spendable capital for " + position.quantity + " " + item.name() + " after the purse reserve and trading capital limit";
+        start();
+        if (!running) { capital.release(OWNER, item.id()); return "General flipper could not start"; }
+        positions.add(position);
+        if (part == TestPart.SELL) restoreFunding(position);
+        if (!save()) { positions.remove(position); capital.release(OWNER, item.id()); stop(); return "General order state could not be saved"; }
+        testTradeId = position.tradeId;
+        var evidence = testEvidence(position); evidence.put("buyQuote", buy); evidence.put("sellQuote", sell);
+        services.event("INFO", "general.test_started", evidence);
+        return null;
+    }
+    /** True once the test's position is gone: sold, bought (buy-only), or cancelled. */
+    public boolean testFinished() {
+        return testTradeId != null && positions.stream().noneMatch(p -> testTradeId.equals(p.tradeId));
+    }
+    public boolean testing() { return testTradeId != null; }
+    public void endTest() { testTradeId = null; }
+
+    private void finishTestBuy() {
+        testEvent("general.test_bought_done");
+        actions.message(String.format(java.util.Locale.ROOT, "General test: bought %d %s for about %,.1f coins (%s). They stay in your inventory.",
+                active.quantity, active.item.name(), active.cost(), active.instantBuy ? "instant buy" : "buy order"));
+        completePosition();
+    }
+    private java.util.Map<String,Object> testEvidence() { return testEvidence(active); }
+    private java.util.Map<String,Object> testEvidence(GeneralPosition position) {
+        var evidence = new java.util.LinkedHashMap<String,Object>();
+        evidence.put("trade", position.tradeId); evidence.put("item", position.item.id()); evidence.put("part", position.test);
+        evidence.put("instantBuy", position.instantBuy); evidence.put("instantSell", position.instantSell);
+        evidence.put("quantity", position.quantity); evidence.put("unitCost", position.unitCost); evidence.put("stage", position.stage.name());
+        evidence.put("maximumBuyPrice", position.maximumBuyPrice); evidence.put("minimumSellPrice", position.minimumSellPrice);
+        return evidence;
+    }
+    private void testEvent(String type) { services.event("INFO", type, testEvidence()); }
 
     /** The engine's rules, as the operations see them. */
     private final class Session implements GeneralContext {

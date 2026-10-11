@@ -48,6 +48,11 @@ public class FeatureManager {
     /** A production test runs the production, crafting and auction features alone, outside the trading lifecycle. */
     private boolean productionTest;
     private final MenuScheduler testScheduler = new MenuScheduler();
+    /** A general or book flip test runs that one engine alone, outside the trading lifecycle. */
+    private Feature engineTest;
+    private java.util.function.BooleanSupplier engineTestDone;
+    private Runnable engineTestEnd;
+    private String engineTestLabel;
     private long testQuotesAt;
     private FeatureManager() {com.goofy.goofyaddons.event.ChatHook.onMessage("",crafting::slowdownNotice);}
     private boolean started() { return lifecycle.started(); }
@@ -97,6 +102,7 @@ public class FeatureManager {
         production.refreshSelection();
         marketAnalysis.poll(started()?mode:GoofyConfig.INSTANCE.tradingMode);
         if (productionTest && !started()) { tickProductionTest(); return; }
+        if (engineTest != null && !started()) { tickEngineTest(); return; }
         if (!started() || paused()) return;
         if(com.goofy.goofyaddons.features.access.BazaarNpcAccess.tick())return;
         if(skillPreflight.pending()) {
@@ -137,6 +143,7 @@ public class FeatureManager {
     /** A start from any source; a schedule or transfer never clears a safety block. */
     public void startConfigured(Source source) {
         if (productionTest) { stopProductionTest("Production test stopped by the trading toggle"); return; }
+        if (engineTest != null) { stopEngineTest(engineTestLabel + " stopped by the trading toggle"); return; }
         Diagnostics.event("INFO","trading.start_requested",Diagnostics.snapshot());
         if (lifecycle.start(source, now()) == Outcome.DENIED) {
             Diagnostics.event("WARN","trading.start_denied",java.util.Map.of("source",source.name(),"reason",lifecycle.reason()));
@@ -213,6 +220,7 @@ public class FeatureManager {
 
     public void stop(Source source) {
         if (productionTest) stopProductionTest("Production test stopped");
+        if (engineTest != null) stopEngineTest(engineTestLabel + " stopped");
         com.goofy.goofyaddons.features.access.BazaarNpcAccess.cancel();
         if (lifecycle.stop(source, now()) != Outcome.GRANTED){production.stop();crafting.stop();auction.stop();return;}
         skillPreflight.cancel();
@@ -235,6 +243,7 @@ public class FeatureManager {
      */
     public boolean startProductionTest() {
         if (started()) { ChatUtils.clientMessage("Stop trading first; the queued production runs with trading anyway."); return false; }
+        if (engineTest != null) { ChatUtils.clientMessage("Finish the running " + engineTestLabel.toLowerCase(java.util.Locale.ROOT) + " first."); return false; }
         if (!production.queued()) return false;
         productionTest = true;
         testScheduler.reset();
@@ -266,6 +275,76 @@ public class FeatureManager {
         }
     }
 
+    /**
+     * A general flip test of one product: buy, sell, or both, each with its own mode. Only the
+     * test position is worked; the rest schedule and transfers do not gate it, and every order
+     * check, receipt and safety pause still applies.
+     */
+    public boolean startGeneralTest(com.goofy.goofyaddons.features.generalflipper.GeneralItem item,int quantity,boolean instantBuy,boolean instantSell,
+                                    com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.TestPart part) {
+        if (!engineTestAllowed()) return false;
+        String refused = general.startTest(item, quantity, instantBuy, instantSell, part);
+        if (refused != null) { ChatUtils.clientMessage("Cannot start the general test: " + refused + "."); return false; }
+        beginEngineTest(general, general::testFinished, general::endTest, "General flip test");
+        ChatUtils.clientMessage("General flip test: " + switch (part) {
+            case BUY -> "buy " + quantity + " " + item.name() + " with " + (instantBuy ? "an instant buy" : "a buy order");
+            case SELL -> "sell the " + item.name() + " held with " + (instantSell ? "an instant sell" : "a sell offer");
+            case BOTH -> "buy " + quantity + " " + item.name() + " (" + (instantBuy ? "instant" : "order") + "), then sell them (" + (instantSell ? "instant" : "offer") + ")";
+        } + ". The trading toggle or stop ends it.");
+        return true;
+    }
+
+    /** One book flip of a configured book with the chosen buy and sell modes, skipping the profit filter. */
+    public boolean startBookTest(String book,boolean instantBuy,boolean instantSell) {
+        if (!engineTestAllowed()) return false;
+        String refused = books.startTest(book, instantBuy, instantSell);
+        if (refused != null) { ChatUtils.clientMessage("Cannot start the book test: " + refused + "."); return false; }
+        beginEngineTest(books, books::testFinished, books::endTest, "Book flip test");
+        ChatUtils.clientMessage("Book flip test: " + books.testLabel() + " · buy " + (instantBuy ? "instant" : "order") + ", sell " + (instantSell ? "instant" : "offer")
+                + ". The trading toggle or stop ends it.");
+        return true;
+    }
+
+    private boolean engineTestAllowed() {
+        if (started()) { ChatUtils.clientMessage("Stop trading first."); return false; }
+        if (productionTest || engineTest != null) { ChatUtils.clientMessage("Finish the running test first."); return false; }
+        if (!prepareCrafting()) { ChatUtils.clientMessage("Resolve config, book recovery or order state before testing."); return false; }
+        return true;
+    }
+    private void beginEngineTest(Feature engine, java.util.function.BooleanSupplier done, Runnable end, String label) {
+        engineTest = engine; engineTestDone = done; engineTestEnd = end; engineTestLabel = label;
+        testScheduler.reset();
+        Diagnostics.event("INFO", "trading.engine_test_started", java.util.Map.of("engine", engine.name(), "test", label));
+    }
+    private void tickEngineTest() {
+        var engine = engineTest;
+        try {
+            long now = now();
+            if (com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh() == null && now - testQuotesAt >= 5000) {
+                testQuotesAt = now; com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch();
+            }
+            engine.poll();
+            if (engineTest != engine) return;
+            Feature owner = testScheduler.select(List.of(engine));
+            if (owner != null) owner.onTick();
+            if (engineTest == engine && engineTestDone.getAsBoolean()) {
+                Diagnostics.event("INFO", "trading.engine_test_finished", java.util.Map.of("engine", engine.name(), "test", engineTestLabel));
+                stopEngineTest(engineTestLabel + " finished");
+            }
+        } catch (RuntimeException failure) {
+            Diagnostics.failure("trading.engine_test_failed", failure);
+            safetyPause(engineTestLabel + " failed; inspect inventory and orders before retrying");
+        }
+    }
+    private void stopEngineTest(String why) {
+        var engine = engineTest; var end = engineTestEnd;
+        engineTest = null; engineTestDone = null; engineTestEnd = null;
+        if (engine != null) engine.stop();
+        if (end != null) end.run();
+        testScheduler.reset();
+        ChatUtils.clientMessage(why + ".");
+    }
+
     private void stopProductionTest(String why) {
         productionTest = false;
         production.stop(); crafting.stop(); auction.stop();
@@ -293,6 +372,7 @@ public class FeatureManager {
     /** Latches a pause; the first reason stays the visible one until a person clears it. */
     public void safetyPause(Source source, String reason) {
         productionTest = false;
+        if (engineTest != null) { engineTest = null; engineTestDone = null; if (engineTestEnd != null) engineTestEnd.run(); engineTestEnd = null; }
         SafetyActions.latch(() -> {
             lifecycle.block(source, reason, now());
             scheduler.reset();

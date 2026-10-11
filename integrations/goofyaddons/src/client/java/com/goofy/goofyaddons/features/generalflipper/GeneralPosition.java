@@ -37,6 +37,8 @@ public final class GeneralPosition {
     boolean productionProceedsUnknown;
     double maximumBuyPrice;
     double minimumSellPrice;
+    /** BUY, SELL or BOTH for a player-started flip test, which skips the profit filters; null otherwise. */
+    String test;
     double cost() { return quantity * unitCost; }
     int acquiredInventory(int total) { return productionBuy ? total - productionInventoryBefore + productionStoredUnits : total; }
 
@@ -77,6 +79,7 @@ public final class GeneralPosition {
                     || position.productionInventoryBefore>0 && (!position.productionBuy || position.productionParent==null)
                     || position.productionStoredUnits<0 || position.productionStoredUnits>position.quantity
                     || (position.productionStoredUnits>0 || position.productionAwaitingStorage) && (!position.productionBuy || position.productionParent==null)
+                    || position.test!=null && (!java.util.Set.of("BUY","SELL","BOTH").contains(position.test) || position.productionParent!=null)
                     || position.rejectedReason!=null && (!position.productionBuy || position.submitted || !position.completed || position.stage!=Stage.PLANNED)
                     || position.stage == null || !ids.add(position.item.id())) {
                 throw new IllegalArgumentException("Invalid saved order position");

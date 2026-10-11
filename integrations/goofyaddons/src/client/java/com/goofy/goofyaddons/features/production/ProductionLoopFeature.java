@@ -326,6 +326,38 @@ public final class ProductionLoopFeature implements Feature {
         }
     }
 
+    /**
+     * Buys and/or sells one Bazaar product with the chosen strategy and no crafting, so each half
+     * of the pipeline can be tried in game on its own. Spendable capital caps the buying.
+     */
+    public boolean queueTrade(String product, int units, ProductionRun.TradePart part, BazaarStrategy strategy) {
+        var actions = new LiveActions();
+        if (queued() || hasOrphanOrders() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
+            actions.message("Finish the queued production work first."); return false;
+        }
+        try {
+            var current = new Work();
+            current.run = ProductionRun.startTrade(environment(current, true, false), RecipeCatalog.instance(), product, units, part, strategy);
+            work.add(current);
+            FeatureManager.INSTANCE.invalidateMarketReport();
+            String name = RecipeCatalog.instance().name(product);
+            int count = current.run.outputUnits();
+            String how = switch (part) {
+                case BUY -> "buy " + count + " " + name + " with " + (strategy.instantBuy ? "an instant buy" : "a buy order");
+                case SELL -> "sell all " + count + " " + name + " held with " + (strategy.instantSell ? "an instant sell" : "a sell offer");
+                case BOTH -> "buy " + count + " " + name + " (" + (strategy.instantBuy ? "instant" : "order") + "), then sell them (" + (strategy.instantSell ? "instant" : "offer") + ")";
+            };
+            actions.message("Trade test: " + how + ". The trading toggle or stop ends it.");
+            Diagnostics.event("INFO", "production.trade_test", Map.of("job", current.id(), "product", product, "units", count, "part", part.name(), "strategy", strategy.name()));
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            actions.message("Cannot start the trade test: " + invalid.getMessage()); return false;
+        } catch (Exception failure) {
+            Diagnostics.failure("production.trade_queue_failed", failure);
+            actions.message("Production journal could not be saved; no action performed."); return false;
+        }
+    }
+
     /** Claims a Forge or Kat job that is waiting in the journal, optionally listing the result. */
     public boolean claim(String jobPrefix, long binPrice, double maximumFee) {
         var actions = new LiveActions();
