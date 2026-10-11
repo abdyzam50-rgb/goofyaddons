@@ -12,6 +12,11 @@ import java.util.concurrent.CompletableFuture;
 public final class ProductionBazaarOrders {
     public record SavedSale(String parent,String product,int units) {}
     public record IngredientOrder(String product,String name,int units,double price,double limit) {}
+    /** Original ownership evidence; external handling confirms neither a refund nor a sale. */
+    public record ExternalOrderEvidence(String token,String account,String accountScope,String child,String parent,
+            String product,String name,int units,double unitCost,double cost,long placedAt,Double confirmedCancelRefund,
+            long observedAt,int container,long serverObservation) {}
+    public record ExternalInspection(boolean pending,boolean failed,ExternalOrderEvidence evidence,String reason) {}
     public boolean queueBasket(String parent,List<IngredientOrder> basket){
         bind();engine.start();return engine.enqueueProductionBasket(parent,basket);
     }
@@ -44,6 +49,10 @@ public final class ProductionBazaarOrders {
         var settings=new GeneralSettings();settings.items=List.of();settings.maxReprices=0;settings.orderTimeoutSeconds=180;
         engine=new GeneralFlipper(new LiveWorld(),new LiveActions(),new JsonGeneralOrderRepository(()->AccountStorage.INSTANCE.path(AccountStorage.CRAFT_ORDERS)),new GeneralFlipper.Services(){
             public boolean productionOnly(){return true;}
+            public String accountScope(){
+                var pinned=AccountStorage.INSTANCE.pinned();
+                return pinned!=null && pinned.equals(AccountStorage.INSTANCE.current())?pinned.label():null;
+            }
             public CapitalManager capital(){return CapitalManager.INSTANCE;}
             public GeneralSettings settings(){return settings;}
             public double taxPercentage(){return com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.bazaarTaxPercentage;}
@@ -111,6 +120,15 @@ public final class ProductionBazaarOrders {
         return new Result(done,engine.productionFailed(),p.productionBuy?(p.completed?0:p.quantity):ProductionSaleAccounting.totalUnits(p),p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,p.rejectedReason==null?engine.activity():p.rejectedReason,p.rejectedReason!=null);
     }
     public boolean recoverBuy(){bind();return engine.recoverProductionBuy();}
+    public void beginExternalReconciliation(String reference){
+        var pinned=AccountStorage.INSTANCE.pinned();
+        if(pinned==null || !pinned.equals(AccountStorage.INSTANCE.current()))
+            throw new IllegalStateException("The current SkyBlock account and profile must equal the pinned trading scope.");
+        bind();engine.beginExternalReconciliation(reference);
+    }
+    public ExternalInspection inspectExternal(boolean ownsMenu){return engine.inspectExternal(ownsMenu);}
+    public boolean finishExternalReconciliation(ExternalOrderEvidence evidence){return engine.finishExternalReconciliation(evidence);}
+    public void cancelExternalReconciliation(){engine.cancelExternalReconciliation();}
     public boolean recoveryRemaining(){return engine.productionRecoveryRemaining();}
     public com.goofy.goofyaddons.features.production.ProductionJobs.Job recoveryEvidence(String account) {
         var p=engine.productionPosition();

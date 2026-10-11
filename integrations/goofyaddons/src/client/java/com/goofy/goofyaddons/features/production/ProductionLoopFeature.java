@@ -29,6 +29,7 @@ public final class ProductionLoopFeature implements Feature {
     private Work foreground;
     private final CraftMenuLease<Work> menuLease=new CraftMenuLease<>();
     private boolean recoveringOrders;
+    private boolean reconcilingExternalOrder;
     private final CraftFlipSelection selection=new CraftFlipSelection();
     private long nextSelection;
     private long nextSaleRestore;
@@ -57,7 +58,7 @@ public final class ProductionLoopFeature implements Feature {
     public Map<String,Object> diagnosticState() {
         var state=new LinkedHashMap<String,Object>();var world=new LiveWorld();
         state.put("schema",1);state.put("observedAt",world.now());state.put("running",running);state.put("paused",paused);
-        state.put("recoveringOrders",recoveringOrders);state.put("foregroundJob",foreground==null?null:foreground.id());
+        state.put("recoveringOrders",recoveringOrders);state.put("reconcilingExternalOrder",reconcilingExternalOrder);state.put("foregroundJob",foreground==null?null:foreground.id());
         state.put("nextSelectionAt",nextSelection);state.put("selection",selection.diagnosticState());
         state.put("settings",GoofyConfig.INSTANCE.craftFlips);state.put("orders",orders.diagnosticState());
         state.put("lockedProducts",lockedProducts());
@@ -118,7 +119,7 @@ public final class ProductionLoopFeature implements Feature {
         return rows.stream().filter(CraftFlipPlanner.Route::eligible).findAny().isPresent()?"Ready to select a craft":rows.getFirst().reason();
     }
     private void selectAutomatic() {
-        if(!"CRAFT".equals(FeatureManager.INSTANCE.modeLabel())||System.currentTimeMillis()<nextSelection || recoveringOrders
+        if(!"CRAFT".equals(FeatureManager.INSTANCE.modeLabel())||System.currentTimeMillis()<nextSelection || recoveringOrders || reconcilingExternalOrder
                 ||work.size()>=GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts
                 ||FeatureManager.INSTANCE.crafting().queued()||FeatureManager.INSTANCE.auction().queued())return;
         nextSelection=System.currentTimeMillis()+5000;
@@ -142,7 +143,7 @@ public final class ProductionLoopFeature implements Feature {
     private boolean running, paused;
 
     public String name() { return "Production"; }
-    public boolean queued() { return !work.isEmpty() || recoveringOrders; }
+    public boolean queued() { return !work.isEmpty() || recoveringOrders || reconcilingExternalOrder; }
     public String discoveryStatus() {
         return "Craft discovery · "+(selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes · ":"")+discoveryReason();
     }
@@ -151,13 +152,15 @@ public final class ProductionLoopFeature implements Feature {
     public String reviewSummary(){return reviewRequired()?selection.reviewId().substring(0,8)+" · "+Objects.toString(selection.reviewReason(),"Unverified production work"):"No blocking review";}
     public int activeCrafts(){return work.size();}
     public String displayActivity() {
-        if(reviewRequired() && work.isEmpty())return "Review "+selection.reviewId().substring(0,8)+"\n"+Objects.toString(selection.reviewReason(),"Inspect retained work before restarting");
+        if(reconcilingExternalOrder)return "Checking manually handled order\nFresh orders and inventory verification";
         if(recoveringOrders)return "Recovering craft orders\n"+orders.diagnosticState().get("step");
+        if(reviewRequired() && work.isEmpty())return "Review "+selection.reviewId().substring(0,8)+"\n"+Objects.toString(selection.reviewReason(),"Inspect retained work before restarting");
         if(work.isEmpty())return "Finding a craft\n"+discoveryReason();
         var current=foreground!=null && work.contains(foreground)?foreground:work.getFirst();
         return RecipeCatalog.instance().name(current.run.output())+"\n"+current.run.stage().name().toLowerCase(Locale.ROOT)+": "+Objects.toString(current.run.reason(),"Working");
     }
     public String activity() {
+        if(reconcilingExternalOrder)return "Reconciling manually handled craft order · fresh orders and inventory checks";
         if(recoveringOrders)return "Recovering craft positions · "+orders.diagnosticState().get("step");
         if(work.isEmpty())return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?discoveryStatus():"No production run queued";
         var current=foreground!=null && work.contains(foreground)?foreground:work.getFirst();
@@ -247,7 +250,7 @@ public final class ProductionLoopFeature implements Feature {
         foreground=menuLease.select(work,w->w.run.wantsMenu(),FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued());
         return foreground;
     }
-    public boolean needsMenu() { return isRunning() && (recoveringOrders?orders.needsMenu():menuWork()!=null); }
+    public boolean needsMenu() { return isRunning() && (reconcilingExternalOrder || (recoveringOrders?orders.needsMenu():menuWork()!=null)); }
     public boolean canYield() { return !needsMenu(); }
 
     /** Recover ingredient buys and verified unsubmitted outputs; never select another craft. */
@@ -257,6 +260,42 @@ public final class ProductionLoopFeature implements Feature {
         recoveringOrders=true;
         new LiveActions().message("Recovering retained craft positions: claim/cancel ingredient buys and verify unsubmitted outputs against inventory and live orders. Evidence stays in manual review. No new purchases or sales.");
         return true;
+    }
+    /** Player explicitly states that this ingredient was handled outside the macro. */
+    public boolean reconcileExternalOrder(String reference) {
+        var actions=new LiveActions();
+        if(queued() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
+            actions.message("Finish or stop queued production work before reconciling a manually handled order.");return false;
+        }
+        try {
+            orders.beginExternalReconciliation(reference);
+            reconcilingExternalOrder=true;
+            actions.message("Checking the selected craft order against a fresh Bazaar orders list and inventory. Your external handling will be archived for review; refund, sale proceeds and profit remain unconfirmed.");
+            return true;
+        }catch(Exception failure) {
+            orders.cancelExternalReconciliation();
+            actions.message("Manual order reconciliation was not started: "+failure.getMessage());return false;
+        }
+    }
+    private void reconcileExternalOrderStep(boolean ownsMenu) {
+        try {
+            var result=orders.inspectExternal(ownsMenu);
+            if(result.failed()) {
+                reconcilingExternalOrder=false;orders.stop();
+                FeatureManager.INSTANCE.safetyPause("Manual craft order reconciliation needs review: "+result.reason());return;
+            }
+            if(result.pending() || result.evidence()==null)return;
+            var evidence=result.evidence();
+            var archived=ProductionExternalReconciliation.archiveAndRelease(
+                FeatureManager.INSTANCE.crafting().productionJobs(),evidence,orders::finishExternalReconciliation);
+            Diagnostics.event("INFO","production.order_external_reconciled",Map.of("job",archived.id(),"originalOrder",evidence));
+            reconcilingExternalOrder=false;orders.stop();selection.refresh();
+            FeatureManager.INSTANCE.invalidateMarketReport();
+            FeatureManager.INSTANCE.safetyPause("Manually handled ingredient order archived. Inspect production jobs, then acknowledge reviewed evidence before restarting Craft mode. No refund, sale or profit was assumed.");
+        }catch(Exception failure) {
+            reconcilingExternalOrder=false;orders.stop();Diagnostics.failure("production.order_external_reconciliation_failed",failure);
+            FeatureManager.INSTANCE.safetyPause("Manual craft order reconciliation could not finish; order and review evidence retained");
+        }
     }
     private void recoverOrderStep(boolean ownsMenu) {
         try {
@@ -283,6 +322,7 @@ public final class ProductionLoopFeature implements Feature {
     /** Waiting jobs advance independently; one foreground lease keeps menu transactions intact. */
     @Override public void poll() {
         if(!isRunning())return;
+        if(reconcilingExternalOrder){reconcileExternalOrderStep(false);return;}
         restoreSavedSales();
         orders.poll();
         if(FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued())orders.yieldMenu();
@@ -297,7 +337,7 @@ public final class ProductionLoopFeature implements Feature {
     }
     private void restoreSavedSales(){
         long now=System.currentTimeMillis();
-        if(!work.isEmpty() || recoveringOrders || now<nextSaleRestore || !"CRAFT".equals(FeatureManager.INSTANCE.modeLabel()))return;
+        if(!work.isEmpty() || recoveringOrders || reconcilingExternalOrder || now<nextSaleRestore || !"CRAFT".equals(FeatureManager.INSTANCE.modeLabel()))return;
         nextSaleRestore=now+5000;
         var sales=orders.savedSales();if(sales.isEmpty() || sales.size()>4)return;
         try {
@@ -316,6 +356,7 @@ public final class ProductionLoopFeature implements Feature {
     }
     @Override public void onTick() {
         if(!needsMenu())return;
+        if(reconcilingExternalOrder){reconcileExternalOrderStep(true);return;}
         if(recoveringOrders){recoverOrderStep(true);return;}
         var current=menuWork();if(current!=null)step(current,true);
     }
@@ -384,7 +425,7 @@ public final class ProductionLoopFeature implements Feature {
                 }
             }
         }catch(Exception failure){Diagnostics.failure("production.journal_failed",failure);}
-        orders.stop();work.clear();foreground=null;menuLease.clear();recoveringOrders=false;
+        orders.stop();work.clear();foreground=null;menuLease.clear();recoveringOrders=false;reconcilingExternalOrder=false;
     }
 
     private ProductionRun.Environment environment(Work current,boolean buyInputs,boolean marketPricing) throws java.io.IOException {

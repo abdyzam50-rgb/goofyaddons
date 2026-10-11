@@ -1460,3 +1460,52 @@ remaining Mycelium order, stop, inspect returned ingredients and
 `.a* goofyaddon production jobs`, then acknowledge the reviewed evidence with
 `.a* goofyaddon production acknowledge all`. Restart Craft mode after recovery.
 The separate ordinary-trader Fuming Potato Book order remains tracked.
+
+### 0.2.83 — Externally handled ingredient orders and failure captures
+
+The `diagnostics-1791744424106-dfa50290.zip` export confirms 0.2.82 with a
+ready calculator. Three recovery attempts reopened Manage Orders but could not
+find the retained Mycelium child `6acfc294`. No new cancellation was submitted,
+refund receipt was received, or Mycelium inventory was observed in that session.
+The player confirmed that they had claimed or moved/sold the item manually.
+An absent order alone cannot prove its financial outcome, so the saved child
+continued to reserve 133,475.5 coins and block new craft selection.
+
+Explicit external reconciliation now handles this case. With trading stopped
+and the GUI closed, run:
+
+```text
+.a* goofyaddon production reconcileorder 6acfc294 external
+```
+
+This starts a bounded read-only inspection through the production menu scheduler.
+The original submitted ingredient child must have a known cost and interrupted
+cancellation intent, and its saved parent must remain in REVIEW for this account.
+The command opens a new loaded Manage Orders container, waits for the complete
+capture to stay unchanged for 750 ms, and rejects owned matching buy/sell orders,
+unreadable matching co-op ownership, multiple pages, carried items and any of the
+product in accessible inventory. Navigation retries are bounded. The real menu
+adapter has no packet observation counter, so a new container and stable complete
+capture provide freshness; when a counter exists, it must also advance.
+
+The original child ID, parent, account scope, product, units, unit cost,
+commitment, placement time and any saved refund are durably archived in a REVIEW
+entry before removing that exact child from the order journal. Account and live
+capture are rechecked before removal. A failed archive never releases ownership;
+a failed child save rolls back ownership while retaining review evidence. Repeats
+reuse the original child ID. No acquisition, refund, sale, proceeds or profit is
+inferred. Original parent evidence and unrelated ordinary-trader positions remain.
+
+Wait for “Manually handled ingredient order archived”, inspect
+`.a* goofyaddon production jobs`, then stop and run
+`.a* goofyaddon production acknowledge all` after reviewing the remaining entries.
+Restart Craft mode afterward. A matching order or remaining inventory needs the
+normal recovery path instead; the command does not bypass its ownership checks.
+
+Order recheck and blocked-transaction events now capture the actual menu,
+accessible product counts and target state before closing the GUI or clearing the
+active target. Current and retained-order diagnostics include confirmed refund
+availability, cancellation claim state, sold units, claimed proceeds and reopened
+cancel options. Recovery status takes precedence over old review text in the HUD.
+These checks are covered by simulated menu and durable-journal regressions;
+live Minecraft execution still requires the next user run.
