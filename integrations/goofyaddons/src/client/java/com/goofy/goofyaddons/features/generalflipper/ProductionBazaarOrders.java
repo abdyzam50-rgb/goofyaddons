@@ -139,4 +139,11 @@ public final class ProductionBazaarOrders {
     }
     public boolean retained(){if(AccountStorage.INSTANCE.pinned()==null)return false;bind();engine.restoreBudget();return engine.hasRetainedPositions()||engine.hasStateError();}
     public void stop(){engine.stop();}
+    /** Forgets one reviewed job's order records; returns what was released, or null if refused. */
+    public List<String> release(String parent){
+        if(AccountStorage.INSTANCE.pinned()==null)return null;bind();
+        var released=engine.releaseProduction(parent);
+        return released==null?null:released.stream().map(p->p.quantity+"x "+p.item.name()+" "
+            +(p.stage==GeneralPosition.Stage.SELL_ORDER?"sell offer":p.stage==GeneralPosition.Stage.BUY_ORDER?"buy order":p.stage.name().toLowerCase(Locale.ROOT))).toList();
+    }
 }

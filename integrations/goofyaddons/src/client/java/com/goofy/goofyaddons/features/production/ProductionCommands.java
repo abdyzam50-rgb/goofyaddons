@@ -48,6 +48,29 @@ public final class ProductionCommands {
                     if(!manager.production().recoverOrders())return 0;
                     return manager.startProductionTest()?1:0;
                 }))
+                .then(ClientCommands.literal("release").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
+                    var manager=FeatureManager.INSTANCE;var actions=new LiveActions();
+                    if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()){actions.message("Stop production/trading before releasing a reviewed job's orders.");return 0;}
+                    try {
+                        String account=new LiveWorld().username();
+                        if(!new LiveWorld().inWorld())throw new IllegalArgumentException("Join the account whose job you reviewed");
+                        String reference=StringArgumentType.getString(c,"job");
+                        var reviews=manager.crafting().journal().stream().filter(j->j.account().equals(account) && j.state()==ProductionJobs.State.REVIEW
+                            && (reference.equals("all") || reference.length()>=8 && j.id().startsWith(reference))).toList();
+                        if(reviews.isEmpty() || !reference.equals("all") && reviews.size()!=1)throw new IllegalArgumentException("Name exactly one REVIEW job (production jobs lists them), or use all");
+                        int count=0;
+                        for(var job:reviews) {
+                            var released=manager.production().releaseOrders(job.id());
+                            if(released==null){actions.message("Craft order journal could not be changed for "+job.id().substring(0,8)+"; nothing released.");return 0;}
+                            manager.crafting().productionJobs().acknowledgeReview(job.id(),account);
+                            com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_released",java.util.Map.of("job",job.id(),"released",released));
+                            actions.message("Released "+job.id().substring(0,8)+" · "+job.recipeKey()+(released.isEmpty()?" · no order records":" · "+String.join(", ",released)));
+                            count++;
+                        }
+                        actions.message(count+" REVIEW jobs released. Only use this after checking /bz orders: no sale, refund or profit is recorded for released orders.");
+                        return 1;
+                    }catch(Exception failure){actions.message("Nothing released: "+failure.getMessage());return 0;}
+                })))
                 .then(ClientCommands.literal("acknowledge").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
                     var manager=FeatureManager.INSTANCE;var actions=new LiveActions();
                     if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()){actions.message("Stop production/trading before acknowledging a reviewed job.");return 0;}

@@ -849,6 +849,21 @@ public class GeneralFlipper implements Feature {
     double productionBuyCommitment(String parent) {
         return positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent)&&!p.completed&&p.productionBuy).mapToDouble(GeneralPosition::cost).sum();
     }
+    /**
+     * Drops every craft order record of one reviewed job, once the player has confirmed in game
+     * that those orders were claimed or cancelled by hand. Null when stopped state or saving fails.
+     */
+    List<GeneralPosition> releaseProduction(String parent) {
+        restoreBudget();
+        if(!services.productionOnly() || running && !paused || active!=null || blocked || parent==null) return null;
+        var selected=positions.stream().filter(p->parent.equals(p.productionParent)).toList();
+        if(selected.isEmpty()) return List.of();
+        var before=List.copyOf(positions);positions.removeAll(selected);
+        if(!save()){positions.clear();positions.addAll(before);return null;}
+        selected.forEach(p->capital.release(OWNER,p.item.id()));
+        if(lastFailureParent!=null && lastFailureParent.equals(parent)){paused=false;lastFailure=null;lastFailureParent=null;lastBlockedItem=null;}
+        return selected;
+    }
     boolean orphanProductionOrders(java.util.Set<String> parents) {
         restoreBudget();return blocked || positions.stream().anyMatch(p->p.productionParent==null || !parents.contains(p.productionParent));
     }

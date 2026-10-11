@@ -33,6 +33,7 @@ public final class ProductionLoopFeature implements Feature {
     private long nextSaleRestore;
     public boolean hasRetainedOrders(){return orders.retained();}
     public boolean hasRetainedOrders(String parent){return orders.retained(parent);}
+    public java.util.List<String> releaseOrders(String parent){return queued()?null:orders.release(parent);}
     public boolean hasOrphanOrders(){return orders.orphaned(work.stream().map(Work::id).collect(java.util.stream.Collectors.toSet()));}
     private double availableFor(String owner,double purse) {
         if(!Double.isFinite(purse)||purse<0)return 0;
