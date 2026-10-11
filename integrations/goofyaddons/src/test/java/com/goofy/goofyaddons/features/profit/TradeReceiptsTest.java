@@ -85,6 +85,12 @@ class TradeReceiptsTest {
         assertFalse(tight.hero());
     }
 
+    @Test void taskStatusSurvivesBeforeProfitOnShortScreens() {
+        var layout=ProfitDisplay.layout(ProfitDisplay.HEADER_HEIGHT+ProfitDisplay.FOOTER_HEIGHT+ProfitDisplay.TASK_HEIGHT);
+        assertTrue(layout.task());assertTrue(layout.footer());assertFalse(layout.hero());
+        assertEquals(0,layout.detailRows());
+    }
+
     @Test void aPanelWithNoRoomUnderItsHeaderIsNotDrawn() {
         assertFalse(ProfitDisplay.layout(0).anything());
         assertFalse(ProfitDisplay.layout(ProfitDisplay.HEADER_HEIGHT).anything());

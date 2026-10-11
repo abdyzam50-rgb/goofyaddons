@@ -395,7 +395,7 @@ public final class LoadingArt {
      * The logo: {@code floor + L(chroma) * (gain * T / L(T) + (1 - gain))}, where T is the
      * theme's hue (its weakest channel taken off) and L is brightness, so every theme lights it
      * as much as its own blue did; Ocean shows the colours it was drawn in. Its background (the
-     * first two entries) is left clear, so the window shows through.
+     * first entry) is left clear, so the window shows through.
      */
     private int[] logoPalette(int colour) {
         boolean original = colour == Theme.OCEAN.colours.accent;
@@ -404,7 +404,7 @@ public final class LoadingArt {
         for (int i = 0; i < lut.length; i++) {
             int[] ch = f.chroma[i];
             float strength = luma(ch[0], ch[1], ch[2]);
-            int argb = i < 2 ? 0 : 0xFF000000;
+            int argb = i == 0 ? 0 : 0xFF000000;
             for (int c = 0; c < 3; c++) {
                 float v = original ? f.floor[i] + ch[c]
                         : f.floor[i] + strength * (f.gain[i] * hue[c] + (1 - f.gain[i]));

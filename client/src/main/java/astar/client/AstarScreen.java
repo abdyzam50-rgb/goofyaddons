@@ -380,9 +380,12 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private void buildTradingOverview() {
         var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
         Card status=card("SkyBlock trader","Choose a mode and start trading. Settings save automatically while stopped.");
-        status.callout(()->manager.hasSafetyBlock()||com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?Callout.ERROR:Callout.INFO,
-            ()->com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?com.goofy.goofyaddons.config.GoofyConfig.loadError():manager.status()+" · "+manager.activity());
-        status.row("Current task",manager::taskItem);
+        java.util.function.BooleanSupplier craftReview=()->"CRAFT".equals(manager.modeLabel())&&manager.production().reviewRequired();
+        status.callout(()->craftReview.getAsBoolean()||manager.hasSafetyBlock()||com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?Callout.ERROR:Callout.INFO,
+            ()->com.goofy.goofyaddons.config.GoofyConfig.loadError()!=null?com.goofy.goofyaddons.config.GoofyConfig.loadError():craftReview.getAsBoolean()?"REVIEW REQUIRED · Export debug before clearing saved work":manager.status()+" · "+manager.modeLabel());
+        status.row("Activity",()->"CRAFT".equals(manager.modeLabel())?manager.production().displayActivity():manager.taskItem());
+        status.row("Debug report",()->"Capture the current menu, saved jobs and failure history before clearing a review.",
+            new Button("Export debug",com.goofy.goofyaddons.diagnostics.Diagnostics::exportFromKeybind,Button.PLAIN));
         status.row("Account prerequisites",manager::accountRequirementsStatus);
         status.row("Purse",()->{double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse();return purse<0?"Waiting for a SkyBlock balance":String.format(Locale.ROOT,"%,.0f coins",purse);});
         status.row("Confirmed profit",()->String.format(Locale.ROOT,"%,.1f coins",com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE.summary().profit()));

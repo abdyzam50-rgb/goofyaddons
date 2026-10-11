@@ -55,3 +55,32 @@ this cloud environment has no display/Xvfb runtime.
 5. Check smaller game windows and multiple GUI scales: tabs must wrap, long labels
    must remain visible, and controls must stay within their card.
 6. Search “rest”, “port” and “minimum profit” and check the matching trading controls.
+
+## Status GUI and remade A* logo — 0.2.68
+
+The status HUD uses the integrated A* `Pixel.panel`, `Theme.shown()` colour tokens
+and `Ui.text` font. Theme changes apply to its surfaces, borders and text, while
+explicit green/amber/red status roles remain readable. It wraps the current task
+into up to three lines instead of repeating two truncated activity strings. A
+cached blocking craft review produces a REVIEW badge, its ID and saved reason;
+the full reason is also available in G → Macros → Overview. This is a presentation
+state and does not clear or acknowledge journal records.
+
+Craft mode replaces irrelevant zero Books/General rows with active craft slots
+and strategy selection. Short layouts reserve warnings and task status before
+the profit figure. Existing scale/side controls and clipping cleanup remain.
+Overview separates the state callout from the activity description and adds an
+Export debug button using the existing redacted ZIP exporter. Render-time status
+reads use cached review evidence, not journal IO or full diagnostic snapshots.
+
+The existing pixel GUI branch `c2b54c5` contains the old A logo. The remade asset
+is imported separately from [4bf09c3](https://github.com/abdyzam50-rgb/A-/commit/4bf09c3ecd0421822e2b65532e6918f1278431b9)
+on `claude/project-thread-dkp9f9`, along with its palette fix: only entry zero is
+transparent; entry one is the explored trail. The packaged 24,659-byte asset was
+compared byte-for-byte with that upstream revision. Upstream main still points to
+the revert commit; no whole-branch merge or trading-code replacement was needed.
+
+The full Java suite/build passes, including responsive-layout checks and a new
+short-screen task-priority regression. In-game themes, readability, logo animation
+and export button interaction still require a Minecraft smoke test; no live GUI
+rendering was performed in this environment.

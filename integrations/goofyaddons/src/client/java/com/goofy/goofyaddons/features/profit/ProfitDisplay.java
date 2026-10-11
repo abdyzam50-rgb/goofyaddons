@@ -43,7 +43,7 @@ public final class ProfitDisplay {
     // Section heights, shared by the layout decision and the renderer so they cannot drift.
     public static final int HEADER_HEIGHT=46;   // wordmark, status pill, mode line, rule
     public static final int HERO_HEIGHT=40;     // caption plus the one large number
-    public static final int TASK_HEIGHT=44;     // rule, caption, activity, item
+    public static final int TASK_HEIGHT=55;     // rule, caption, up to three wrapped task lines
     public static final int RATE_HEIGHT=15;     // profit per hour
     public static final int DETAIL_ROW_HEIGHT=13;
     /** The rule and gap above the detail rows; reserved so the last row clears the footer. */
@@ -58,17 +58,17 @@ public final class ProfitDisplay {
     // subtraction: greedy was not monotone, so a taller panel could drop the rate line the
     // moment the task block became affordable, and content flickered as a window resized.
     private static final int FOOTER_AT=FOOTER_HEIGHT;
-    private static final int HERO_AT=FOOTER_AT+HERO_HEIGHT;
-    private static final int TASK_AT=HERO_AT+TASK_HEIGHT;
-    private static final int RATE_AT=TASK_AT+RATE_HEIGHT;
+    private static final int TASK_AT=FOOTER_AT+TASK_HEIGHT;
+    private static final int HERO_AT=TASK_AT+HERO_HEIGHT;
+    private static final int RATE_AT=HERO_AT+RATE_HEIGHT;
 
     /**
      * Which sections fit, decided rather than clipped.
      *
      * <p>The panel used to draw a fixed set of rows and let the scissor cut off whatever did
      * not fit, so on a short window or a high HUD scale rows vanished with nothing to say
-     * they had. The footer comes first because it carries warnings; then the one headline
-     * number, what the engine is doing, the rate, and finally the detail rows.
+     * they had. The footer comes first because it carries warnings; then what the engine is doing, the headline
+     * number, the rate, and finally the detail rows.
      */
     public record Layout(boolean hero,boolean task,boolean rate,int detailRows,boolean footer) {
         public boolean anything() { return hero || task || rate || detailRows>0 || footer; }

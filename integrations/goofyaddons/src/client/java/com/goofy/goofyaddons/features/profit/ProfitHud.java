@@ -14,12 +14,13 @@ import com.mojang.brigadier.arguments.DoubleArgumentType;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import astar.client.ui.Pixel;
+import astar.client.ui.Theme;
+import astar.client.ui.Ui;
 
 public final class ProfitHud {
     // Ink and surfaces for the dark panel, then four reserved status roles. Status colour
     // always accompanies a word, and a signed value, so nothing is carried by colour alone.
-    private static final int TEXT=0xFFE8EDF5, MUTED=0xFF9CAABE;
-    private static final int SURFACE=0xFF161D29, PILL=0xFF263244, RULE=0xFF334054;
     private static final int GOOD=0xFF72DBAF, WARNING=0xFFF2C14E, CRITICAL=0xFFF08087;
     private ProfitHud() {}
     public static void register() {
@@ -61,21 +62,25 @@ public final class ProfitHud {
         var manager=FeatureManager.INSTANCE;
         var summary=ProfitTracker.INSTANCE.summary();
         String ledgerError=ProfitTracker.INSTANCE.error();
+        var theme=Theme.shown();
+        int TEXT=theme.text,MUTED=theme.textDim,SURFACE=theme.bgPanel,PILL=theme.terrainLight;
         int x=bounds.x(), y=bounds.y(), w=bounds.width();
         int inner=x+ProfitDisplay.PADDING, innerWidth=w-ProfitDisplay.PADDING*2;
 
         rounded(g,x,y,w,bounds.height(),10,SURFACE);
 
         // Header: the status reads as a word as well as a colour, never colour alone.
-        String status=manager.status();
+        boolean craft="CRAFT".equals(manager.modeLabel());
+        boolean review=craft && manager.production().reviewRequired();
+        String status=review?"REVIEW":manager.status();
         int accent=switch (status) {
             case "RUNNING" -> GOOD;
             case "STOPPED" -> MUTED;
-            case "PAUSED" -> WARNING;
+            case "PAUSED","REVIEW" -> WARNING;
             default -> CRITICAL;
         };
         text(g,"GOOFYADDONS",inner,y+13,TEXT);
-        int pillWidth=mc.font.width(status)+12;
+        int pillWidth=mc.font.width(Ui.text(status))+12;
         rounded(g,x+w-pillWidth-ProfitDisplay.PADDING,y+9,pillWidth,17,5,PILL);
         text(g,status,x+w-pillWidth-ProfitDisplay.PADDING+6,y+13,accent);
         text(g,fit(mc,manager.modeLabel()+"  ·  SESSION",innerWidth),inner,y+30,MUTED);
@@ -102,9 +107,11 @@ public final class ProfitHud {
         // What it is doing right now, above the detail rows because this is what gets watched.
         if (layout.task()) {
             rule(g,inner,row+3,innerWidth);
-            text(g,"CURRENT TASK",inner,row+11,MUTED);
-            text(g,fit(mc,manager.activity(),innerWidth),inner,row+23,accent);
-            text(g,fit(mc,manager.taskItem(),innerWidth),inner,row+34,TEXT);
+            text(g,review?"RECOVERY REQUIRED":"CURRENT TASK",inner,row+11,MUTED);
+            String activity=craft?manager.production().displayActivity():manager.activity();
+            if(!craft && !manager.taskItem().equals(activity))activity+="\n"+manager.taskItem();
+            var lines=mc.font.split(Ui.text(activity),innerWidth);
+            for(int i=0;i<Math.min(3,lines.size());i++)g.text(mc.font,lines.get(i),inner,row+23+i*11,i==0?accent:TEXT,false);
             row+=ProfitDisplay.TASK_HEIGHT;
         }
 
@@ -113,8 +120,8 @@ public final class ProfitHud {
             row+=7;
             // Highest value first: whatever is cut is cut from the bottom.
             String[][] details={
-                    {"Books",ledgerError==null ? ProfitDisplay.coins(summary.books()) : "--"},
-                    {"General",ledgerError==null ? ProfitDisplay.coins(summary.general()) : "--"},
+                    {craft?"Active crafts":"Books",craft?manager.production().activeCrafts()+" / "+GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts:ledgerError==null ? ProfitDisplay.coins(summary.books()) : "--"},
+                    {craft?"Buy / sell selection":"General",craft?GoofyConfig.INSTANCE.craftFlips.strategy:ledgerError==null ? ProfitDisplay.coins(summary.general()) : "--"},
                     {"Claims / incomplete",summary.settlements()+" / "+summary.incomplete()},
                     {"Spendable",spendable()},
                     {"Reserved budget",ProfitDisplay.coins(CapitalManager.INSTANCE.committed())},
@@ -127,7 +134,7 @@ public final class ProfitHud {
         }
 
         if (layout.footer()) {
-            String note=ledgerError;
+            String note=review?"Open G for review details · Debug export":ledgerError;
             if (note==null && BazaarApi.latestFresh()==null) note="Price data stale - waiting";
             if (note==null && summary.incomplete()>0) note="Excludes incomplete claims";
             if (note==null && summary.activeMillis()<60000) note="Rate appears after 1 active minute";
@@ -146,8 +153,8 @@ public final class ProfitHud {
     /** A label/value pair: label in muted ink, value right-aligned in primary ink. */
     private static void stat(GuiGraphicsExtractor g,Minecraft mc,String label,String value,
                              int x,int y,int width,int valueColor) {
-        int valueWidth=mc.font.width(value);
-        text(g,fit(mc,label,Math.max(0,width-valueWidth-8)),x,y,MUTED);
+        int valueWidth=mc.font.width(Ui.text(value));
+        text(g,fit(mc,label,Math.max(0,width-valueWidth-8)),x,y,Theme.shown().textDim);
         text(g,value,x+width-valueWidth,y,valueColor);
     }
 
@@ -156,36 +163,29 @@ public final class ProfitHud {
         g.pose().pushMatrix();
         try {
             g.pose().scale(2,2);
-            g.text(Minecraft.getInstance().font,value,x/2,y/2,color,false);
+            g.text(Minecraft.getInstance().font,Ui.text(value),x/2,y/2,color,false);
         } finally {
             g.pose().popMatrix();
         }
     }
 
     private static void text(GuiGraphicsExtractor g,String value,int x,int y,int color) {
-        g.text(Minecraft.getInstance().font,value,x,y,color,false);
+        g.text(Minecraft.getInstance().font,Ui.text(value),x,y,color,false);
     }
 
     /** Truncates to the available width so a long value can never collide with its label. */
     private static String fit(Minecraft mc,String value,int width) {
         if (width<=0) return "";
-        return mc.font.width(value)<=width ? value
+        return mc.font.width(Ui.text(value))<=width ? value
                 : mc.font.plainSubstrByWidth(value,Math.max(0,width-12))+"...";
     }
 
     private static void rule(GuiGraphicsExtractor g,int x,int y,int width) {
-        g.fill(x,y,x+width,y+1,RULE);
+        g.fill(x,y,x+width,y+1,Theme.shown().panelBorder);
     }
 
     private static void rounded(GuiGraphicsExtractor g,int x,int y,int width,int height,int radius,int color) {
-        int r=Math.min(radius,Math.min(width,height)/2);
-        g.fill(x+r,y,x+width-r,y+height,color);
-        g.fill(x,y+r,x+width,y+height-r,color);
-        for (int i=0;i<r;i++) {
-            int inset=(int)Math.ceil(r-Math.sqrt(r*r-Math.pow(r-i-.5,2)));
-            g.fill(x+inset,y+i,x+width-inset,y+i+1,color);
-            g.fill(x+inset,y+height-i-1,x+width-inset,y+height-i,color);
-        }
+        Pixel.panel(g,x,y,width,height,Theme.shown().panelBorder,color);
     }
     /** Attach commands without initializing live rendering, menus or log files. */
     public static void registerCommands() {

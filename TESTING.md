@@ -453,3 +453,7 @@ The final `./gradlew -p client test build --console=plain` run passed 1137 Java 
 ## 0.2.67 verified empty craft reselection
 
 `./gradlew -p client test build --console=plain` passed 1139 Java tests with zero failures/errors. Added regressions for fully refunded zero-input handoff allowing stale-plan cancellation, and partial fills/unexpected held ingredients preventing it. Existing unknown-intent and submitted-purchase guards remain covered. In-game execution remains unverified.
+
+## 0.2.68 A* status GUI and logo
+
+`./gradlew -p client test build --console=plain` passed 1140 Java tests with zero failures/errors. Existing responsive layout checks plus a new short-screen task-priority regression passed. The packaged animated logo exactly matches upstream 4bf09c3 (24,659 bytes). In-game rendering and button interaction remain unverified.

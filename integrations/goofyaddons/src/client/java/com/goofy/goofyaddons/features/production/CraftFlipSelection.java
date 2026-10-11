@@ -18,6 +18,7 @@ final class CraftFlipSelection {
     private long nextRefresh,generatedAt,generation,lastMarketSource;
     private final CraftRankingRefresh rankingRefresh=new CraftRankingRefresh();
     private CompletableFuture<?> bazaarPending;
+    private String reviewId,reviewReason;
     private String scope,error="Waiting for craft market data";
     private List<CraftFlipPlanner.Route> routes=List.of();
     private final Map<String,Integer> excluded=new LinkedHashMap<>();
@@ -28,7 +29,9 @@ final class CraftFlipSelection {
         if(!excluded.isEmpty())return "Main exclusion: "+excluded.entrySet().stream().max(Map.Entry.comparingByValue()).orElseThrow().getKey();
         return error==null?"Waiting for priced routes that meet minimum profit and market depth":error;
     }
-    void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;ah=null;routes=List.of();excluded.clear();excludedByOutput.clear();scope=null;nextRefresh=0;generatedAt=0;lastMarketSource=0;rankingRefresh.clear();bazaarPending=null;}
+    String reviewId(){return reviewId;}
+    String reviewReason(){return reviewReason;}
+    void clear(){reviewId=null;reviewReason=null;generation++;if(pending!=null)pending.cancel(true);pending=null;ah=null;routes=List.of();excluded.clear();excludedByOutput.clear();scope=null;nextRefresh=0;generatedAt=0;lastMarketSource=0;rankingRefresh.clear();bazaarPending=null;}
     void refresh() {
         var world=new LiveWorld();long now=world.now();
         if(!world.inWorld()){if(scope!=null)clear();return;}
@@ -77,6 +80,7 @@ final class CraftFlipSelection {
         }catch(RuntimeException unavailable){error="Craft companion endpoint invalid";}
     }
     private void rebuild(long now) {
+        reviewId=null;reviewReason=null;
         var manager=FeatureManager.INSTANCE;var cfg=GoofyConfig.INSTANCE;var world=new LiveWorld();
         var observedMarket=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
         rankingRefresh.attempted(now,observedMarket==null?0:observedMarket.get("lastUpdated").getAsLong(),cfg);
@@ -92,7 +96,7 @@ final class CraftFlipSelection {
                     &&job.state()!=ProductionJobs.State.CANCELLED&&job.state()!=ProductionJobs.State.SELLING) {
                 var recipe=RecipeCatalog.instance().byKey(job.recipeKey()).orElse(null);
                 if(recipe!=null){blocked.add(recipe.outputId());blocked.addAll(recipe.ingredients().keySet());}
-                else if(job.state()==ProductionJobs.State.REVIEW){routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error=reviews+" REVIEW jobs remain (e.g. "+job.id().substring(0,Math.min(8,job.id().length()))+"); stop trading, inspect production jobs, then acknowledge reviewed IDs or all";return;}
+                else if(job.state()==ProductionJobs.State.REVIEW){reviewId=job.id();reviewReason=job.reason();routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error=reviews+" REVIEW jobs remain (e.g. "+job.id().substring(0,Math.min(8,job.id().length()))+"); stop trading, inspect production jobs, then acknowledge reviewed IDs or all";return;}
             }
             for(var job:manager.crafting().journal())if(job.account().equals(world.username())&&job.state()==ProductionJobs.State.SELLING) {
                 String output=job.recipeKey().startsWith("auction:")?job.recipeKey().substring(job.recipeKey().lastIndexOf(':')+1):null;

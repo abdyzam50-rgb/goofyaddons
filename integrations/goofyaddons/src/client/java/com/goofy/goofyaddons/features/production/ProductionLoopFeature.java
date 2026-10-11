@@ -138,6 +138,17 @@ public final class ProductionLoopFeature implements Feature {
     public String discoveryStatus() {
         return "Craft discovery · "+(selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count()+" feasible routes · ":"")+discoveryReason();
     }
+    /** Lightweight presentation; no journal reads or diagnostic capture while rendering. */
+    public boolean reviewRequired(){return selection.reviewId()!=null;}
+    public String reviewSummary(){return reviewRequired()?selection.reviewId().substring(0,8)+" · "+Objects.toString(selection.reviewReason(),"Unverified production work"):"No blocking review";}
+    public int activeCrafts(){return work.size();}
+    public String displayActivity() {
+        if(reviewRequired() && work.isEmpty())return "Review "+selection.reviewId().substring(0,8)+"\n"+Objects.toString(selection.reviewReason(),"Inspect retained work before restarting");
+        if(recoveringOrders)return "Recovering craft orders\n"+orders.diagnosticState().get("step");
+        if(work.isEmpty())return "Finding a craft\n"+discoveryReason();
+        var current=foreground!=null && work.contains(foreground)?foreground:work.getFirst();
+        return RecipeCatalog.instance().name(current.run.output())+"\n"+current.run.stage().name().toLowerCase(Locale.ROOT)+": "+Objects.toString(current.run.reason(),"Working");
+    }
     public String activity() {
         if(recoveringOrders)return "Recovering craft positions · "+orders.diagnosticState().get("step");
         if(work.isEmpty())return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?discoveryStatus():"No production run queued";
