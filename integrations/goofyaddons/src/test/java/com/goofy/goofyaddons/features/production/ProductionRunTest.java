@@ -157,6 +157,21 @@ class ProductionRunTest {
         run.tick(true,1800);run.tick(true,2400);
         assertEquals(List.of("click:10","command:bz Input"),env.actions.serverEffects());
     }
+    @Test void marketMoveCannotStrandCompactorVerificationOrPermitANewPurchase()throws Exception {
+        var env=new Env();env.buying=true;var filters=Map.of(0,"UNRELATED_RECIPE");
+        env.menu=CompactorClearanceTest.menu("Personal Compactor 7000",false,filters,filters);
+        var run=ProductionRun.start(env,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,0,0);
+        run.tick(true,0);assertEquals(List.of("click:10"),env.actions.performed());
+        env.procurementBlock="Fresh market data unavailable";
+        run.tick(true,100);assertTrue(run.wantsMenu());
+        env.menu=CompactorClearanceTest.menu("Personal Compactor 7000",false,Map.of(),filters);
+        run.tick(true,600);assertEquals(List.of("click:10","close"),env.actions.performed());
+        env.menu=CompactorClearanceTest.menu(null,false,Map.of(),Map.of());
+        assertEquals(Step.BLOCKED,run.tick(true,1800));assertFalse(run.wantsMenu());
+        assertEquals(List.of("click:10"),env.actions.serverEffects());
+        env.procurementBlock=null;run.tick(false,1900);assertTrue(run.wantsMenu());
+        run.tick(true,2000);assertEquals(List.of("click:10","command:bz Input"),env.actions.serverEffects());
+    }
     @Test void occupiedBaseIngredientsCannotBeConsumedByPreparation()throws Exception {
         var env=new Env();env.occupied=Set.of("BLAZE_ROD");
         env.menu=ProductionRunTest.menu(null,item(54,"BLAZE_ROD",1));
@@ -371,6 +386,28 @@ class ProductionRunTest {
         env.procurementBlock=null;env.menu=ProductionRunTest.menu(null,item(54,"INPUT",2));
         run.tick(false,1100);run.tick(false,1200);
         assertEquals(recipe.key(),env.pinnedKey);
+    }
+
+    @Test void marketBlockedCraftYieldsMenuAndBackgroundPollWakesItWithoutBuying()throws Exception {
+        var env=new Env();env.buying=true;env.procurementBlock="Fresh input/output depth unavailable";
+        var recipe=catalog().forOutput("OUTPUT").stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        assertTrue(run.wantsMenu());
+        assertEquals(Step.BLOCKED,run.tick(true,1000));assertFalse(run.wantsMenu());
+        var lease=new CraftMenuLease<String>();
+        assertEquals("other",lease.select(List.of("blocked","other"),id->id.equals("other")||run.wantsMenu(),false));
+        assertEquals(Step.BLOCKED,run.tick(false,1100));assertFalse(run.wantsMenu());
+        assertTrue(env.actions.serverEffects().isEmpty());
+        env.procurementBlock=null;run.tick(false,1200);
+        assertTrue(run.wantsMenu());assertTrue(env.actions.serverEffects().isEmpty());
+    }
+    @Test void ingredientWaitRetainsChildNavigationReason()throws Exception {
+        var env=new Env();env.buying=true;
+        var recipe=catalog().forOutput("OUTPUT").stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,0,0,null,"General: verify order");
+        run.tick(false,1100);assertTrue(run.reason().contains("verify order"));
     }
 
     @Test void unrelatedPurseIncreaseCannotConfirmBoundedCraftSaleProfit() {

@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.64
+# Craft flip discovery and execution — 0.2.65
 
 ## Shipped behavior
 
@@ -943,3 +943,31 @@ mismatches will retry conservatively rather than assume the displayed profit is
 real. The old 4bc04906 REVIEW record remains in the user's journal and can be
 acknowledged while stopped, since this export contains no retained craft order or
 acquired inputs for it. The separate general Fuming Potato Book order is unchanged.
+
+## 0.2.65 scheduling audit
+
+A PROCURE run blocked by unavailable depth or its profit/capital guard previously
+continued advertising menu demand. After acquiring any inputs, it could no longer
+be cancelled as untouched, so its sticky menu lease could starve sibling order
+claims and repricing. Such an idle market wait now yields; background polling
+rechecks the gate and wakes the run. This does not release its owned inputs,
+reserved budget, or journal, and does not change price/profit limits.
+
+Compactor removal verification must finish before applying a newly changed market
+gate. The gate is checked again after clearance, before any new purchase. Submitted
+buy/claim verification is still handled before market gates. Ingredient order
+status now includes the child engine's navigation/wait reason instead of always
+showing a generic fill wait.
+
+Regression coverage exercises a blocked run yielding to another job, waking without
+background clicks, changed market data during compactor removal, and the visible
+child order reason. This is an isolated confirmed scheduling defect, not evidence
+that every live stall is solved. A fresh export from 0.2.65 is needed to identify
+further failures in the current session. Existing price ceilings, transaction
+receipt checks and recovery records remain mandatory.
+
+Four active crafts is a ceiling, not an entitlement: 1,760 input items occupy 28
+64-item stacks when claimed. The planner also reserves output/workspace slots and
+a shared four-slot claim buffer. Additional routes may be excluded for inventory,
+shared ingredients, prerequisites, profit, or capital. Do not remove these guards
+merely to fill all four slots.

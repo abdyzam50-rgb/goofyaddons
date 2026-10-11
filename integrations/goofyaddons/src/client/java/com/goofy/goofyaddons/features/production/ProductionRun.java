@@ -81,6 +81,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private boolean orderActive,orderCostRecorded;
     private long orderRetryAfter;
     private boolean waitingForOrderRetry;
+    private boolean waitingForProcurement;
     private ProductionRecipe recipe;
     private String craftJob, listingJob, workstationJob;
     private String ingredientCraftJob;
@@ -184,7 +185,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** True while this step owns a menu, including a verified craft-to-craft handoff. */
     public boolean wantsMenu() {
-        if (finished() || waitingForOrderRetry) return false;
+        if (finished() || waitingForOrderRetry || waitingForProcurement) return false;
         if(orderActive)return env.orderNeedsMenu();
         return switch (loop.stage()) {
             case PROCURE -> !env.craftQueued() && (compactorClearance.needsMenu(env.menu()) || hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
@@ -207,7 +208,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(orderActive) {
             var result=env.tickOrder(ownsMenu);
             if(result==null || result.failed())return Outcome.uncertain(result==null?"Input order unavailable":result.reason());
-            if(!result.done())return Outcome.pending("Waiting for ingredient order fills and verified claims");
+            if(!result.done())return Outcome.pending("Ingredient order · "+result.reason());
             try {
                 if(!orderCostRecorded){spent+=result.cost();env.jobs().put(parent().withCost(spent,"Ingredient order claim verified"));orderCostRecorded=true;}
                 if(!env.acknowledgeOrder())return Outcome.uncertain("Claimed ingredient handoff could not be persisted");
@@ -247,7 +248,10 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 default -> { return Outcome.PENDING; }
             }
         }
-        String marketBlock=env.procurementBlock();if(marketBlock!=null)return Outcome.blocked(marketBlock);
+        // Once a compactor action starts, finish its evidence checks before applying market gates.
+        waitingForProcurement=false;
+        String marketBlock=compactorClearance.inProgress()?null:env.procurementBlock();
+        if(marketBlock!=null){waitingForProcurement=true;return Outcome.blocked(marketBlock);}
         var requirement=productionRequirement();
         if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking production prerequisites"):Outcome.blocked(requirementReason(requirement));
         var cleared=compactorClearance.tick(env.menu(),env.actions(),new CompactorClearance.Ports(){
@@ -255,6 +259,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
             public void intent(String reason)throws Exception{env.jobs().put(parent().withState(ProductionJobs.State.PROCESSING,reason));}
         },ownsMenu,now);
         if(cleared.step()!=ProductionLoop.Step.DONE)return cleared;
+        marketBlock=env.procurementBlock();
+        if(marketBlock!=null){waitingForProcurement=true;return Outcome.blocked(marketBlock);}
         var compactorConflict=PersonalCompactors.conflict(env.menu(),lockedProducts(),catalog);
         if(compactorConflict!=null)return Outcome.blocked(compactorConflict);
         var preparation=preparation();var missing=preparation.purchases();

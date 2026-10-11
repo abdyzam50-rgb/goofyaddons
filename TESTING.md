@@ -441,3 +441,7 @@ profit blocking before the next attempt, and preserved reconciliation requiremen
 for submitted positions. Existing price-ceiling coverage now asserts durable
 rejection rather than a false transaction failure. Actual provider/GUI mismatch
 causes remain unverified; price ceilings are not relaxed.
+
+## 0.2.65 craft scheduler audit
+
+`./gradlew -p client test build --console=plain` passed 1132 Java tests with no failures or errors. Added regressions for blocked procurement yielding and waking, compactor verification during market changes, and child order status visibility. Live Minecraft execution remains unverified.

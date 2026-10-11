@@ -50,6 +50,7 @@ final class CompactorClearance {
             return "Personal Compactor configuration unreadable; open its menu before production";
         return null;
     }
+    boolean inProgress(){return target!=null;}
     boolean needsMenu(MenuSnapshot menu) {
         return target!=null||controls(menu)!=null||unreadable(menu)!=null||PersonalCompactors.detect(menu).stream()
             .anyMatch(s->!s.metadata().compactor().recipes().isEmpty());
