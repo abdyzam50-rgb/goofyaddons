@@ -151,4 +151,22 @@ class CraftFlipPlannerTest {
         assertEquals(a.profit(),b.profit());assertTrue(b.score()>a.score()*2);
     }
 
+    @Test void parallelIngredientBasketWaitsForSlowestInputThenAddsOutputOfferWait() {
+        var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",2,"SECOND",3),
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT",2),new ProductionRecipe.Ingredient("SECOND",3),null,null,null,null,null,null,null),0,0,"",null);
+        var catalog=new RecipeCatalog(List.of(recipe),Map.of());var market=market(10000);var products=market.getAsJsonObject("products");
+        var input=products.getAsJsonObject("INPUT");input.add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":5,\"amount\":10000}]"));
+        products.add("SECOND",input.deepCopy());products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":100,\"amount\":10000}]"));
+        double participationPerHour=10000.0/168*0.05;
+        for(var strategy:List.of(BazaarStrategy.ORDER_INSTANT,BazaarStrategy.ORDER_OFFER)) {
+            var route=CraftFlipPlanner.rank(catalog,market,null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),100000,
+                1,1.25,1,"BAZAAR",NOW,new LinkedHashMap<>(),0,strategy.name()).getFirst();
+            assertTrue(route.eligible(),route.reason());
+            double expectedSeconds=60+2*20+3+3/participationPerHour*3600;
+            if(strategy==BazaarStrategy.ORDER_OFFER)expectedSeconds+=1/participationPerHour*3600;
+            assertEquals(expectedSeconds,route.profit()/route.score(),0.000001,
+                "Input fills overlap; output offer starts only after ingredients are ready and crafting completes");
+        }
+    }
+
 }

@@ -28,6 +28,9 @@ public final class GeneralPosition {
     boolean productionBasket;
     boolean completed;
     Double verifiedProceeds;
+    int productionSoldUnits;
+    String productionSaleEvent;
+    boolean productionProceedsUnknown;
     double maximumBuyPrice;
     double minimumSellPrice;
     double cost() { return quantity * unitCost; }
@@ -49,6 +52,9 @@ public final class GeneralPosition {
                         || Math.abs(position.confirmedCancelRefund - position.cost()) > 0.51)
                     || !Double.isFinite(position.maximumBuyPrice) || position.maximumBuyPrice<0
                     || !Double.isFinite(position.minimumSellPrice) || position.minimumSellPrice<0
+                    || position.productionSoldUnits<0 || position.productionSoldUnits>4096
+                    || (position.productionSoldUnits>0 || position.productionSaleEvent!=null || position.productionProceedsUnknown) && position.productionBuy
+                    || position.productionProceedsUnknown && position.verifiedProceeds!=null
                     || position.productionBuy && position.maximumBuyPrice<=0
                     || position.verifiedProceeds!=null && (!Double.isFinite(position.verifiedProceeds)||position.verifiedProceeds<0)
                     || position.productionParent!=null && (!position.productionParent.matches("[A-Za-z0-9_-]{8,80}") || position.instantBuy || position.instantSell

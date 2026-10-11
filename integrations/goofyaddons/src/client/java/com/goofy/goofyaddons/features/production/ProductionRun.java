@@ -93,6 +93,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private WorkstationExecutor workstation;
     private double spent;
     private boolean basisUnknown;
+    private Set<String> sellInputLocks;
     private final CompactorClearance compactorClearance=new CompactorClearance();
 
     private ProductionRun(Environment env, RecipeCatalog catalog, String output, ProductionRecipe.Kind kind, ProductionRecipe recipe,
@@ -111,7 +112,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if (options.isEmpty()) throw new IllegalArgumentException("No supported " + kind.name().toLowerCase(Locale.ROOT) + " recipe for " + output);
         boolean timed = kind != ProductionRecipe.Kind.CRAFT;
         if (timed && batches != 1) throw new IllegalArgumentException("Forge and Kat runs process one batch");
-        if (!timed && (batches < 1 || batches > 16)) throw new IllegalArgumentException("Craft runs take 1–16 batches");
+        if (!timed && (batches < 1 || batches > 64)) throw new IllegalArgumentException("Craft runs take 1–64 batches");
         if (kind == ProductionRecipe.Kind.FORGE && (forgeSlot < 0 || forgeSlot > 6)) throw new IllegalArgumentException("Forge slot must be 1–7");
         if (binPrice < SELL_ON_BAZAAR || binPrice > 1_000_000_000_000L || !Double.isFinite(maximumFee) || maximumFee < 0) throw new IllegalArgumentException("Invalid BIN price or fee");
         var occupied = env.occupied();
@@ -181,16 +182,23 @@ public final class ProductionRun implements ProductionLoop.Ports {
     public boolean hasVerifiedInputBasis(){return !basisUnknown;}
     /** Reattach a stopped sale to its original parent ID; never replay acquisition or crafting. */
     static ProductionRun resumeSale(Environment env,RecipeCatalog catalog,ProductionJobs.Job job,String product,int units) {
+        return resumeSale(env,catalog,job,product,units,false);
+    }
+    /** The caller may prove an intact submitted sell child before generic interrupted-parent recovery. */
+    static ProductionRun resumeSale(Environment env,RecipeCatalog catalog,ProductionJobs.Job job,String product,int units,boolean verifiedSaleChild) {
         boolean stopped=job.state()==ProductionJobs.State.REVIEW && job.reason()!=null
             && (job.reason().startsWith("Production stopped;")||job.reason().startsWith("Production paused;"));
+        boolean interrupted=verifiedSaleChild && job.state()==ProductionJobs.State.REVIEW
+            && "Interrupted operation; verify live inventory, workstation and listings".equals(job.reason());
         if(!job.account().equals(env.account()) || !job.recipeKey().equals("run:craft:"+product)
-            || !(stopped || job.state()==ProductionJobs.State.LISTING || job.state()==ProductionJobs.State.SELLING))
+            || !(stopped || interrupted || job.state()==ProductionJobs.State.LISTING || job.state()==ProductionJobs.State.SELLING))
             throw new IllegalArgumentException("Saved sale parent requires manual review");
         var recipe=catalog.forOutput(product).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT
             && (long)r.outputCount()*job.batches()==units).findFirst().orElseThrow(()->new IllegalArgumentException("Saved sale quantity/recipe differs"));
         var run=new ProductionRun(env,catalog,product,ProductionRecipe.Kind.CRAFT,recipe,job.batches(),-1,SELL_ON_BAZAAR,0,job.id());
         run.spent=job.costBasis()==null?0:job.costBasis();run.basisUnknown=job.costBasis()==null;
         run.strategy=BazaarStrategy.ORDER_OFFER;run.orderActive=true;
+        run.captureSellInputLocks();
         run.loop=new ProductionLoop(new ProductionLoop.Plan(false,false,true),Stage.SELL,run);
         return run;
     }
@@ -225,11 +233,26 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** Products this run must keep away from traders. */
     public Set<String> lockedProducts() {
+        if(loop!=null && loop.stage()==Stage.SELL && sellInputLocks!=null) {
+            var ids=new HashSet<>(sellInputLocks);ids.add(output);return Set.copyOf(ids);
+        }
+        return requiredProducts();
+    }
+
+    private Set<String> requiredProducts() {
         var ids = new HashSet<String>();ids.add(output);
         if (recipe != null) ids.addAll(recipe.ingredients().keySet());
         else catalog.forOutput(output).stream().filter(r -> r.kind() == kind).forEach(r -> ids.addAll(r.ingredients().keySet()));
         ids.addAll(IngredientPreparation.dependencies(catalog,ids));
         return Set.copyOf(ids);
+    }
+
+    /** Freeze ownership at the verified craft boundary, before another run buys shared inputs. */
+    private void captureSellInputLocks() {
+        if(sellInputLocks!=null)return;
+        var menu=env.menu();var remaining=new HashSet<>(requiredProducts());remaining.remove(output);
+        if(menu!=null)remaining.removeIf(id->menu.countInInventory(id)==0);
+        sellInputLocks=Set.copyOf(remaining);
     }
 
     public boolean hasReusableCraftMenu(){return kind==ProductionRecipe.Kind.CRAFT && CraftingExecutor.reusableMenu(env.menu());}
@@ -453,7 +476,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             }
             var result=env.tickOrder(ownsMenu);
             if(result==null||result.failed())return Outcome.uncertain(result==null?"Sell offer unavailable":result.reason());
-            if(!result.done())return Outcome.pending("Waiting for crafted output sell offer and coin claim");
+            if(!result.done())return Outcome.pending(result.reason()==null||result.reason().isBlank()?"Waiting for crafted output sell offer and coin claim":result.reason());
             if(result.proceeds()==null)return Outcome.uncertain("Sell-offer proceeds are unconfirmed");
             env.saleConfirmed(jobId,output,result.units(),result.proceeds());
             if(!env.acknowledgeOrder())return Outcome.uncertain("Sale handoff could not be saved");
@@ -492,6 +515,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 job.submittedAt(), job.readyAt(), spent > 0 ? spent : job.costBasis(), job.petUuid(), job.auctionUuid(),
                 reason != null ? reason : stage == Stage.DONE ? "Production run finished; proceeds are recorded only when the sale is seen" : null,
                 job.completedBatches()));
+        if(stage==Stage.SELL)captureSellInputLocks();
         if(stage==Stage.SELL&&kind==ProductionRecipe.Kind.CRAFT&&binPrice==SELL_ON_BAZAAR) {
             var menu=env.menu();int units=menu==null?0:menu.countInInventory(output);
             if(units>0)env.outputConfirmed(jobId,output,units,basisUnknown||spent<=0?null:spent);

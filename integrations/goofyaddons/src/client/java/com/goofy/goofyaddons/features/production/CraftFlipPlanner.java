@@ -91,7 +91,9 @@ final class CraftFlipPlanner {
                     if(!strategy.instantBuy) {
                         double rate=hourlyActivity(product.getAsJsonObject())*0.05;
                         if(rate<=0){reason="Input order activity unavailable";}
-                        else orderWait+=entry.getValue()/rate*3600;
+                        // The funded ingredient basket is submitted before any fill wait;
+                        // its orders fill concurrently, so the slowest input sets that wait.
+                        else orderWait=Math.max(orderWait,entry.getValue()/rate*3600);
                     }
                 }
                 if(!priced||cost<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Missing input prices or insufficient buy depth");continue;}

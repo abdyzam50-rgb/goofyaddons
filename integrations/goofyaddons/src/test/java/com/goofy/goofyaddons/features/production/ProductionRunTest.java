@@ -10,6 +10,16 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
+    @Test void productionAcceptsFullSixtyFourBatchCraftPlanAndRejectsAboveTheExecutorLimit()throws Exception {
+        var env=new Env();var catalog=catalog();var recipe=catalog.forOutput("OUTPUT").getFirst();
+        var run=ProductionRun.startCraft(env,catalog,recipe,64,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        assertEquals(64,run.outputUnits());assertEquals(64,env.jobs.find(run.jobId()).orElseThrow().batches());
+        env.buying=true;assertEquals(Step.PENDING,run.tick(true,1000));assertEquals(List.of("BUY:INPUT:128"),env.orders);
+        int jobs=env.jobs.all().size();
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startCraft(env,catalog,recipe,65,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER));
+        assertEquals(jobs,env.jobs.all().size(),"Rejected quantities must not create a parent or issue actions");
+        assertTrue(env.actions.serverEffects().isEmpty());
+    }
     @Test void everyMissingIngredientIsOrderedBeforeWaitingForAnyFill()throws Exception {
         var env=new Env();env.buying=true;
         var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT_A",2,"INPUT_B",3),
@@ -42,6 +52,61 @@ class ProductionRunTest {
         assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job,"OTHER",1));
         assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job.withState(ProductionJobs.State.REVIEW,"Sale claim is uncertain"),"OUTPUT",1));
         assertTrue(env.actions.serverEffects().isEmpty());
+    }
+    @Test void genericInterruptedSaleRequiresAnIntactSubmittedChildProof()throws Exception {
+        var env=new Env();var catalog=catalog();
+        var original=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        var job=env.jobs.find(original.jobId()).orElseThrow().withCost(100.0,"Verified inputs")
+            .withState(ProductionJobs.State.REVIEW,"Interrupted operation; verify live inventory, workstation and listings");env.jobs.put(job);
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job,"OUTPUT",1));
+        var resumed=ProductionRun.resumeSale(env,catalog,job,"OUTPUT",1,true);
+        assertEquals(original.jobId(),resumed.jobId());assertEquals(Stage.SELL,resumed.stage());assertEquals(100,resumed.spent());
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,1,0,null,"Checking saved offer");
+        assertEquals(Step.PENDING,resumed.tick(true,1000));assertTrue(env.orders.isEmpty());assertTrue(env.crafts.isEmpty());
+        assertTrue(env.confirmedCosts.isEmpty());assertTrue(env.confirmedSales.isEmpty());
+    }
+    @Test void submittedChildProofCannotBypassManualReviewAccountRecipeOrQuantityChecks()throws Exception {
+        var env=new Env();var catalog=catalog();
+        var original=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        var job=env.jobs.find(original.jobId()).orElseThrow()
+            .withState(ProductionJobs.State.REVIEW,"Interrupted operation; verify live inventory, workstation and listings");
+        var anotherAccount=new ProductionJobs.Job(job.id(),job.recipeKey(),"another-account",job.state(),job.batches(),job.workstationSlot(),
+            job.submittedAt(),job.readyAt(),job.costBasis(),job.petUuid(),job.auctionUuid(),job.reason(),job.completedBatches());
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,anotherAccount,"OUTPUT",1,true));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job,"OTHER",1,true));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job,"OUTPUT",2,true));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog,job.withState(ProductionJobs.State.REVIEW,"Sale claim is uncertain"),"OUTPUT",1,true));
+        assertTrue(env.orders.isEmpty());assertTrue(env.crafts.isEmpty());assertTrue(env.actions.serverEffects().isEmpty());
+    }
+    @Test void restoredSellOfferReleasesConsumedInputsWithoutAdoptingLaterSiblingSupplies()throws Exception {
+        var env=new Env();var catalog=catalog();
+        var original=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        var job=env.jobs.find(original.jobId()).orElseThrow().withCost(100.0,"Verified inputs").withState(ProductionJobs.State.LISTING,"Submitted sell offer");env.jobs.put(job);
+        var seller=ProductionRun.resumeSale(env,catalog,job,"OUTPUT",1);
+        assertEquals(Set.of("OUTPUT"),seller.lockedProducts());
+        var siblingRecipe=new ProductionRecipe("craft:OTHER:0",ProductionRecipe.Kind.CRAFT,"OTHER",1,Map.of("INPUT",2),
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT",2),null,null,null,null,null,null,null,null),0,0,"",null);
+        var siblingCatalog=new RecipeCatalog(List.of(siblingRecipe),Map.of());
+        env.occupied=seller.lockedProducts();env.buying=true;
+        var sibling=ProductionRun.startCraft(env,siblingCatalog,siblingRecipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        assertTrue(sibling.hasVerifiedInputBasis());assertEquals(Step.PENDING,sibling.tick(true,1000));
+        assertEquals(List.of("BUY:INPUT:2"),env.orders);
+        env.menu=menu(null,item(54,"INPUT",2));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,2,100,null,"Sibling claims verified");
+        assertEquals(Step.PENDING,sibling.tick(false,1100));assertEquals(100,sibling.spent());
+        assertEquals(Set.of("OUTPUT"),seller.lockedProducts(),"A seller must not adopt ingredients purchased later by another run");
+        assertEquals(100,seller.spent());assertTrue(env.confirmedSales.isEmpty());
+    }
+    @Test void sellBoundaryRetainsLeftoverIngredientOwnershipAndUnknownInventoryStaysConservative()throws Exception {
+        for(boolean readable:List.of(false,true)) {
+            var env=new Env();var catalog=catalog();
+            var original=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+            var job=env.jobs.find(original.jobId()).orElseThrow().withCost(100.0,"Verified inputs").withState(ProductionJobs.State.LISTING,"Submitted sell offer");env.jobs.put(job);
+            env.menu=readable?menu(null,item(54,"INPUT",1)):null;
+            var seller=ProductionRun.resumeSale(env,catalog,job,"OUTPUT",1);
+            assertEquals(Set.of("INPUT","OUTPUT"),seller.lockedProducts());
+            assertEquals(100,seller.spent());assertTrue(env.orders.isEmpty());assertTrue(env.crafts.isEmpty());
+        }
     }
     @Test void procurementAllowsRoundingDustButStillBlocksARealCapitalShortfall()throws Exception {
         for(boolean shortfall:List.of(false,true)) {
@@ -569,8 +634,10 @@ class ProductionRunTest {
         env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,2,100,null,"claimed");
         run.tick(true,1200);assertEquals(100,run.spent());assertEquals(100,env.jobs.find(run.jobId()).orElseThrow().costBasis());assertEquals(1,env.orderAcknowledgements);
         run.tick(true,1300);run.tick(false,1400);assertEquals(List.of("OUTPUTx1"),env.crafts);
+        assertEquals(Set.of("INPUT","OUTPUT"),run.lockedProducts());
         env.finish("craft-0",ProductionJobs.State.OUTPUT_READY);env.craftQueued=false;env.menu=menu(null,item(54,"OUTPUT",1));
         run.tick(false,1500);assertEquals(Stage.SELL,run.stage());assertEquals(List.of(100.0),env.confirmedCosts);
+        assertEquals(Set.of("OUTPUT"),run.lockedProducts(),"Verified crafting releases only consumed inputs");
         run.tick(true,1600);assertEquals(List.of("BUY:INPUT:2","SELL:OUTPUT:1"),env.orders);assertTrue(env.confirmedSales.isEmpty());
         env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,1,0,null,"waiting");
         run.tick(false,1700);assertTrue(env.confirmedSales.isEmpty());

@@ -35,6 +35,7 @@ public class GeneralFlipper implements Feature {
         void sell(GeneralPosition position, int units, Double proceeds);
         void safetyPause(String reason);
         default boolean productionOnly(){return false;}
+        default double productionMinimumSellPrice(GeneralPosition position){return position.minimumSellPrice;}
         default void placed(GeneralPosition position) {}
         default com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {return null;}
         default void finished(GeneralPosition position) {}
@@ -48,6 +49,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private final Services services;
+    private String productionWait;
     private final com.goofy.goofyaddons.menu.NavigationRetry navigationRetry = new com.goofy.goofyaddons.menu.NavigationRetry();
     private int inputRestarts;
     private final GeneralClaim claim = new GeneralClaim();
@@ -147,10 +149,12 @@ public class GeneralFlipper implements Feature {
             details.put("productionBasket",position.productionBasket);
             details.put("unitCost",position.unitCost);details.put("maximumBuyPrice",position.maximumBuyPrice);details.put("minimumSellPrice",position.minimumSellPrice);
             details.put("placedAt",position.placedAt);details.put("checkedAt",position.checkedAt);details.put("completed",position.completed);details.put("rejectedReason",position.rejectedReason);details.put("verifiedProceeds",position.verifiedProceeds);
+            details.put("productionSoldUnits",position.productionSoldUnits);details.put("productionSaleEvent",position.productionSaleEvent);details.put("productionProceedsUnknown",position.productionProceedsUnknown);
             details.put("submitted",position.submitted);details.put("cancelRequested",position.cancelRequested);details.put("reprices",position.reprices);
             retained.add(details);
         }
         state.put("quotesAt",quotesAt);state.put("quotesFresh",freshQuotes());state.put("nextPollAt",nextPoll);state.put("nextActionAt",nextAction);
+        state.put("productionWait",productionWait);
         state.put("lastFailure",lastFailure);state.put("lastFailureParent",lastFailureParent);
         state.put("positions",retained);return state;
     }
@@ -164,9 +168,9 @@ public class GeneralFlipper implements Feature {
     /** Pure reader: the HUD calls this every frame, so it must not recompute or mutate. */
     public String activity() {
         if(lastFailure!=null && (paused||blocked))return lastFailure;
-        if (active != null) return "General: " + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        if (active != null) return (services.productionOnly()?"Craft orders: ":"General: ") + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
         if (!snapshotFresh) return "Waiting for price data";
-        if (!positions.isEmpty()) return "Waiting for general orders";
+        if (!positions.isEmpty()) return services.productionOnly()?(productionWait==null?"Waiting for craft orders":productionWait):"Waiting for general orders";
         if (capital.available(snapshotPurse) <= 0) return "Capital limit / purse reserve reached";
         return snapshotCandidates.isEmpty() ? "No flips meet the configured filters" : "Selecting eligible flips";
     }
@@ -366,7 +370,7 @@ public class GeneralFlipper implements Feature {
     private void selectWork() {
         long now = world.now();
         for (GeneralPosition position : workPositions()) {
-            if(position.settlementPending) {
+            if(position.settlementPending && !position.completed) {
                 active=position;
                 fail("A settlement was interrupted; reconcile the retained order and profit records before restarting.");
                 return;
@@ -461,7 +465,11 @@ public class GeneralFlipper implements Feature {
     private boolean saleAllowed(double price) {
         // Profit and margin are entry filters. Existing stock exits at a readable
         // market price within the drawdown guard. Age cannot block an exit.
-        if(services.productionOnly())return Double.isFinite(price) && price>0 && price>=active.minimumSellPrice;
+        if(services.productionOnly()) {
+            boolean allowed=Double.isFinite(price) && price>0 && price>=services.productionMinimumSellPrice(active);
+            productionWait=allowed?null:"Sell offer retained: current price is below the craft profit floor";
+            return allowed;
+        }
         return Double.isFinite(price) && price > 0 && !TradingSafety.holdingLimit(
                 0, world.now(), settings().maxHoldingSeconds,
                 active.unitCost, price * (1 - services.taxPercentage() / 100),
@@ -480,7 +488,7 @@ public class GeneralFlipper implements Feature {
                 || world.now() - active.placedAt < settings().repriceCooldownSeconds * 1000L) return false;
         // Ingredient replacements return to the parent planner after verified cancellation.
         // It checks the whole basket again; standalone item-flip repricing limits do not apply.
-        if (services.productionOnly() && (sell || !active.productionBuy || active.cancelRequested)) return false;
+        if (services.productionOnly() && ((!sell && !active.productionBuy) || active.cancelRequested)) return false;
         JsonObject product = products.getAsJsonObject(active.item.id());
         if (product == null) return false;
         double price = GeneralCalculator.topPrice(product, sell ? "buy_summary" : "sell_summary");
@@ -643,7 +651,7 @@ public class GeneralFlipper implements Feature {
     private boolean recordSale(int units, Double proceeds) {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
         if (active.saleEvent == null) { active.saleEvent=active.tradeId+":legacy-sale:"+active.placedAt; if(!save()) return false; }
-        if(services.productionOnly()) {active.verifiedProceeds=proceeds;if(!save())return false;}
+        if(services.productionOnly()) {ProductionSaleAccounting.record(active,units,proceeds);if(!save())return false;}
         services.sell(active, units, proceeds);
         return true;
     }
@@ -659,7 +667,10 @@ public class GeneralFlipper implements Feature {
             cooldownUntil.put(active.item.id(), world.now() + settings().orderTimeoutSeconds * 1000L);
         }
         capital.release(OWNER, active.item.id());
-        if(services.productionOnly())active.completed=true;else positions.remove(active);
+        if(services.productionOnly()){
+            active.completed=true;
+            if(!active.productionBuy)active.settlementPending=false;
+        }else positions.remove(active);
         finishWork();
     }
     private void fail(String message) {

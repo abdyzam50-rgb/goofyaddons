@@ -41,7 +41,10 @@ class GeneralLoopTest {
             @Override public boolean purchaseSettling() { return false; }
         };
         double bid = 100, ask = 130, purse = 100000;
-        boolean quotes = true;
+        boolean quotes = true,production;
+        double craftFloor;
+        @Override public boolean productionOnly(){return production;}
+        @Override public double productionMinimumSellPrice(GeneralPosition p){return Math.max(p.minimumSellPrice,craftFloor);}
         int sales, forecastedPlacements;
         final com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast originalForecast=
                 new com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast(60,2400,2400);
@@ -124,6 +127,39 @@ class GeneralLoopTest {
         return actions.serverEffects().stream().filter(a -> a.equals("click:" + slot)).count();
     }
 
+    private void seedCraftSale(FakeWorld world,long age)throws Exception {
+        seed(world,"SELL_ORDER",16,age);
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));var p=repo.load().getFirst();
+        p.productionParent="craft-parent";p.purchasePriceKnown=false;p.minimumSellPrice=110;p.reprices=10;repo.save(List.of(p));
+    }
+    @Test void craftSellOfferRepricesWhenUndercutEvenWithoutGeneralRepriceAllowance()throws Exception {
+        var world=new FakeWorld().showing(orders(true,16,0,0));seedCraftSale(world,61000);
+        var market=new Market(world);market.production=true;market.ask=120;market.craftFloor=115;
+        GoofyConfig.INSTANCE.general.maxReprices=0;var actions=new RecordingActions();var engine=engine(world,actions,market);
+        drive(engine,world,1200);assertEquals("CANCEL_DETAIL",stage(engine));assertEquals(1,clicks(actions,11));
+        assertFalse((Boolean)engine.diagnosticState().get("paused"));assertEquals(0,market.sales);
+    }
+    @Test void craftSellOfferWaitsWithoutCancellationBelowItsProfitFloor()throws Exception {
+        var world=new FakeWorld().showing(orders(true,16,0,0));seedCraftSale(world,61000);
+        var market=new Market(world);market.production=true;market.ask=120;market.craftFloor=125;
+        var actions=new RecordingActions();var engine=engine(world,actions,market);drive(engine,world,1200);
+        assertEquals(0,clicks(actions,11));assertFalse((Boolean)engine.diagnosticState().get("paused"));
+        assertTrue(engine.activity().contains("profit floor"));assertEquals(0,market.sales);
+    }
+    @Test void cancelledCraftStockWaitsForProfitableQuoteWithoutOpeningReplacement()throws Exception {
+        var world=new FakeWorld().showing(orders(false,0,0,16));seedCraftSale(world,61000);
+        var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));var p=repo.load().getFirst();p.stage=GeneralPosition.Stage.INVENTORY;p.submitted=false;repo.save(List.of(p));
+        var market=new Market(world);market.production=true;market.ask=120;market.craftFloor=125;
+        var actions=new RecordingActions();var engine=engine(world,actions,market);drive(engine,world,1200);
+        assertFalse((Boolean)engine.diagnosticState().get("paused"));assertEquals("INVENTORY",repo.load().getFirst().stage.name());
+        assertFalse(actions.serverEffects().stream().anyMatch(a->a.contains("bazaar ")));assertTrue(engine.activity().contains("profit floor"));
+    }
+    @Test void craftSellOfferKeepsCooldownBeforeCancelAndRelist()throws Exception {
+        var world=new FakeWorld().showing(orders(true,16,0,0));seedCraftSale(world,0);
+        var market=new Market(world);market.production=true;market.ask=120;market.craftFloor=115;
+        var actions=new RecordingActions();var engine=engine(world,actions,market);drive(engine,world,1200);
+        assertEquals(0,clicks(actions,11));assertFalse((Boolean)engine.diagnosticState().get("paused"));
+    }
     @Test void skillGatedBuyControlIsSkippedBeforePurchase() throws Exception {
         FakeWorld world=new FakeWorld().showing(orders(false,0,0,0));
         var actions=new RecordingActions();var market=new Market(world);market.skills=Map.of("mining",20);

@@ -22,9 +22,9 @@ public final class ProductionBazaarOrders {
     }
     static List<SavedSale> resumableSales(List<GeneralPosition> positions){
         if(positions.isEmpty() || positions.stream().anyMatch(p->p.productionBuy || p.productionParent==null
-            || !p.submitted || p.cancelRequested || p.settlementPending
-            || p.stage!=GeneralPosition.Stage.SELL_ORDER || p.completed))return List.of();
-        return positions.stream().map(p->new SavedSale(p.productionParent,p.item.id(),p.quantity)).toList();
+            || !p.submitted || p.cancelRequested || p.stage!=GeneralPosition.Stage.SELL_ORDER
+            || (p.completed ? p.verifiedProceeds==null || p.productionProceedsUnknown : p.settlementPending)))return List.of();
+        return positions.stream().map(p->new SavedSale(p.productionParent,p.item.id(),ProductionSaleAccounting.totalUnits(p))).toList();
     }
     public void resumeSavedSales(){bind();engine.start();}
     public record Result(boolean done,boolean failed,int units,double cost,Double proceeds,String reason,boolean rejected){
@@ -48,6 +48,17 @@ public final class ProductionBazaarOrders {
             public void acquire(GeneralPosition p){}
             public void sell(GeneralPosition p,int units,Double proceeds){}
             public void safetyPause(String reason){}
+            public double productionMinimumSellPrice(GeneralPosition position){
+                try {
+                    var parent=FeatureManager.INSTANCE.crafting().productionJobs().find(position.productionParent).orElseThrow();
+                    if(!parent.account().equals(new LiveWorld().username()))return Double.POSITIVE_INFINITY;
+                    Double knownCost=com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE.knownCost(parent.id(),ProductionSaleAccounting.totalUnits(position));
+                    if(knownCost==null)return ProductionSaleAccounting.initialListing(position)?position.minimumSellPrice:Double.POSITIVE_INFINITY;
+                    return ProductionSaleAccounting.minimumPrice(Math.max(parent.costBasis()==null?0:parent.costBasis(),knownCost),com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.craftFlips.minimumProfit,
+                        position.quantity,position.verifiedProceeds,position.productionProceedsUnknown,
+                        taxPercentage(),position.minimumSellPrice);
+                }catch(Exception unavailable){return Double.POSITIVE_INFINITY;}
+            }
             public void event(String level,String type,Map<String,?> details){com.goofy.goofyaddons.diagnostics.Diagnostics.event(level,"production."+type,details);}
             public void failure(String type,Throwable error){com.goofy.goofyaddons.diagnostics.Diagnostics.failure("production."+type,error);}
             public Map<String,Integer> skillLevels(){return FeatureManager.INSTANCE.observedSkills();}
@@ -69,7 +80,7 @@ public final class ProductionBazaarOrders {
     static Result basketResult(List<GeneralPosition> positions,boolean failed,String activity){
         if(positions.isEmpty())return new Result(false,true,0,0,null,"Production order basket is missing");
         boolean done=positions.stream().allMatch(p->p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY);
-        int units=positions.stream().mapToInt(p->p.productionBuy&&p.completed?0:p.quantity).sum();
+        int units=positions.stream().mapToInt(p->p.productionBuy?(p.completed?0:p.quantity):ProductionSaleAccounting.totalUnits(p)).sum();
         double cost=positions.stream().filter(p->p.productionBuy&&!p.completed).mapToDouble(GeneralPosition::cost).sum();
         String rejected=positions.stream().map(p->p.rejectedReason).filter(Objects::nonNull).findFirst().orElse(null);
         if(positions.size()>1){
@@ -90,7 +101,7 @@ public final class ProductionBazaarOrders {
         var p=engine.productionPosition();
         if(p==null)return new Result(false,true,0,0,null,"Production order journal is missing");
         boolean done=p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY;
-        return new Result(done,engine.productionFailed(),p.productionBuy && p.completed?0:p.quantity,p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,p.rejectedReason==null?engine.activity():p.rejectedReason,p.rejectedReason!=null);
+        return new Result(done,engine.productionFailed(),p.productionBuy?(p.completed?0:p.quantity):ProductionSaleAccounting.totalUnits(p),p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,p.rejectedReason==null?engine.activity():p.rejectedReason,p.rejectedReason!=null);
     }
     public boolean recoverBuy(){bind();return engine.recoverProductionBuy();}
     public com.goofy.goofyaddons.features.production.ProductionJobs.Job recoveryEvidence(String account) {

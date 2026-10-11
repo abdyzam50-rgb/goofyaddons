@@ -298,7 +298,7 @@ public final class ProductionLoopFeature implements Feature {
             var jobs=FeatureManager.INSTANCE.crafting().productionJobs();var restored=new ArrayList<Work>();
             for(var sale:sales){
                 var parent=jobs.find(sale.parent()).orElseThrow(()->new IllegalArgumentException("Saved sale parent is missing"));
-                var current=new Work();current.run=ProductionRun.resumeSale(environment(current,false,false),RecipeCatalog.instance(),parent,sale.product(),sale.units());
+                var current=new Work();current.run=ProductionRun.resumeSale(environment(current,false,false),RecipeCatalog.instance(),parent,sale.product(),sale.units(),true);
                 current.budget=Math.max(1,current.run.spent());restored.add(current);
             }
             for(var current:restored)jobs.put(jobs.find(current.id()).orElseThrow().withState(ProductionJobs.State.LISTING,"Resuming retained submitted Bazaar sell offer; live ownership checks required"));

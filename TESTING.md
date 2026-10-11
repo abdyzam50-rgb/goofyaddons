@@ -535,3 +535,9 @@ Validation: client test/build succeeded; 1,165 tests passed with zero failures o
 Regression coverage verifies that unrelated retained sell offers allow a specific reviewed job to be acknowledged, while its own orders (including completed but unreconciled children) and unknown legacy ownership block it. A journal test checks the full resolved ID reaches the ownership predicate, blocked acknowledgement does not write, unrelated reviews stay unchanged, and the Bait parent’s original cost evidence remains intact. No live Minecraft GUI was available.
 
 Validation: client test/build succeeded; 1,167 tests passed with zero failures or skips. Release jar metadata verifies 0.2.77-BETA.
+
+### 0.2.78 Sell repricing and pipeline gaps
+
+Regression checks cover production undercut detection with zero general reprice allowance, cooldown, minimum-profit waiting, and returned-stock waiting; a complete 3-of-10 partial claim/cancel/relist of only the remaining 7/final coin-claim cycle; aggregate receipt idempotency and unknown proceeds; partially sold and completed receipt-backed restart handoffs; tax and original quote floors; consumed versus leftover ingredient locks at the verified sell boundary; new sibling purchases staying independent; concurrent input wait ranking; and the 64/65 batch boundary. Initial focused suites passed before the full release run. No live Minecraft GUI was available.
+
+Final validation: client test/build succeeded; 1,188 tests passed with zero failures or skips. Release jar metadata verifies 0.2.78-BETA.

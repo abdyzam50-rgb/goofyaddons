@@ -69,7 +69,7 @@ public final class ProductionCommands {
                     }catch(Exception failure){actions.message("Review was not acknowledged: "+failure.getMessage());return 0;}
                 })))
                 .then(ClientCommands.literal("run").then(ClientCommands.argument("output",StringArgumentType.string())
-                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,16))
+                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,0,0))
                         .then(sale((c,price,fee)->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,price,fee))))))
                 .then(ClientCommands.literal("test").then(ClientCommands.argument("output",StringArgumentType.string())

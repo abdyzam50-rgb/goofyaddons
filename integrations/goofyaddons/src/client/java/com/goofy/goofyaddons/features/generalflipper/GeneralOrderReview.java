@@ -83,6 +83,9 @@ final class GeneralOrderReview {
             if (!ctx.recordAcquisition()) return;
             ctx.restoreFunding(active);
             if(services.productionOnly() && active.productionBuy){ctx.finishWork();return;}
+            if(services.productionOnly() && (!ctx.freshQuotes() || !ctx.saleAllowed(ctx.currentAsk()))) {
+                ctx.finishWork();return; // Retain verified stock while a fresh profitable price is unavailable.
+            }
             trade.selling = true;
             ctx.actions().closeMenu();
             ctx.transition(Step.OPEN_PRODUCT);
@@ -141,8 +144,9 @@ final class GeneralOrderReview {
             ctx.actions().closeMenu();
             return;
         }
-        if (soldUnits >= 0 && ctx.shouldReprice(true) && active.reprices < settings.maxReprices && ctx.freshQuotes()
+        if (soldUnits >= 0 && ctx.shouldReprice(true) && (ctx.services().productionOnly() || active.reprices < settings.maxReprices) && ctx.freshQuotes()
                 && ctx.saleAllowed(ctx.currentAsk())) {
+            ctx.services().event("INFO","order.sell_reprice",java.util.Map.of("trade",active.tradeId,"parent",active.productionParent==null?"none":active.productionParent,"oldPrice",active.sellPrice,"newPrice",ctx.currentAsk(),"remaining",active.quantity-soldUnits));
             trade.selling = true;
             trade.inventoryBefore = inventory;
             trade.expectedClaim = Math.max(0, active.quantity - soldUnits);
