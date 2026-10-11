@@ -523,3 +523,9 @@ acquired stock or hide a sibling's cost. Existing cross-parent handoff, partial
 claim, baseline, recovery and journal-integrity coverage remains passing.
 
 `./gradlew -p client test build --console=plain` passed 1160 Java tests with zero failures/errors. Live Minecraft execution remains unverified.
+
+### 0.2.76 Quick Crafting
+
+Added regression coverage for the exported 15-batch Hotspot Bait quick slot (one shift-click, 480 verified output), excessive craftable amounts falling back to the grid, mismatched ingredient lore, exact partial receipts, and delayed acknowledgements with invalid output-only changes. Existing grid crafting, menu reuse, conservation checks, procurement baskets, and sale recovery remain covered. No live Minecraft GUI was available.
+
+Validation: client test/build succeeded; 1,165 tests passed with zero failures or skips. Release jar metadata verifies 0.2.76-BETA.

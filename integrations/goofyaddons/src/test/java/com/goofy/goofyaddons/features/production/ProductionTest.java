@@ -18,6 +18,7 @@ class ProductionTest {
             new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);}
     class Server implements GameActions {
         final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);ProductionRecipe r;
+        int quickAvailable;boolean wrongQuickRecipe;
         int clicks;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime;String title="Craft Item";
         final List<String> inputs=new ArrayList<>();
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
@@ -27,9 +28,30 @@ class ProductionTest {
                 ready &= need==null?slot.empty():!slot.empty() && need.id().equals(slot.customId()) && slot.count()>=need.count() && slot.count()%need.count()==0;}
             slots[23]=ready || preview?stack(23,r.outputId(),r.outputCount()):stack(23,"",0);
             if(quickCraft)slots[16]=stack(16,"OUTPUT",1);
+            if(quickAvailable>0) {
+                var lore=new ArrayList<String>(List.of("Craftable: "+quickAvailable+"x","Ingredients:"));
+                r.ingredients().forEach((id,qty)->lore.add(qty+"x "+(wrongQuickRecipe?"Wrong ingredient":RecipeCatalog.instance().name(id))));
+                lore.add("");lore.add("Click to craft!");
+                slots[16]=new SlotView(16,false,16,false,r.outputId(),r.outputId(),lore,r.outputId(),null,r.outputCount(),64);
+            } else if(!quickCraft)slots[16]=stack(16,"",0);
             return new MenuSnapshot(77,title,cursor.empty(),Arrays.asList(slots.clone()),cursor);
         }
         public void click(int slot,boolean shift){clicks++;inputs.add((shift?"shift:":"left:")+slot);if(discard)return;
+            if(shift && slot==16 && quickAvailable>0) {
+                int crafts=oneAtATime?1:quickAvailable;
+                for(var need:r.ingredients().entrySet()) {
+                    int remaining=need.getValue()*crafts;
+                    for(int i=54;i<90&&remaining>0;i++)if(need.getKey().equals(slots[i].customId())) {
+                        int take=Math.min(remaining,slots[i].count());slots[i]=stack(i,need.getKey(),slots[i].count()-take);remaining-=take;
+                    }
+                    assertEquals(0,remaining);
+                }
+                int output=r.outputCount()*crafts;
+                for(int i=56;i<90&&output>0;i++)if(slots[i].empty()||r.outputId().equals(slots[i].customId())) {
+                    int added=Math.min(output,64-slots[i].count());slots[i]=stack(i,r.outputId(),slots[i].count()+added);output-=added;
+                }
+                assertEquals(0,output);quickAvailable-=crafts;return;
+            }
             if(shift && slot==23){
                 assertEquals(r.outputId(),slots[23].customId());int[] grid={10,11,12,19,20,21,28,29,30};
                 int crafts=64;
@@ -52,6 +74,43 @@ class ProductionTest {
             else {var s=slots[slot];assertTrue(s.empty() || s.customId().equals(cursor.customId()));slots[slot]=stack(slot,cursor.customId(),s.count()+1);cursor=stack(-1,cursor.customId(),cursor.count()-1);}
         }
         public void closeMenu(){}public void command(String text){}public void message(String text){}public boolean writeSign(String text){return false;}
+    }
+    @Test void quickCraftsFifteenHotspotBaitBatchesWithOneShiftClickAndExactReceipt() {
+        var r=RecipeCatalog.instance().forOutput("HOTSPOT_BAIT").stream().filter(v->v.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
+        var server=new Server(r,0);int slot=54;
+        for(var need:r.ingredients().entrySet())server.slots[slot]=stack(slot++,need.getKey(),need.getValue()*15);
+        server.quickAvailable=15;var executor=new CraftingExecutor();
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),1000));
+        assertEquals(List.of("shift:16"),server.inputs);
+        assertEquals(CraftingExecutor.Result.CRAFTED,executor.tick(r,16,server.menu(),server,Map.of(),Map.of("pufferfish",8),1100),executor.failure());
+        assertEquals(15,executor.completedBatches());assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+        assertEquals(480,Arrays.stream(server.slots).filter(v->v.inPlayerInventory()&&r.outputId().equals(v.customId())).mapToInt(SlotView::count).sum());
+    }
+    @Test void quickCraftCannotConsumeMoreThanTheRequestedOwnerBatch() {
+        var r=recipe(2);var server=new Server(r,16);server.slots[55]=stack(55,"SECOND",8);server.quickAvailable=8;
+        var executor=new CraftingExecutor();
+        executor.tick(r,4,server.menu(),server,Map.of(),Map.of("collection",2),1000);
+        assertEquals(List.of("left:54"),server.inputs);
+    }
+    @Test void quickCraftWithDifferentIngredientsFallsBackToTheExactGridRecipe() {
+        var r=recipe(2);var server=new Server(r,16);server.slots[55]=stack(55,"SECOND",8);server.quickAvailable=8;server.wrongQuickRecipe=true;
+        new CraftingExecutor().tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),1000);
+        assertEquals(List.of("left:54"),server.inputs);
+    }
+    @Test void partialQuickCraftReportsOnlyTheVerifiedBatchAndKeepsTheMenuReusable() {
+        var r=recipe(2);var server=new Server(r,16);server.slots[55]=stack(55,"SECOND",8);server.quickAvailable=8;server.oneAtATime=true;
+        var executor=new CraftingExecutor();executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),1000);
+        assertEquals(CraftingExecutor.Result.CRAFTED,executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),1100));
+        assertEquals(1,executor.completedBatches());assertEquals(14,server.slots[54].count());assertEquals(1,server.clicks);
+    }
+    @Test void quickCraftWaitsForLaggedReceiptAndNeverAcceptsOutputWithoutIngredientConsumption() {
+        var r=recipe(2);var server=new Server(r,16);server.slots[55]=stack(55,"SECOND",8);server.quickAvailable=8;server.discard=true;
+        var executor=new CraftingExecutor();executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),1000);
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),1900));
+        assertEquals(1,server.clicks);server.slots[56]=stack(56,"OUTPUT",8);
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),2000));
+        assertEquals(CraftingExecutor.Result.BLOCKED,executor.tick(r,8,server.menu(),server,Map.of(),Map.of("collection",2),3600));
+        assertEquals(1,server.clicks);
     }
     @Test void loadsAnEntireRodStackAndVerifiesAll128PowderInOneCollection() {
         var r=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();var server=new Server(r,0);

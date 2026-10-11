@@ -23,11 +23,12 @@ public final class CraftingExecutor {
     private long sentAt,started,next,inconsistentSince;
     private long settleMs=FAST_SETTLE_MS,cooldownUntil;
     private int retries;
-    private boolean submitted;
+    private boolean submitted,quick;
     private String failure;
     public String failure(){return failure;}
     public boolean busy(){return recipe!=null;}
-    public void reset(){recipe=null;sent=null;before=null;submitted=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;}
+    public boolean quickCrafting(){return recipe!=null && quick;}
+    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;}
     public void slowdown(long now) {
         if(recipe==null)return;
         settleMs=Math.min(500,settleMs+100);cooldownUntil=Math.max(cooldownUntil,now+1000);
@@ -51,7 +52,8 @@ public final class CraftingExecutor {
             for(int slot:GRID)if(!empty(menu.slot(slot)))return block("Crafting grid already contains items; ownership must be reconciled");
             before=inventory(menu);
             batchCount=Math.min(64,requestedBatches);
-            for(var cell:wanted.grid())if(cell!=null) {
+            var quickSlot=quickSlot(wanted,menu,before);
+            for(var cell:wanted.grid())if(cell!=null && quickSlot==null) {
                 int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.customId()))
                     .mapToInt(v->v.maxStackSize()).min().orElse(1);
                 batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
@@ -60,11 +62,27 @@ public final class CraftingExecutor {
             long free=menu.slots().stream().filter(v->v.inPlayerInventory() && v.containerSlot()<36 && v.empty()).count();
             // Unknown outputs may be unstackable: reserve one space per unit, never assume 64.
             int outputStack=Set.of("BLAZE_POWDER","STICK","WOOD","PAPER","SUGAR","BOOK","BOWL","CHEST","GOLD_NUGGET","REDSTONE_TORCH_ON","EYE_OF_ENDER","GLASS_BOTTLE","WORKBENCH").contains(wanted.outputId())?64:1;
+            if(quickSlot!=null)outputStack=Math.max(1,Math.min(64,quickSlot.maxStackSize()));
             batchCount=Math.min(batchCount,(int)(free*outputStack/wanted.outputCount()));
+            if(quickSlot!=null && craftable(quickSlot)<=batchCount){quick=true;batchCount=craftable(quickSlot);}
+            else {
+                quickSlot=null;
+                for(var cell:wanted.grid())if(cell!=null) {
+                    int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.customId()))
+                        .mapToInt(SlotView::maxStackSize).min().orElse(1);
+                    batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
+                }
+            }
             if(batchCount<1)return block("Insufficient ingredients or output space for a whole craft");
             for(var need:wanted.ingredients().entrySet())if(before.getOrDefault(need.getKey(),0)<need.getValue())return block("Missing ingredient: "+need.getKey());
             if(menu.slots().stream().noneMatch(s->s.inPlayerInventory() && s.containerSlot()<36 && s.empty()))return block("Keep one free inventory slot for crafting output");
             recipe=wanted;container=menu.containerId();started=now;next=now;submitted=false;
+            if(quickSlot!=null) {
+                String reason=ActionRequirements.blocked(quickSlot.lore(),skills,unlocks,ActionRequirements.Action.CRAFT);
+                if(reason!=null)return block("Crafting requirement: "+reason);
+                com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.quick_craft",Map.of("recipe",wanted.key(),"output",wanted.outputId(),"batches",batchCount,"slot",quickSlot.index(),"container",container));
+                submitted=true;send(menu,actions,quickSlot.index(),true,false,now);return Result.WAITING;
+            }
         }
         if(!wanted.equals(recipe) || menu.containerId()!=container)return block("Crafting owner/container changed; items retained");
         if(now-started>180000)return block("Crafting timed out; reconcile grid and cursor before retrying");
@@ -79,12 +97,15 @@ public final class CraftingExecutor {
         }
         inconsistentSince=0;
         if(now<cooldownUntil)return Result.WAITING;
-        if(submitted && completed(menu) && now-sentAt>=settleMs){lastCompletedBatches=batchCount;reset();return Result.CRAFTED;}
+        int verifiedBatches=quick?convertedBatches(menu):batchCount;
+        if(submitted && verifiedBatches>0 && completed(menu,verifiedBatches) && now-sentAt>=settleMs){lastCompletedBatches=verifiedBatches;reset();return Result.CRAFTED;}
         if(sent!=null) {
             if(!sameContents(sent,menu)) {sent=null;retries=0;next=sentAt+settleMs;}
             else if(now-sentAt>=2000) {
                 if(retries>=2)return block("Crafting input was not acknowledged; grid and cursor retained");
                 // A duplicate is permitted only against the exact same cursor/grid/inventory.
+                if(quick && (!Objects.equals(sent.slot(actionSlot),menu.slot(actionSlot))
+                        || craftable(menu.slot(actionSlot))!=batchCount))return block("Quick craft control changed before acknowledgement; items retained");
                 retries++;sentAt=now;sent=menu;replay(actions);return Result.WAITING;
             } else return Result.WAITING;
         }
@@ -149,6 +170,31 @@ public final class CraftingExecutor {
         if(reason!=null)return block("Crafting requirement: "+reason);
         submitted=true;send(menu,actions,output.index(),true,false,now);return Result.WAITING;
     }
+    // Shift quick crafting may consume every available recipe. Never send it when that
+    // would exceed this owner's requested batch, or when its ingredient recipe is unreadable.
+    private static SlotView quickSlot(ProductionRecipe wanted,MenuSnapshot menu,Map<String,Integer> stock) {
+        int available=wanted.ingredients().entrySet().stream().mapToInt(e->stock.getOrDefault(e.getKey(),0)/e.getValue()).min().orElse(0);
+        var expected=new HashSet<String>();
+        wanted.ingredients().forEach((id,qty)->expected.add(qty+"x "+RecipeCatalog.instance().name(id)));
+        for(int index:new int[]{16,25,34}) {
+            var slot=menu.slot(index);
+            if(empty(slot)||!wanted.outputId().equals(slot.customId())||slot.count()!=wanted.outputCount()
+                    ||craftable(slot)!=available||available<1)continue;
+            var lines=slot.loreLines()==null?List.<String>of():slot.loreLines().stream().map(Chat::strip).toList();
+            int start=lines.indexOf("Ingredients:");
+            if(start<0||!lines.contains("Click to craft!"))continue;
+            var actual=new HashSet<String>();
+            for(int i=start+1;i<lines.size()&&!lines.get(i).isBlank();i++)actual.add(lines.get(i));
+            if(actual.equals(expected))return slot;
+        }
+        return null;
+    }
+    private static int craftable(SlotView slot) {
+        if(slot==null)return -1;
+        var match=java.util.regex.Pattern.compile("(?m)^Craftable: ([0-9,]+)x$").matcher(Chat.strip(slot.lore()));
+        if(!match.find())return -1;
+        try{return Integer.parseInt(match.group(1).replace(",",""));}catch(NumberFormatException e){return -1;}
+    }
     private int actionSlot;private boolean actionShift,actionRight;
     private void send(MenuSnapshot menu,GameActions actions,int slot,boolean shift,boolean right,long now){
         sent=menu;sentAt=now;retries=0;actionSlot=slot;actionShift=shift;actionRight=right;replay(actions);
@@ -163,12 +209,12 @@ public final class CraftingExecutor {
         if(required<1 || stack<=required || stack%required!=0)return false;
         int ratio=stack/required;return (ratio & (ratio-1))==0;
     }
-    private boolean completed(MenuSnapshot menu){
+    private boolean completed(MenuSnapshot menu,int batches){
         if(!menu.cursorEmpty())return false;
         for(int slot:GRID)if(!empty(menu.slot(slot)))return false;
         var counts=inventory(menu);
-        if(counts.getOrDefault(recipe.outputId(),0)!=before.getOrDefault(recipe.outputId(),0)+recipe.outputCount()*batchCount)return false;
-        for(var e:recipe.ingredients().entrySet())if(counts.getOrDefault(e.getKey(),0)!=before.getOrDefault(e.getKey(),0)-e.getValue()*batchCount)return false;
+        if(counts.getOrDefault(recipe.outputId(),0)!=before.getOrDefault(recipe.outputId(),0)+recipe.outputCount()*batches)return false;
+        for(var e:recipe.ingredients().entrySet())if(counts.getOrDefault(e.getKey(),0)!=before.getOrDefault(e.getKey(),0)-e.getValue()*batches)return false;
         return true;
     }
     private int convertedBatches(MenuSnapshot menu) {

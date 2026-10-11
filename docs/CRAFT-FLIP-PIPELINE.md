@@ -1245,3 +1245,11 @@ Their GUI transactions must run sequentially; there is no fill wait to paralleli
 This change does not resume interrupted buy baskets automatically or bypass
 claim/cancellation reconciliation. Saved submitted sell-only portfolios retain
 the 0.2.74 continuation path.
+
+### 0.2.76 — Shift-click Quick Crafting
+
+The Craft Item executor now checks the Quick Crafting slots (16, 25, 34) before loading the grid. A candidate must match the output ID and per-craft output count, list the exact catalog ingredient names and quantities, and show a Craftable count equal to the recipes available in the observed inventory. Shift-click is used only when the complete craftable amount fits the owner’s requested batches and free output capacity. Otherwise the existing exact-grid executor runs. Account unlock and compactor conflict checks apply to both paths.
+
+Quick crafting waits for observed ingredient consumption and output acquisition; it does not count a click as a completed craft. A partial but exact receipt completes only the verified batches and lets the same menu handle the remainder. Repeated clicks wait for acknowledgement, and a changed quick-craft control prevents retrying an unacknowledged transaction. The HUD shows Quick crafting while that path is active; debug exports include production.quick_craft with recipe, batch count, slot and container.
+
+The supplied export showed Hotspot Bait in slot 16, output count 32, Craftable: 15x, and one Enchanted Pufferfish plus one Scorched Crab Stick per recipe. This permits a bounded 15-batch shift-click when the job requests at least 15 batches and has space for 480 Bait. Live-server shift-click behavior still needs gameplay validation; exact partial results are supported.
