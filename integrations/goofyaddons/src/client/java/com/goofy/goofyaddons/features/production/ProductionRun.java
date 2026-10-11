@@ -273,7 +273,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 String changed=env.procurementBlock();
                 var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),this::purchaseCost);
                 if(changed==null&&!basket.complete())changed="No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct());
-                if(changed==null&&(!Double.isFinite(env.spendable())||basket.total()>env.spendable()))changed="All remaining ingredients would exceed spendable capital; nothing bought";
+                if(changed==null&&ProductionPlanner.exceedsFunds(basket.total(),env.spendable()))changed="All remaining ingredients would exceed spendable capital; nothing bought";
                 if(changed!=null){
                     // Closing an amount editor may submit its text. Keep it open and wait instead.
                     if(!env.signOpen()){buying=null;env.actions().closeMenu();}
@@ -323,7 +323,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         var basket=ProductionPlanner.purchaseQuote(missing,this::purchaseCost);
         if(!basket.complete())return Outcome.blocked("No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct()));
-        if(!Double.isFinite(env.spendable())||basket.total()>env.spendable())return Outcome.blocked("All remaining ingredients would exceed spendable capital; nothing bought");
+        if(ProductionPlanner.exceedsFunds(basket.total(),env.spendable()))return Outcome.blocked("All remaining ingredients would exceed spendable capital; nothing bought");
         var first = missing.entrySet().iterator().next();
         double limit=basket.limits().get(first.getKey());
         if(!strategy.instantBuy) {

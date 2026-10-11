@@ -5,6 +5,15 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CraftPortfolioBudgetTest {
+    @Test void identicalCoinBudgetsDoNotFailBecauseOfFloatingPointRounding() {
+        assertFalse(ProductionPlanner.exceedsFunds(4482805.552,4482805.551999999));
+        assertFalse(ProductionPlanner.exceedsFunds(4482805.552,4482805.552));
+        assertTrue(ProductionPlanner.exceedsFunds(4482805.562,4482805.552));
+        for(double invalid:List.of(Double.NaN,Double.POSITIVE_INFINITY,-1.0)) {
+            assertTrue(ProductionPlanner.exceedsFunds(invalid,100));
+            assertTrue(ProductionPlanner.exceedsFunds(100,invalid));
+        }
+    }
     @Test void verifiedPartialFillCanExpandToFreshBasketWithinConfiguredCap() {
         double spent=28222.8,remaining=910188.752;
         assertEquals(spent+remaining,CraftPortfolioBudget.expanded(881745.92,spent,remaining,1500000,10000,5000000,2000000),0.001);

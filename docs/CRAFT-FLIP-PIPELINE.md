@@ -1150,3 +1150,30 @@ This export also answers the Hotspot Bait exclusion: its ORDER_OFFER route
 required 10 inventory slots and was blocked by the current craft's reservations.
 The displayed bait route was not absent from the catalog. Its remaining strategies
 fell below the configured profit threshold after the mod's allowances.
+
+## 0.2.73 rounding-safe procurement comparisons
+
+The 1791689078920 export shows 107 automatic reselections in its retained session
+log. Hotspot Bait is repeatedly selected then cancelled while still untouched;
+no Enchanted Pufferfish or Scorched Crab Stick order was submitted. For the final
+bait plan, allocation/spendable was 4,482,805.551999999 and the fresh basket was
+4,482,805.552. Ranking computes the allowance over the aggregate cost while
+procurement sums allowed individual costs. A double rounding difference of
+less than one billionth of a coin tripped strict greater-than comparisons,
+creating a new plan every five seconds and repeating the start announcement.
+
+ProductionPlanner.exceedsFunds now ignores only differences up to 0.000001
+coin, while rejecting negative/nonfinite values and real shortfalls. Procurement
+allocation, configured-cap and spendable checks, plus partial-fill expansion
+funding checks, use that shared rule. The price allowance, unit price ceilings,
+profit threshold and portfolio reservations remain unchanged. This is not a
+wider budget overrun allowance. Empty runs still reselect when the market really
+moves; partial acquisitions retain their verified cost basis.
+
+The export also has three successfully crafted outputs in submitted sell offers:
+2 Flawless Sapphire Gemstones (parent 800c2279), 1 Condensed Helianthus
+(parent 0f00cd51), and 1 Silex (parent 3545307c). These are real outstanding
+positions, not verified proceeds. Do not acknowledge/delete their journals to
+silence the bait loop. Let these offers finish and claim their coins before
+restarting to replace the jar; restart recovery of submitted production sell
+offers is not part of this numerical comparison fix.

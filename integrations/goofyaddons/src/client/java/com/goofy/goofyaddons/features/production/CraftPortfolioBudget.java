@@ -10,9 +10,9 @@ final class CraftPortfolioBudget {
         if(!Double.isFinite(budget)||budget<=0||!Double.isFinite(spent)||spent<=0
                 ||!Double.isFinite(remaining)||remaining<=0||!Double.isFinite(netSale)
                 ||!Double.isFinite(minimumProfit)||minimumProfit<0||!Double.isFinite(maximumCapital)||maximumCapital<0
-                ||!Double.isFinite(available)||remaining>available)return budget;
+                ||ProductionPlanner.exceedsFunds(remaining,available))return budget;
         double total=spent+remaining;
-        if(!Double.isFinite(total)||total<=budget || maximumCapital>0 && total>maximumCapital
+        if(!Double.isFinite(total)||!ProductionPlanner.exceedsFunds(total,budget) || maximumCapital>0 && ProductionPlanner.exceedsFunds(total,maximumCapital)
                 ||netSale-total<minimumProfit)return budget;
         return total;
     }

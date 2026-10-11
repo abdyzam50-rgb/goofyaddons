@@ -9,6 +9,11 @@ public final class ProductionPlanner {
     public record Candidate(ProductionRecipe recipe,double inputCost,double expectedNetProceeds,double expectedProfit,
             boolean executable,String reason) {}
     private ProductionPlanner() {}
+    /** Coin arithmetic may differ by a double rounding bit; reject invalid values and real overruns. */
+    static boolean exceedsFunds(double required,double available) {
+        return !Double.isFinite(required)||required<0||!Double.isFinite(available)||available<0
+            || required>available && required-available>0.000001;
+    }
 
     /** Complete remaining purchase basket; no partial spending when later inputs cannot be funded. */
     public record PurchaseQuote(Map<String,Double> limits,double total,String blockedProduct) {

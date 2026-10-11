@@ -493,3 +493,12 @@ to retry changed actions or anonymous confirmation controls. Existing bounded
 retry, exact product identity and unsafe-cursor tests remain applicable.
 
 `./gradlew -p client test build --console=plain` passed 1151 Java tests with zero failures/errors. Existing product-navigation fixtures now wait through settling without changing their identity/submission assertions. Live Minecraft execution remains unverified.
+
+## 0.2.73 rounding-safe craft procurement
+
+Regressions reproduce the exported 4,482,805.552 versus 4,482,805.551999999
+comparison, reject a genuine 0.01-coin overrun and invalid funds, and verify
+order procurement proceeds at a one-bit budget difference while refusing a
+real shortfall. Existing price-ceiling and portfolio allocation tests remain.
+
+`./gradlew -p client test build --console=plain` passed 1153 Java tests with zero failures/errors. Live Minecraft execution remains unverified.

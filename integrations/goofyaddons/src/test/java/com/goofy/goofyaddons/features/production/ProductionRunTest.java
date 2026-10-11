@@ -10,6 +10,15 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
+    @Test void procurementAllowsRoundingDustButStillBlocksARealCapitalShortfall()throws Exception {
+        for(boolean shortfall:List.of(false,true)) {
+            var env=new Env();env.buying=true;env.purse=shortfall?102.99:Math.nextDown(103.0);
+            var catalog=catalog();var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+            assertEquals(shortfall?Step.BLOCKED:Step.PENDING,run.tick(true,1000));
+            assertEquals(shortfall?List.of():List.of("BUY:INPUT:2"),env.orders);
+            assertTrue(env.actions.serverEffects().isEmpty());
+        }
+    }
     @Test void mutationAndEssenceInputsBlockBeforeProcurementDespiteEmptyRecipeText()throws Exception {
         for(String input:List.of("CHORUS_FRUIT","ESSENCE_WITHER")) {
             var env=new Env();env.buying=true;env.unlocks=Map.of("catacombs",19);

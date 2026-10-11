@@ -385,9 +385,9 @@ public final class ProductionLoopFeature implements Feature {
                 if(value==null||remaining==null)return "Fresh input/output depth is unavailable; automatic purchases are waiting";
                 double currentCost=current.run.spent()+remaining;
                 if(!current.run.hasVerifiedInputBasis())currentCost=Math.max(currentCost,current.budget); // Held materials are not free.
-                if(GoofyConfig.INSTANCE.craftFlips.maximumCapital>0 && currentCost>GoofyConfig.INSTANCE.craftFlips.maximumCapital)
+                if(GoofyConfig.INSTANCE.craftFlips.maximumCapital>0 && ProductionPlanner.exceedsFunds(currentCost,GoofyConfig.INSTANCE.craftFlips.maximumCapital))
                     return "Remaining ingredients exceed the configured craft capital limit; waiting before further purchases";
-                if(currentCost>current.budget)return "Remaining ingredients exceed the selected craft budget; waiting before further purchases";
+                if(ProductionPlanner.exceedsFunds(currentCost,current.budget))return "Remaining ingredients exceed the selected craft budget; waiting before further purchases";
                 return value*ProductionRun.SALE_FLOOR*(1-GoofyConfig.INSTANCE.bazaarTaxPercentage/100)-currentCost<GoofyConfig.INSTANCE.craftFlips.minimumProfit?
                     "Market moved below the craft profit target; waiting before further purchases":null;
             }
