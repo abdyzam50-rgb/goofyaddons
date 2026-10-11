@@ -45,11 +45,14 @@ class RuntimeSafetyTest {
         assertTrue(TradingSafety.orderQuantityMatches(16,16));
     }
     @Test void absenceAloneNeverReleasesSaleOwnership() {
-        assertFalse(TradingSafety.saleComplete(false,false,true,0));
-        assertFalse(TradingSafety.saleComplete(true,false,true,0));
-        assertFalse(TradingSafety.saleComplete(true,true,false,0));
-        assertFalse(TradingSafety.saleComplete(true,true,true,1));
-        assertTrue(TradingSafety.saleComplete(true,true,true,0));
+        assertFalse(TradingSafety.saleComplete(false,false,true,0,0));
+        assertFalse(TradingSafety.saleComplete(true,false,true,0,0));
+        assertFalse(TradingSafety.saleComplete(true,true,false,0,0));
+        assertFalse(TradingSafety.saleComplete(true,true,true,1,0));
+        assertTrue(TradingSafety.saleComplete(true,true,true,0,0));
+        // Another stack of the same item held through the claim no longer blocks settlement.
+        assertTrue(TradingSafety.saleComplete(true,true,true,64,64));
+        assertFalse(TradingSafety.saleComplete(true,true,true,70,64));
     }
     @Test void sourceAgeRatherThanFetchAgeDeterminesFreshness() {
         assertTrue(TradingSafety.fresh(100000, 160000));

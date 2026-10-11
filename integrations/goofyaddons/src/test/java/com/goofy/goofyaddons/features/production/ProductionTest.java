@@ -599,6 +599,16 @@ class ProductionTest {
         jobs.recoverUncertain("account-a");assertEquals(ProductionJobs.State.REVIEW,jobs.find("pending").orElseThrow().state());
         assertEquals(job,jobs.find("job").orElseThrow());assertEquals(job,new ProductionJobs(path).find("job").orElseThrow());
     }
+    @Test void oldFinishedJobsArePrunedButUnfinishedOnesAreKept()throws Exception {
+        var path=dir.resolve("jobs.json");var jobs=new ProductionJobs(path);
+        jobs.put(new ProductionJobs.Job("review","craft:OUTPUT:0","account",ProductionJobs.State.REVIEW,1,-1,0,0,null,null,null,"check me"));
+        for(int i=0;i<ProductionJobs.KEEP_FINISHED+40;i++)jobs.put(new ProductionJobs.Job("done-"+i,"craft:OUTPUT:0","account",i%2==0?ProductionJobs.State.DONE:ProductionJobs.State.CANCELLED,1,-1,0,0,null,null,null,null));
+        jobs.put(new ProductionJobs.Job("new","craft:OUTPUT:0","account",ProductionJobs.State.PLANNED,1,-1,0,0,null,null,null,null));
+        var reloaded=new ProductionJobs(path);
+        assertTrue(reloaded.find("review").isPresent());assertTrue(reloaded.find("new").isPresent());
+        assertTrue(reloaded.find("done-0").isEmpty());assertTrue(reloaded.find("done-"+(ProductionJobs.KEEP_FINISHED+39)).isPresent());
+        assertTrue(reloaded.all().stream().filter(j->j.state()==ProductionJobs.State.DONE||j.state()==ProductionJobs.State.CANCELLED).count()<=ProductionJobs.KEEP_FINISHED);
+    }
     @Test void malformedJournalIsPreservedAndFailedWritesDoNotAdvanceMemory()throws Exception {
         var path=dir.resolve("jobs.json");Files.writeString(path,"broken");assertThrows(java.io.IOException.class,()->new ProductionJobs(path));assertEquals("broken",Files.readString(path));
         var directory=dir.resolve("target");Files.createDirectory(directory);var jobs=new ProductionJobs(dir.resolve("new.json"));

@@ -31,6 +31,19 @@ class TradingEnginesTest {
         assertSame(auction, scheduler.select(engines.enabled(TradingMode.BOOKS, true, true)));
     }
 
+    @Test void anOwnerMidTransactionKeepsTheMenuWhenItLeavesTheEnabledList() {
+        var books = new Engine(); var general = new Engine();
+        var crafting = new Engine(); var auction = new Engine();
+        var engines = new TradingEngines(books, general, crafting, auction);
+        var scheduler = new MenuScheduler();
+        assertSame(crafting, scheduler.select(engines.enabled(TradingMode.BOOKS, true, false)));
+        crafting.busy = true;
+        // Its queue flag cleared while it still holds the menu: books must not take over.
+        assertSame(crafting, scheduler.select(engines.enabled(TradingMode.BOOKS, false, false)));
+        crafting.busy = false;
+        assertSame(books, scheduler.select(engines.enabled(TradingMode.BOOKS, false, false)));
+    }
+
     @Test void modesFilterAutomaticEnginesWithoutDroppingQueuedProduction() {
         var books = new Engine(); var general = new Engine();
         var crafting = new Engine(); var auction = new Engine();

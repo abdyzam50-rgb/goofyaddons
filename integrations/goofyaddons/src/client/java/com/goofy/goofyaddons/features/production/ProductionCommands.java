@@ -90,13 +90,19 @@ public final class ProductionCommands {
                             if(manager.production().hasRetainedOrders()){actions.message("Retained craft Bazaar orders still own items/coins. Acknowledge a specific reviewed ID without its own orders, or reconcile retained orders before acknowledging all.");return 0;}
                             var reviewed=manager.crafting().productionJobs().acknowledgeAllReviews(account);
                             actions.message(reviewed.size()+" REVIEW jobs acknowledged for this account. Evidence retained; active jobs unchanged; no item, purchase, sale or profit assumed.");
-                            for(var job:reviewed)com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id()));
+                            for(var job:reviewed){
+                                var stored=manager.production().releaseStorage(job.id());
+                                com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id(),"storageReleased",stored));
+                                if(!stored.isEmpty())actions.message("Released storage records for "+job.id().substring(0,8)+": "+String.join(", ",stored));
+                            }
                             return 1;
                         }
                         var job=manager.crafting().productionJobs().acknowledgeReview(reference,account,manager.production()::hasRetainedOrders);
                         long remaining=manager.crafting().journal().stream().filter(j->j.account().equals(account)&&j.state()==ProductionJobs.State.REVIEW).count();
                         actions.message("Review acknowledged for "+job.id().substring(0,8)+". "+remaining+" REVIEW jobs remain. Journal evidence retained; no item, purchase, sale or profit assumed.");
-                        com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id()));return 1;
+                        var stored=manager.production().releaseStorage(job.id());
+                        if(!stored.isEmpty())actions.message("Released storage records: "+String.join(", ",stored));
+                        com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.review_acknowledged",java.util.Map.of("job",job.id(),"storageReleased",stored));return 1;
                     }catch(Exception failure){actions.message("Review was not acknowledged: "+failure.getMessage());return 0;}
                 })))
                 .then(ClientCommands.literal("run").then(ClientCommands.argument("output",StringArgumentType.string())

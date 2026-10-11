@@ -8,7 +8,9 @@ public class MenuScheduler {
     private int next;
 
     public Feature select(List<Feature> engines) {
-        if (owner != null && engines.contains(owner) && owner.isRunning() && !owner.canYield()) return owner;
+        // An owner mid-transaction keeps the menu even if it just left the enabled list (its queue
+        // emptied or the mode changed); handing the menu over then let two engines act on one menu.
+        if (owner != null && owner.isRunning() && !owner.canYield()) return owner;
         owner = null;
         for (int offset = 0; offset < engines.size(); offset++) {
             int index = (next + offset) % engines.size();

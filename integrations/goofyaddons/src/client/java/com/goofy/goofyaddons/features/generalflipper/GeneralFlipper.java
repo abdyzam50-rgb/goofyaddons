@@ -921,6 +921,32 @@ public class GeneralFlipper implements Feature {
         if(lastFailureParent!=null && lastFailureParent.equals(parent)){paused=false;lastFailure=null;lastFailureParent=null;lastBlockedItem=null;}
         return selected;
     }
+    /** One line per ordinary (non-craft) position, for the player to check against /bz before releasing. */
+    public List<String> generalPositionSummaries(){
+        restoreBudget();
+        return positions.stream().filter(p->p.productionParent==null).map(p->(p.tradeId==null?"?":p.tradeId.substring(0,Math.min(8,p.tradeId.length())))+" · "+p.item.name()+" · "+p.quantity+"x · "+p.stage
+            +(p.submitted?" · submitted":"")+(p.settlementPending?" · sale settling":"")+(p.cancelRequested?" · cancel requested":"")).toList();
+    }
+    /**
+     * Drops ordinary flip records after the player confirmed in game that their orders were
+     * claimed or cancelled by hand. A lost confirm click or an unconfirmed sale used to leave a
+     * position that failed every start, with no way to clear it. Null when trading is running,
+     * the state is unreadable or saving fails.
+     */
+    public List<GeneralPosition> releaseGeneral(String reference) {
+        restoreBudget();
+        if(services.productionOnly() || running && !paused || active!=null || blocked || reference==null) return null;
+        boolean all=reference.equalsIgnoreCase("all");
+        if(!all && reference.length()<4) return null;
+        var selected=positions.stream().filter(p->p.productionParent==null && (all || p.tradeId!=null && p.tradeId.regionMatches(true,0,reference,0,reference.length()))).toList();
+        if(selected.isEmpty()) return List.of();
+        var before=List.copyOf(positions);positions.removeAll(selected);
+        if(!save()){positions.clear();positions.addAll(before);return null;}
+        selected.forEach(p->capital.release(OWNER,p.item.id()));
+        services.event("INFO","general.positions_released",java.util.Map.of("released",selected.stream().map(p->p.tradeId+" "+p.item.id()+" "+p.stage).toList()));
+        if(lastFailureParent==null){paused=false;lastFailure=null;lastBlockedItem=null;}
+        return selected;
+    }
     boolean orphanProductionOrders(java.util.Set<String> parents) {
         restoreBudget();return blocked || positions.stream().anyMatch(p->p.productionParent==null || !parents.contains(p.productionParent));
     }

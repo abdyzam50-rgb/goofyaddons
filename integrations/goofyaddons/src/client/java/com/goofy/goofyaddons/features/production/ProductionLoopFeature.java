@@ -32,6 +32,7 @@ public final class ProductionLoopFeature implements Feature {
     private boolean reconcilingExternalOrder;
     private final CraftFlipSelection selection=new CraftFlipSelection();
     private long nextSelection;
+    private final CraftBlockCooldown blockCooldown=new CraftBlockCooldown();
     private long nextSaleRestore;
     public boolean hasRetainedOrders(){return orders.retained();}
     public boolean hasRetainedOrders(String parent){return orders.retained(parent);}
@@ -43,6 +44,14 @@ public final class ProductionLoopFeature implements Feature {
         try{var ledger=storageLedger();if(ledger!=null)ledger.release(parent).forEach(entry->all.add("storage record "+entry));}
         catch(Exception failed){Diagnostics.failure("production.storage_release_failed",failed);all.add("storage records kept: ledger unreadable");}
         return all;
+    }
+    /**
+     * Drops a reviewed job's storage records. Left behind, they stayed "owned" after the player
+     * moved those items, and every later storage step stopped as a ledger mismatch.
+     */
+    public java.util.List<String> releaseStorage(String parent){
+        try{var ledger=storageLedger();return ledger==null?List.of():ledger.release(parent);}
+        catch(Exception failed){Diagnostics.failure("production.storage_release_failed",failed);return List.of("storage records kept: ledger unreadable");}
     }
     private ProductionStorage storageLedger;
     private java.nio.file.Path storageLedgerPath;
@@ -82,7 +91,9 @@ public final class ProductionLoopFeature implements Feature {
         if(result==ProductionStorage.Move.Result.WAITING)return;
         var move=scanning;scanning=null;
         if(result==ProductionStorage.Move.Result.BLOCKED){FeatureManager.INSTANCE.safetyPause("Storage check stopped: "+move.failure());return;}
-        Diagnostics.event("INFO","production.storage_scanned",storageLedger().diagnosticState());
+        var scanned=new LinkedHashMap<String,Object>(storageLedger().diagnosticState());scanned.put("skippedPages",move.skippedPages());
+        Diagnostics.event("INFO","production.storage_scanned",scanned);
+        if(!move.skippedPages().isEmpty())new LiveActions().message("These storage pages never opened and count as full: "+String.join(", ",move.skippedPages())+". Unlock them or remove them from the storage pages setting.");
         selection.refresh();
     }
     public boolean hasOrphanOrders(){return orders.orphaned(work.stream().map(Work::id).collect(java.util.stream.Collectors.toSet()));}
@@ -109,7 +120,7 @@ public final class ProductionLoopFeature implements Feature {
         var state=new LinkedHashMap<String,Object>();var world=new LiveWorld();
         state.put("schema",1);state.put("observedAt",world.now());state.put("running",running);state.put("paused",paused);
         state.put("recoveringOrders",recoveringOrders);state.put("reconcilingExternalOrder",reconcilingExternalOrder);state.put("foregroundJob",foreground==null?null:foreground.id());
-        state.put("nextSelectionAt",nextSelection);state.put("selection",selection.diagnosticState());
+        state.put("nextSelectionAt",nextSelection);state.put("blockedCraftCooldowns",blockCooldown.diagnosticState(System.currentTimeMillis()));state.put("selection",selection.diagnosticState());
         state.put("settings",GoofyConfig.INSTANCE.craftFlips);state.put("orders",orders.diagnosticState());
         state.put("lockedProducts",lockedProducts());
         try{var ledger=storageLedger();state.put("storage",ledger==null?null:ledger.diagnosticState());state.put("storageSlots",storageSlots());}
@@ -179,8 +190,13 @@ public final class ProductionLoopFeature implements Feature {
         var manager=FeatureManager.INSTANCE;
         if(manager.accountRequirementsPending() || hasOrphanOrders())return;
         if(work.isEmpty() && scanStorageIfUnread())return;
-        var candidate=selection.currentRoutes().stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElse(null);
-        if(candidate==null)return;
+        long now=System.currentTimeMillis();
+        var eligible=selection.currentRoutes().stream().filter(CraftFlipPlanner.Route::eligible).toList();
+        var candidate=eligible.stream().filter(r->!blockCooldown.coolingDown(r.recipe().outputId(),now)).findFirst().orElse(null);
+        if(candidate==null){
+            if(!eligible.isEmpty())Diagnostics.event("INFO","production.selection_skipped",Map.of("reason","Every eligible craft is cooling down after a block","eligible",eligible.size(),"cooldowns",blockCooldown.diagnosticState(now)));
+            return;
+        }
         try {
             var current=new Work();current.estimatedCapital=candidate.capital();current.inventorySlots=candidate.inventorySlots();
             current.budget=CraftPortfolioBudget.allocated(candidate.capital(),candidate.profit(),GoofyConfig.INSTANCE.craftFlips.minimumProfit,
@@ -461,6 +477,7 @@ public final class ProductionLoopFeature implements Feature {
                     if(ownsMenu && run.hasReusableCraftMenu())new LiveActions().closeMenu();
                     new LiveActions().message("Production of "+RecipeCatalog.instance().name(run.output())+" finished.");
                     Diagnostics.event("INFO","production.run_finished",Map.of("job",run.jobId(),"output",run.output()));
+                    blockCooldown.finished(run.output());
                     work.remove(current);if(foreground==current)foreground=null;FeatureManager.INSTANCE.invalidateMarketReport();
                 }
                 case UNCERTAIN -> {
@@ -471,7 +488,13 @@ public final class ProductionLoopFeature implements Feature {
                 }
                 case BLOCKED,PENDING -> {
                     if(result==ProductionLoop.Step.BLOCKED && current.budget>0 && run.cancelUnstarted(run.reason())) {
-                        Diagnostics.event("INFO","production.auto_reselect",Map.of("job",run.jobId(),"reason",run.reason()));
+                        var cooled=blockCooldown.blocked(run.output(),run.reason(),now);
+                        var evidence=new LinkedHashMap<String,Object>();
+                        evidence.put("job",run.jobId());evidence.put("output",run.output());evidence.put("reason",run.reason());
+                        evidence.put("strategy",String.valueOf(run.strategy()));evidence.put("budget",current.budget);
+                        evidence.put("blocksForThisCraft",cooled.blocks());evidence.put("cooldownMs",cooled.until()-now);
+                        Diagnostics.event(cooled.blocks()>=CraftBlockCooldown.STUCK_AFTER?"WARN":"INFO","production.auto_reselect",evidence);
+                        if(cooled.blocks()==CraftBlockCooldown.STUCK_AFTER)new LiveActions().message("Skipping "+RecipeCatalog.instance().name(run.output())+" for a while: it blocked "+cooled.blocks()+" times in a row ("+run.reason()+")");
                         work.remove(current);if(foreground==current)foreground=null;nextSelection=now+5000;FeatureManager.INSTANCE.invalidateMarketReport();return;
                     }
                     if(result==ProductionLoop.Step.BLOCKED && run.reason()!=null && !run.reason().equals(current.lastReason))new LiveActions().message("Production waiting: "+run.reason());

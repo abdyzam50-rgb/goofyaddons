@@ -111,8 +111,18 @@ class ProductionStorageTest {
         var world=new World().page("ec 1",2).page("backpack 1",2);world.locked.add("ec 1");
         world.hold(0,"MITHRIL",64);
         var ledger=new ProductionStorage(null);
-        assertEquals(Move.Result.DONE,run(Move.deposit("run-1",ledger,ProductionStorage.pages("ec 1,backpack 1"),Set.of("MITHRIL")),world,new long[]{1000},100));
+        var move=Move.deposit("run-1",ledger,ProductionStorage.pages("ec 1,backpack 1"),Set.of("MITHRIL"));
+        assertEquals(Move.Result.DONE,run(move,world,new long[]{1000},100));
         assertEquals(64,world.stored("backpack 1","MITHRIL"));
+        assertEquals(Set.of("ec 1"),move.skippedPages());
+    }
+
+    @Test void aScanThatSkipsALockedPageStillGivesThePlannerAFreeSpaceTotal()throws Exception {
+        var world=new World().page("ec 1",2).page("backpack 1",2);world.locked.add("ec 1");
+        var ledger=new ProductionStorage(null);var pages=ProductionStorage.pages("ec 1,backpack 1");
+        assertEquals(-1,ledger.emptySlots(pages));
+        assertEquals(Move.Result.DONE,run(Move.scan(ledger,pages),world,new long[]{1000},100));
+        assertTrue(ledger.emptySlots(pages)>=0,"An unopened page must not leave storage unread, or every selection rescans");
     }
 
     @Test void withdrawBringsBackWhatTheRunNeedsAndUpdatesTheLedger()throws Exception {

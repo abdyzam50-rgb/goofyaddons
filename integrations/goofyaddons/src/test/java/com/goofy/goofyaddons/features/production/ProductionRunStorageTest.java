@@ -128,6 +128,24 @@ class ProductionRunStorageTest {
         assertEquals(0,env.storage.stored(run.jobId(),"INPUT"));assertEquals(0,env.world.stored("ec 1","INPUT"));
     }
 
+    @Test void fullStorageWaitsBetweenAttemptsAndAsksForReviewAfterSeveral()throws Exception {
+        var env=new Env();var catalog=catalog();long[] clock={1000};
+        for(int i=0;i<45;i++)env.world.put("ec 1",i,"COBBLE",64);
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),64,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        assertEquals(Step.PENDING,run.tick(true,clock[0]));
+        env.give("INPUT",64);env.awaiting.add("INPUT");
+        env.orderResult=new ProductionBazaarOrders.Result(false,false,128,1280,null,"Claiming in parts");
+        Step step=tickUntilSettled(run,clock,100);
+        assertEquals(Step.BLOCKED,step,run.reason());
+        int opened=env.world.commands.size();
+        for(int i=0;i<20;i++){env.awaiting.add("INPUT");assertEquals(Step.BLOCKED,run.tick(true,clock[0]+=500),run.reason());}
+        assertEquals(opened,env.world.commands.size(),"No storage page is reopened during the wait: "+env.world.commands);
+        for(int attempt=2;attempt<=ProductionRun.STORAGE_ATTEMPTS && step!=Step.UNCERTAIN;attempt++){
+            clock[0]+=ProductionRun.STORAGE_RETRY_MS;env.awaiting.add("INPUT");step=tickUntilSettled(run,clock,100);
+        }
+        assertEquals(Step.UNCERTAIN,step,run.reason());
+    }
+
     @Test void inputsMissingFromStorageStopTheRunInsteadOfBuyingAgain()throws Exception {
         var env=new Env();var catalog=catalog();long[] clock={1000};
         env.give("INPUT",28);

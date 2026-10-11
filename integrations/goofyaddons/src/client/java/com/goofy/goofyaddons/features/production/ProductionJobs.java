@@ -47,10 +47,20 @@ public final class ProductionJobs {
     }
     public List<Job> all(){return List.copyOf(jobs.values());}
     public Optional<Job> find(String id){return Optional.ofNullable(jobs.get(id));}
+    /** Finished jobs kept for evidence; older DONE and CANCELLED entries are dropped as new jobs arrive. */
+    static final int KEEP_FINISHED=512;
     public void put(Job job)throws java.io.IOException {
+        var original=new LinkedHashMap<>(jobs);
+        if(!jobs.containsKey(job.id))pruneFinished();
         if(!jobs.containsKey(job.id) && jobs.size()>=4096)throw new java.io.IOException("Production journal limit reached; no action performed");
-        var previous=jobs.put(job.id,job);
-        try {save();}catch(java.io.IOException failed){if(previous==null)jobs.remove(job.id);else jobs.put(job.id,previous);throw failed;}
+        jobs.put(job.id,job);
+        try {save();}catch(java.io.IOException failed){jobs.clear();jobs.putAll(original);throw failed;}
+    }
+    /** Every reselect and child craft adds a job, so an unpruned journal reached its 4096 cap and stopped production. */
+    private void pruneFinished(){
+        var finished=jobs.values().stream().filter(j->j.state==State.DONE||j.state==State.CANCELLED).map(Job::id).toList();
+        // Insertion order is creation order, so the first entries are the oldest.
+        for(int i=0;i<finished.size()-(KEEP_FINISHED-1);i++)jobs.remove(finished.get(i));
     }
     /** Explicit player acknowledgement after inspecting an uncertain job; retains its evidence. */
     public Job acknowledgeReview(String prefix,String account)throws java.io.IOException {

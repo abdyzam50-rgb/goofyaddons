@@ -805,6 +805,18 @@ orders still require manual reconciliation. New concurrency does not bypass an
 existing unresolved ownership block.
 
 
+## Loops and dead ends removed
+
+- A craft that blocks before spending is skipped for 1 minute, doubling on each repeat up to 30 minutes. A finished run clears it; the third block in a row warns in chat.
+- The job journal keeps the 512 most recent finished jobs and drops older DONE and CANCELLED ones, so it no longer fills to its 4,096 cap.
+- A storage page that never opens counts as full, and the scan names it in chat, so selection stops rescanning every page.
+- Full storage or inventory waits a minute between attempts and asks for review after 5.
+- Acknowledging a review job also releases its storage records.
+- A sale claim completes when the inventory is unchanged since the claim, not only at zero units.
+- Gemstone sale receipts match through the same name rule as their order slots.
+- The menu owner keeps the menu mid-transaction even if it leaves the enabled engine list.
+- `.a* goofyaddon orders` lists ordinary flip records; `orders release <id|all>` drops them after you claim or cancel by hand, while trading is stopped.
+
 ## Ingredients with placeholder bids
 
 An ingredient's order price is its top bid, but a lone bid far under the sell offers

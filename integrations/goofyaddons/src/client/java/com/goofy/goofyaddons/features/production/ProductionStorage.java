@@ -162,6 +162,9 @@ public final class ProductionStorage {
         private final Set<String> products;
         private final Map<String,Integer> remaining;
         private final Set<String> finishedPages=new HashSet<>();
+        private final Set<String> skippedPages=new TreeSet<>();
+        /** Pages that never opened (locked or missing) during this move. */
+        public Set<String> skippedPages(){return Set.copyOf(skippedPages);}
         private Page page;
         private int container=Integer.MIN_VALUE;
         private long openSince,commandAt,closeAt,seenSince;
@@ -209,6 +212,8 @@ public final class ProductionStorage {
                 if(openSince==0)openSince=now;
                 if(now-openSince>OPEN_TIMEOUT_MS) {
                     // A locked page or an empty backpack slot never opens; skip it rather than stop.
+                    // Record it as full so the planner stops rescanning every page before each pick.
+                    ledger.observe(page.command(),0,now);skippedPages.add(page.command());
                     finishedPages.add(page.command());page=null;return Result.WAITING;
                 }
                 if(menu!=null && menu.title()!=null) {

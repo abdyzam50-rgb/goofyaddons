@@ -8,6 +8,12 @@ class TradeReceiptsTest {
         assertEquals(1234.5,TradeReceipts.saleProceeds("[Bazaar] Claimed 1,234.5 coins from selling 16x Potato!","Potato",16));
         assertNull(TradeReceipts.saleProceeds("[Bazaar] Claimed 1,234.5 coins from selling 16x Potato!","Potato",8));
     }
+    @Test void gemstoneClaimsMatchTheirPositionThroughTheOrderNameAlias() {
+        assertEquals(9600.0,TradeReceipts.saleProceeds("[Bazaar] Claimed 9,600 coins from selling 4x ✧ Fine Ruby Gem at 2,400 each!","Fine Ruby Gemstone",4));
+        assertEquals(9600.0,TradeReceipts.saleProceeds("[Bazaar] Claimed 9,600 coins from selling 4x Fine Ruby Gemstone!","Fine Ruby Gemstone",4));
+        assertEquals(2400.0,TradeReceipts.saleClaim("[Bazaar] Claimed 9,600 coins from selling 4x Fine Ruby Gem at 2,400 each!","Fine Ruby Gemstone").unitPrice());
+        assertNull(TradeReceipts.saleProceeds("[Bazaar] Claimed 9,600 coins from selling 4x Flawed Ruby Gem!","Fine Ruby Gemstone",4));
+    }
     @Test void unrelatedIncomeAndItemsNeverBecomeSaleProceeds() {
         assertNull(TradeReceipts.saleProceeds("You received 1000 coins!","Potato",16));
         assertNull(TradeReceipts.saleProceeds("[Bazaar] Claimed 1000 coins from selling 16x Potato Extra!","Potato",16));

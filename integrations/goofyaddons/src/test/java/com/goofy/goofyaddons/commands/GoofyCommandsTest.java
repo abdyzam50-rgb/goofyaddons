@@ -21,13 +21,13 @@ class GoofyCommandsTest {
     }
     @Test void everyFeatureLivesUnderOneNamespace() {
         assertEquals(Set.of("goofyaddon"),commands.getRoot().getChildren().stream().map(n->n.getName()).collect(Collectors.toSet()));
-        assertEquals(Set.of("start","stop","toggle","status","mode","reload","debug","profit","schedule","craft","production","auction","profiles"),
+        assertEquals(Set.of("start","stop","toggle","status","mode","reload","debug","profit","schedule","craft","production","auction","profiles","orders"),
             commands.getRoot().getChild("goofyaddon").getChildren().stream().map(n->n.getName()).collect(Collectors.toSet()));
     }
     @Test void realFeatureArgumentsStillParseAndInvalidAmountsFailClosed() {
         for(String suffix:new String[]{"debug export","profit scale 1.5","profit reset","schedule on","schedule off","craft ENCHANTED_COAL 2","craft ENCHANTED_COAL 64",
                 "production recipes ENCHANTED_COAL","production jobs","auction inspect","auction prepare ENCHANTED_COAL 1000",
-                "auction sell ENCHANTED_COAL 1000 50","mode both","toggle","reload","profiles","profiles adopt","profiles setaside","production run ENCHANTED_COAL 2","production run ENCHANTED_COAL 2 5000 100","production forge REFINED_DIAMOND 1","production kat BLUE_WHALE;4","production claim abc123 5000 100","production status","production test ENCHANTED_COAL","production test ENCHANTED_COAL 5000","debug version"}) {
+                "auction sell ENCHANTED_COAL 1000 50","mode both","toggle","reload","profiles","profiles adopt","profiles setaside","production run ENCHANTED_COAL 2","production run ENCHANTED_COAL 2 5000 100","production forge REFINED_DIAMOND 1","production kat BLUE_WHALE;4","production claim abc123 5000 100","production status","production test ENCHANTED_COAL","production test ENCHANTED_COAL 5000","debug version","orders","orders release all","orders release ab12cd34"}) {
             var parse=commands.parse("goofyaddon "+suffix,null);
             assertFalse(parse.getReader().canRead(),suffix);assertTrue(parse.getExceptions().isEmpty(),suffix);
         }

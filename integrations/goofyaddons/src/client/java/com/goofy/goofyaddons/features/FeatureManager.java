@@ -69,6 +69,7 @@ public class FeatureManager {
     public String lastRouteDecision() {
         var decision=marketAnalysis.lastDecision();return decision==null?null:decision.summary();
     }
+    public GeneralFlipper general(){return general;}
     private List<Feature> engines() {
         return tradingEngines.enabled(mode, production.queued(), crafting.queued(), auction.queued());
     }

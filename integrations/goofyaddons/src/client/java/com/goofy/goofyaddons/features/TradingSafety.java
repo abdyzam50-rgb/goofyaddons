@@ -20,6 +20,8 @@ public final class TradingSafety {
         return clean!=null && clean.startsWith(prefix)
                 && gemstoneOrderName(clean.substring(prefix.length())).equals(gemstoneOrderName(item));
     }
+    /** Whether two item names denote the same Bazaar product, allowing the gemstone "✧"/"Gem" aliases. */
+    public static boolean sameOrderItem(String shown,String item){return item!=null && shown!=null && gemstoneOrderName(shown).equalsIgnoreCase(gemstoneOrderName(item));}
     private static String gemstoneOrderName(String name) {
         if(name==null)return "";
         String plain=name.startsWith("✧ ")?name.substring(2):name;
@@ -59,8 +61,13 @@ public final class TradingSafety {
                 + java.util.regex.Pattern.quote(item) + "[!.]?$");
     }
 
-    public static boolean saleComplete(boolean claimPending, boolean matchingReceipt, boolean orderAbsent, int inventory) {
-        return claimPending && matchingReceipt && orderAbsent && inventory == 0;
+    /**
+     * A claimed sale pays coins and returns no items, so the inventory must be unchanged since the
+     * claim. It used to require zero units, which blocked the sale forever whenever the player held
+     * another stack of the same item (craft output, their own stock).
+     */
+    public static boolean saleComplete(boolean claimPending, boolean matchingReceipt, boolean orderAbsent, int inventory, int inventoryBeforeClaim) {
+        return claimPending && matchingReceipt && orderAbsent && inventory == inventoryBeforeClaim;
     }
 
     public static boolean confirmationTitle(String title,boolean selling) {

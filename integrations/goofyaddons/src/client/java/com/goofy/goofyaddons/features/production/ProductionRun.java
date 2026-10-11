@@ -112,6 +112,9 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private boolean basisUnknown;
     private Set<String> sellInputLocks;
     private ProductionStorage.Move storing;
+    /** Full storage or inventory used to reopen every page each tick; wait between attempts instead. */
+    static final long STORAGE_RETRY_MS=60_000;static final int STORAGE_ATTEMPTS=5;
+    private long storageRetryAt;private int storageFailures;private String storageFailure;
     private Set<String> storingForOrder=Set.of();
     private int craftedBatches,roundBatches;
     private final CompactorClearance compactorClearance=new CompactorClearance();
@@ -244,6 +247,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         state.put("held",held());state.put("lockedProducts",lockedProducts());
         var storage=env.storage();state.put("stored",storage==null?Map.of():storage.stored(jobId));
         state.put("storing",storing==null?null:storing.describe());state.put("craftedBatches",craftedBatches);state.put("roundBatches",roundBatches);
+        state.put("storageFailures",storageFailures);state.put("storageRetryAt",storageRetryAt);
         try {
             state.put("wantsMenu",wantsMenu());state.put("spendable",env.spendable());
             state.put("procurementBlock",env.procurementBlock());
@@ -309,6 +313,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 // A claim filled the inventory: store it, then the order claims the rest.
                 if(!ownsMenu || !env.orderIdle())return Outcome.pending("Claimed what fits; storing it before claiming the rest");
                 var products=new HashSet<>(movableInputs());products.addAll(awaiting);
+                var wait=storageWait(now);if(wait!=null)return wait;
                 storingForOrder=Set.copyOf(awaiting);
                 storing=ProductionStorage.Move.deposit(jobId,env.storage(),env.storagePages(),products);
                 return storageStep(now);
@@ -422,6 +427,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             var products=movableInputs();
             if(products.stream().anyMatch(id->ProductionStorage.Move.inventoryCount(env.menu(),id)>0)) {
                 if(!ownsMenu)return Outcome.pending("Waiting to store bought inputs");
+                var wait=storageWait(now);if(wait!=null)return wait;
                 storing=ProductionStorage.Move.deposit(jobId,env.storage(),env.storagePages(),products);
                 return storageStep(now);
             }
@@ -656,6 +662,14 @@ public final class ProductionRun implements ProductionLoop.Ports {
         return ids;
     }
 
+    private Outcome storageWait(long now){
+        return now<storageRetryAt?Outcome.blocked(storageFailure+"; waiting a minute before trying storage again"):null;
+    }
+    private Outcome storageFailed(String reason,long now){
+        storageFailures++;storageFailure=reason;storageRetryAt=now+STORAGE_RETRY_MS;
+        if(storageFailures>=STORAGE_ATTEMPTS)return Outcome.uncertain(reason+" ("+storageFailures+" attempts); check storage and inventory");
+        return Outcome.blocked(reason);
+    }
     private Outcome storageStep(long now) {
         if(!ownsMenu)return Outcome.pending("Waiting to use storage");
         var move=storing;
@@ -669,11 +683,12 @@ public final class ProductionRun implements ProductionLoop.Ports {
             // Recording zero lets the order look at the inventory again instead of waiting forever.
             if(!env.orderStored(product,units))return Outcome.uncertain("Stored "+units+" "+env.name(product)+" but its order could not record it; check storage and orders");
             if(units==0 && result==ProductionStorage.Move.Result.DONE)
-                return Outcome.blocked("No inventory room to claim "+env.name(product)+"; free some inventory slots");
+                return storageFailed("No inventory room to claim "+env.name(product)+"; free some inventory slots",now);
         }
         if(result==ProductionStorage.Move.Result.NO_SPACE)
-            return Outcome.blocked(move.kind()==ProductionStorage.Move.Kind.WITHDRAW?"Not enough free inventory to take inputs back from storage"
-                : "Storage is full; free space in your ender chest pages or backpacks to keep buying");
+            return storageFailed(move.kind()==ProductionStorage.Move.Kind.WITHDRAW?"Not enough free inventory to take inputs back from storage"
+                : "Storage is full; free space in your ender chest pages or backpacks to keep buying",now);
+        if(move.moved()>0){storageFailures=0;storageRetryAt=0;storageFailure=null;}
         return Outcome.pending(move.kind()==ProductionStorage.Move.Kind.DEPOSIT?"Stored "+move.moved()+" items; continuing":"Took "+move.moved()+" items from storage; crafting next");
     }
 
@@ -710,6 +725,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(round==null)return Outcome.blocked("Free some inventory space: one craft batch, its inputs and its output do not fit");
         if(!round.withdraw().isEmpty()) {
             if(!ownsMenu)return Outcome.pending("Waiting to take inputs from storage");
+            var wait=storageWait(now);if(wait!=null)return wait;
             storing=ProductionStorage.Move.withdraw(jobId,env.storage(),env.storagePages(),round.withdraw());
             return storageStep(now);
         }

@@ -19,7 +19,7 @@ public final class GoofyCommands {
     }
     public static LiteralArgumentBuilder<FabricClientCommandSource> root() {
         var root=literal("goofyaddon").executes(c->{
-            c.getSource().sendFeedback(Component.literal(".a* goofyaddon: start, stop, toggle, status, mode <books|general|both|craft>, reload, debug export, profit, schedule, craft, production, auction, profiles."));return 1;
+            c.getSource().sendFeedback(Component.literal(".a* goofyaddon: start, stop, toggle, status, mode <books|general|both|craft>, reload, debug export, profit, schedule, craft, production, auction, profiles, orders."));return 1;
         });
         FEATURES.getRoot().getChildren().forEach(root::then);
         root.then(literal("start").executes(c->{SessionScheduler.INSTANCE.manualStart();return 1;}));
@@ -42,6 +42,19 @@ public final class GoofyCommands {
             }catch(Exception failure){c.getSource().sendError(Component.literal("Mode not saved: "+failure.getMessage()));return 0;}
         }));
         var account=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        root.then(literal("orders").executes(c->{
+                var lines=FeatureManager.INSTANCE.general().generalPositionSummaries();
+                if(lines.isEmpty()){c.getSource().sendFeedback(Component.literal("No ordinary flip orders are tracked."));return 1;}
+                lines.forEach(line->c.getSource().sendFeedback(Component.literal(line)));
+                c.getSource().sendFeedback(Component.literal("Check /bz orders, claim or cancel by hand, then: orders release <id> or orders release all"));return 1;
+            })
+            .then(literal("release").then(net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument("id",com.mojang.brigadier.arguments.StringArgumentType.word()).executes(c->{
+                if(!FeatureManager.INSTANCE.canReloadConfig()){c.getSource().sendError(Component.literal("Stop trading before releasing orders."));return 0;}
+                var released=FeatureManager.INSTANCE.general().releaseGeneral(com.mojang.brigadier.arguments.StringArgumentType.getString(c,"id"));
+                if(released==null){c.getSource().sendError(Component.literal("Nothing released: stop trading, use at least 4 characters of the id, and check the order file is readable."));return 0;}
+                if(released.isEmpty()){c.getSource().sendError(Component.literal("No ordinary flip order matches that id."));return 0;}
+                c.getSource().sendFeedback(Component.literal("Released "+released.size()+" ordinary flip records. No sale, refund or profit is recorded for them."));return 1;
+            }))));
         root.then(literal("profiles").executes(c->{c.getSource().sendFeedback(Component.literal(account.status()));return 1;})
                 .then(literal("adopt").executes(c->{
                     if(!FeatureManager.INSTANCE.canReloadConfig()){c.getSource().sendError(Component.literal("Stop trading first."));return 0;}
