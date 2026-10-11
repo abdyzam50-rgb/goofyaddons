@@ -207,9 +207,15 @@ public final class Diagnostics {
             state.put("executions",profit.executionSamples());state.put("activeExecutions",profit.activeExecutions());
             state.put("executionError",profit.executionError());
             state.put("funded",CapitalManager.INSTANCE.funded());state.put("fundingUnknown",CapitalManager.INSTANCE.fundingUnknown());
+            var journals=new LinkedHashMap<String,java.nio.file.Path>();
+            var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+            for(String name:List.of(com.goofy.goofyaddons.features.account.AccountStorage.BOOK_ORDERS,com.goofy.goofyaddons.features.account.AccountStorage.GENERAL_ORDERS,
+                    com.goofy.goofyaddons.features.account.AccountStorage.CRAFT_ORDERS,com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_JOBS)) {
+                var path=storage.displayPath(name);if(path!=null)journals.put(name,path);
+            }
             feedback.accept("Creating diagnostic bundle with the current GUI...");
             boolean accepted=WORKER.submit(false,()->{
-                try {var file=LOG.export(state);mc.execute(()->feedback.accept("Saved diagnostics: "+file));}
+                try {var file=LOG.export(state,journals);mc.execute(()->feedback.accept("Saved diagnostics: "+file));}
                 catch(Exception failed){mc.execute(()->feedback.accept("Diagnostic export failed: "+failed.getClass().getSimpleName()));}
                 finally {exporting.set(false);}
             });

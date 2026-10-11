@@ -99,7 +99,9 @@ public final class DiagnosticLog {
             for(int i=0;i<old.size()-16;i++)Files.deleteIfExists(old.get(i));
         }
     }
-    public synchronized Path export(Map<String,?> snapshot) throws IOException {
+    public synchronized Path export(Map<String,?> snapshot) throws IOException { return export(snapshot,Map.of()); }
+    /** Account journals (orders, production jobs) go in under account/, redacted like every other entry. */
+    public synchronized Path export(Map<String,?> snapshot,Map<String,Path> accountFiles) throws IOException {
         Files.createDirectories(directory);
         Path bundles=directory.resolve("bundles");Files.createDirectories(bundles);
         try(var files=Files.list(bundles)) {
@@ -118,6 +120,12 @@ public final class DiagnosticLog {
                 zip.putNextEntry(new ZipEntry("production-debug.json"));
                 zip.write(safeJson(production).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
             }
+            for(var journal:new TreeMap<>(accountFiles).entrySet()) {
+                Path file=journal.getValue();
+                if(file==null || !Files.isRegularFile(file)) continue;
+                zip.putNextEntry(new ZipEntry("account/"+journal.getKey()));
+                zip.write(accountJournal(file).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            }
             Path incidents=directory.resolve("incidents");
             if(Files.isDirectory(incidents))try(var paths=Files.list(incidents)) {
                 for(var file:paths.filter(p->p.getFileName().toString().endsWith(".json")).sorted().toList()) {
@@ -131,5 +139,11 @@ public final class DiagnosticLog {
             }
         } catch(IOException failed) { Files.deleteIfExists(target);throw failed; }
         return target;
+    }
+    private String accountJournal(Path file) throws IOException {
+        long bytes=Files.size(file);
+        if(bytes>8L*1024*1024) return safeJson(Map.of("omitted","larger than 8 MiB","bytes",bytes));
+        try { return safeJson(com.google.gson.JsonParser.parseString(Files.readString(file))); }
+        catch(RuntimeException unreadable) { return safeJson(Map.of("unreadable",unreadable.getClass().getSimpleName(),"bytes",bytes)); }
     }
 }
