@@ -432,6 +432,7 @@ public final class ProductionLoopFeature implements Feature {
                 return buy?BazaarStrategy.ORDER_OFFER.buy(product,units):BazaarStrategy.ORDER_OFFER.sell(product,units);
             }
             public boolean queueOrder(String id,int units,double price,boolean buy,double limit){return orders.queue(current.id(),id,name(id),units,price,buy,limit);}
+            public boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){return orders.queueBasket(current.id(),basket);}
             public com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result tickOrder(boolean ownsMenu){return orders.tick(current.id(),ownsMenu);}
             public boolean acknowledgeOrder(){return orders.acknowledge(current.id());}
             public boolean orderNeedsMenu(){return orders.needsMenu(current.id());}

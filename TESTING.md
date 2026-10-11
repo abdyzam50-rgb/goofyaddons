@@ -512,3 +512,14 @@ refusal to reattach pending settlement/cancellation, buys, unsubmitted positions
 or missing parent identity.
 
 `./gradlew -p client test build --console=plain` passed 1156 Java tests with zero failures/errors. Live Minecraft execution remains unverified.
+
+## 0.2.75 funded ingredient-order baskets
+
+Regressions verify every required ingredient for three craft batches queues
+before any fill, combined verified cost transfers once, complete basket journals
+survive validation, premature handoff preserves all children, unfunded baskets
+release reservations and queue nothing, and rejected children do not count as
+acquired stock or hide a sibling's cost. Existing cross-parent handoff, partial
+claim, baseline, recovery and journal-integrity coverage remains passing.
+
+`./gradlew -p client test build --console=plain` passed 1160 Java tests with zero failures/errors. Live Minecraft execution remains unverified.

@@ -144,6 +144,7 @@ public class GeneralFlipper implements Feature {
             details.put("settlementPending",position.settlementPending);
             details.put("parent",position.productionParent==null?"legacy":position.productionParent);
             details.put("productionInventoryBefore",position.productionInventoryBefore);
+            details.put("productionBasket",position.productionBasket);
             details.put("unitCost",position.unitCost);details.put("maximumBuyPrice",position.maximumBuyPrice);details.put("minimumSellPrice",position.minimumSellPrice);
             details.put("placedAt",position.placedAt);details.put("checkedAt",position.checkedAt);details.put("completed",position.completed);details.put("rejectedReason",position.rejectedReason);details.put("verifiedProceeds",position.verifiedProceeds);
             details.put("submitted",position.submitted);details.put("cancelRequested",position.cancelRequested);details.put("reprices",position.reprices);
@@ -364,7 +365,7 @@ public class GeneralFlipper implements Feature {
 
     private void selectWork() {
         long now = world.now();
-        for (GeneralPosition position : positions) {
+        for (GeneralPosition position : workPositions()) {
             if(position.settlementPending) {
                 active=position;
                 fail("A settlement was interrupted; reconcile the retained order and profit records before restarting.");
@@ -407,6 +408,9 @@ public class GeneralFlipper implements Feature {
             if (save()) transition(Step.OPEN_ORDERS);
             return;
         }
+    }
+    private java.util.List<GeneralPosition> workPositions(){
+        return services.productionOnly()?positions.stream().sorted(java.util.Comparator.comparingInt(p->p.stage==Stage.PLANNED?0:1)).toList():positions;
     }
 
     private void tickInstant(long now)throws Exception {
@@ -729,10 +733,33 @@ public class GeneralFlipper implements Feature {
     boolean enqueueProduction(String id,String name,int units,double unitPrice,boolean buy,double limit) {
         return enqueueProduction(null,id,name,units,unitPrice,buy,limit);
     }
+    boolean enqueueProductionBasket(String parent,List<ProductionBazaarOrders.IngredientOrder> basket){
+        restoreBudget();observe();
+        if(!services.productionOnly()||blocked||paused||parent==null||!parent.matches("[A-Za-z0-9_-]{8,80}")
+            ||basket==null||basket.isEmpty()||positions.size()+basket.size()>32
+            ||positions.stream().anyMatch(p->java.util.Objects.equals(parent,p.productionParent)))return false;
+        var ids=new java.util.HashSet<String>();
+        for(var order:basket)if(order==null||order.product()==null||!order.product().matches("[A-Z0-9_]+")||order.product().startsWith("ENCHANTMENT_")
+            ||order.name()==null||order.name().isBlank()||!ids.add(order.product())||capital.occupied(order.product())
+            ||order.units()<1||order.units()>4096||!Double.isFinite(order.price())||order.price()<=0
+            ||!Double.isFinite(order.limit())||order.limit()<order.price())return false;
+        var reserved=new java.util.ArrayList<String>();
+        for(var order:basket){
+            if(!capital.reserve(OWNER,order.product(),order.units()*order.price(),services.purse())){
+                reserved.forEach(id->capital.release(OWNER,id));return false;
+            }reserved.add(order.product());
+        }
+        for(var order:basket){
+            var p=new GeneralPosition();p.item=new GeneralItem(order.product(),order.name());p.quantity=order.units();p.unitCost=order.price();p.sellPrice=order.price();
+            p.stage=Stage.PLANNED;p.productionBuy=true;p.productionBasket=true;p.productionParent=parent;p.tradeId=java.util.UUID.randomUUID().toString();
+            p.productionInventoryBefore=itemCount(order.product());p.purchasePriceKnown=true;p.maximumBuyPrice=order.limit();positions.add(p);
+        }
+        return save(); // Persist the complete basket before any menu interaction.
+    }
     boolean enqueueProduction(String parent,String id,String name,int units,double unitPrice,boolean buy,double limit) {
         restoreBudget();observe();
         if(parent!=null && (!services.productionOnly() || !parent.matches("[A-Za-z0-9_-]{8,80}")))return false;
-        if(blocked||paused||(parent==null?!positions.isEmpty():positions.size()>=8 || positions.stream().anyMatch(p->java.util.Objects.equals(p.productionParent,parent)))||units<1||units>4096||unitPrice<=0||!Double.isFinite(unitPrice))return false;
+        if(blocked||paused||(parent==null?!positions.isEmpty():positions.size()>=32 || positions.stream().anyMatch(p->java.util.Objects.equals(p.productionParent,parent)))||units<1||units>4096||unitPrice<=0||!Double.isFinite(unitPrice))return false;
         if(buy && parent==null && itemCount(id)>0 || !buy && itemCount(id)!=units || capital.occupied(id))return false;
         if(buy && !capital.reserve(OWNER,id,units*unitPrice,services.purse()))return false;
         if(!buy)capital.restore(OWNER,id,units*unitPrice,false);
@@ -747,23 +774,29 @@ public class GeneralFlipper implements Feature {
     java.util.List<GeneralPosition> productionPositions(){restoreBudget();return blocked?java.util.List.of():java.util.List.copyOf(positions);}
     GeneralPosition productionPosition(String parent){return positions.stream().filter(p->java.util.Objects.equals(p.productionParent,parent)).findFirst().orElse(null);}
     boolean consumeProduction(){return consumeProduction(productionPosition());}
-    boolean consumeProduction(String parent){return consumeProduction(productionPosition(parent));}
+    boolean consumeProduction(String parent){
+        var selected=positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent)).toList();
+        if(selected.isEmpty()||selected.stream().anyMatch(p->!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY)))return false;
+        var before=java.util.List.copyOf(positions);positions.removeAll(selected);
+        if(!save()){positions.clear();positions.addAll(before);return false;}
+        selected.forEach(p->capital.release(OWNER,p.item.id()));return true;
+    }
     private boolean consumeProduction(GeneralPosition p){if(p==null||!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY))return false;
         positions.remove(p);if(!save()){positions.add(p);return false;}capital.release(OWNER,p.item.id());return true;
     }
     String productionMenuParent() {
         if(active!=null)return active.productionParent;
-        return positions.stream().filter(p->workDue(p,world.now())).map(p->p.productionParent==null?"legacy":p.productionParent).findFirst().orElse(null);
+        return workPositions().stream().filter(p->workDue(p,world.now())).map(p->p.productionParent==null?"legacy":p.productionParent).findFirst().orElse(null);
     }
     void yieldProductionMenu() {
         // Only an unstarted orders navigation can yield. Never extend a submitted transaction.
         if(services.productionOnly() && active!=null && step==Step.OPEN_ORDERS)stepSince=world.now();
     }
     double productionCommitment(String parent) {
-        var p=productionPosition(parent);return p==null||p.completed?0:p.cost();
+        return positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent)&&!p.completed).mapToDouble(GeneralPosition::cost).sum();
     }
     double productionBuyCommitment(String parent) {
-        var p=productionPosition(parent);return p==null||p.completed||!p.productionBuy?0:p.cost();
+        return positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent)&&!p.completed&&p.productionBuy).mapToDouble(GeneralPosition::cost).sum();
     }
     boolean orphanProductionOrders(java.util.Set<String> parents) {
         restoreBudget();return blocked || positions.stream().anyMatch(p->p.productionParent==null || !parents.contains(p.productionParent));

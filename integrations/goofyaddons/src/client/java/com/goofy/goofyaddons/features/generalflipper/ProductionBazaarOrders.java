@@ -11,6 +11,10 @@ import java.util.concurrent.CompletableFuture;
 /** One production-owned order using the ordinary trader's placement, claim and receipt rules. */
 public final class ProductionBazaarOrders {
     public record SavedSale(String parent,String product,int units) {}
+    public record IngredientOrder(String product,String name,int units,double price,double limit) {}
+    public boolean queueBasket(String parent,List<IngredientOrder> basket){
+        bind();engine.start();return engine.enqueueProductionBasket(parent,basket);
+    }
     /** Only an intact submitted sell journal may be reattached; other recovery remains manual. */
     public List<SavedSale> savedSales(){
         if(AccountStorage.INSTANCE.pinned()==null)return List.of();bind();
@@ -60,11 +64,21 @@ public final class ProductionBazaarOrders {
     public Result tick(String parent,boolean ownsMenu){
         engine.poll();
         if(ownsMenu && needsMenu(parent))engine.onTick();
-        var p=engine.productionPosition(parent);
-        if(p==null)return new Result(false,true,0,0,null,"Production order for "+parent+" is missing");
-        boolean done=p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY;
-        return new Result(done,engine.productionFailed(parent),p.productionBuy && p.completed?0:p.quantity,
-            p.productionBuy && !p.completed?p.cost():0,p.verifiedProceeds,p.rejectedReason==null?engine.activity():p.rejectedReason,p.rejectedReason!=null);
+        return basketResult(engine.productionPositions().stream().filter(p->Objects.equals(parent,p.productionParent)).toList(),engine.productionFailed(parent),engine.activity());
+    }
+    static Result basketResult(List<GeneralPosition> positions,boolean failed,String activity){
+        if(positions.isEmpty())return new Result(false,true,0,0,null,"Production order basket is missing");
+        boolean done=positions.stream().allMatch(p->p.completed || p.productionBuy && p.stage==GeneralPosition.Stage.INVENTORY);
+        int units=positions.stream().mapToInt(p->p.productionBuy&&p.completed?0:p.quantity).sum();
+        double cost=positions.stream().filter(p->p.productionBuy&&!p.completed).mapToDouble(GeneralPosition::cost).sum();
+        String rejected=positions.stream().map(p->p.rejectedReason).filter(Objects::nonNull).findFirst().orElse(null);
+        if(positions.size()>1){
+            long placed=positions.stream().filter(p->p.submitted||p.stage==GeneralPosition.Stage.INVENTORY).count();
+            long ready=positions.stream().filter(p->p.completed||p.stage==GeneralPosition.Stage.INVENTORY).count();
+            activity="Ingredient basket: "+placed+"/"+positions.size()+" placed, "+ready+"/"+positions.size()+" resolved · "+activity;
+        }
+        return new Result(done,failed,units,cost,positions.size()==1?positions.getFirst().verifiedProceeds:null,
+            rejected==null?activity:rejected,rejected!=null);
     }
     public boolean needsMenu(String parent){return engine.needsMenu() && java.util.Objects.equals(parent,engine.productionMenuParent());}
     public boolean acknowledge(String parent){return engine.consumeProduction(parent);}

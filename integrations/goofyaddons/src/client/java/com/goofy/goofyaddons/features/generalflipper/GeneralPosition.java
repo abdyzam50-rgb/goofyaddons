@@ -25,6 +25,7 @@ public final class GeneralPosition {
     boolean settlementPending;
     boolean instantBuy,instantSell;
     boolean productionBuy;
+    boolean productionBasket;
     boolean completed;
     Double verifiedProceeds;
     double maximumBuyPrice;
@@ -36,7 +37,7 @@ public final class GeneralPosition {
     static java.util.List<GeneralPosition> validated(java.util.List<GeneralPosition> positions) {
         if (positions == null) throw new IllegalArgumentException("Missing order state");
         var ids = new java.util.HashSet<String>();
-        var parents=new java.util.HashSet<String>();
+        var parents=new java.util.HashMap<String,Boolean>();
         for (GeneralPosition position : positions) {
             if (position == null || position.item == null || position.item.id() == null || position.item.name() == null
                     || position.quantity <= 0 || position.quantity > 4096 || !Double.isFinite(position.unitCost)
@@ -50,13 +51,16 @@ public final class GeneralPosition {
                     || !Double.isFinite(position.minimumSellPrice) || position.minimumSellPrice<0
                     || position.productionBuy && position.maximumBuyPrice<=0
                     || position.verifiedProceeds!=null && (!Double.isFinite(position.verifiedProceeds)||position.verifiedProceeds<0)
-                    || position.productionParent!=null && (!position.productionParent.matches("[A-Za-z0-9_-]{8,80}") || position.instantBuy || position.instantSell || !parents.add(position.productionParent))
+                    || position.productionParent!=null && (!position.productionParent.matches("[A-Za-z0-9_-]{8,80}") || position.instantBuy || position.instantSell
+                        || parents.containsKey(position.productionParent) && (!position.productionBuy || !position.productionBasket || !parents.get(position.productionParent)))
+                    || position.productionBasket && (!position.productionBuy || position.productionParent==null)
                     || position.productionInventoryBefore<0 || position.productionInventoryBefore>4096
                     || position.productionInventoryBefore>0 && (!position.productionBuy || position.productionParent==null)
                     || position.rejectedReason!=null && (!position.productionBuy || position.submitted || !position.completed || position.stage!=Stage.PLANNED)
                     || position.stage == null || !ids.add(position.item.id())) {
                 throw new IllegalArgumentException("Invalid saved order position");
             }
+            if(position.productionParent!=null)parents.put(position.productionParent,position.productionBuy&&position.productionBasket);
         }
         return java.util.List.copyOf(positions);
     }

@@ -9,6 +9,31 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionOrderHandoffTest {
+    @Test void basketQueuesAllIngredientsAndHandsOffOnlyWhenEveryChildIsVerified()throws Exception {
+        var world=new FakeWorld().showing(inventory("NONE",0));var actions=new RecordingActions();var repo=new JsonGeneralOrderRepository(()->dir.resolve("basket.json"));
+        var engine=new GeneralFlipper(world,actions,repo,services());engine.start();
+        var basket=List.of(new ProductionBazaarOrders.IngredientOrder("INPUT_A","Input A",2,100,103),new ProductionBazaarOrders.IngredientOrder("INPUT_B","Input B",3,200,206));
+        assertTrue(engine.enqueueProductionBasket("parent-basket",basket));assertEquals(2,repo.load().size());
+        assertTrue(repo.load().stream().allMatch(p->p.productionBasket&&p.productionParent.equals("parent-basket")));
+        var positions=engine.productionPositions();positions.getFirst().stage=GeneralPosition.Stage.INVENTORY;
+        assertFalse(ProductionBazaarOrders.basketResult(positions,false,"waiting").done());assertFalse(engine.consumeProduction("parent-basket"));assertEquals(2,repo.load().size());
+        assertEquals(800,engine.productionBuyCommitment("parent-basket"));
+        positions.get(1).stage=GeneralPosition.Stage.INVENTORY;
+        var result=ProductionBazaarOrders.basketResult(positions,false,"claimed");assertTrue(result.done());assertEquals(5,result.units());assertEquals(800,result.cost());
+        assertTrue(engine.consumeProduction("parent-basket"));assertTrue(repo.load().isEmpty());assertTrue(actions.serverEffects().isEmpty());
+    }
+    @Test void unfundedBasketRollsBackReservationsBeforeQueueingAnything()throws Exception {
+        var world=new FakeWorld().showing(inventory("NONE",0));var svc=services();var repo=new JsonGeneralOrderRepository(()->dir.resolve("unfunded.json"));
+        var engine=new GeneralFlipper(world,new RecordingActions(),repo,svc);engine.start();
+        var basket=List.of(new ProductionBazaarOrders.IngredientOrder("INPUT_A","Input A",2,100,103),new ProductionBazaarOrders.IngredientOrder("INPUT_B","Input B",4096,100,103));
+        assertFalse(engine.enqueueProductionBasket("parent-basket",basket));assertTrue(engine.productionPositions().isEmpty());assertTrue(repo.load().isEmpty());assertEquals(0,svc.capital().committed());
+    }
+    @Test void rejectedBasketChildNeverCountsAsAcquiredStockOrHidesSiblingCost(){
+        var a=new GeneralPosition();a.productionBuy=true;a.quantity=2;a.unitCost=100;a.completed=true;a.rejectedReason="Quote changed";
+        var b=new GeneralPosition();b.productionBuy=true;b.quantity=3;b.unitCost=200;b.stage=GeneralPosition.Stage.BUY_ORDER;
+        var waiting=ProductionBazaarOrders.basketResult(List.of(a,b),false,"waiting");assertFalse(waiting.done());assertTrue(waiting.rejected());
+        b.stage=GeneralPosition.Stage.INVENTORY;var done=ProductionBazaarOrders.basketResult(List.of(a,b),false,"claimed");assertTrue(done.done());assertEquals(3,done.units());assertEquals(600,done.cost());
+    }
     @Test void onlySubmittedUnambiguousSavedSellOffersCanReattach(){
         var p=new GeneralPosition();p.productionParent="parent-saved";p.item=new GeneralItem("OUTPUT","Output");p.quantity=2;p.submitted=true;p.stage=GeneralPosition.Stage.SELL_ORDER;
         assertEquals(List.of(new ProductionBazaarOrders.SavedSale("parent-saved","OUTPUT",2)),ProductionBazaarOrders.resumableSales(List.of(p)));

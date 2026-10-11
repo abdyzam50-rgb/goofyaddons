@@ -10,6 +10,18 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
+    @Test void everyMissingIngredientIsOrderedBeforeWaitingForAnyFill()throws Exception {
+        var env=new Env();env.buying=true;
+        var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT_A",2,"INPUT_B",3),
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT_A",2),new ProductionRecipe.Ingredient("INPUT_B",3),null,null,null,null,null,null,null),0,0,"",null);
+        var run=ProductionRun.startCraft(env,new RecipeCatalog(List.of(recipe),Map.of()),recipe,3,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        assertEquals(Step.PENDING,run.tick(true,1000));assertEquals(Set.of("BUY:INPUT_A:6","BUY:INPUT_B:9"),new HashSet<>(env.orders));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(false,false,15,750,null,"Orders filling in parallel");
+        run.tick(false,1100);assertEquals(2,env.orders.size());assertEquals(0,run.spent());assertEquals(0,env.orderAcknowledgements);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,15,750,null,"All claims verified");
+        env.menu=menu(null,item(54,"INPUT_A",6),item(55,"INPUT_B",9));run.tick(false,1200);
+        assertEquals(750,run.spent());assertEquals(1,env.orderAcknowledgements);assertTrue(env.crafts.isEmpty());
+    }
     @Test void stoppedSubmittedSaleResumesOriginalParentWithoutBuyingOrCrafting()throws Exception {
         var env=new Env();var catalog=catalog();
         var original=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
@@ -82,6 +94,9 @@ class ProductionRunTest {
         public Double orderBuyCost(String id,int units){return units*50.0;}
         public Double offerSellValue(String id,int units){return units*2000.0;}
         public boolean queueOrder(String id,int units,double price,boolean buy,double limit){orders.add((buy?"BUY":"SELL")+":"+id+":"+units);return true;}
+        public boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){
+            basket.forEach(o->queueOrder(o.product(),o.units(),o.price(),true,o.limit()));return true;
+        }
         public com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result tickOrder(boolean owns){return orderResult;}
         public boolean acknowledgeOrder(){orderAcknowledgements++;return true;}
         final List<Double> confirmedCosts=new ArrayList<>(),confirmedSales=new ArrayList<>();

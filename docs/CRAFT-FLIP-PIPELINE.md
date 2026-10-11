@@ -1210,3 +1210,38 @@ acknowledging these three REVIEW jobs or deleting their journals. The matching
 stopped parents will resume monitoring automatically after account binding is
 ready. This does not force sales or guarantee fills, and does not change the
 existing offer repricing policy.
+
+## 0.2.75 place the full funded ingredient basket
+
+Order-based procurement now queues all missing ingredient products for the
+selected batch before waiting for any ingredient to fill. The existing fresh
+whole-basket price/profit/inventory checks run first. The order engine validates
+all products, reserves their combined funding and saves every child position
+in one journal write before any click. Insufficient funding releases reservations
+and queues nothing. GUI interactions remain sequential; fill waits are parallel.
+Pending placements have priority over routine order checks, and the menu-parent
+selector uses that same priority to preserve ownership between craft jobs.
+
+Each basket child has a unique product/trade ID, original parent ID, inventory
+baseline and independent price ceiling. The additive productionBasket flag
+permits multiple buy children per parent in saved journals; duplicate legacy
+parent links, duplicate products and mixed buy/sell ownership remain invalid.
+Up to 32 retained child positions are accepted by this adapter; existing live
+orders-menu pagination/server capacity checks still apply. Each ingredient order
+retains the existing 4,096-unit bound; preparations larger than that require
+another verified basket for the remainder and never bypass inventory limits.
+
+The parent receives a combined result only when every child is completed or has
+verified acquired inventory. Actual acquisition quantities and costs are summed;
+rejected or fully refunded children count as zero acquisitions. Parent cost is
+persisted before atomically acknowledging the entire basket. Partial basket
+handoffs cannot release sibling reservations. After a rejection/cancellation,
+remaining inputs are recalculated from inventory and fresh quotes, preserving
+verified spending and the existing retry/expansion rules. Diagnostic positions
+include productionBasket and the HUD shows placed/resolved ingredient counts.
+
+Instant purchases still request the full missing quantity for each ingredient.
+Their GUI transactions must run sequentially; there is no fill wait to parallelize.
+This change does not resume interrupted buy baskets automatically or bypass
+claim/cancellation reconciliation. Saved submitted sell-only portfolios retain
+the 0.2.74 continuation path.

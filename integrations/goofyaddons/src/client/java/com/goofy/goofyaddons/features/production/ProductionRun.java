@@ -50,6 +50,9 @@ public final class ProductionRun implements ProductionLoop.Ports {
         default Double orderBuyCost(String id,int units){return null;}
         default Double offerSellValue(String id,int units){return null;}
         default boolean queueOrder(String id,int units,double price,boolean buy,double limit){return false;}
+        default boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){
+            if(basket.size()!=1)return false;var order=basket.getFirst();return queueOrder(order.product(),order.units(),order.price(),true,order.limit());
+        }
         default com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result tickOrder(boolean ownsMenu){return null;}
         default boolean acknowledgeOrder(){return false;}
         default boolean orderNeedsMenu(){return true;}
@@ -342,11 +345,15 @@ public final class ProductionRun implements ProductionLoop.Ports {
         var first = missing.entrySet().iterator().next();
         double limit=basket.limits().get(first.getKey());
         if(!strategy.instantBuy) {
-            try{env.jobs().put(parent().withState(ProductionJobs.State.BUYING,"Ingredient buy-order intent: "+first.getKey()+" x "+first.getValue()));}
+            var orders=new ArrayList<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder>();
+            for(var purchase:missing.entrySet()){
+                double ceiling=basket.limits().get(purchase.getKey())/purchase.getValue();
+                orders.add(new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder(purchase.getKey(),env.name(purchase.getKey()),Math.min(4096,purchase.getValue()),ceiling/1.03,ceiling));
+            }
+            try{env.jobs().put(parent().withState(ProductionJobs.State.BUYING,"Ingredient buy-order basket intent: "+orders.size()+" products"));}
             catch(Exception failure){return Outcome.blocked("Ingredient order intent could not be saved");}
-            int units=Math.min(4096,first.getValue());double unit=basket.limits().get(first.getKey())/first.getValue()/1.03;
-            if(!env.queueOrder(first.getKey(),units,unit,true,limit/first.getValue()))return Outcome.uncertain("Ingredient order could not be queued; check retained craft orders");
-            verifiedEmptyOrderHandoff=false;orderActive=true;return Outcome.pending("Placing ingredient buy order");
+            if(!env.queueIngredientOrders(List.copyOf(orders)))return Outcome.uncertain("Ingredient order basket could not be queued; check retained craft orders");
+            verifiedEmptyOrderHandoff=false;orderActive=true;return Outcome.pending("Placing ingredient buy orders for "+orders.size()+" products");
         }
         buying = new BazaarInstantBuy(first.getKey(), env.name(first.getKey()), first.getValue(), limit,
                 reason -> env.jobs().put(parent().withState(ProductionJobs.State.BUYING, reason)));
