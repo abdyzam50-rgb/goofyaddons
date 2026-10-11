@@ -2,7 +2,10 @@ package com.goofy.goofyaddons.menu;
 
 /** Item identity and selected device facts; display names are never enough. */
 public record ItemMetadata(String uuid,String petType,String petTier,Double petExperience,
-        String petHeldItem,String petSkin,Integer petCandyUsed,String vanillaId,CompactorData compactor) {
+        String petHeldItem,String petSkin,Integer petCandyUsed,String vanillaId,CompactorData compactor,String stackIdentity) {
+    public ItemMetadata(String uuid,String petType,String petTier,Double petExperience,String petHeldItem,String petSkin,Integer petCandyUsed,String vanillaId,CompactorData compactor) {
+        this(uuid,petType,petTier,petExperience,petHeldItem,petSkin,petCandyUsed,vanillaId,compactor,null);
+    }
     public ItemMetadata(String uuid,String petType,String petTier,Double petExperience,String petHeldItem,String petSkin,Integer petCandyUsed,String vanillaId) {
         this(uuid,petType,petTier,petExperience,petHeldItem,petSkin,petCandyUsed,vanillaId,null);
     }

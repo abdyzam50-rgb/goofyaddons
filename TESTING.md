@@ -588,3 +588,25 @@ or interrupted cancellation journals.
 Validation: client test/build succeeded; 1,223 tests passed with zero failures,
 errors or skips. Release jar metadata verifies 0.2.80-BETA. No live Minecraft
 GUI was available; gameplay timing still needs verification.
+
+### 0.2.81 Component-aware craft batches and progress bounds
+
+Regression fixtures now preserve item metadata during real simulated pickup,
+splitting, returns and consumption, and swap incompatible stacks instead of
+merging them by product ID. Four Dwarven Super Compactor crafts complete in
+separate rounds for UUID-distinct upgrades and for distinct component hashes
+without UUIDs, preserving the 1,110,533-coin journal basis. Compatible fragmented
+inputs still craft a whole batch. A forced merge-swap loop with unrelated metadata
+churn stops after three repeated attempts, retaining its inputs and sending no
+output click. Allocation tests verify unequal cells of 3/4/5 from component
+groups of 5/7, and equal cells of 2/2 from groups of 3/3 with both surplus items
+returned under their original identities.
+
+Detailed-menu coverage checks stack limits, selected item UUIDs, vanilla IDs,
+component hashes and accessible inventory while excluding raw components and
+other item metadata. Existing Quick Crafting, book variants, packet retries,
+conservation, procurement, recovery and trading tests remain passing.
+
+Validation: client test/build succeeded; 1,230 tests passed with zero failures,
+errors or skips. Release jar metadata verifies 0.2.81-BETA. No live Minecraft
+GUI was available for this update.

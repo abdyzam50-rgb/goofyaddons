@@ -1370,3 +1370,51 @@ inspected and no craft order remains, `production acknowledge all` performs
 the same acknowledgement in one write. These acknowledgements retain the
 original evidence and do not assume a sale or profit. Restart Craft mode for
 new selection. Ordinary trader orders are stored separately and are untouched.
+
+### 0.2.81 — Component-aware ingredient batches and bounded grid progress
+
+The 0.2.80 export reached Dwarven Super Compactor processing after verified
+purchases of four Auto Smelters, 224 Enchanted Mithril and four Super Compactor
+3000s, costing 1,110,533 coins. A four-batch grid tried to put four Auto Smelters
+in one cell. Two single-item stacks refused to merge; repeated swaps kept the
+cell and cursor at one item each. More than 1,900 clicks preceded the three-minute
+timeout. The Mithril Coat in Quick Crafting slot 16 was an unrelated preview,
+not the requested output. No Dwarven output or result click was verified.
+The old export did not retain complete component identities, so the exact
+component difference between those two historical stacks is unavailable.
+
+Live snapshots now carry a count-independent SHA-256 identity of the serialized
+item and its components. A bounded cache uses immutable component copies to
+avoid re-encoding unchanged stacks every tick. Component hashes and selected
+item UUIDs distinguish actual stack groups from product IDs; raw components
+remain private. The grid batch plan allocates each ingredient cell from a
+compatible group within its stack limit. Individually tagged upgrades therefore
+use separate whole-craft rounds, while compatible ingredient fragments can still
+fill a larger batch. Cursor placement and returns refuse incompatible merges.
+Exact recipe and quantity checks still authorize Quick Crafting independently.
+
+Repeated logical grid/cursor/owned-inventory states now have a separate
+three-attempt limit per action. Metadata swaps cannot reset this limit. Existing
+packet acknowledgement, conservation, delayed input retries and output receipts
+remain required. `production.craft_stalled` records a bounded failure before a
+fourth identical logical attempt. Detailed debug captures now retain accessible
+inventory, stack limits, vanilla IDs, selected item UUIDs and component hashes
+for the grid and cursor, without raw tags or other account metadata.
+
+For this export, stop trading and return the cursor Auto Smelter and both
+32-Mithril grid stacks plus the grid Auto Smelter to inventory. Close Craft Item
+and verify all 224 Mithril, four Auto Smelters and four Super Compactor 3000s
+before recovery. Install 0.2.81 and run
+`.a* goofyaddon production recoverorders` to reconcile the nine retained
+ingredient children using verified fills, claims and refunds. No sell offer is
+retained in this export. Wait for completion, stop, inspect the returned inputs
+and `.a* goofyaddon production jobs`, then acknowledge reviewed entries. Once
+no craft order remains, `.a* goofyaddon production acknowledge all` acknowledges
+the five existing reviews and the newly saved recovery evidence in one write.
+Restart Craft mode afterward. Original costs and receipts remain in the journal;
+acknowledgement does not assume a craft, sale or profit.
+
+The same session independently verified sixteen crafted Melon Blocks and a
+repriced offer's coin claim: 18,764 coins of proceeds minus 979 coins of saved
+input cost, confirming 17,785 coins profit. No new Hotspot Bait run appeared in
+this export, so it does not establish live verification of the earlier Bait fix.

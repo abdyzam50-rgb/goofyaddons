@@ -90,6 +90,7 @@ public final class Diagnostics {
                 if(!stack.isEmpty()) {
                     var item=new LinkedHashMap<String,Object>();
                     item.put("slot",i);item.put("type",net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());item.put("count",stack.getCount());
+                    DebugMenuCapture.addStackFacts(item,com.goofy.goofyaddons.menu.LiveMenu.view(i,true,i,stack));
                     var custom=stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
                     if(custom!=null) {
                         var tag=custom.copyTag();item.put("hypixelId",tag.getStringOr("id",""));
@@ -112,6 +113,7 @@ public final class Diagnostics {
                     var item=new LinkedHashMap<String,Object>();
                     item.put("slot",i);item.put("name",stack.getHoverName().getString());
                     item.put("count",stack.getCount());item.put("lore",menuLore(stack));
+                    DebugMenuCapture.addStackFacts(item,com.goofy.goofyaddons.menu.LiveMenu.view(i,false,i,stack));
                     var custom=stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
                     if(custom!=null) {
                         var tag=custom.copyTag();item.put("hypixelId",tag.getStringOr("id",""));
