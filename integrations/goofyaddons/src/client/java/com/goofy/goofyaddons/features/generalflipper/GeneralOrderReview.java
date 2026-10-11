@@ -89,6 +89,13 @@ final class GeneralOrderReview {
             trade.selling = true;
             ctx.actions().closeMenu();
             ctx.transition(Step.OPEN_PRODUCT);
+        } else if (active.stage == Stage.SELL_ORDER && ctx.claimedOutside() instanceof Double coins) {
+            // Claimed by hand while trading was stopped: the receipt names this offer's item,
+            // units and price, so record the sale rather than halting on its absence.
+            ctx.services().event("INFO", "order.sale_claimed_outside", java.util.Map.of("trade", active.tradeId == null ? "none" : active.tradeId,
+                    "item", active.item.id(), "units", active.quantity, "proceeds", coins));
+            if (!ctx.recordSale(active.quantity, coins)) return;
+            ctx.completePosition();
         } else if (active.stage == Stage.SELL_ORDER || active.cancelRequested) {
             ctx.fail("Tracked sell/cancel position is absent; ownership is uncertain. GeneralPosition retained for manual reconciliation.");
         } else if (ctx.now() - active.placedAt > 5000) {

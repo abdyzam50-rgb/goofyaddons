@@ -643,11 +643,43 @@ public class GeneralFlipper implements Feature {
     private int itemCount(String id) { return view.countInInventory(id); }
 
     void onNotice(String message) {
+        rememberSaleClaim(message);
         if (!running || paused || active == null) return;
         if (cancellation.serverNotice(session, message)) return;
         if(!message.contains(active.item.name()))return;
         sellSide.receipt(session, message);
         cancellation.itemNotice(session, message);
+    }
+    /**
+     * Sale claim receipts from this game session, kept while stopped or paused. A sell offer the
+     * player claimed by hand settles from its receipt instead of halting as an unknown absence.
+     */
+    private record SaleClaimNotice(long at, String account, String text) {}
+    private final java.util.ArrayDeque<SaleClaimNotice> saleClaims = new java.util.ArrayDeque<>();
+    private void rememberSaleClaim(String message) {
+        if (message == null || !message.contains("coins from selling")) return;
+        if (running && !paused && active != null && step == Step.VERIFY_SALE && trade.claimPending) return; // Our own claim.
+        saleClaims.addLast(new SaleClaimNotice(world.now(), world.username(), message));
+        while (saleClaims.size() > 32) saleClaims.removeFirst();
+    }
+    /** Coins from the one receipt claiming this whole offer since it was placed, or null. */
+    private Double claimedOutside(GeneralPosition position) {
+        if (position == null || position.stage != Stage.SELL_ORDER || !position.submitted
+                || position.cancelRequested || position.settlementPending) return null;
+        SaleClaimNotice found = null;
+        TradeReceipts.SaleClaim match = null;
+        for (var notice : saleClaims) {
+            if (notice.at() < position.placedAt || !java.util.Objects.equals(notice.account(), world.username())) continue;
+            var claim = TradeReceipts.saleClaim(notice.text(), position.item.name());
+            if (claim == null || claim.units() != position.quantity) continue;
+            if (claim.unitPrice() != null
+                    && Math.abs(claim.unitPrice() - position.sellPrice) > Math.max(1, position.sellPrice * 0.001)) continue;
+            if (found != null) return null; // Two candidates; ownership stays with the player.
+            found = notice; match = claim;
+        }
+        if (found == null) return null;
+        saleClaims.remove(found);
+        return match.coins();
     }
     private boolean recordAcquisition() {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
@@ -741,6 +773,7 @@ public class GeneralFlipper implements Feature {
         @Override public void skipUnavailable(String reason) { GeneralFlipper.this.skipUnavailable(reason); }
         @Override public void finishWork() { GeneralFlipper.this.finishWork(); }
         @Override public void completePosition() { GeneralFlipper.this.completePosition(); }
+        @Override public Double claimedOutside() { return GeneralFlipper.this.claimedOutside(active); }
     }
 
     void resetProductionAccount(){

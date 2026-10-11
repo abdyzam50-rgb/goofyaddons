@@ -65,4 +65,6 @@ interface GeneralContext {
     void skipUnavailable(String reason);
     void finishWork();
     void completePosition();
+    /** Coins from a receipt showing the player claimed the active sell offer by hand, or null. */
+    Double claimedOutside();
 }
