@@ -188,3 +188,30 @@ They validate authentication, strict schemas, free-tier batch sizes, daily
 caps, duplicate receipts, retry/restart behavior, public-field privacy,
 learning bounds, and data-branch-only publishing. A dry run verifies bundling;
 it does not deploy or demonstrate production credentials/cron execution.
+
+### Diagnose account profile access
+
+`GET /v1/profiles?username=curedmc` returns a fixed `failureCode` when profile
+lookup fails. `HYPIXEL_FORBIDDEN` means the upstream Hypixel request returned
+403; `HYPIXEL_UNAUTHORIZED` means 401. Both require checking the Worker
+`HYPIXEL_API_KEY` and its Hypixel application permissions. A Worker HTTP 502
+does not by itself identify a network outage. The response and mod debug export
+retain bounded upstream service/status facts without returning API keys or raw
+upstream bodies. Failed lookups do not grant unverified account unlocks.
+
+After pulling the updated branch, deploy with your existing local configuration.
+Update an invalid key through Wrangler's secure prompt, using a valid key from
+the Hypixel developer dashboard with SkyBlock profile access:
+
+```powershell
+git pull --ff-only
+npx wrangler@4.147.0 deploy --config ".\wrangler.local.jsonc"
+npx wrangler@4.147.0 secret put HYPIXEL_API_KEY --config ".\wrangler.local.jsonc"
+Invoke-RestMethod "https://goofy-gameplay-collector.abdyzam50.workers.dev/v1/profiles?username=curedmc"
+```
+
+Run these from `tools/gameplay-collector`. Use the configuration that already
+targets your Worker and D1 database; do not deploy the placeholder database ID.
+Keep the API key out of chat, tracked files and command arguments. A successful
+profile response uses `goofy-profile/1` and contains the requested profiles;
+deployment success alone does not verify Hypixel authorization.

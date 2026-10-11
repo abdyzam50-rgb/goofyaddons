@@ -37,6 +37,8 @@ public class GeneralFlipper implements Feature {
         default boolean productionOnly(){return false;}
         /** Production buys may claim in parts, storing between claims. */
         default boolean productionStorage(){return false;}
+        /** Null until this live account/profile equals the pinned trading scope. */
+        default String accountScope(){return null;}
         default double productionMinimumSellPrice(GeneralPosition position){return position.minimumSellPrice;}
         default void placed(GeneralPosition position) {}
         default com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {return null;}
@@ -107,6 +109,7 @@ public class GeneralFlipper implements Feature {
     private long stepSince;
     private long nextAction;
     private long lastCommand;
+    private ExternalReconciliation externalReconciliation;
 
     /** Client wiring supplies all effects; construction performs no I/O or event registration. */
     GeneralFlipper(com.goofy.goofyaddons.menu.GameWorld world, com.goofy.goofyaddons.menu.GameActions actions,
@@ -141,6 +144,15 @@ public class GeneralFlipper implements Feature {
         state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",trade.claimPending);state.put("receipt",trade.receipt);
         state.put("claimUnits",trade.claimUnits);state.put("inventoryBefore",trade.inventoryBefore);state.put("expectedClaim",trade.expectedClaim);
         state.put("ordersContainer",ordersSettle.container());state.put("selling",trade.selling);
+        state.put("cancelNeedsClaim",trade.cancelNeedsClaim);state.put("cancelSoldUnits",trade.cancelSoldUnits);
+        state.put("claimedProceeds",trade.claimedProceeds);state.put("hasClaimedProceeds",trade.claimedProceeds!=null);
+        state.put("reopenedCancelOptions",trade.reopenedCancelOptions);
+        if(active!=null) {
+            int inventory=itemCount(active.item.id());
+            state.put("targetInventoryTotal",inventory);state.put("targetAcquiredInventory",active.acquiredInventory(inventory));
+            state.put("buyOrderSlot",findOrder(false));state.put("sellOrderSlot",findOrder(true));
+        }
+        state.put("cancellation",cancellation.diagnosticState());
         var retained=new java.util.ArrayList<java.util.Map<String,Object>>();
         for(GeneralPosition position:positions) {
             var details=new java.util.LinkedHashMap<String,Object>();
@@ -156,6 +168,7 @@ public class GeneralFlipper implements Feature {
             details.put("placedAt",position.placedAt);details.put("checkedAt",position.checkedAt);details.put("completed",position.completed);details.put("rejectedReason",position.rejectedReason);details.put("verifiedProceeds",position.verifiedProceeds);
             details.put("productionSoldUnits",position.productionSoldUnits);details.put("productionSaleEvent",position.productionSaleEvent);details.put("productionProceedsUnknown",position.productionProceedsUnknown);
             details.put("submitted",position.submitted);details.put("cancelRequested",position.cancelRequested);details.put("reprices",position.reprices);
+            details.put("confirmedCancelRefund",position.confirmedCancelRefund);details.put("hasConfirmedCancelRefund",position.confirmedCancelRefund!=null);
             retained.add(details);
         }
         state.put("quotesAt",quotesAt);state.put("quotesFresh",freshQuotes());state.put("nextPollAt",nextPoll);state.put("nextActionAt",nextAction);
@@ -165,6 +178,13 @@ public class GeneralFlipper implements Feature {
             .filter(positions::contains).map(p->p.productionParent==null?"legacy:"+p.tradeId:p.productionParent).distinct().sorted().toList());
         state.put("lastFailure",lastFailure);state.put("lastFailureParent",lastFailureParent);
         state.put("positions",retained);return state;
+    }
+    /** Preserve the decision's tick snapshot before a recheck or failure closes its menu. */
+    private java.util.Map<String,Object> orderDiagnosticContext() {
+        var context=new java.util.LinkedHashMap<>(services.diagnosticContext());
+        context.put("observedAt",world.now());context.put("orderState",diagnosticState());
+        context.put("orderMenu",com.goofy.goofyaddons.diagnostics.DebugMenuCapture.describe(view));
+        return context;
     }
     public String retainedItem() {
         return lastBlockedItem!=null?lastBlockedItem:positions.isEmpty() ? "No retained general orders" : "Retained: "+positions.getFirst().quantity+"x "+positions.getFirst().item.name();
@@ -194,6 +214,7 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void start() {
+        cancelExternalReconciliation();
         productionRecovery=false;productionWorkScope=null;
         bedrockRecovery.reset();
         restoreBudget();
@@ -209,6 +230,7 @@ public class GeneralFlipper implements Feature {
     }
 
     @Override public void stop() {
+        cancelExternalReconciliation();
         productionRecovery=false;productionWorkScope=null;
         running = false;
         paused = false;
@@ -350,7 +372,7 @@ public class GeneralFlipper implements Feature {
                     command("managebazaarorders");
                     if (TradingSafety.ordersTitle(view.title())) transition(Step.ORDERS);
                 }
-                case ORDERS -> review.inspect(session);
+                case ORDERS -> {if(!cancellation.resumeVerification(session))review.inspect(session);}
                 case CANCEL_DETAIL -> cancellation.detail(session);
                 case VERIFY_CANCEL -> cancellation.verify(session);
                 case PARTIAL_CLAIM -> cancellation.partial(session);
@@ -388,6 +410,7 @@ public class GeneralFlipper implements Feature {
                 active = position;
                 trade = new GeneralTrade();
                 trade.selling = position.stage == Stage.INVENTORY || position.stage == Stage.SELL_ORDER;
+                cancellation.begin(position);
                 claim.reset();
                 transition(Step.OPEN_ORDERS);
                 return;
@@ -417,6 +440,7 @@ public class GeneralFlipper implements Feature {
             positions.add(position);
             active = position;
             trade = new GeneralTrade();
+            cancellation.begin(position);
             claim.reset();
             if (save()) transition(Step.OPEN_ORDERS);
             return;
@@ -585,7 +609,7 @@ public class GeneralFlipper implements Feature {
         var decision=menuRecheck.missing(step+":"+active.tradeId,world.now());
         if(decision==com.goofy.goofyaddons.features.MenuRecheck.Decision.REOPEN) {
             services.event("WARN","order.observation_recheck",java.util.Map.of("reason",reason,"trade",active.tradeId==null?"legacy":active.tradeId,
-                    "attempt",menuRecheck.attempts(),"step",step.name(),"context",services.diagnosticContext()));
+                    "attempt",menuRecheck.attempts(),"step",step.name(),"context",orderDiagnosticContext()));
             actions.closeMenu();ordersSettle.reset();lastCommand=0;
             reopeningOrders=true;
         }
@@ -717,7 +741,7 @@ public class GeneralFlipper implements Feature {
     }
     private void fail(String message) {
         lastFailure=message;lastFailureParent=active==null?null:active.productionParent;
-        services.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",services.diagnosticContext()));
+        services.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",orderDiagnosticContext()));
         actions.message(message);
         LOGGER.error(message);
         if(active!=null)lastBlockedItem="Retained: "+active.quantity+"x "+active.item.name();
@@ -782,6 +806,7 @@ public class GeneralFlipper implements Feature {
     }
 
     void resetProductionAccount(){
+        cancelExternalReconciliation();
         invalidateRequest();positions.clear();active=null;loaded=false;blocked=false;running=false;paused=false;productionRecovery=false;productionWorkScope=null;
         instantPosition=null;instantBuying=null;instantSelling=null;clearSnapshot();
     }
@@ -933,6 +958,141 @@ public class GeneralFlipper implements Feature {
             if(!save()){running=false;return false;}
         }
         return true;
+    }
+
+    /** A user-confirmed external claim/move/sale is archived before releasing its journal ownership. */
+    void beginExternalReconciliation(String reference) {
+        restoreBudget();requireExternalIdle();
+        if(externalReconciliation!=null)throw new IllegalStateException("An external order inspection is already pending.");
+        if(reference==null || !reference.matches("[A-Za-z0-9-]{8,64}"))
+            throw new IllegalArgumentException("Use the exact child order ID or a unique prefix of at least eight characters.");
+        var matches=positions.stream().filter(p->p.tradeId!=null && p.tradeId.regionMatches(true,0,reference,0,reference.length())).toList();
+        if(matches.size()!=1)throw new IllegalArgumentException("The child order reference must match exactly one retained order.");
+        var selected=matches.getFirst();
+        if(!externalEligible(selected))throw new IllegalStateException("Only an interrupted, submitted ingredient buy with a known original cost can be reconciled externally.");
+        String account=world.username(),scope=services.accountScope();
+        if(!world.inWorld() || account==null || account.isBlank() || scope==null || scope.isBlank())
+            throw new IllegalStateException("The current SkyBlock account and profile must equal the pinned trading scope.");
+        externalReconciliation=new ExternalReconciliation(selected,account,scope,world.now());
+    }
+
+    ProductionBazaarOrders.ExternalInspection inspectExternal(boolean ownsMenu) {
+        var pending=externalReconciliation;
+        if(pending==null)return externalFailed("No external order inspection is pending.");
+        try {
+            requireExternalIdentity(pending);
+            if(world.now()-pending.startedAt>20_000)return externalFailed("Fresh order inspection timed out; the retained order and capital are unchanged.");
+            if(!ownsMenu)return externalPending("Waiting for the order inspection menu lease.");
+            observe();
+            if(pending.attempts==0){requestExternalOrders(pending);return externalPending("Opening fresh Bazaar orders.");}
+            if(!TradingSafety.ordersTitle(view.title()) || view.containerId()==pending.previousContainer
+                    || view.serverObservation()>=0 && pending.previousObservation>=0 && view.serverObservation()<=pending.previousObservation
+                    || view.firstByHoverName("Go Back",false)<0 && view.firstByHoverName("Close",true)<0) {
+                if(world.now()-pending.requestedAt>=5_000) {
+                    if(pending.attempts>=3)return externalFailed("Fresh Bazaar orders did not load; the retained order and capital are unchanged.");
+                    requestExternalOrders(pending);
+                }
+                return externalPending("Waiting for a fresh, loaded Bazaar orders menu.");
+            }
+            // LiveMenu may not expose a packet counter. A newly opened container plus a
+            // stable complete snapshot still proves a fresh inspection, rather than a cached view.
+            if(!view.equals(pending.stableView)) {
+                pending.observation=view.serverObservation();pending.container=view.containerId();pending.settle.reset();
+                pending.stableView=view;
+                pending.evidence=null;pending.readyView=null;
+            }
+            if(!pending.settle.settled(view.containerId(),world.now()))return externalPending("Waiting for the fresh Bazaar orders capture to settle.");
+            requireExternalAbsence(pending.original,view);
+            if(pending.evidence==null) {
+                var p=pending.original;
+                pending.evidence=new ProductionBazaarOrders.ExternalOrderEvidence(java.util.UUID.randomUUID().toString(),pending.account,pending.scope,
+                    p.tradeId,p.productionParent,p.item.id(),p.item.name(),p.quantity,p.unitCost,p.cost(),p.placedAt,p.confirmedCancelRefund,
+                    world.now(),view.containerId(),view.serverObservation());
+                pending.readyView=view;
+            }
+            return new ProductionBazaarOrders.ExternalInspection(false,false,pending.evidence,
+                "No owned order or accessible ingredient stock remains; save the original external-handling evidence before release.");
+        }catch(IllegalStateException unsafe){return externalFailed(unsafe.getMessage());}
+    }
+
+    boolean finishExternalReconciliation(ProductionBazaarOrders.ExternalOrderEvidence evidence) {
+        var pending=externalReconciliation;
+        if(pending==null || evidence==null || !evidence.equals(pending.evidence))return false;
+        try {
+            requireExternalIdentity(pending);observe();
+            if(world.now()-evidence.observedAt()>10_000 || !view.equals(pending.readyView))
+                throw new IllegalStateException("The live order/inventory capture changed before the evidence was saved; ownership retained.");
+            requireExternalAbsence(pending.original,view);
+        }catch(IllegalStateException unsafe){externalFailed(unsafe.getMessage());return false;}
+        var before=List.copyOf(positions);positions.remove(pending.original);
+        if(!save()){positions.clear();positions.addAll(before);externalReconciliation=null;return false;}
+        capital.release(OWNER,pending.original.item.id());
+        services.event("WARN","order.external_reconciled",java.util.Map.of("child",evidence.child(),"parent",evidence.parent(),
+            "product",evidence.product(),"originalUnits",evidence.units(),"originalCost",evidence.cost(),"outcome","USER_CONFIRMED_EXTERNAL_HANDLING"));
+        externalReconciliation=null;actions.closeMenu();return true;
+    }
+
+    void cancelExternalReconciliation(){externalReconciliation=null;}
+    private void requireExternalIdle() {
+        if(!services.productionOnly() || running || active!=null || instantPosition!=null || navigationRetry.pending() || productionRecovery || blocked)
+            throw new IllegalStateException("Stop production and trading before external order reconciliation; no active transaction may be discarded.");
+    }
+    private void requireExternalIdentity(ExternalReconciliation pending) {
+        requireExternalIdle();
+        if(!world.inWorld() || !java.util.Objects.equals(pending.account,world.username())
+                || !java.util.Objects.equals(pending.scope,services.accountScope()) || !positions.contains(pending.original)
+                || !externalEligible(pending.original) || !pending.originalIdentity.equals(externalIdentity(pending.original)))
+            throw new IllegalStateException("The account, profile or exact child ownership changed; reconciliation refused.");
+    }
+    private static boolean externalEligible(GeneralPosition p) {
+        return p.productionBuy && p.productionParent!=null && p.tradeId!=null && p.stage==Stage.BUY_ORDER && p.submitted
+            && p.cancelRequested && !p.settlementPending && !p.completed && p.purchasePriceKnown
+            && p.quantity>0 && Double.isFinite(p.unitCost) && p.unitCost>0;
+    }
+    private static String externalIdentity(GeneralPosition p) {
+        return p.tradeId+"|"+p.productionParent+"|"+p.item+"|"+p.quantity+"|"+p.unitCost+"|"+p.placedAt+"|"+p.confirmedCancelRefund;
+    }
+    private void requireExternalAbsence(GeneralPosition p,com.goofy.goofyaddons.menu.MenuSnapshot snapshot) {
+        if(!snapshot.cursorEmpty() || snapshot.carried()!=null && !snapshot.carried().empty())
+            throw new IllegalStateException("Clear the cursor before external order reconciliation.");
+        if(snapshot.firstByHoverName("Next Page",false)>=0 || snapshot.firstByHoverName("Previous Page",false)>=0)
+            throw new IllegalStateException("Orders span multiple pages; external reconciliation requires a single complete order capture.");
+        if(snapshot.countInInventory(p.item.id())>0)
+            throw new IllegalStateException("The ingredient remains in accessible inventory; move or sell it before reconciling external handling.");
+        for(var slot:snapshot.slots()) {
+            if(slot.empty() || slot.inPlayerInventory())continue;
+            boolean order=TradingSafety.orderNameMatches(slot.hoverName(),false,p.item.name())
+                || TradingSafety.orderNameMatches(slot.hoverName(),true,p.item.name());
+            if(!order && !p.item.id().equals(slot.bazaarProductId()))continue;
+            if(com.goofy.goofyaddons.utils.MenuText.titleContains(snapshot.title(),"Co-op Bazaar Orders")) {
+                var creator=OrderLore.creator(slot.lore(),world.username());
+                if(creator==OrderLore.Creator.OTHER)continue;
+                if(creator==OrderLore.Creator.UNREADABLE)
+                    throw new IllegalStateException("A matching co-op order has an unreadable creator; ownership remains uncertain.");
+            }
+            throw new IllegalStateException("A matching owned buy order or sell offer still exists; recover it instead of externally reconciling it.");
+        }
+    }
+    private void requestExternalOrders(ExternalReconciliation pending) {
+        pending.previousContainer=view.containerId();pending.previousObservation=view.serverObservation();
+        pending.requestedAt=world.now();pending.attempts++;pending.evidence=null;pending.readyView=null;pending.settle.reset();
+        actions.closeMenu();actions.command("managebazaarorders");
+    }
+    private ProductionBazaarOrders.ExternalInspection externalPending(String reason) {
+        return new ProductionBazaarOrders.ExternalInspection(true,false,null,reason);
+    }
+    private ProductionBazaarOrders.ExternalInspection externalFailed(String reason) {
+        externalReconciliation=null;return new ProductionBazaarOrders.ExternalInspection(false,true,null,reason);
+    }
+    private static final class ExternalReconciliation {
+        final GeneralPosition original;final String originalIdentity,account,scope;final long startedAt;
+        final com.goofy.goofyaddons.features.MenuSettle settle=new com.goofy.goofyaddons.features.MenuSettle();
+        int attempts,previousContainer,container=-1;long requestedAt,previousObservation,observation=-1;
+        ProductionBazaarOrders.ExternalOrderEvidence evidence;
+        com.goofy.goofyaddons.menu.MenuSnapshot readyView,stableView;
+        ExternalReconciliation(GeneralPosition original,String account,String scope,long now) {
+            this.original=original;this.originalIdentity=externalIdentity(original);this.account=account;this.scope=scope;this.startedAt=now;
+        }
     }
     boolean productionFailed(){return blocked||paused;}
 

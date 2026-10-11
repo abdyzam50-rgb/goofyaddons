@@ -5,6 +5,42 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CraftPortfolioBudgetTest {
+    @Test void reservesSubCoinAndMoondewQuoteDriftWithoutIncreasingEstimatedSpending() {
+        double estimate=2949235.874;
+        double reserved=CraftPortfolioBudget.allocated(estimate,300000,10000,10000000,8000000);
+        assertEquals(estimate*1.03,reserved,0.000001);
+        assertFalse(ProductionPlanner.exceedsFunds(2949236.698,reserved));
+        double moondew=CraftPortfolioBudget.allocated(4523174.96,500000,10000,10000000,8000000);
+        assertFalse(ProductionPlanner.exceedsFunds(4523189.792,moondew));
+        assertTrue(ProductionPlanner.exceedsFunds(estimate+100000,reserved),"The drift reservation remains bounded");
+        // Siblings reserve the ceiling, not merely the old estimate; it is not an acquisition.
+        var allocation=new CraftPortfolioBudget.Allocation("first",reserved,0,0,0);
+        assertEquals(8000000-reserved,CraftPortfolioBudget.available(8000000,8000000,List.of(allocation),null),0.000001);
+        assertEquals(8000000,CraftPortfolioBudget.available(8000000,8000000,List.of(allocation),"first"));
+    }
+    @Test void driftRoomCannotCrossProfitFloorConfiguredCapOrLiveAvailableShare() {
+        assertEquals(1005,CraftPortfolioBudget.allocated(1000,15,10,0,5000));
+        assertEquals(1000,CraftPortfolioBudget.allocated(1000,10,10,0,5000));
+        assertEquals(1007,CraftPortfolioBudget.allocated(1000,100,10,1007,5000));
+        assertEquals(1003,CraftPortfolioBudget.allocated(1000,100,10,0,1003));
+        assertEquals(0,CraftPortfolioBudget.allocated(1000,9,10,0,5000));
+        assertEquals(0,CraftPortfolioBudget.allocated(1000,100,10,999,5000));
+        assertEquals(0,CraftPortfolioBudget.allocated(1000,100,10,0,999));
+        assertEquals(0,CraftPortfolioBudget.allocated(Double.NaN,100,10,0,5000));
+        assertEquals(0,CraftPortfolioBudget.allocated(1000,100,10,0,Double.POSITIVE_INFINITY));
+    }
+    @Test void unchangedNearShareQuotesStillFundFourJobsWithoutBorrowingSiblingRoom() {
+        var jobs=new java.util.ArrayList<CraftPortfolioBudget.Allocation>();
+        for(int i=0;i<4;i++) {
+            double share=CraftPortfolioBudget.available(1000,1000,jobs,null)/(4-i);
+            double reserved=CraftPortfolioBudget.allocated(249,100,10,0,share);
+            assertEquals(250,reserved);
+            jobs.add(new CraftPortfolioBudget.Allocation("job-"+i,reserved,0,0,0));
+        }
+        assertEquals(0,CraftPortfolioBudget.available(1000,1000,jobs,null));
+        assertEquals(250,CraftPortfolioBudget.available(1000,1000,jobs,"job-0"));
+        assertTrue(ProductionPlanner.exceedsFunds(250.01,CraftPortfolioBudget.available(1000,1000,jobs,"job-0")));
+    }
     @Test void identicalCoinBudgetsDoNotFailBecauseOfFloatingPointRounding() {
         assertFalse(ProductionPlanner.exceedsFunds(4482805.552,4482805.551999999));
         assertFalse(ProductionPlanner.exceedsFunds(4482805.552,4482805.552));

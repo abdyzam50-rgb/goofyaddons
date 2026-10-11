@@ -1380,3 +1380,142 @@ inspected and no craft order remains, `production acknowledge all` performs
 the same acknowledgement in one write. These acknowledgements retain the
 original evidence and do not assume a sale or profit. Restart Craft mode for
 new selection. Ordinary trader orders are stored separately and are untouched.
+
+### 0.2.81 — Component-aware ingredient batches and bounded grid progress
+
+The 0.2.80 export reached Dwarven Super Compactor processing after verified
+purchases of four Auto Smelters, 224 Enchanted Mithril and four Super Compactor
+3000s, costing 1,110,533 coins. A four-batch grid tried to put four Auto Smelters
+in one cell. Two single-item stacks refused to merge; repeated swaps kept the
+cell and cursor at one item each. More than 1,900 clicks preceded the three-minute
+timeout. The Mithril Coat in Quick Crafting slot 16 was an unrelated preview,
+not the requested output. No Dwarven output or result click was verified.
+The old export did not retain complete component identities, so the exact
+component difference between those two historical stacks is unavailable.
+
+Live snapshots now carry a count-independent SHA-256 identity of the serialized
+item and its components. A bounded cache uses immutable component copies to
+avoid re-encoding unchanged stacks every tick. Component hashes and selected
+item UUIDs distinguish actual stack groups from product IDs; raw components
+remain private. The grid batch plan allocates each ingredient cell from a
+compatible group within its stack limit. Individually tagged upgrades therefore
+use separate whole-craft rounds, while compatible ingredient fragments can still
+fill a larger batch. Cursor placement and returns refuse incompatible merges.
+Exact recipe and quantity checks still authorize Quick Crafting independently.
+
+Repeated logical grid/cursor/owned-inventory states now have a separate
+three-attempt limit per action. Metadata swaps cannot reset this limit. Existing
+packet acknowledgement, conservation, delayed input retries and output receipts
+remain required. `production.craft_stalled` records a bounded failure before a
+fourth identical logical attempt. Detailed debug captures now retain accessible
+inventory, stack limits, vanilla IDs, selected item UUIDs and component hashes
+for the grid and cursor, without raw tags or other account metadata.
+
+For this export, stop trading and return the cursor Auto Smelter and both
+32-Mithril grid stacks plus the grid Auto Smelter to inventory. Close Craft Item
+and verify all 224 Mithril, four Auto Smelters and four Super Compactor 3000s
+before recovery. Install 0.2.81 and run
+`.a* goofyaddon production recoverorders` to reconcile the nine retained
+ingredient children using verified fills, claims and refunds. No sell offer is
+retained in this export. Wait for completion, stop, inspect the returned inputs
+and `.a* goofyaddon production jobs`, then acknowledge reviewed entries. Once
+no craft order remains, `.a* goofyaddon production acknowledge all` acknowledges
+the five existing reviews and the newly saved recovery evidence in one write.
+Restart Craft mode afterward. Original costs and receipts remain in the journal;
+acknowledgement does not assume a craft, sale or profit.
+
+The same session independently verified sixteen crafted Melon Blocks and a
+repriced offer's coin claim: 18,764 coins of proceeds minus 979 coins of saved
+input cost, confirming 17,785 coins profit. No new Hotspot Bait run appeared in
+this export, so it does not establish live verification of the earlier Bait fix.
+
+### 0.2.82 — Rejected Bazaar cancellations, funding room and profile errors
+
+The `diagnostics-1791742481616-6f60057a.zip` export confirms 0.2.81 and a
+consistent, running local calculator. Its new session contains no craft-grid
+failure. The Dwarven timeout belongs to the retained previous session. After
+recovering and acknowledging those old jobs, the new Amalgamated Crimsonite run
+placed three of six ingredient orders before a manual stop. Recovery verified
+the Blaze Rod refund and claimed three Glowstone, then Hypixel rejected the
+Mycelium cancellation with `There was an error cancelling your order!`.
+One submitted Mycelium buy for 133,475.5 coins remained tracked. Starting Craft
+mode again could not select a new run while that unresolved child remained.
+
+An explicit server rejection now permits a bounded cancellation retry after
+fresh, settled, exact order ownership checks. An unknown outcome still requires
+observation rather than another cancellation. Retained orders also preserve the
+cached review warning and show the recovery command in discovery status.
+The order and cost journals are not cleared to bypass this blocker.
+
+Automatic runs now reserve bounded price-movement room above their estimated
+capital instead of using the exact initial estimate as their immutable ceiling.
+The additional reservation stays within the configured per-craft cap, available
+portfolio funds and the profit remaining above the minimum. Existing whole-basket,
+fresh-price and minimum-profit checks still govern purchases. This addresses the
+export's 0.412/0.824-coin Crimsonite drift and 14.832-coin Moondew drift without
+raising the user's capital limit or buying more units.
+
+The live Worker lookup for `curedmc` returned HTTP 502 with a verified upstream
+Hypixel HTTP 403 rejection. This is a Worker API-key/application permission issue;
+a client update cannot restore that authorization. Profile failures now return
+stable service codes and bounded service/status facts, and the mod reports the
+specific failure. Raw upstream bodies, credentials and transport errors are not
+included. Redeploy the Worker and securely update its `HYPIXEL_API_KEY` with a
+valid Hypixel application key permitted to read SkyBlock profiles. Verify the
+public `/v1/profiles?username=curedmc` response afterward.
+
+For this export, install 0.2.82, stop trading and run
+`.a* goofyaddon production recoverorders`. Wait for verified recovery of the
+remaining Mycelium order, stop, inspect returned ingredients and
+`.a* goofyaddon production jobs`, then acknowledge the reviewed evidence with
+`.a* goofyaddon production acknowledge all`. Restart Craft mode after recovery.
+The separate ordinary-trader Fuming Potato Book order remains tracked.
+
+### 0.2.83 — Externally handled ingredient orders and failure captures
+
+The `diagnostics-1791744424106-dfa50290.zip` export confirms 0.2.82 with a
+ready calculator. Three recovery attempts reopened Manage Orders but could not
+find the retained Mycelium child `6acfc294`. No new cancellation was submitted,
+refund receipt was received, or Mycelium inventory was observed in that session.
+The player confirmed that they had claimed or moved/sold the item manually.
+An absent order alone cannot prove its financial outcome, so the saved child
+continued to reserve 133,475.5 coins and block new craft selection.
+
+Explicit external reconciliation now handles this case. With trading stopped
+and the GUI closed, run:
+
+```text
+.a* goofyaddon production reconcileorder 6acfc294 external
+```
+
+This starts a bounded read-only inspection through the production menu scheduler.
+The original submitted ingredient child must have a known cost and interrupted
+cancellation intent, and its saved parent must remain in REVIEW for this account.
+The command opens a new loaded Manage Orders container, waits for the complete
+capture to stay unchanged for 750 ms, and rejects owned matching buy/sell orders,
+unreadable matching co-op ownership, multiple pages, carried items and any of the
+product in accessible inventory. Navigation retries are bounded. The real menu
+adapter has no packet observation counter, so a new container and stable complete
+capture provide freshness; when a counter exists, it must also advance.
+
+The original child ID, parent, account scope, product, units, unit cost,
+commitment, placement time and any saved refund are durably archived in a REVIEW
+entry before removing that exact child from the order journal. Account and live
+capture are rechecked before removal. A failed archive never releases ownership;
+a failed child save rolls back ownership while retaining review evidence. Repeats
+reuse the original child ID. No acquisition, refund, sale, proceeds or profit is
+inferred. Original parent evidence and unrelated ordinary-trader positions remain.
+
+Wait for “Manually handled ingredient order archived”, inspect
+`.a* goofyaddon production jobs`, then stop and run
+`.a* goofyaddon production acknowledge all` after reviewing the remaining entries.
+Restart Craft mode afterward. A matching order or remaining inventory needs the
+normal recovery path instead; the command does not bypass its ownership checks.
+
+Order recheck and blocked-transaction events now capture the actual menu,
+accessible product counts and target state before closing the GUI or clearing the
+active target. Current and retained-order diagnostics include confirmed refund
+availability, cancellation claim state, sold units, claimed proceeds and reopened
+cancel options. Recovery status takes precedence over old review text in the HUD.
+These checks are covered by simulated menu and durable-journal regressions;
+live Minecraft execution still requires the next user run.

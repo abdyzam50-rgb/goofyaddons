@@ -75,19 +75,65 @@ class AccountUnlocksTest {
     @Test void deniedHypixelAccessIsVisibleAndRetryCanRecoverWithoutOpeningMenus() {
         var clock=new AtomicLong(1000000);var responses=new ArrayDeque<CompletableFuture<AccountUnlocks.Response>>();
         responses.add(CompletableFuture.completedFuture(new AccountUnlocks.Response(502,JsonParser.parseString("""
-          {"failureCode":"HYPIXEL_FORBIDDEN","error":"private-api-secret must not be displayed"}
+          {"failureCode":"HYPIXEL_FORBIDDEN","upstreamService":"HYPIXEL","upstreamStatus":403,"error":"private-api-secret must not be displayed"}
           """).getAsJsonObject())));
         responses.add(CompletableFuture.completedFuture(new AccountUnlocks.Response(200,profile(1060000))));
         var account=new AccountUnlocks(uri->responses.remove(),Runnable::run,clock::get);
         account.poll("Tester","Mango",Map.of(),clock.get());
         assertFalse(account.pending());assertTrue(account.current(clock.get()).isEmpty());assertTrue(account.status(clock.get()).contains("HTTP 403"));
         assertEquals("HYPIXEL_FORBIDDEN",account.diagnosticState(clock.get()).get("failureCode"));
+        assertEquals(502,account.diagnosticState(clock.get()).get("serviceHttpStatus"));
+        assertEquals("HYPIXEL",account.diagnosticState(clock.get()).get("upstreamService"));
+        assertEquals(403,account.diagnosticState(clock.get()).get("upstreamHttpStatus"));
         assertFalse(account.diagnosticState(clock.get()).toString().contains("private-api-secret"));
         clock.set(1060000);account.poll("Tester","Mango",Map.of(),clock.get());
         assertFalse(account.pending());assertEquals(4,account.current(clock.get()).get("goldingot"));
         assertNull(RouteRequirements.craft("Gold Ingot IV",account.skills(clock.get()),account.current(clock.get())));
         assertEquals("VERIFIED",account.diagnosticState(clock.get()).get("failureCode"));
+        assertEquals(200,account.diagnosticState(clock.get()).get("serviceHttpStatus"));
+        assertEquals(0,account.diagnosticState(clock.get()).get("upstreamHttpStatus"));
+        assertEquals("UNKNOWN",account.diagnosticState(clock.get()).get("upstreamService"));
         clock.addAndGet(300000);assertTrue(account.current(clock.get()).isEmpty());
+    }
+    @Test void structuredUpstreamFailuresExplainTheServiceAndDiscardExpiredUnlocks() {
+        for(String code:List.of("HYPIXEL_UNAUTHORIZED","HYPIXEL_SERVICE_UNAVAILABLE","HYPIXEL_INVALID_RESPONSE","USERNAME_SERVICE_UNAVAILABLE")) {
+            var clock=new AtomicLong(1000000);var responses=new ArrayDeque<AccountUnlocks.Response>();
+            responses.add(new AccountUnlocks.Response(200,profile(clock.get())));
+            var body=new JsonObject();body.addProperty("failureCode",code);body.addProperty("upstreamService",code.startsWith("HYPIXEL")?"HYPIXEL":"PLAYERDB");
+            body.addProperty("upstreamStatus",code.equals("HYPIXEL_UNAUTHORIZED")?401:503);body.addProperty("error","private-api-secret");
+            responses.add(new AccountUnlocks.Response(502,body));
+            var account=new AccountUnlocks(uri->CompletableFuture.completedFuture(responses.remove()),Runnable::run,clock::get);
+            account.poll("Tester","Mango",Map.of(),clock.get());assertEquals(4,account.current(clock.get()).get("goldingot"));
+            clock.addAndGet(300000);account.poll("Tester","Mango",Map.of(),clock.get());
+            assertEquals(code,account.diagnosticState(clock.get()).get("failureCode"));assertEquals(502,account.diagnosticState(clock.get()).get("serviceHttpStatus"));
+            assertTrue(account.current(clock.get()).isEmpty());assertTrue(account.skills(clock.get()).isEmpty());
+            assertFalse(account.diagnosticState(clock.get()).toString().contains("private-api-secret"));
+            assertTrue(account.status(clock.get()).contains(code.startsWith("HYPIXEL")?"Hypixel":"username"));
+        }
+    }
+    @Test void nonJsonGatewayErrorsPreserveHttpStatusAndNeverDisplayTheirBodies() {
+        var response=AccountUnlocks.parseResponse(502,"<html>private-api-secret</html>");
+        var account=new AccountUnlocks(uri->CompletableFuture.completedFuture(response),Runnable::run,()->1000000);
+        account.poll("Tester","Mango",Map.of(),1000000);
+        assertEquals("PROFILE_SERVICE_UNAVAILABLE",account.diagnosticState(1000000).get("failureCode"));
+        assertEquals(502,account.diagnosticState(1000000).get("serviceHttpStatus"));assertTrue(account.status(1000000).contains("HTTP 502"));
+        assertFalse(account.diagnosticState(1000000).toString().contains("private-api-secret"));assertTrue(account.current(1000000).isEmpty());
+        assertThrows(RuntimeException.class,()->AccountUnlocks.parseResponse(200,"<html>private-api-secret</html>"));
+        assertEquals(429,AccountUnlocks.parseResponse(429,"[]").status());
+    }
+    @Test void unknownOrMalformedFailureDetailsAreBoundedAndNeverRendered() {
+        for(String body:List.of(
+            "{\"failureCode\":\"private-api-secret\",\"upstreamService\":\"private-api-secret\",\"upstreamStatus\":999}",
+            "{\"failureCode\":{},\"upstreamService\":[],\"upstreamStatus\":\"private-api-secret\"}")) {
+            var response=AccountUnlocks.parseResponse(502,body);
+            var account=new AccountUnlocks(uri->CompletableFuture.completedFuture(response),Runnable::run,()->1000000);
+            account.poll("Tester","Mango",Map.of(),1000000);
+            assertEquals("PROFILE_SERVICE_UNAVAILABLE",account.diagnosticState(1000000).get("failureCode"));
+            assertEquals("UNKNOWN",account.diagnosticState(1000000).get("upstreamService"));assertEquals(0,account.diagnosticState(1000000).get("upstreamHttpStatus"));
+            assertFalse(account.diagnosticState(1000000).toString().contains("private-api-secret"));
+        }
+        var limited=new AccountUnlocks(uri->CompletableFuture.completedFuture(AccountUnlocks.parseResponse(429,"Rate limited")),Runnable::run,()->1000000);
+        limited.poll("Tester","Mango",Map.of(),1000000);assertEquals("PROFILE_RATE_LIMITED",limited.diagnosticState(1000000).get("failureCode"));
     }
     @Test void switchingProfilesDiscardsPendingResultsAndRequiresNewProof() {
         var requests=new ArrayList<CompletableFuture<AccountUnlocks.Response>>();

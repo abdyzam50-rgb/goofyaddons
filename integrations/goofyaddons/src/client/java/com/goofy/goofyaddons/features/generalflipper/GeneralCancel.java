@@ -13,12 +13,40 @@ import static com.goofy.goofyaddons.features.generalflipper.GeneralFlipper.OWNER
  *
  * <p>Fills can land at any point between opening an order's options and the server
  * processing the cancellation. Each outcome is accepted only on fresh inventory, order
- * and receipt evidence; a cancellation is never repeated because its result is unknown.
+ * and receipt evidence; an unknown result never authorizes another cancellation.
+ * An explicit rejection can retry up to three attempts after a fresh exact owned-order
+ * observation. Late successful receipts take precedence throughout that retry chain.
  */
 final class GeneralCancel {
+    private static final String CANCEL_REJECTED="[Bazaar] There was an error cancelling your order!";
+    private static final long REJECTION_COOLDOWN_MS=2000;
+    private String attemptedTrade;
+    private boolean cancelIssued,rejected;
+    private int rejections,cancelContainer;
+    private long rejectedAt;
+
+    void begin(GeneralPosition position) {
+        if(!java.util.Objects.equals(attemptedTrade,position.tradeId))rejections=0;
+        attemptedTrade=position.tradeId;cancelIssued=false;rejected=false;
+    }
+    java.util.Map<String,Object> diagnosticState() {
+        return java.util.Map.of("issued",cancelIssued,"rejected",rejected,"rejections",rejections,
+            "container",cancelContainer,"rejectedAt",rejectedAt);
+    }
+    private void confirmed(){cancelIssued=false;rejected=false;rejections=0;}
+
+    /** A late receipt must reach verification before reviewing the retry can clear it. */
+    boolean resumeVerification(GeneralContext ctx) {
+        if(ctx.active().cancelRequested && ctx.trade().receipt) {
+            ctx.transition(Step.VERIFY_CANCEL);return true;
+        }
+        return false;
+    }
+
     void detail(GeneralContext ctx) {
         var active = ctx.active();
         var trade = ctx.trade();
+        if(resumeVerification(ctx))return;
         if (ctx.view().title() == null) {
             ctx.command("managebazaarorders");
             return;
@@ -29,6 +57,7 @@ final class GeneralCancel {
                 active.cancelRequested = true;
                 if (!ctx.save()) return;
                 ctx.capital().funding(OWNER, active.item.id(), null);
+                cancelIssued=true;rejected=false;cancelContainer=ctx.view().containerId();
                 ctx.click(cancel);
                 ctx.actions().closeMenu();
                 ctx.transition(Step.VERIFY_CANCEL);
@@ -133,6 +162,11 @@ final class GeneralCancel {
                 }
             }
         }
+        if(rejected && !trade.receipt) {
+            retryRejected(ctx,count);
+            return;
+        }
+        if(trade.receipt)rejected=false; // A delayed successful receipt takes precedence over an earlier error.
         long elapsed = ctx.now() - ctx.stepSince();
         boolean itemsArrived = com.goofy.goofyaddons.features.transaction.ClaimEvidence.arrived(trade.inventoryBefore, trade.expectedClaim, count);
         if (com.goofy.goofyaddons.features.transaction.ClaimEvidence.outstanding(trade.inventoryBefore, trade.expectedClaim, count)) {
@@ -150,6 +184,7 @@ final class GeneralCancel {
         ctx.command("managebazaarorders");
         if (!ctx.ordersReady() || ctx.ambiguousOrders()) return;
         if (ctx.findOrder(trade.selling) >= 0) { ctx.recheckOrders("cancel-not-visible"); return; }
+        confirmed();
         if (trade.selling && trade.cancelSoldUnits > 0) {
             if (!ctx.recordSale(trade.cancelSoldUnits, trade.claimedProceeds)) return;
             trade.cancelSoldUnits = 0;
@@ -191,6 +226,60 @@ final class GeneralCancel {
         ctx.finishWork();
     }
 
+    /** Retry only a confirmed rejection, after a new exact order observation. */
+    private void retryRejected(GeneralContext ctx,int inventory) {
+        var active=ctx.active();var trade=ctx.trade();
+        if(ctx.now()-rejectedAt<REJECTION_COOLDOWN_MS)return;
+        if(!trade.selling && com.goofy.goofyaddons.features.transaction.ClaimEvidence.outstanding(trade.inventoryBefore,trade.expectedClaim,inventory)) {
+            ctx.command("managebazaarorders");
+            if(ctx.ordersReady())ctx.recheckOrders("cancel-rejection-claim-pending");
+            return;
+        }
+        ctx.command("managebazaarorders");
+        if(!ctx.ordersReady() || ctx.ambiguousOrders())return;
+        if(ctx.view().containerId()==cancelContainer) {ctx.recheckOrders("cancel-rejection-stale-menu");return;}
+        if(ctx.findOrder(!trade.selling)>=0) {ctx.fail("Both buy and sell orders exist after cancellation rejection; position retained.");return;}
+        int order=ctx.findOrder(trade.selling);
+        if(order<0) {
+            // No rejection authorizes inventing a refund or assuming a disappeared order was cancelled.
+            ctx.recheckOrders("cancel-rejection-order-absent");return;
+        }
+        if(!ctx.orderMatchesPosition(order))return;
+        double price=ctx.unitPrice(order),expected=trade.selling?active.sellPrice:active.unitCost;
+        if(price<=0) {ctx.recheckOrders("cancel-rejection-price-unreadable");return;}
+        if(Math.abs(price-expected)>.051) {ctx.fail("Order price differs after cancellation rejection; position retained.");return;}
+        var fill=OrderLore.fill(ctx.lore(order));
+        if(fill==null){ctx.recheckOrders("cancel-rejection-fill-unreadable");return;}
+        if(trade.selling && trade.cancelSoldUnits>0 && (trade.claimedProceeds==null || fill.filled()!=trade.cancelSoldUnits)) {
+            ctx.fail("Sold units changed after cancellation rejection; retained sale receipts and position for review.");return;
+        }
+        if(trade.selling && trade.cancelSoldUnits>0
+                && !OrderLore.canOpenSellOptionsAfterClaim(ctx.lore(order),trade.cancelSoldUnits,true)) {
+            ctx.recheckOrders("cancel-rejection-sale-claim-pending");return;
+        }
+        ctx.services().event("WARN","order.cancel_rejection_retry",java.util.Map.of("trade",active.tradeId,
+            "attempt",rejections+1,"side",trade.selling?"SELL":"BUY","unitPrice",price,"units",active.quantity,
+            "filled",fill.filled(),"container",ctx.view().containerId()));
+        rejected=false;cancelIssued=false;
+        ctx.claim().reset();
+        if(trade.selling) {
+            // Keep any confirmed partial-sale proceeds; reviewing the offer again would discard them.
+            if(trade.cancelSoldUnits==0 && fill.filled()>0) {
+                trade.cancelSoldUnits=fill.filled();trade.claimedProceeds=null;trade.receipt=false;
+                trade.inventoryBefore=inventory;trade.expectedClaim=active.quantity-fill.filled();
+                if(trade.expectedClaim>ctx.capacityFor(active.item.id())) {
+                    ctx.fail("Insufficient inventory space after cancellation rejection; sell offer retained.");return;
+                }
+                active.settlementPending=true;if(!ctx.save())return;
+            }
+            trade.reopenedCancelOptions=false;
+            ctx.claim().arm(ctx,order);ctx.transition(Step.CANCEL_DETAIL);ctx.click(order);
+        } else {
+            // Fresh review claims fills that landed during the rejected cancellation before reopening options.
+            ctx.transition(Step.ORDERS);
+        }
+    }
+
     /**
      * Notices that arrive before the item-name filter: the server's claim hint and a buy
      * cancellation refund. True when the notice was fully handled.
@@ -199,13 +288,26 @@ final class GeneralCancel {
         var active = ctx.active();
         var trade = ctx.trade();
         var step = ctx.step();
+        if(step==Step.VERIFY_CANCEL && active.cancelRequested && cancelIssued
+                && com.goofy.goofyaddons.utils.Chat.strip(message).equals(CANCEL_REJECTED)) {
+            cancelIssued=false;
+            if(trade.receipt || active.confirmedCancelRefund!=null)return true;
+            rejected=true;rejectedAt=ctx.now();rejections++;
+            ctx.services().event("WARN","order.cancel_rejected",java.util.Map.of("trade",active.tradeId,
+                "attempt",rejections,"side",trade.selling?"SELL":"BUY","units",active.quantity,
+                "unitPrice",trade.selling?active.sellPrice:active.unitCost));
+            if(rejections>=3)ctx.fail("Cancellation was rejected after three attempts; tracked order and capital retained for recovery.");
+            else {ctx.actions().closeMenu();ctx.transition(Step.VERIFY_CANCEL);}
+            return true;
+        }
         if (!trade.selling && step == Step.VERIFY_CANCEL && active.cancelRequested
                 && com.goofy.goofyaddons.utils.Chat.strip(message).equals("[Bazaar] You have goods to claim on this order!")) {
             trade.cancelNeedsClaim = true;
             return true;
         }
         if (!trade.selling && active.stage == Stage.BUY_ORDER && active.purchasePriceKnown && active.cancelRequested
-                && (step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && trade.expectedClaim == 0 && trade.inventoryBefore == active.productionInventoryBefore) {
+                && (step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL || step == Step.ORDERS && rejections > 0)
+                && trade.expectedClaim == 0 && trade.inventoryBefore == active.productionInventoryBefore) {
             Double refund = TradeReceipts.buyCancellationRefund(message, active.cost());
             if (refund != null) {
                 trade.receipt = true; active.confirmedCancelRefund = refund;
@@ -225,7 +327,7 @@ final class GeneralCancel {
             Double coins = TradeReceipts.saleProceeds(message, active.item.name(), trade.cancelSoldUnits);
             if (coins != null) trade.claimedProceeds = coins;
         }
-        if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL) && active.cancelRequested
+        if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL || step == Step.ORDERS && rejections > 0) && active.cancelRequested
                 && TradingSafety.cancellationReceipt(message, active.item.name())) trade.receipt = true;
     }
 }

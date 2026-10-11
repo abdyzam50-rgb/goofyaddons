@@ -25,6 +25,25 @@ import java.util.Map;
  */
 public final class LiveMenu {
     private LiveMenu() {}
+    private record StackComponents(net.minecraft.world.item.Item item,net.minecraft.core.component.DataComponentMap components) {}
+    private static final Map<StackComponents,String> STACK_IDENTITIES=new java.util.LinkedHashMap<>(128,.75f,true);
+
+    /** Count-independent component identity; only a hash enters snapshots and debug exports. */
+    private static synchronized String stackIdentity(ItemStack item) {
+        var key=new StackComponents(item.getItem(),item.immutableComponents());
+        var cached=STACK_IDENTITIES.get(key);if(cached!=null)return cached;
+        var minecraft=Minecraft.getInstance();if(minecraft.level==null)return null;
+        try {
+            var encoded=ItemStack.CODEC.encodeStart(minecraft.level.registryAccess().createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE),
+                item.copyWithCount(1)).result().orElse(null);
+            if(encoded==null)return null;
+            String identity=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(encoded.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            STACK_IDENTITIES.put(key,identity);
+            if(STACK_IDENTITIES.size()>256)STACK_IDENTITIES.remove(STACK_IDENTITIES.keySet().iterator().next());
+            return identity;
+        }catch(RuntimeException | java.security.NoSuchAlgorithmException unavailable){return null;}
+    }
 
     /** Null when there is no player, so callers fail closed rather than see an empty menu. */
     public static MenuSnapshot read() {
@@ -43,7 +62,7 @@ public final class LiveMenu {
         return view(slot.index,inPlayerInventory,slot.getContainerSlot(),slot.getItem());
     }
 
-    static SlotView view(int index, boolean inPlayerInventory, int containerSlot, ItemStack item) {
+    public static SlotView view(int index, boolean inPlayerInventory, int containerSlot, ItemStack item) {
         if (item.isEmpty()) return SlotView.empty(index, inPlayerInventory, containerSlot);
         ItemLore lore = item.get(DataComponents.LORE);
         CustomData data = item.get(DataComponents.CUSTOM_DATA);
@@ -71,7 +90,7 @@ public final class LiveMenu {
                     compactor=CompactorData.parse(tag.getStringOr("id",""),active,recipes);
                 }catch(RuntimeException invalid){compactor=null;}
             }
-            return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla,compactor);
+            return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla,compactor,stackIdentity(item));
         }
         try {
             var pet=com.google.gson.JsonParser.parseString(tag.getStringOr("petInfo","")).getAsJsonObject();
@@ -82,8 +101,8 @@ public final class LiveMenu {
             return new ItemMetadata(uuid,type,tier,xp,
                 pet.has("heldItem") && !pet.get("heldItem").isJsonNull()?pet.get("heldItem").getAsString():null,
                 pet.has("skin") && !pet.get("skin").isJsonNull()?pet.get("skin").getAsString():null,
-                pet.has("candyUsed")?pet.get("candyUsed").getAsInt():null,vanilla);
-        } catch(RuntimeException invalid){return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla);}
+                pet.has("candyUsed")?pet.get("candyUsed").getAsInt():null,vanilla,null,stackIdentity(item));
+        } catch(RuntimeException invalid){return new ItemMetadata(uuid,null,null,null,null,null,null,vanilla,null,stackIdentity(item));}
     }
 
     /**

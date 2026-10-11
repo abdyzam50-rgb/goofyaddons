@@ -55,6 +55,18 @@ public record SlotView(
 
     public static final String ENCHANTED_BOOK = "ENCHANTED_BOOK";
 
+    /** A shared Bazaar ID identifies a product, but does not prove its stacks merge. */
+    public boolean canStackWith(SlotView other) {
+        if(other==null || empty || other.empty || !java.util.Objects.equals(customId,other.customId)
+                || !java.util.Objects.equals(enchantments,other.enchantments))return false;
+        if(metadata.stackIdentity()!=null || other.metadata.stackIdentity()!=null)
+            return metadata.stackIdentity()!=null && metadata.stackIdentity().equals(other.metadata.stackIdentity());
+        // Legacy snapshots do not carry the full component hash. Retain their selected
+        // identity checks; the executor separately bounds repeated states with no progress.
+        return metadata.equals(other.metadata) && java.util.Objects.equals(customName,other.customName)
+            && java.util.Objects.equals(loreLines,other.loreLines);
+    }
+
     /** An empty slot carries no name, lore or data. */
     public static SlotView empty(int index, boolean inPlayerInventory, int containerSlot) {
         return new SlotView(index, inPlayerInventory, containerSlot, true, null, "", null, null, null, 0, 64);

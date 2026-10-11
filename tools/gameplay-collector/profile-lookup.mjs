@@ -96,22 +96,25 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
  });
 }
 class AccountLookupError extends Error {
- constructor(message,status){super(message);this.status=status;}
+ constructor(message,status,failureCode='PROFILE_SERVICE_UNAVAILABLE',service){super(message);this.status=status;this.failureCode=failureCode;this.service=service;}
 }
 export async function lookupProfiles(username,key,fetcher=fetch,now=Date.now()) {
  const get=async(url,headers={})=>{
-  const service=url.startsWith('https://api.hypixel.net/')?'Hypixel account service':url.startsWith('https://playerdb.co/')?'PlayerDB username service':'Minecraft username service';
+  const hypixel=url.startsWith('https://api.hypixel.net/');
+  const provider=hypixel?'HYPIXEL':url.startsWith('https://playerdb.co/')?'PLAYERDB':'MINECRAFT';
+  const service=hypixel?'Hypixel account service':provider==='PLAYERDB'?'PlayerDB username service':'Minecraft username service';
+  const unavailable=hypixel?'HYPIXEL_SERVICE_UNAVAILABLE':'USERNAME_SERVICE_UNAVAILABLE';
   let r;
   try {r=await fetcher(url,{headers,signal:AbortSignal.timeout(10000)});}
-  catch {throw new AccountLookupError(`${service} could not be reached; try again shortly`);}
+  catch {throw new AccountLookupError(`${service} could not be reached; try again shortly`,undefined,unavailable,provider);}
   if(!r.ok) {
-   if(r.status===404&&service!=='Hypixel account service')throw new AccountLookupError('Username not found');
-   if(r.status===429)throw new AccountLookupError(`${service} is rate limited; try again shortly`);
-   if(service==='Hypixel account service'&&[401,403].includes(r.status))throw new AccountLookupError(`Hypixel rejected profile access (HTTP ${r.status}). Check the Worker HYPIXEL_API_KEY and its Hypixel application permissions`);
-   throw new AccountLookupError(`${service} returned HTTP ${r.status}; try again shortly`,r.status);
+   if(r.status===404&&!hypixel)throw new AccountLookupError('Username not found',r.status,'USERNAME_NOT_FOUND',provider);
+   if(r.status===429)throw new AccountLookupError(`${service} is rate limited; try again shortly`,r.status,'PROFILE_RATE_LIMITED',provider);
+   if(hypixel&&[401,403].includes(r.status))throw new AccountLookupError(`Hypixel rejected profile access (HTTP ${r.status}). Check the Worker HYPIXEL_API_KEY and its Hypixel application permissions`,r.status,r.status===401?'HYPIXEL_UNAUTHORIZED':'HYPIXEL_FORBIDDEN',provider);
+   throw new AccountLookupError(`${service} returned HTTP ${r.status}; try again shortly`,r.status,unavailable,provider);
   }
   try{return await r.json();}
-  catch {throw new AccountLookupError(`${service} returned an invalid response; try again shortly`);}
+  catch {throw new AccountLookupError(`${service} returned an invalid response; try again shortly`,r.status,hypixel?'HYPIXEL_INVALID_RESPONSE':'USERNAME_SERVICE_UNAVAILABLE',provider);}
  };
  let player;
  try {player=await get(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(username)}`);}
@@ -125,11 +128,11 @@ export async function lookupProfiles(username,key,fetcher=fetch,now=Date.now()) 
    // Public identity lookup only; no account stats, API key or credentials.
    const result=await get(`https://playerdb.co/api/player/minecraft/${encodeURIComponent(username)}`);
    const identity=result?.data?.player;
-   if(result?.success!==true||result?.code!=='player.found'||!identity||typeof identity.username!=='string'||identity.username.toLowerCase()!==username.toLowerCase())throw new AccountLookupError('PlayerDB could not confirm that Minecraft username');
+   if(result?.success!==true||result?.code!=='player.found'||!identity||typeof identity.username!=='string'||identity.username.toLowerCase()!==username.toLowerCase())throw new AccountLookupError('PlayerDB could not confirm that Minecraft username',200,'USERNAME_SERVICE_UNAVAILABLE','PLAYERDB');
    player={id:identity.raw_id,name:identity.username};
   }
  }
- if(!/^[a-f0-9]{32}$/i.test(player?.id))throw new AccountLookupError('Username not found');
+ if(!/^[a-f0-9]{32}$/i.test(player?.id))throw new AccountLookupError('Username not found',undefined,'USERNAME_NOT_FOUND');
  const [data,resources]=await Promise.all([
   get(`https://api.hypixel.net/v2/skyblock/profiles?uuid=${player.id}`,{'API-Key':key}),
   get('https://api.hypixel.net/v2/resources/skyblock/collections').catch(()=>null)
@@ -138,13 +141,15 @@ export async function lookupProfiles(username,key,fetcher=fetch,now=Date.now()) 
 }
 export async function handleProfileLookup(request,env,now=Date.now(),fetcher=fetch) {
  const username=new URL(request.url).searchParams.get('username')??'';
- if(!/^[A-Za-z0-9_]{1,16}$/.test(username))return profileJson(400,{error:'Enter a Minecraft username (letters, numbers, underscore)'});
- if(!env.HYPIXEL_API_KEY||!env.PROFILE_RATE_LIMITER)return profileJson(503,{error:'Profile lookup is not configured; use a manual budget and unlocks'});
+ if(!/^[A-Za-z0-9_]{1,16}$/.test(username))return profileJson(400,{failureCode:'INVALID_REQUEST',error:'Enter a Minecraft username (letters, numbers, underscore)'});
+ if(!env.HYPIXEL_API_KEY||!env.PROFILE_RATE_LIMITER)return profileJson(503,{failureCode:'PROFILE_NOT_CONFIGURED',error:'Profile lookup is not configured; use a manual budget and unlocks'});
  // Cloudflare supplies this header; a missing limiter fails closed. No public key registration.
  const ip=request.headers.get('CF-Connecting-IP');
- if(!ip)return profileJson(400,{error:'Client address unavailable'});
- const limit=await env.PROFILE_RATE_LIMITER.limit({key:ip});
- if(!limit.success)return profileJson(429,{error:'Too many lookups; try again in a minute'});
+ if(!ip)return profileJson(400,{failureCode:'INVALID_REQUEST',error:'Client address unavailable'});
+ let limit;
+ try {limit=await env.PROFILE_RATE_LIMITER.limit({key:ip});}
+ catch {return profileJson(503,{failureCode:'PROFILE_SERVICE_UNAVAILABLE',error:'Profile lookup rate limiter is unavailable; try again shortly'});}
+ if(!limit?.success)return profileJson(429,{failureCode:'PROFILE_RATE_LIMITED',error:'Too many lookups; try again in a minute'});
  try{
   const cacheKey=username.toLowerCase(),cached=profileCache.get(cacheKey);
   if(cached&&now-cached.at<300000)return profileJson(200,cached.value);
@@ -153,7 +158,13 @@ export async function handleProfileLookup(request,env,now=Date.now(),fetcher=fet
   profileCache.set(cacheKey,{at:now,value});
   return profileJson(200,value);
  }
- catch(error){return profileJson(502,{error:error instanceof AccountLookupError||error.message==='Profile data unavailable'?error.message:'Account service unavailable'});}
+ catch(error){
+  // Only our fixed messages and bounded provider facts leave the Worker. Never
+  // return raw upstream JSON, request headers, API keys or exception messages.
+  if(error instanceof AccountLookupError)return profileJson(502,{failureCode:error.failureCode,error:error.message,upstreamService:error.service,upstreamStatus:error.status});
+  if(error?.message==='Profile data unavailable')return profileJson(502,{failureCode:'HYPIXEL_INVALID_RESPONSE',error:'Profile data unavailable',upstreamService:'HYPIXEL',upstreamStatus:200});
+  return profileJson(502,{failureCode:'PROFILE_SERVICE_UNAVAILABLE',error:'Account service unavailable'});
+ }
 }
 // Short-lived isolate memory only: no D1, persistent account history or shared publication.
 const profileCache=new Map();

@@ -71,6 +71,14 @@ public final class ProductionCommands {
                         return 1;
                     }catch(Exception failure){actions.message("Nothing released: "+failure.getMessage());return 0;}
                 })))
+                .then(ClientCommands.literal("reconcileorder").then(ClientCommands.argument("child",StringArgumentType.word())
+                    .then(ClientCommands.literal("external").executes(c->{
+                        var manager=FeatureManager.INSTANCE;
+                        if(!manager.prepareCrafting()){new LiveActions().message("Stop trading before reconciling a manually handled craft order.");return 0;}
+                        if(!manager.production().reconcileExternalOrder(StringArgumentType.getString(c,"child")))return 0;
+                        if(manager.startProductionTest())return 1;
+                        manager.production().stop();return 0;
+                    }))))
                 .then(ClientCommands.literal("acknowledge").then(ClientCommands.argument("job",StringArgumentType.word()).executes(c->{
                     var manager=FeatureManager.INSTANCE;var actions=new LiveActions();
                     if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()){actions.message("Stop production/trading before acknowledging a reviewed job.");return 0;}

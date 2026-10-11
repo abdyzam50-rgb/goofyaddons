@@ -44,9 +44,9 @@ test('private API key goes only to Hypixel profiles and is absent from the respo
 });
 test('lookup requires private provisioning and rate limits before any API request',async()=>{
  const req=new Request('https://worker/v1/profiles?username=Tester',{headers:{'CF-Connecting-IP':'192.0.2.1'}});
- assert.equal((await handleProfileLookup(req,{})).status,503);
+ const unconfigured=await handleProfileLookup(req,{});assert.equal(unconfigured.status,503);assert.equal((await unconfigured.json()).failureCode,'PROFILE_NOT_CONFIGURED');
  let fetched=false;const env={HYPIXEL_API_KEY:'private',PROFILE_RATE_LIMITER:{limit:async()=>({success:false})}};
- assert.equal((await handleProfileLookup(req,env,Date.now(),async()=>{fetched=true;})).status,429);assert.equal(fetched,false);
+ const limited=await handleProfileLookup(req,env,Date.now(),async()=>{fetched=true;});assert.equal(limited.status,429);assert.equal((await limited.json()).failureCode,'PROFILE_RATE_LIMITED');assert.equal(fetched,false);
  assert.equal((await handleProfileLookup(new Request('https://worker/v1/profiles?username=../secret'),env)).status,400);
 });
 test('upstream errors identify the failing service without exposing keys or response bodies',async()=>{
@@ -58,12 +58,57 @@ test('upstream errors identify the failing service without exposing keys or resp
    return Response.json({id:uuid,name:'ErrorTester'});
   });
   assert.equal(response.status,502);
-  const text=await response.text();assert.match(text,/HTTP 403/);
+  const body=await response.json(),text=JSON.stringify(body);assert.match(text,/HTTP 403/);
   assert.match(text,service==='mojang'?/PlayerDB username service/:/Hypixel rejected profile access/);
+  assert.equal(body.failureCode,service==='mojang'?'USERNAME_SERVICE_UNAVAILABLE':'HYPIXEL_FORBIDDEN');
+  assert.equal(body.upstreamService,service==='mojang'?'PLAYERDB':'HYPIXEL');assert.equal(body.upstreamStatus,403);
   assert.doesNotMatch(text,/private-api-secret|sensitive upstream body/);
  }
  const unreachable=await handleProfileLookup(req,env,1234,async()=>{throw new Error('private-api-secret');});
- assert.match((await unreachable.json()).error,/Minecraft username service could not be reached/);
+ const body=await unreachable.json();assert.match(body.error,/Minecraft username service could not be reached/);
+ assert.equal(body.failureCode,'USERNAME_SERVICE_UNAVAILABLE');assert.equal(body.upstreamService,'MINECRAFT');assert.equal(body.upstreamStatus,undefined);
+});
+test('Hypixel failures expose stable codes and provider status without raw causes',async()=>{
+ const req=new Request('https://worker/v1/profiles?username=HypixelFailure',{headers:{'CF-Connecting-IP':'192.0.2.1'}});
+ const env={HYPIXEL_API_KEY:'private-api-secret',PROFILE_RATE_LIMITER:{limit:async()=>({success:true})}};
+ for(const [status,code] of [[401,'HYPIXEL_UNAUTHORIZED'],[403,'HYPIXEL_FORBIDDEN'],[429,'PROFILE_RATE_LIMITED'],[503,'HYPIXEL_SERVICE_UNAVAILABLE']]) {
+  const response=await handleProfileLookup(req,env,1234,async url=>url.includes('/skyblock/profiles?')
+   ?new Response('private-api-secret sensitive upstream body',{status})
+   :Response.json(url.includes('mojang')?{id:uuid,name:'HypixelFailure'}:resources));
+  assert.equal(response.status,502);const body=await response.json();
+  assert.equal(body.failureCode,code);assert.equal(body.upstreamStatus,status);assert.equal(body.upstreamService,'HYPIXEL');
+  assert.doesNotMatch(JSON.stringify(body),/private-api-secret|sensitive upstream body/);
+ }
+ for(const malformed of [false,true]) {
+  const response=await handleProfileLookup(req,env,1234,async url=>{
+   if(url.includes('/skyblock/profiles?'))return malformed?new Response('private-api-secret',{status:200}):Response.json({success:false,cause:'private-api-secret'});
+   return Response.json(url.includes('mojang')?{id:uuid,name:'HypixelFailure'}:resources);
+  });
+  const body=await response.json();assert.equal(body.failureCode,'HYPIXEL_INVALID_RESPONSE');assert.equal(body.upstreamStatus,200);
+  assert.doesNotMatch(JSON.stringify(body),/private-api-secret/);
+ }
+ const unreachable=await handleProfileLookup(req,env,1234,async url=>{
+  if(url.includes('/skyblock/profiles?'))throw new Error('private-api-secret');
+  return Response.json(url.includes('mojang')?{id:uuid,name:'HypixelFailure'}:resources);
+ });
+ const body=await unreachable.json();assert.equal(body.failureCode,'HYPIXEL_SERVICE_UNAVAILABLE');assert.equal(body.upstreamService,'HYPIXEL');
+ assert.equal(body.upstreamStatus,undefined);assert.doesNotMatch(JSON.stringify(body),/private-api-secret/);
+});
+test('username not found and upstream limits retain their diagnostic code without triggering fallback',async()=>{
+ const req=new Request('https://worker/v1/profiles?username=UnknownFailure',{headers:{'CF-Connecting-IP':'192.0.2.1'}});
+ const env={HYPIXEL_API_KEY:'private',PROFILE_RATE_LIMITER:{limit:async()=>({success:true})}};
+ for(const [status,code] of [[404,'USERNAME_NOT_FOUND'],[429,'PROFILE_RATE_LIMITED']]) {
+  const calls=[];const response=await handleProfileLookup(req,env,1234,async url=>{calls.push(url);return new Response('secret',{status});});
+  const body=await response.json();assert.equal(response.status,502);assert.equal(body.failureCode,code);
+  assert.equal(body.upstreamService,'MINECRAFT');assert.equal(body.upstreamStatus,status);assert.equal(calls.length,1);
+ }
+});
+test('rate limiter failures remain JSON diagnostics and never expose exception details',async()=>{
+ const req=new Request('https://worker/v1/profiles?username=LimitFailure',{headers:{'CF-Connecting-IP':'192.0.2.1'}});
+ const env={HYPIXEL_API_KEY:'private',PROFILE_RATE_LIMITER:{limit:async()=>{throw new Error('private rate limiter details');}}};
+ let fetched=false;const response=await handleProfileLookup(req,env,1234,async()=>{fetched=true;});
+ assert.equal(response.status,503);const body=await response.json();assert.equal(body.failureCode,'PROFILE_SERVICE_UNAVAILABLE');
+ assert.doesNotMatch(JSON.stringify(body),/private rate limiter details/);assert.equal(fetched,false);
 });
 test('PlayerDB fallback validates public identity when both official services reject cloud requests',async()=>{
  const calls=[];

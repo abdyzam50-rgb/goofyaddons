@@ -23,11 +23,23 @@ class ProductionTest {
         }
         return new SlotView(index,index>=54,index>=54?index-54:index,false,id,id,List.of(),id,null,count,64);
     }
+    SlotView reindex(SlotView item,int index,int count) {
+        if(count==0)return stack(index,"",0);
+        return new SlotView(index,index>=54,index>=54?index-54:index,false,item.customName(),item.hoverName(),
+            item.loreLines(),item.customId(),item.enchantments(),count,item.maxStackSize(),item.metadata());
+    }
+    SlotView taggedStack(int index,String id,int count,String uuid,String stackIdentity) {
+        var item=stack(index,id,count);
+        return new SlotView(index,item.inPlayerInventory(),item.containerSlot(),false,item.customName(),item.hoverName(),
+            item.loreLines(),item.customId(),item.enchantments(),count,64,
+            new ItemMetadata(uuid,null,null,null,null,null,null,"minecraft:furnace",null,stackIdentity));
+    }
     class Server implements GameActions {
         final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);ProductionRecipe r;
         int quickAvailable;boolean wrongQuickRecipe;Map<String,Integer> resultEnchantments;
-        int clicks;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime;String title="Craft Item";
+        int clicks,swaps;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime;String title="Craft Item",forceSwapProduct,quickPreviewProduct="OUTPUT";
         final List<String> inputs=new ArrayList<>();
+        final List<SlotView> consumedIngredients=new ArrayList<>();
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
         MenuSnapshot menu(){
             boolean ready=true;int[] grid={10,11,12,19,20,21,28,29,30};
@@ -38,7 +50,7 @@ class ProductionTest {
                 var output=slots[23];slots[23]=new SlotView(23,false,23,false,"Enchanted Book","Enchanted Book",List.of(),
                     "ENCHANTED_BOOK",resultEnchantments,output.count(),1);
             }
-            if(quickCraft)slots[16]=stack(16,"OUTPUT",1);
+            if(quickCraft)slots[16]=stack(16,quickPreviewProduct,1);
             if(quickAvailable>0) {
                 var lore=new ArrayList<String>(List.of("Craftable: "+quickAvailable+"x","Ingredients:"));
                 r.ingredients().forEach((id,qty)->lore.add(qty+"x "+(wrongQuickRecipe?"Wrong ingredient":RecipeCatalog.instance().name(id))));
@@ -54,7 +66,7 @@ class ProductionTest {
                 for(var need:r.ingredients().entrySet()) {
                     int remaining=need.getValue()*crafts;
                     for(int i=54;i<90&&remaining>0;i++)if(need.getKey().equals(slots[i].bazaarProductId())) {
-                        int take=Math.min(remaining,slots[i].count());slots[i]=stack(i,need.getKey(),slots[i].count()-take);remaining-=take;
+                        int take=Math.min(remaining,slots[i].count());slots[i]=reindex(slots[i],i,slots[i].count()-take);remaining-=take;
                     }
                     assertEquals(0,remaining);
                 }
@@ -69,21 +81,31 @@ class ProductionTest {
                 int crafts=64;
                 for(int i=0;i<9;i++)if(r.grid().get(i)!=null)crafts=Math.min(crafts,slots[grid[i]].count()/r.grid().get(i).count());
                 if(oneAtATime)crafts=1;
-                for(int i=0;i<9;i++)if(r.grid().get(i)!=null)slots[grid[i]]=stack(grid[i],r.grid().get(i).id(),slots[grid[i]].count()-r.grid().get(i).count()*crafts);
+                for(int i=0;i<9;i++)if(r.grid().get(i)!=null) {
+                    consumedIngredients.add(reindex(slots[grid[i]],grid[i],r.grid().get(i).count()*crafts));
+                    slots[grid[i]]=reindex(slots[grid[i]],grid[i],slots[grid[i]].count()-r.grid().get(i).count()*crafts);
+                }
                 int output=r.outputCount()*crafts;
                 for(int i=56;i<90&&output>0;i++)if(slots[i].empty()||r.outputId().equals(slots[i].bazaarProductId())) {
                     int added=Math.min(output,(r.outputId().startsWith("ENCHANTMENT_")?1:64)-slots[i].count());slots[i]=stack(i,r.outputId(),slots[i].count()+added);output-=added;
                 }
                 assertEquals(0,output,"Simulated inventory has no output capacity");return;
             }
-            if(cursor.empty()){var s=slots[slot];cursor=stack(-1,s.bazaarProductId(),s.count());slots[slot]=stack(slot,"",0);}
-            else {var s=slots[slot];assertTrue(s.empty() || s.bazaarProductId().equals(cursor.bazaarProductId()));
-                slots[slot]=stack(slot,cursor.bazaarProductId(),s.count()+cursor.count());cursor=stack(-1,"",0);}
+            if(cursor.empty()){var s=slots[slot];cursor=reindex(s,-1,s.count());slots[slot]=stack(slot,"",0);}
+            else {var s=slots[slot];
+                if(!s.empty() && (!s.canStackWith(cursor) || Objects.equals(forceSwapProduct,cursor.bazaarProductId()))) {
+                    slots[slot]=reindex(cursor,slot,cursor.count());cursor=reindex(s,-1,s.count());swaps++;return;
+                }
+                int added=Math.min(cursor.count(),(s.empty()?cursor.maxStackSize():s.maxStackSize())-s.count());
+                slots[slot]=reindex(s.empty()?cursor:s,slot,s.count()+added);cursor=reindex(cursor,-1,cursor.count()-added);}
         }
         public void rightClick(int slot){clicks++;inputs.add("right:"+slot);if(discard)return;
             if(ignoreSplitOnce && slot==10 && cursor.empty()){ignoreSplitOnce=false;return;}
-            if(cursor.empty()){var s=slots[slot];int half=(s.count()+1)/2;cursor=stack(-1,s.bazaarProductId(),half);slots[slot]=stack(slot,s.bazaarProductId(),s.count()-half);}
-            else {var s=slots[slot];assertTrue(s.empty() || s.bazaarProductId().equals(cursor.bazaarProductId()));slots[slot]=stack(slot,cursor.bazaarProductId(),s.count()+1);cursor=stack(-1,cursor.bazaarProductId(),cursor.count()-1);}
+            if(cursor.empty()){var s=slots[slot];int half=(s.count()+1)/2;cursor=reindex(s,-1,half);slots[slot]=reindex(s,slot,s.count()-half);}
+            else {var s=slots[slot];
+                if(!s.empty() && !s.canStackWith(cursor)){slots[slot]=reindex(cursor,slot,cursor.count());cursor=reindex(s,-1,s.count());swaps++;return;}
+                if(s.count()>=(s.empty()?cursor.maxStackSize():s.maxStackSize()))return;
+                slots[slot]=reindex(s.empty()?cursor:s,slot,s.count()+1);cursor=reindex(cursor,-1,cursor.count()-1);}
         }
         public void closeMenu(){}public void command(String text){}public void message(String text){}public boolean writeSign(String text){return false;}
     }
@@ -412,6 +434,116 @@ class ProductionTest {
         assertEquals(List.of("left:54","left:11","right:11","left:19","right:11","left:21","right:19","left:29","left:55","left:20","shift:23"),server.inputs);
         assertTrue(now-1000<=1600,"Acknowledged crafting added unnecessary delays: "+(now-1000));
         assertEquals("ENCHANTED_EYE_OF_ENDER",server.slots[56].customId());assertTrue(server.cursor.empty());
+    }
+    @Test void uniqueUuidMinionUpgradesCraftFourDwarvenCompactorsInExactSingleBatchRounds()throws Exception {
+        assertDwarvenCompactorRounds(true);
+    }
+    @Test void distinctComponentsWithoutUuidAlsoPreventMinionUpgradeStackMerging()throws Exception {
+        assertDwarvenCompactorRounds(false);
+    }
+    private void assertDwarvenCompactorRounds(boolean withUuid)throws Exception {
+        var r=RecipeCatalog.instance().forOutput("DWARVEN_COMPACTOR").getFirst();var server=new Server(r,0);
+        server.slots[55]=stack(55,"",0);
+        for(int i=54;i<58;i++)server.slots[i]=stack(i,"ENCHANTED_MITHRIL",i==57?32:64);
+        for(int i=0;i<4;i++) {
+            server.slots[70+i]=taggedStack(70+i,"AUTO_SMELTER",1,withUuid?"smelter-"+i:null,withUuid?null:"smelter-components-"+i);
+            server.slots[74+i]=taggedStack(74+i,"SUPER_COMPACTOR_3000",1,withUuid?"compactor-"+i:null,withUuid?null:"compactor-components-"+i);
+        }
+        assertEquals(64,server.slots[70].maxStackSize());
+        assertFalse(server.slots[70].canStackWith(server.slots[71]));
+        if(!withUuid){assertNull(server.slots[70].metadata().uuid());assertNotNull(server.slots[70].metadata().stackIdentity());}
+        server.quickCraft=true;server.quickPreviewProduct="MITHRIL_COAT";
+        var executor=new CraftingExecutor();long now=1000;int remaining=4;
+        var journalPath=dir.resolve(withUuid?"uuid-rounds.json":"component-rounds.json");var jobs=new ProductionJobs(journalPath);
+        double cost=1_110_533.0;
+        var job=new ProductionJobs.Job("dwarven-owned",r.key(),"account",ProductionJobs.State.PROCESSING,4,-1,0,0,cost,null,null,null);
+        jobs.put(job);
+        while(remaining>0) {
+            CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+            for(;now<60000 && result==CraftingExecutor.Result.WAITING;now+=50)
+                result=executor.tick(r,remaining,server.menu(),server,Map.of(),Map.of(),now);
+            assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
+            assertEquals(1,executor.completedBatches(),"Distinct minion upgrades must stay in individual craft rounds");
+            remaining-=executor.completedBatches();job=job.completedBatch();jobs.put(job);
+            assertEquals(cost,jobs.find(job.id()).orElseThrow().costBasis());
+            assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+        }
+        assertEquals(4,server.menu().countInInventory(r.outputId()));
+        for(var ingredient:r.ingredients().keySet())assertEquals(0,server.menu().countInInventory(ingredient),ingredient);
+        assertEquals(4,server.inputs.stream().filter("shift:23"::equals).count());
+        assertTrue(server.inputs.stream().noneMatch(s->s.endsWith(":16")),"Mithril Coat preview must never be clicked");
+        assertEquals(0,server.swaps);assertTrue(server.cursor.empty());
+        for(String ingredient:List.of("AUTO_SMELTER","SUPER_COMPACTOR_3000")) {
+            var consumed=server.consumedIngredients.stream().filter(s->ingredient.equals(s.bazaarProductId())).toList();
+            assertEquals(4,consumed.size());assertTrue(consumed.stream().allMatch(s->s.count()==1));
+            assertEquals(4,consumed.stream().map(SlotView::metadata).distinct().count(),"Pickup and grid placement lost distinct item ownership");
+        }
+        var restored=new ProductionJobs(journalPath).find(job.id()).orElseThrow();
+        assertEquals(4,restored.completedBatches());assertEquals(cost,restored.costBasis());assertEquals(ProductionJobs.State.OUTPUT_READY,restored.state());
+    }
+    @Test void compatibleFragmentedIngredientStacksStillCraftTheRequestedWholeBatch() {
+        var base=recipe(1);var r=new ProductionRecipe(base.key(),base.kind(),"BLAZE_POWDER",1,base.ingredients(),base.grid(),0,0,base.requirement(),null);
+        var server=new Server(r,2);server.slots[57]=stack(57,"INPUT",2);server.slots[55]=stack(55,"SECOND",4);
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,4,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(4,executor.completedBatches());
+        assertEquals(4,server.menu().countInInventory("BLAZE_POWDER"));assertEquals(1,server.inputs.stream().filter("shift:23"::equals).count());assertEquals(0,server.swaps);
+    }
+    @Test void unequalCellQuantitiesRespectTheFeasibleComponentGroupAllocation() {
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,null));
+        grid.set(0,new ProductionRecipe.Ingredient("INPUT",3));
+        grid.set(1,new ProductionRecipe.Ingredient("INPUT",4));
+        grid.set(2,new ProductionRecipe.Ingredient("INPUT",5));
+        var r=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",12),grid,0,0,"",null);
+        var server=new Server(r,0);server.slots[55]=stack(55,"",0);
+        server.slots[54]=taggedStack(54,"INPUT",5,null,"group-five");
+        server.slots[57]=taggedStack(57,"INPUT",7,null,"group-seven");
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(1,executor.completedBatches());
+        assertEquals(1,server.menu().countInInventory("OUTPUT"));assertEquals(0,server.menu().countInInventory("INPUT"));
+        assertEquals(12,server.consumedIngredients.stream().mapToInt(SlotView::count).sum());
+        assertEquals(1,server.inputs.stream().filter("shift:23"::equals).count());assertEquals(0,server.swaps);
+        assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+    }
+    @Test void insufficientComponentGroupSurplusReturnsBeforeTheNextCellUsesAnotherGroup() {
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,null));
+        grid.set(0,new ProductionRecipe.Ingredient("INPUT",2));grid.set(1,new ProductionRecipe.Ingredient("INPUT",2));
+        var r=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",4),grid,0,0,"",null);
+        var server=new Server(r,0);server.slots[55]=stack(55,"",0);
+        server.slots[54]=taggedStack(54,"INPUT",3,null,"first-group");
+        server.slots[57]=taggedStack(57,"INPUT",3,null,"second-group");
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<15000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,1,server.menu(),server,Map.of(),Map.of(),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(1,server.menu().countInInventory("OUTPUT"));
+        assertEquals(4,server.consumedIngredients.stream().mapToInt(SlotView::count).sum());
+        assertEquals(2,server.menu().countInInventory("INPUT"));assertEquals(1,server.slots[54].count());assertEquals(1,server.slots[57].count());
+        assertEquals("first-group",server.slots[54].metadata().stackIdentity());assertEquals("second-group",server.slots[57].metadata().stackIdentity());
+        assertEquals(0,server.swaps);assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+    }
+    @Test void metadataChangesCannotKeepAnUnacknowledgedGridMergeAliveForThreeMinutes() {
+        var r=recipe(2);
+        var server=new Server(r,1) {
+            int observations;
+            @Override MenuSnapshot menu(){
+                // The unavailable server component signature makes these INPUT stacks look
+                // compatible; unrelated metadata churn must not count as crafting progress.
+                slots[58]=taggedStack(58,"OTHER",1,"observation-"+(++observations),null);
+                return super.menu();
+            }
+        };
+        server.slots[57]=stack(57,"INPUT",1);server.forceSwapProduct="INPUT";
+        var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;long now=1000;
+        for(;now<=9000 && result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,1,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.BLOCKED,result,executor.failure());
+        assertTrue(now<=9050,"Grid merge did not stop within eight seconds");
+        assertTrue(server.swaps<=3,"Unchanged logical grid/cursor was clicked repeatedly: "+server.swaps);
+        assertEquals(1,server.slots[10].count());assertEquals(1,server.cursor.count());assertEquals("INPUT",server.cursor.bazaarProductId());
+        assertTrue(server.inputs.stream().noneMatch(s->s.startsWith("shift:")));assertEquals(0,server.menu().countInInventory("OUTPUT"));
     }
     @Test void singleSixteenCellSplitsTwiceAndReturnsTheOtherFortyEight() {
         var r=recipe(16);var server=new Server(r,64);var executor=new CraftingExecutor();CraftingExecutor.Result result=CraftingExecutor.Result.WAITING;
