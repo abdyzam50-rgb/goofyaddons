@@ -1112,3 +1112,41 @@ exported current job is not automatically resumed across that restart. Stop,
 set aside its 58 verified ingredients, and acknowledge 40d964d9 after inspecting
 the resulting REVIEW record, with no outstanding craft orders. No sale/profit
 is inferred; the journal preserves the recorded acquired cost.
+
+## 0.2.72 product control settling and navigation evidence
+
+The 1791684335719 export confirms 0.2.71. Budget/partial-order replacement
+progressed repeatedly, acquiring additional inputs. The final replacement for
+parent 0f30c50f had 1,515 requested units and was still PLANNED/unsubmitted.
+Its search-result click at 02:05:04 UTC was ignored, retried twice, then the
+product page opened at 02:05:10.763 UTC. Create Buy Order was clicked at
+02:05:10.897 UTC (about 134 ms after opening). The product container remained
+open; quantity navigation timed out 15 seconds later without a further click.
+The parent entered REVIEW with 245 held inputs and recorded spent 98,445.2.
+At export no child positions remained. This is a navigation failure, not a
+calculator outage or a submitted order whose result is unknown. The evidence
+does not establish why Hypixel ignored the create-order click.
+
+The general order entry waits for a verified product container to settle for
+750 ms before using its create control. NavigationRetry recognizes stable
+Create Buy Order/Create Sell Offer control identity even when anonymous control
+lore updates; previously controls without a custom item ID required identical
+lore, which could prevent retries. Other anonymous controls retain exact matching,
+changed actions/identities/cursor state never authorize retry, and transaction
+confirmation clicks remain outside this retry mechanism. The bounded retry/time
+limits remain unchanged. This applies to general flips and production orders.
+
+Debug exports now expose the pending navigation's source/current target slots,
+source/current menu, clicked slot and actual retry count. Exhaustion persists
+this evidence as general.navigation_exhausted before clearing the retry state,
+so future exports can distinguish ignored controls from changing menu contents.
+The user-facing failure reports the actual retry count rather than always saying
+three retries.
+The saved 0f30c50f REVIEW is preserved. Stop, set aside the retained inputs and
+acknowledge that specific job after checking no outstanding craft order remains;
+no purchase/sale/profit is inferred from acknowledging a review.
+
+This export also answers the Hotspot Bait exclusion: its ORDER_OFFER route
+required 10 inventory slots and was blocked by the current craft's reservations.
+The displayed bait route was not absent from the catalog. Its remaining strategies
+fell below the configured profit threshold after the mod's allowances.

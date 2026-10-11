@@ -484,3 +484,12 @@ violations and invalid quotes, and restrict run expansion to the interval after
 verified partial handoff and before queueing another order.
 
 `./gradlew -p client test build --console=plain` passed 1148 Java tests with zero failures/errors. Live Minecraft execution remains unverified.
+
+## 0.2.72 product navigation settling
+
+Regression coverage verifies the 750 ms product-control settling interval,
+reversible named create-order retries despite changing price lore, and refusal
+to retry changed actions or anonymous confirmation controls. Existing bounded
+retry, exact product identity and unsafe-cursor tests remain applicable.
+
+`./gradlew -p client test build --console=plain` passed 1151 Java tests with zero failures/errors. Existing product-navigation fixtures now wait through settling without changing their identity/submission assertions. Live Minecraft execution remains unverified.

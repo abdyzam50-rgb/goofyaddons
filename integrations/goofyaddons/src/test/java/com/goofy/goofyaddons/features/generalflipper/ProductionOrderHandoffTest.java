@@ -9,6 +9,21 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionOrderHandoffTest {
+    @Test void createOrderWaitsForProductContainerToSettle()throws Exception {
+        var world=new FakeWorld().showing(inventory("INPUT",0));var actions=new RecordingActions();
+        var engine=new GeneralFlipper(world,actions,new JsonGeneralOrderRepository(()->dir.resolve("settled.json")),services());engine.start();
+        assertTrue(engine.enqueueProduction("parent-settled","INPUT","Input",2,100,true,103));
+        var active=GeneralFlipper.class.getDeclaredField("active");active.setAccessible(true);active.set(engine,engine.productionPosition());
+        var field=GeneralFlipper.class.getDeclaredField("session");field.setAccessible(true);var ctx=(GeneralContext)field.get(engine);
+        ctx.transition(GeneralFlipper.Step.PRODUCT);
+        var slots=new ArrayList<SlotView>();for(int i=0;i<72;i++)slots.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        slots.set(13,new SlotView(13,false,13,false,"Input","Input",List.of(),"INPUT",null,1,64));
+        slots.set(15,SlotView.named(15,"Create Buy Order",List.of("Input")));
+        world.showing(new MenuSnapshot(26,"Input product",true,slots));engine.poll();
+        var entry=new GeneralOrderEntry();entry.product(ctx);assertTrue(actions.serverEffects().isEmpty());
+        world.advance(749);engine.poll();entry.product(ctx);assertTrue(actions.serverEffects().isEmpty());
+        world.advance(1);engine.poll();entry.product(ctx);assertEquals(List.of("click:15"),actions.serverEffects());
+    }
     @TempDir Path dir;
     private MenuSnapshot inventory(String id,int units){
         var slots=new ArrayList<SlotView>();for(int i=0;i<36;i++)slots.add(SlotView.empty(i,true,i));

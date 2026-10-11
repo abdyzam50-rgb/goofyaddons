@@ -6,6 +6,27 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.goofy.goofyaddons.menu.NavigationRetry.Result.*;
 
 class NavigationRetryTest {
+    MenuSnapshot control(String action,int price){
+        var m=menu(1,"Cod ➜ Enchanted Raw Cod",action,true);var slots=new ArrayList<>(m.slots());
+        slots.set(16,SlotView.named(16,action,List.of("Enchanted Raw Cod","Price: "+price)));
+        return new MenuSnapshot(1,m.title(),true,slots);
+    }
+    @Test void namedCreateOrderControlCanRetryDespiteLiveMarketLore(){
+        flow.sent(control("Create Buy Order",100),16,0);
+        assertEquals(WAITING,flow.observe(control("Create Buy Order",101),false,actions,2000));
+        assertEquals(RETRIED,flow.observe(control("Create Buy Order",102),false,actions,3000));
+        assertEquals(List.of("click:16"),actions.serverEffects());
+        assertEquals(1,flow.diagnosticState(control("Create Buy Order",102)).get("retries"));
+    }
+    @Test void differentNamedActionAndAnonymousConfirmationCannotAuthorizeReplay(){
+        flow.sent(control("Create Buy Order",100),16,0);
+        assertEquals(WAITING,flow.observe(control("Create Sell Offer",100),false,actions,2000));
+        assertEquals(WAITING,flow.observe(control("Create Sell Offer",100),false,actions,3000));
+        flow.reset();flow.sent(control("Confirm Order",100),16,0);
+        assertEquals(WAITING,flow.observe(control("Confirm Order",101),false,actions,2000));
+        assertEquals(WAITING,flow.observe(control("Confirm Order",102),false,actions,3000));
+        assertTrue(actions.serverEffects().isEmpty());
+    }
     MenuSnapshot product(String id,int price) {
         var m=menu(1,"Bazaar search","Product",true);var slots=new ArrayList<>(m.slots());
         slots.set(16,new SlotView(16,false,16,false,"Recombobulator 3000","Recombobulator 3000",

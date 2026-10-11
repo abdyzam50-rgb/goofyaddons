@@ -11,7 +11,12 @@ public final class NavigationRetry {
     private SlotView stable;
     private boolean sameTarget(SlotView a,SlotView b) {
         if(a==null || b==null)return false;
-        if(a.customId()==null || a.customId().isBlank())return a.equals(b);
+        if(a.customId()==null || a.customId().isBlank()) {
+            // These reversible controls update market lore while retaining their action.
+            // Other anonymous buttons still require the complete original observation.
+            String action=com.goofy.goofyaddons.utils.Chat.strip(a.hoverName());
+            if(!"Create Buy Order".equals(action)&&!"Create Sell Offer".equals(action))return a.equals(b);
+        }
         // Product prices update in place. Keep identity checks, while allowing
         // live lore changes for a reversible product-navigation click only.
         return !a.empty()&&!b.empty()&&!a.inPlayerInventory()&&!b.inPlayerInventory()
@@ -21,6 +26,12 @@ public final class NavigationRetry {
                 &&a.count()==b.count()&&a.maxStackSize()==b.maxStackSize();
     }
     public boolean pending(){return source!=null;}
+    public java.util.Map<String,Object> diagnosticState(MenuSnapshot current){
+        var state=new java.util.LinkedHashMap<String,Object>();state.put("pending",pending());state.put("retries",retries);state.put("slot",slot);
+        if(source!=null){state.put("sourceContainer",source.containerId());state.put("sourceTitle",source.title());state.put("sourceTarget",source.slot(slot));}
+        if(current!=null){state.put("currentContainer",current.containerId());state.put("currentTitle",current.title());state.put("currentTarget",current.slot(slot));}
+        return state;
+    }
     public void reset(){source=null;stable=null;retries=0;blockedUntil=0;}
     public void sent(MenuSnapshot menu,int clicked,long now){
         if(pending())throw new IllegalStateException("Navigation already pending");

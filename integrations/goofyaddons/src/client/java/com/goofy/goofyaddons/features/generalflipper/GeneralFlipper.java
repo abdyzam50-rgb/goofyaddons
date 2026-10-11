@@ -129,6 +129,7 @@ public class GeneralFlipper implements Feature {
     public java.util.Map<String,Object> diagnosticState() {
         var state=new java.util.LinkedHashMap<String,Object>();
         state.put("navigationPending",navigationRetry.pending());
+        state.put("navigation",navigationRetry.diagnosticState(view));
         state.put("activeTrade",active==null?"none":active.tradeId);state.put("activeItem",active==null?"none":active.item.id());
         state.put("step",step==null?"none":step.name());state.put("stepAgeMs",stepSince==0?0:world.now()-stepSince);
         state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",trade.claimPending);state.put("receipt",trade.receipt);
@@ -290,7 +291,8 @@ public class GeneralFlipper implements Feature {
         }
         var navigation = navigationRetry.observe(view,world.signEditorOpen(),actions,now);
         if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.EXHAUSTED) {
-            fail("Menu navigation was not acknowledged after three retries; position retained.");return;
+            services.event("ERROR","general.navigation_exhausted",java.util.Map.of("step",step.name(),"navigation",navigationRetry.diagnosticState(view)));
+            fail("Menu navigation was not acknowledged ("+navigationRetry.diagnosticState(view).get("retries")+" retries); position retained.");return;
         }
         if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.RETRIED)
             services.event("WARN","general.navigation_retry",java.util.Map.of("trade",active.tradeId,"step",step.name()));

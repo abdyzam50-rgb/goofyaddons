@@ -140,7 +140,7 @@ class GeneralLoopTest {
         world.showing(menu("Bazaar ➜ "+NAME,0,List.of(
             new SlotView(13,false,13,false,NAME,NAME,List.of("Requires Enchanting Level XXX to apply!"),ID,null,1,64),
             SlotView.named(15,"Create Buy Order",List.of(NAME)))));
-        drive(engine,world,360);assertEquals(1,clicks(actions,15));assertTrue(market.excluded.isEmpty());
+        drive(engine,world,1200);assertEquals(1,clicks(actions,15));assertTrue(market.excluded.isEmpty());
     }
 
     @Test void missingRequirementOnVerifiedProductSkipsWithoutPurchaseAndKeepsLoopRunning() throws Exception {
@@ -538,7 +538,7 @@ class GeneralLoopTest {
         var engine = engine(world, actions, market);
         drive(engine, world, 1200);
         world.showing(menu("Bazaar ➜ " + NAME, 0, List.of(SlotView.named(11, "Create Buy Order", List.of()))));
-        drive(engine, world, 180);
+        drive(engine,world,1200);
         world.showing(menu("How much do you want to pay?", 0, List.of(SlotView.named(12, "Top order", List.of("Unit price: 100 coins")))));
         market.purse = -1;
         drive(engine, world, 1800);
@@ -573,7 +573,7 @@ class GeneralLoopTest {
         var engine=new GeneralFlipper(world,actions,failing,market);engine.start();
         drive(engine,world,1200);
         world.showing(menu("Bazaar ➜ "+NAME,0,List.of(SlotView.named(11,"Create Buy Order",List.of()))));
-        drive(engine,world,180);
+        drive(engine,world,1200);
         world.showing(menu("How much do you want to pay?",0,List.of(SlotView.named(12,"Top order",List.of("Unit price: 100 coins")))));
         drive(engine,world,1800);
         world.showing(menu("Confirm Buy Order",0,List.of(SlotView.named(13,NAME,
@@ -609,7 +609,7 @@ class GeneralLoopTest {
             world.showing(menu("Bazaar ➜ \"Super Compactor 3000\"",0,List.of(
                     new SlotView(11,false,11,false,name,name,List.of(),id,null,1,64))));
         } else world.showing(product);
-        drive(engine,world,360);
+        drive(engine,world,1200);
         if(search)assertEquals(1,clicks(actions,11));
         assertEquals(1,clicks(actions,15));assertEquals(0,clicks(actions,16));assertEquals("QUANTITY",stage(engine));
         assertEquals(0,market.sales);assertTrue(engine.hasRetainedPositions());
@@ -626,7 +626,7 @@ class GeneralLoopTest {
         drive(engine,world,1200);
         world.showing(menu("Mining ➜ Enchanted Co",16,List.of(icon(ID,NAME),
                 SlotView.named(15,"Create Buy Order",List.of(NAME)),SlotView.named(16,"Create Sell Offer",List.of(NAME)))));
-        drive(engine,world,360);assertEquals(1,clicks(actions,16));assertEquals(0,clicks(actions,15));
+        drive(engine,world,1200);assertEquals(1,clicks(actions,16));assertEquals(0,clicks(actions,15));
         assertEquals("QUANTITY",stage(engine));
     }
     @Test void conflictingProductIdentityOrControlLoreNeverOpensAnOrder() throws Exception {
@@ -640,7 +640,7 @@ class GeneralLoopTest {
         world.showing(menu("Mining ➜ Enchanted Co",0,List.of(SlotView.named(15,"Create Buy Order",List.of(NAME)))));
         drive(engine,world,240);assertEquals(0,clicks(actions,15));
         world.showing(menu("Mining ➜ Enchanted Co",0,List.of(icon(ID,NAME),SlotView.named(15,"Create Buy Order",List.of(NAME)))));
-        drive(engine,world,240);assertEquals(1,clicks(actions,15));assertEquals("QUANTITY",stage(engine));
+        drive(engine,world,1200);assertEquals(1,clicks(actions,15));assertEquals("QUANTITY",stage(engine));
     }
 
     @Test void partialTopBuyWaitsForItsBatchInsteadOfCancellingOnTheFirstFill() throws Exception {

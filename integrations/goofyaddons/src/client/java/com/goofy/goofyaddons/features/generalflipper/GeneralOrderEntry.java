@@ -34,6 +34,7 @@ final class GeneralOrderEntry {
     }
 
     private final MenuObservationStability confirmationStability = new MenuObservationStability();
+    private final com.goofy.goofyaddons.features.MenuSettle productSettle=new com.goofy.goofyaddons.features.MenuSettle();
 
     /** Every step transition starts its own confirmation observation window. */
     void stepChanged() { confirmationStability.reset(); }
@@ -50,6 +51,8 @@ final class GeneralOrderEntry {
         int create = ctx.find(createLabel(ctx), false);
         if (skipUnmetProduct(ctx)) return;
         if (productMenuMatches(ctx, create)) {
+            // A readable control can arrive before the new container is ready for clicks.
+            if(!productSettle.settled(ctx.view().containerId(),ctx.now()))return;
             if (ctx.trade().selling) {
                 int quantity = ctx.itemCount(active.item.id());
                 if (quantity <= 0 || quantity > active.quantity) { ctx.fail("Tracked inventory quantity does not match."); return; }
