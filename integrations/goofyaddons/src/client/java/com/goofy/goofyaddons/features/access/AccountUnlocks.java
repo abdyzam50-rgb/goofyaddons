@@ -26,6 +26,8 @@ public final class AccountUnlocks {
     private int connectionFailures;
     private CompletableFuture<?> pending;
     private String failureCode="NOT_STARTED",failure="Account lookup has not started";
+    private int serviceHttpStatus,upstreamHttpStatus;
+    private String upstreamService="UNKNOWN";
     private boolean collectionsAvailable;
     public AccountUnlocks() { this(liveTransport(),task->new LiveWorld().onClientThread(task),System::currentTimeMillis); }
     AccountUnlocks(Transport transport,Consumer<Runnable> clientThread,LongSupplier clock) {
@@ -35,10 +37,19 @@ public final class AccountUnlocks {
         var http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).version(HttpClient.Version.HTTP_1_1).build();
         return uri->http.sendAsync(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build(),
             HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofString(),256*1024))
-            .thenApply(response->new Response(response.statusCode(),JsonParser.parseString(response.body()).getAsJsonObject()));
+            .thenApply(response->parseResponse(response.statusCode(),response.body()));
+    }
+    static Response parseResponse(int status,String body) {
+        try{return new Response(status,JsonParser.parseString(body).getAsJsonObject());}
+        catch(RuntimeException invalid){
+            // A gateway may return HTML. Preserve its HTTP failure without
+            // displaying the body or mistaking it for a successful profile.
+            if(status!=200)return new Response(status,new JsonObject());
+            throw invalid;
+        }
     }
     public boolean pending(){return pending!=null;}
-    public void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;unlocks=apiSkills=Map.of();account=profile=null;next=expires=0;connectionFailures=0;collectionsAvailable=false;failureCode="NOT_STARTED";failure="Account lookup has not started";}
+    public void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;unlocks=apiSkills=Map.of();account=profile=null;next=expires=0;connectionFailures=0;collectionsAvailable=false;failureCode="NOT_STARTED";failure="Account lookup has not started";serviceHttpStatus=upstreamHttpStatus=0;upstreamService="UNKNOWN";}
     public String status(long now) {
         if(profile==null)return "Waiting for the current SkyBlock profile";
         if(pending())return "Fetching account prerequisites";
@@ -46,8 +57,10 @@ public final class AccountUnlocks {
         return failure!=null?failure:"Account prerequisite data expired; refreshing";
     }
     public Map<String,Object> diagnosticState(long now) {
-        return Map.of("status",status(now),"failureCode",failureCode,"pending",pending(),"skills",skills(now).size(),"unlocks",current(now).size(),
-            "collectionsAvailable",now<expires && collectionsAvailable,"source","PUBLIC_WEBSITE","expiresInMs",Math.max(0,expires-now),"retryInMs",Math.max(0,next-now));
+        return Map.ofEntries(Map.entry("status",status(now)),Map.entry("failureCode",failureCode),Map.entry("pending",pending()),
+            Map.entry("skills",skills(now).size()),Map.entry("unlocks",current(now).size()),Map.entry("collectionsAvailable",now<expires && collectionsAvailable),
+            Map.entry("source","PUBLIC_WEBSITE"),Map.entry("expiresInMs",Math.max(0,expires-now)),Map.entry("retryInMs",Math.max(0,next-now)),
+            Map.entry("serviceHttpStatus",serviceHttpStatus),Map.entry("upstreamService",upstreamService),Map.entry("upstreamHttpStatus",upstreamHttpStatus));
     }
     private void fail(String code,String reason) {unlocks=apiSkills=Map.of();expires=0;collectionsAvailable=false;failureCode=code;failure=reason;}
     private void connectionFailure(Throwable error) {
@@ -71,8 +84,18 @@ public final class AccountUnlocks {
             case "PROFILE_RATE_LIMITED" -> "Account lookup is rate limited; retrying automatically";
             case "USERNAME_NOT_FOUND" -> "Minecraft username could not be resolved";
             case "USERNAME_SERVICE_UNAVAILABLE" -> "Minecraft username service is unavailable; retrying automatically";
+            case "HYPIXEL_SERVICE_UNAVAILABLE" -> "Hypixel profile service is unavailable; retrying automatically";
+            case "HYPIXEL_INVALID_RESPONSE" -> "Hypixel returned unavailable or invalid profile data; retrying automatically";
             default -> "Profile lookup failed (HTTP "+status+"); check the Worker. Retrying automatically";
         };
+    }
+    private static String safeString(JsonObject body,String key) {
+        var value=body.get(key);return value instanceof JsonPrimitive primitive && primitive.isString()?primitive.getAsString():"";
+    }
+    private static int safeHttpStatus(JsonObject body,String key) {
+        var value=body.get(key);
+        if(!(value instanceof JsonPrimitive primitive) || !primitive.isNumber())return 0;
+        double status=primitive.getAsDouble();return status>=100 && status<=599 && status==Math.floor(status)?(int)status:0;
     }
     public Map<String,Integer> current(long now){return now<expires?unlocks:Map.of();}
     public Map<String,Integer> skills(long now){return now<expires?apiSkills:Map.of();}
@@ -83,7 +106,7 @@ public final class AccountUnlocks {
         if(!Objects.equals(account,username) || !Objects.equals(profile,profileName)){clear();account=username;profile=profileName;}
         if(username==null || !username.matches("[A-Za-z0-9_]{1,16}") || profileName==null || pending!=null || now<next)return;
         next=now+60000;int token=generation;
-        failure=null;failureCode="FETCHING";
+        failure=null;failureCode="FETCHING";serviceHttpStatus=upstreamHttpStatus=0;upstreamService="UNKNOWN";
         try {
             var uri=URI.create(PROFILE_SERVICE+"?username="+username);
             var request=transport.fetch(uri);pending=request;
@@ -92,9 +115,14 @@ public final class AccountUnlocks {
                     try {
                         if(error!=null){connectionFailure(error);return;}
                         connectionFailures=0;
+                        serviceHttpStatus=response.status();
                         if(response.status()!=200) {
-                            String code=response.body().has("failureCode")?response.body().get("failureCode").getAsString():"PROFILE_SERVICE_UNAVAILABLE";
-                            fail(switch(code){case "HYPIXEL_FORBIDDEN","HYPIXEL_UNAUTHORIZED","PROFILE_NOT_CONFIGURED","PROFILE_RATE_LIMITED","USERNAME_NOT_FOUND","USERNAME_SERVICE_UNAVAILABLE"->code;default->"PROFILE_SERVICE_UNAVAILABLE";},serviceFailure(code,response.status()));return;
+                            String rawCode=safeString(response.body(),"failureCode");
+                            String code=switch(rawCode){case "HYPIXEL_FORBIDDEN","HYPIXEL_UNAUTHORIZED","PROFILE_NOT_CONFIGURED","PROFILE_RATE_LIMITED","USERNAME_NOT_FOUND","USERNAME_SERVICE_UNAVAILABLE","HYPIXEL_SERVICE_UNAVAILABLE","HYPIXEL_INVALID_RESPONSE"->rawCode;default->response.status()==429?"PROFILE_RATE_LIMITED":"PROFILE_SERVICE_UNAVAILABLE";};
+                            String provider=safeString(response.body(),"upstreamService");
+                            upstreamService=Set.of("HYPIXEL","MINECRAFT","PLAYERDB").contains(provider)?provider:"UNKNOWN";
+                            upstreamHttpStatus=safeHttpStatus(response.body(),"upstreamStatus");
+                            fail(code,serviceFailure(code,response.status()));return;
                         }
                         long received=clock.getAsLong();var root=response.body();
                         var parsed=parseProfile(root,username,profileName,skills,received);

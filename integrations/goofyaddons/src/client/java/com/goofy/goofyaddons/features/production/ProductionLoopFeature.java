@@ -15,6 +15,7 @@ public final class ProductionLoopFeature implements Feature {
     private static final class Work {
         ProductionRun run;
         double budget;
+        double estimatedCapital;
         int inventorySlots;
         long nextAction;
         String lastReason;
@@ -50,7 +51,7 @@ public final class ProductionLoopFeature implements Feature {
         var view=new LinkedHashMap<String,Object>(selection.view());view.put("orders",orders.diagnosticState());view.put("queued",queued());view.put("activity",activity());
         view.put("selectionStatus",discoveryReason());view.put("eligibleRoutes",selection.calculated()?selection.routes().stream().filter(CraftFlipPlanner.Route::eligible).count():null);view.put("plannedBudget",work.stream().mapToDouble(w->w.budget).sum());view.put("spent",work.stream().mapToDouble(w->w.run.spent()).sum());
         view.put("maxActiveCrafts",GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts);
-        view.put("activeCrafts",work.stream().map(w->Map.of("job",w.id(),"output",w.run.output(),"stage",w.run.stage().name(),"reason",w.run.reason()==null?"":w.run.reason(),"budget",w.budget,"spent",w.run.spent(),"inventorySlots",w.inventorySlots)).toList());return view;
+        view.put("activeCrafts",work.stream().map(w->Map.of("job",w.id(),"output",w.run.output(),"stage",w.run.stage().name(),"reason",w.run.reason()==null?"":w.run.reason(),"budget",w.budget,"estimatedCapital",w.estimatedCapital,"reservedCapital",w.budget,"spent",w.run.spent(),"inventorySlots",w.inventorySlots)).toList());return view;
     }
     /** Complete current ownership plus durable blockers, including jobs absent from the live queue. */
     public Map<String,Object> diagnosticState() {
@@ -61,7 +62,7 @@ public final class ProductionLoopFeature implements Feature {
         state.put("settings",GoofyConfig.INSTANCE.craftFlips);state.put("orders",orders.diagnosticState());
         state.put("lockedProducts",lockedProducts());
         state.put("craftDelegateQueued",FeatureManager.INSTANCE.crafting().queued());state.put("auctionDelegateQueued",FeatureManager.INSTANCE.auction().queued());
-        state.put("activeRuns",work.stream().map(w->{var row=new LinkedHashMap<>(safeRunState(w.run));row.put("budget",w.budget);row.put("inventorySlots",w.inventorySlots);row.put("nextActionAt",w.nextAction);row.put("lastObservedAt",w.lastObserved);row.put("lastStateChangeAt",w.lastChanged);return row;}).toList());
+        state.put("activeRuns",work.stream().map(w->{var row=new LinkedHashMap<>(safeRunState(w.run));row.put("budget",w.budget);row.put("estimatedCapital",w.estimatedCapital);row.put("reservedCapital",w.budget);row.put("inventorySlots",w.inventorySlots);row.put("nextActionAt",w.nextAction);row.put("lastObservedAt",w.lastObserved);row.put("lastStateChangeAt",w.lastChanged);return row;}).toList());
         try {
             var jobs=FeatureManager.INSTANCE.crafting().journal().stream().filter(j->j.account().equals(world.username())).toList();
             state.put("journalCount",jobs.size());
@@ -126,11 +127,16 @@ public final class ProductionLoopFeature implements Feature {
         var candidate=selection.currentRoutes().stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElse(null);
         if(candidate==null)return;
         try {
-            var current=new Work();current.budget=candidate.capital();current.inventorySlots=candidate.inventorySlots();
+            var current=new Work();current.estimatedCapital=candidate.capital();current.inventorySlots=candidate.inventorySlots();
+            current.budget=CraftPortfolioBudget.allocated(candidate.capital(),candidate.profit(),GoofyConfig.INSTANCE.craftFlips.minimumProfit,
+                GoofyConfig.INSTANCE.craftFlips.maximumCapital,selectionBudget(new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse()));
+            if(current.budget<=0)return; // The live fair share may have changed since ranking.
             current.run=ProductionRun.startCraft(environment(current,true,false),RecipeCatalog.instance(),candidate.recipe(),candidate.batches(),candidate.binPrice(),candidate.fee(),candidate.strategy());
             work.add(current);
             new LiveActions().message("Automatic craft "+work.size()+"/"+GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts+": "+RecipeCatalog.instance().name(current.run.output())+" · "+candidate.strategy().label()+" · "+candidate.batches()+" batches · budget "+Math.round(current.budget)+" · conservative net "+Math.round(candidate.profit()));
-            Diagnostics.event("INFO","production.auto_selected",candidate.describe(RecipeCatalog.instance()));
+            var evidence=new LinkedHashMap<>(candidate.describe(RecipeCatalog.instance()));
+            evidence.put("estimatedCapital",current.estimatedCapital);evidence.put("reservedCapital",current.budget);
+            Diagnostics.event("INFO","production.auto_selected",evidence);
         }catch(Exception failed){Diagnostics.failure("production.auto_queue_failed",failed);FeatureManager.INSTANCE.safetyPause("Automatic craft could not be journaled; review production jobs");}
     }
     private boolean running, paused;

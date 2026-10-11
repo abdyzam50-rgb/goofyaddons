@@ -1418,3 +1418,45 @@ The same session independently verified sixteen crafted Melon Blocks and a
 repriced offer's coin claim: 18,764 coins of proceeds minus 979 coins of saved
 input cost, confirming 17,785 coins profit. No new Hotspot Bait run appeared in
 this export, so it does not establish live verification of the earlier Bait fix.
+
+### 0.2.82 — Rejected Bazaar cancellations, funding room and profile errors
+
+The `diagnostics-1791742481616-6f60057a.zip` export confirms 0.2.81 and a
+consistent, running local calculator. Its new session contains no craft-grid
+failure. The Dwarven timeout belongs to the retained previous session. After
+recovering and acknowledging those old jobs, the new Amalgamated Crimsonite run
+placed three of six ingredient orders before a manual stop. Recovery verified
+the Blaze Rod refund and claimed three Glowstone, then Hypixel rejected the
+Mycelium cancellation with `There was an error cancelling your order!`.
+One submitted Mycelium buy for 133,475.5 coins remained tracked. Starting Craft
+mode again could not select a new run while that unresolved child remained.
+
+An explicit server rejection now permits a bounded cancellation retry after
+fresh, settled, exact order ownership checks. An unknown outcome still requires
+observation rather than another cancellation. Retained orders also preserve the
+cached review warning and show the recovery command in discovery status.
+The order and cost journals are not cleared to bypass this blocker.
+
+Automatic runs now reserve bounded price-movement room above their estimated
+capital instead of using the exact initial estimate as their immutable ceiling.
+The additional reservation stays within the configured per-craft cap, available
+portfolio funds and the profit remaining above the minimum. Existing whole-basket,
+fresh-price and minimum-profit checks still govern purchases. This addresses the
+export's 0.412/0.824-coin Crimsonite drift and 14.832-coin Moondew drift without
+raising the user's capital limit or buying more units.
+
+The live Worker lookup for `curedmc` returned HTTP 502 with a verified upstream
+Hypixel HTTP 403 rejection. This is a Worker API-key/application permission issue;
+a client update cannot restore that authorization. Profile failures now return
+stable service codes and bounded service/status facts, and the mod reports the
+specific failure. Raw upstream bodies, credentials and transport errors are not
+included. Redeploy the Worker and securely update its `HYPIXEL_API_KEY` with a
+valid Hypixel application key permitted to read SkyBlock profiles. Verify the
+public `/v1/profiles?username=curedmc` response afterward.
+
+For this export, install 0.2.82, stop trading and run
+`.a* goofyaddon production recoverorders`. Wait for verified recovery of the
+remaining Mycelium order, stop, inspect returned ingredients and
+`.a* goofyaddon production jobs`, then acknowledge the reviewed evidence with
+`.a* goofyaddon production acknowledge all`. Restart Craft mode after recovery.
+The separate ordinary-trader Fuming Potato Book order remains tracked.

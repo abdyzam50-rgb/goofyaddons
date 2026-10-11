@@ -564,6 +564,33 @@ historical Quick Bite result-slot metadata was not retained; the catalog/raw
 book mismatch is demonstrated by the regression fixture. No live Minecraft
 GUI was available for this update.
 
+### 0.2.82 Rejected cancellation recovery and initial budget headroom
+
+Nine new cancellation regressions exercise an explicit server rejection followed
+by fresh exact-owned-order inspection, new buy fills before retry, delayed refund
+and named cancellation receipts before and during retry review, preservation of
+partial sell proceeds, foreign/duplicate/repriced order rejection, unknown-outcome
+retention, stopped recovery, and three-attempt exhaustion. Submitted sibling sell
+offers and their capital remain untouched. Existing ordinary driving and mixed
+production recovery suites pass alongside this coverage.
+
+Funding regressions use the exported Crimsonite and Moondew quote changes and
+verify bounded initial price-movement room under the profit floor, per-craft cap
+and live fair share. Four near-share jobs retain their full allocations. The
+planner accepts double-rounding differences while rejecting a real coin overrun.
+
+Account tests preserve Hypixel authorization failures, safe upstream service and
+HTTP status facts, invalid/unavailable responses, and HTML gateway errors without
+granting unknown unlocks. Worker lookup, public-site routing and community
+integration tests pass. A live public lookup for `curedmc` confirmed the deployed
+Worker wraps a Hypixel HTTP 403 rejection in HTTP 502; restoring that external
+authorization requires a valid Worker API key and application permissions.
+
+Validation: client test/build succeeded; 1,246 Java tests passed with zero
+failures, errors or skips, plus 35 Worker/public-site/community checks. Release
+jar metadata verifies 0.2.82-BETA. No live Minecraft GUI was available for this
+update, and the Worker authorization has not been changed or redeployed here.
+
 Limited-inventory planner regressions also verify book input/output batches and intermediate workspace shrink before any orders are placed.
 
 Final validation: client test/build succeeded; 1,212 tests passed with zero failures, errors or skips. Release jar metadata verifies 0.2.79-BETA.

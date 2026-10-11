@@ -129,7 +129,7 @@ final class CraftFlipPlanner {
                 }
                 double capital=cost*1.03+fee,profit=net-capital;
                 if(!Double.isFinite(profit)||profit<minimumProfit||profit<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Below minimum net profit after fees and price allowance");continue;}
-                if(capital>budget)reason="Whole batch exceeds spendable budget";
+                if(ProductionPlanner.exceedsFunds(capital,budget))reason="Whole batch exceeds spendable budget";
                 double seconds=60+preparation.purchases().size()*20+preparation.crafts().size()*15+batches*3+orderWait;
                 if(bz)seconds=Math.max(seconds,recipe.outputCount()*batches/liquidity*3600);
                 double score=profit/seconds*(bz?1:liquidity);

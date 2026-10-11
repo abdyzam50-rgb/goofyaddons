@@ -27,6 +27,17 @@ class CraftFlipPlannerTest {
         assertEquals(100*0.97*0.9875-20*1.04*1.03,rows.getFirst().profit(),0.0001);
         assertEquals(2,rank(market(2),null,catalog,ProductionRunTest.menu(null),1000,Map.of()).getFirst().batches());
     }
+    @Test void identicalWholeBatchCapitalSurvivesDoubleRoundingButRealOverrunsRemainBlocked() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
+        var baseline=rank(market(1),null,catalog,ProductionRunTest.menu(null),1000,Map.of()).getFirst();
+        double estimate=baseline.capital();
+        var rounded=rank(market(1),null,catalog,ProductionRunTest.menu(null),Math.nextDown(estimate),Map.of()).getFirst();
+        assertTrue(rounded.eligible(),rounded.reason());
+        assertEquals(baseline.batches(),rounded.batches());assertEquals(estimate,rounded.capital());
+        assertEquals(baseline.profit(),rounded.profit());assertEquals(baseline.score(),rounded.score());
+        var over=rank(market(1),null,catalog,ProductionRunTest.menu(null),estimate-.01,Map.of()).getFirst();
+        assertFalse(over.eligible());assertEquals("Whole batch exceeds spendable budget",over.reason());
+    }
     @Test void unobservedRequirementsAndInsufficientInventoryCannotAuthorizeCrafts() {
         var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"Gold Ingot IV")),Map.of());
         var row=rank(market(1),null,catalog,ProductionRunTest.menu(null),1000,Map.of()).getFirst();

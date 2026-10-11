@@ -139,6 +139,7 @@ public class GeneralFlipper implements Feature {
         state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",trade.claimPending);state.put("receipt",trade.receipt);
         state.put("claimUnits",trade.claimUnits);state.put("inventoryBefore",trade.inventoryBefore);state.put("expectedClaim",trade.expectedClaim);
         state.put("ordersContainer",ordersSettle.container());state.put("selling",trade.selling);
+        state.put("cancellation",cancellation.diagnosticState());
         var retained=new java.util.ArrayList<java.util.Map<String,Object>>();
         for(GeneralPosition position:positions) {
             var details=new java.util.LinkedHashMap<String,Object>();
@@ -347,7 +348,7 @@ public class GeneralFlipper implements Feature {
                     command("managebazaarorders");
                     if (TradingSafety.ordersTitle(view.title())) transition(Step.ORDERS);
                 }
-                case ORDERS -> review.inspect(session);
+                case ORDERS -> {if(!cancellation.resumeVerification(session))review.inspect(session);}
                 case CANCEL_DETAIL -> cancellation.detail(session);
                 case VERIFY_CANCEL -> cancellation.verify(session);
                 case OPEN_PRODUCT -> entry.openProduct(session);
@@ -384,6 +385,7 @@ public class GeneralFlipper implements Feature {
                 active = position;
                 trade = new GeneralTrade();
                 trade.selling = position.stage == Stage.INVENTORY || position.stage == Stage.SELL_ORDER;
+                cancellation.begin(position);
                 claim.reset();
                 transition(Step.OPEN_ORDERS);
                 return;
@@ -413,6 +415,7 @@ public class GeneralFlipper implements Feature {
             positions.add(position);
             active = position;
             trade = new GeneralTrade();
+            cancellation.begin(position);
             claim.reset();
             if (save()) transition(Step.OPEN_ORDERS);
             return;

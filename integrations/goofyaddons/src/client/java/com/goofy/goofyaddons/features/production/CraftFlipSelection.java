@@ -87,10 +87,14 @@ final class CraftFlipSelection {
         var blocked=new HashSet<>(CapitalManager.INSTANCE.occupiedProducts());
         blocked.addAll(manager.production().lockedProducts());
         try {
-            if(manager.production().hasOrphanOrders()){
-                routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error="Resolve retained craft Bazaar orders before starting another production run";return;
-            }
             var journal=manager.crafting().journal();
+            if(manager.production().hasOrphanOrders()){
+                journal.stream().filter(j->j.account().equals(world.username())&&j.state()==ProductionJobs.State.REVIEW).findFirst().ifPresent(j->{
+                    reviewId=j.id();reviewReason="Retained craft orders need recovery. Stop trading, then run production recoverorders.";
+                });
+                routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;
+                error="Resolve retained craft Bazaar orders: stop trading, then run .a* goofyaddon production recoverorders";return;
+            }
             long reviews=journal.stream().filter(j->j.account().equals(world.username())&&j.state()==ProductionJobs.State.REVIEW).count();
             for(var job:journal)if(job.account().equals(world.username())&&job.state()!=ProductionJobs.State.DONE
                     &&job.state()!=ProductionJobs.State.CANCELLED&&job.state()!=ProductionJobs.State.SELLING) {
@@ -98,7 +102,7 @@ final class CraftFlipSelection {
                 if(recipe!=null){blocked.add(recipe.outputId());blocked.addAll(recipe.ingredients().keySet());}
                 else if(job.state()==ProductionJobs.State.REVIEW){reviewId=job.id();reviewReason=job.reason();routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error=reviews+" REVIEW jobs remain (e.g. "+job.id().substring(0,Math.min(8,job.id().length()))+"); stop trading, inspect production jobs, then acknowledge reviewed IDs or all";return;}
             }
-            for(var job:manager.crafting().journal())if(job.account().equals(world.username())&&job.state()==ProductionJobs.State.SELLING) {
+            for(var job:journal)if(job.account().equals(world.username())&&job.state()==ProductionJobs.State.SELLING) {
                 String output=job.recipeKey().startsWith("auction:")?job.recipeKey().substring(job.recipeKey().lastIndexOf(':')+1):null;
                 if(output!=null)blocked.add(output);
             }
@@ -126,6 +130,7 @@ final class CraftFlipSelection {
     }
     Map<String,Object> view() {
         var result=new LinkedHashMap<String,Object>();result.put("generatedAt",generatedAt);result.put("calculated",calculated());result.put("error",error);result.put("excludedCandidateCounts",Map.copyOf(excluded));
+        result.put("reviewId",reviewId);result.put("reviewReason",reviewReason);
         result.put("strategy",GoofyConfig.INSTANCE.craftFlips.strategy);result.put("minimumProfit",GoofyConfig.INSTANCE.craftFlips.minimumProfit);result.put("maxBatches",GoofyConfig.INSTANCE.craftFlips.maxBatches);result.put("venue",GoofyConfig.INSTANCE.craftFlips.venue);
         result.put("rows",routes.stream().limit(100).map(r->r.describe(RecipeCatalog.instance())).toList());
         result.put("rankingNote","Ranking estimates net coins/hour using batch work and observed market activity. Order fill waits assume 5% participation; weekly activity is not queue-position evidence. Estimates differ from the website’s calibrated model and are not realized profit. AH listings remain unsold positions.");
