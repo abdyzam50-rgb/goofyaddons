@@ -13,8 +13,9 @@ import com.goofy.goofyaddons.utils.Chat;
  * the spending limit before anything is clicked. The intent is recorded before the amount
  * is written, because writing the sign is the irreversible step. The purchase counts only
  * when the inventory gains exactly the amount and the purse falls by no more than the
- * limit. Anything else, including an unexpected confirmation screen, ends in review: an
- * instant buy is never repeated automatically.
+ * limit. Units that did not fit go to the player's stash, so a paid purchase that is short
+ * runs /pickupstash once before deciding. Anything else, including an unexpected
+ * confirmation screen, ends in review: an instant buy is never repeated automatically.
  */
 public final class BazaarInstantBuy {
     public enum Result { WAITING, BOUGHT, BLOCKED, UNCERTAIN }
@@ -30,7 +31,10 @@ public final class BazaarInstantBuy {
     private int amount;
     private double maximumCost;
     private final Intent intent;
+    /** How long a paid but short purchase waits for the inventory before picking up the stash. */
+    static final long STASH_AFTER_MS = 1_500;
     private Step step = Step.OPEN;
+    private boolean stashPicked;
     private long started, stepAt, heldSince;
     private int before = -1, confirmContainer = Integer.MIN_VALUE;
     private double purseBefore = Double.NaN, spent;
@@ -65,7 +69,7 @@ public final class BazaarInstantBuy {
         if (step == Step.DONE) return Result.BOUGHT;
         if (started == 0) started = now;
         if (stepAt == 0) stepAt = now;
-        if (step == Step.VERIFY) return verify(menu, purse, now);
+        if (step == Step.VERIFY) return verify(menu, purse, actions, now);
         if(navigation.pending()) {
             var acknowledgement=navigation.observe(menu,signOpen,actions,now);
             if(acknowledgement==NavigationRetry.Result.EXHAUSTED)return block("Bazaar navigation was not acknowledged; nothing bought");
@@ -148,6 +152,8 @@ public final class BazaarInstantBuy {
                 // amount and total. A purchase that completes without it is accepted on the same proof.
                 Result proven = proof(menu, purse);
                 if (proven != null) return proven;
+                // A paid purchase without a confirmation screen may have sent units to the stash.
+                if (paidButShort(menu, purse)) { step = Step.VERIFY; return verify(menu, purse, actions, now); }
                 if (menu == null || menu.title() == null || !Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).startsWith("confirm instant buy"))
                     return now - stepAt > RecoveryRules.INPUT_RESTART_MS ? uncertain("Instant buy confirmation for " + name + " did not open; check whether anything was bought") : Result.WAITING;
                 int quote = -1; Double total = null;
@@ -170,15 +176,32 @@ public final class BazaarInstantBuy {
         return Result.WAITING;
     }
 
-    private Result verify(MenuSnapshot menu, double purse, long now) {
+    private Result verify(MenuSnapshot menu, double purse, GameActions actions, long now) {
         Result proven = proof(menu, purse);
         if (proven != null) return proven;
+        // Hypixel sends instant-bought units that do not fit to the stash. Once the purse shows
+        // the payment and the inventory stays short, pick them up once, then prove it again.
+        if (!stashPicked && paidButShort(menu, purse) && now - stepAt > STASH_AFTER_MS) {
+            if (menu.emptyInventorySlots() == 0)
+                return uncertain("Part of the " + name + " instant buy went to your stash and the inventory has no free slot; make room and run /pickupstash");
+            stashPicked = true; stepAt = now;
+            actions.command("pickupstash");
+            return Result.WAITING;
+        }
         // After the confirmation click Hypixel may redraw that screen under a new menu id; it is
         // never clicked again, so only a confirmation the run never saw is a surprise.
         if (confirmContainer == Integer.MIN_VALUE && menu != null && menu.title() != null
                 && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
             return uncertain("Unexpected instant buy confirmation screen; inspect it before continuing");
-        return now - stepAt > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant buy of " + name + " was not confirmed by inventory and purse") : Result.WAITING;
+        return now - stepAt > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant buy of " + name + " was not confirmed by inventory and purse"
+                + (stashPicked ? " after /pickupstash; check your stash" : "")) : Result.WAITING;
+    }
+
+    /** The purse shows a payment within the limit but the inventory holds fewer units than bought. */
+    private boolean paidButShort(MenuSnapshot menu, double purse) {
+        if (menu == null || !Double.isFinite(purse) || purse < 0) return false;
+        double spent = purseBefore - purse;
+        return spent > 0 && spent <= maximumCost + 0.51 && count(menu) - before < amount;
     }
 
     /** Bought when inventory and purse show exactly this purchase, review when they show more, else null. */

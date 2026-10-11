@@ -256,4 +256,61 @@ class BazaarInstantBuyTest {
         assertEquals(BazaarInstantBuy.Result.BLOCKED,purchase.tick(product(100,item(54,"COBBLE",64)),false,actions,1_000_000,0));
         assertTrue(actions.serverEffects().isEmpty());
     }
+
+    /** Ticks a ten-coal custom-amount buy up to the moment it is paid for. */
+    BazaarInstantBuy paidForTen(RecordingActions actions) {
+        var purchase=buy(1100);
+        purchase.tick(product(100),false,actions,5000,0);
+        purchase.tick(menu(2,"How many do you want?",SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,100);
+        purchase.tick(null,true,actions,5000,200);
+        return purchase;
+    }
+    @Test void unitsThatOverflowedIntoTheStashArePickedUpOnceAndThenProven() {
+        var actions=new RecordingActions();var purchase=paidForTen(actions);
+        var short4=menu(3,null,item(54,"ENCHANTED_COAL",4));
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(short4,false,actions,4000,1000));
+        assertFalse(actions.serverEffects().contains("command:pickupstash"),"The inventory gets a moment to update first");
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(short4,false,actions,4000,2000));
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(short4,false,actions,4000,2500));
+        assertEquals(1,actions.serverEffects().stream().filter("command:pickupstash"::equals).count());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,item(54,"ENCHANTED_COAL",10)),false,actions,4000,3000));
+        assertEquals(1000,purchase.spent());
+    }
+    @Test void aStashThatDoesNotHoldTheMissingUnitsEndsInReview() {
+        var actions=new RecordingActions();var purchase=paidForTen(actions);
+        var short4=menu(3,null,item(54,"ENCHANTED_COAL",4));
+        purchase.tick(short4,false,actions,4000,2000);
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(short4,false,actions,4000,5000));
+        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,purchase.tick(short4,false,actions,4000,20000));
+        assertTrue(purchase.failure().contains("/pickupstash"),purchase.failure());
+        assertEquals(1,actions.serverEffects().stream().filter("command:pickupstash"::equals).count());
+        assertEquals(1,actions.serverEffects().stream().filter(e->e.startsWith("sign")).count());
+    }
+    @Test void anUnpaidPurchaseNeverPicksUpTheStash() {
+        var actions=new RecordingActions();var purchase=paidForTen(actions);
+        purchase.tick(menu(3,null),false,actions,5000,5000);
+        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,purchase.tick(menu(3,null),false,actions,5000,20000));
+        assertFalse(actions.serverEffects().contains("command:pickupstash"));
+    }
+    @Test void aFullInventoryAsksThePlayerToMakeRoomForTheStash() {
+        var actions=new RecordingActions();var purchase=paidForTen(actions);
+        var full=new ArrayList<SlotView>(List.of(item(54,"ENCHANTED_COAL",4)));
+        for(int i=55;i<90;i++)full.add(item(i,"COBBLE",64));
+        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,purchase.tick(menu(3,null,full.toArray(SlotView[]::new)),false,actions,4000,2000));
+        assertTrue(purchase.failure().contains("stash"),purchase.failure());
+        assertFalse(actions.serverEffects().contains("command:pickupstash"));
+    }
+    @Test void aPresetPurchaseThatOverflowedPicksUpTheStashToo() {
+        var actions=new RecordingActions();
+        var stack=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",64,30_000,intents::add);
+        stack.tick(product(400),false,actions,50_000,0);
+        stack.tick(menu(2,"Enchanted Coal \u279c Instant",
+                SlotView.named(12,"Buy a stack!",List.of("Enchanted Coal","","Amount: 64x","","Price: 25,600 coins")),
+                SlotView.named(16,"Custom Amount",List.of())),false,actions,50_000,100);
+        var short20=menu(3,null,item(54,"ENCHANTED_COAL",20));
+        assertEquals(BazaarInstantBuy.Result.WAITING,stack.tick(short20,false,actions,24_400,500));
+        assertEquals(BazaarInstantBuy.Result.WAITING,stack.tick(short20,false,actions,24_400,2200));
+        assertTrue(actions.serverEffects().contains("command:pickupstash"),actions.serverEffects().toString());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,stack.tick(menu(3,null,item(54,"ENCHANTED_COAL",64)),false,actions,24_400,2500));
+    }
 }
