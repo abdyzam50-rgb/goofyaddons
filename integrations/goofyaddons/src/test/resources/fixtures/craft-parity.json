@@ -1,0 +1,1491 @@
+{
+ "note": "Shared by CraftPlannerParityTest (mod) and craft-plan.test.mjs (website). Regenerate expected values only when both planners change together.",
+ "now": 1700000000000,
+ "catalog": {
+  "schema": 1,
+  "names": {},
+  "recipes": [
+   {
+    "key": "craft:ENCHANTED_A:0",
+    "kind": "CRAFT",
+    "outputId": "ENCHANTED_A",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 160
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 64
+     },
+     {
+      "id": "A",
+      "count": 64
+     },
+     {
+      "id": "A",
+      "count": 32
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:BLAZE_POWDER:0",
+    "kind": "CRAFT",
+    "outputId": "BLAZE_POWDER",
+    "outputCount": 2,
+    "ingredients": {
+     "BLAZE_ROD": 1
+    },
+    "grid": [
+     {
+      "id": "BLAZE_ROD",
+      "count": 1
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:ENCHANTED_B:0",
+    "kind": "CRAFT",
+    "outputId": "ENCHANTED_B",
+    "outputCount": 1,
+    "ingredients": {
+     "BLAZE_POWDER": 9,
+     "A": 4
+    },
+    "grid": [
+     {
+      "id": "BLAZE_POWDER",
+      "count": 9
+     },
+     {
+      "id": "A",
+      "count": 4
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:THIN:0",
+    "kind": "CRAFT",
+    "outputId": "THIN",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 10
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 10
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:LOW_VOLUME:0",
+    "kind": "CRAFT",
+    "outputId": "LOW_VOLUME",
+    "outputCount": 2,
+    "ingredients": {
+     "A": 8
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 8
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:EXPENSIVE:0",
+    "kind": "CRAFT",
+    "outputId": "EXPENSIVE",
+    "outputCount": 1,
+    "ingredients": {
+     "GEM": 4
+    },
+    "grid": [
+     {
+      "id": "GEM",
+      "count": 4
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:QUIET_INPUT:0",
+    "kind": "CRAFT",
+    "outputId": "QUIET_OUT",
+    "outputCount": 1,
+    "ingredients": {
+     "QUIET": 3
+    },
+    "grid": [
+     {
+      "id": "QUIET",
+      "count": 3
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:ENCHANTMENT_TEST_1:0",
+    "kind": "CRAFT",
+    "outputId": "ENCHANTMENT_TEST_1",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 2
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 2
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:AH_SWORD:0",
+    "kind": "CRAFT",
+    "outputId": "AH_SWORD",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 64,
+     "GEM": 1
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 64
+     },
+     {
+      "id": "GEM",
+      "count": 1
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:AH_NULLVOL:0",
+    "kind": "CRAFT",
+    "outputId": "AH_NULLVOL",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 64
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 64
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:AH_OUTLIER:0",
+    "kind": "CRAFT",
+    "outputId": "AH_OUTLIER",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 64
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 64
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:AH_STALE:0",
+    "kind": "CRAFT",
+    "outputId": "AH_STALE",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 64
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 64
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:AH_STACK:0",
+    "kind": "CRAFT",
+    "outputId": "AH_STACK",
+    "outputCount": 4,
+    "ingredients": {
+     "A": 64
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 64
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "craft:NO_SELL:0",
+    "kind": "CRAFT",
+    "outputId": "NO_SELL",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 4
+    },
+    "grid": [
+     {
+      "id": "A",
+      "count": 4
+     },
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "durationSeconds": 0,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   },
+   {
+    "key": "forge:IGNORED:0",
+    "kind": "FORGE",
+    "outputId": "IGNORED",
+    "outputCount": 1,
+    "ingredients": {
+     "A": 1
+    },
+    "grid": [],
+    "durationSeconds": 60,
+    "coins": 0,
+    "requirement": "",
+    "inputPet": null
+   }
+  ]
+ },
+ "market": {
+  "success": true,
+  "lastUpdated": 1699999995000,
+  "products": {
+   "A": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 30000,
+      "pricePerUnit": 10.4,
+      "orders": 1
+     },
+     {
+      "amount": 60000,
+      "pricePerUnit": 10.5,
+      "orders": 1
+     },
+     {
+      "amount": 200000,
+      "pricePerUnit": 10.6,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 9.8,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 9.7,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 9.6,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 2000000,
+     "sellMovingWeek": 1800000
+    }
+   },
+   "BLAZE_ROD": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 120.5,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 121.7,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 122.9,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 110,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 108.9,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 107.8,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 900000,
+     "sellMovingWeek": 700000
+    }
+   },
+   "GEM": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 3,
+      "pricePerUnit": 250000,
+      "orders": 1
+     },
+     {
+      "amount": 5,
+      "pricePerUnit": 252500,
+      "orders": 1
+     },
+     {
+      "amount": 40,
+      "pricePerUnit": 255000,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 240000,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 237600,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 235200,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 30000,
+     "sellMovingWeek": 20000
+    }
+   },
+   "QUIET": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 50,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 50.5,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 51,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 45,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 44.6,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 44.1,
+      "orders": 1
+     }
+    ]
+   },
+   "ENCHANTED_A": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 1950,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 1969.5,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 1989,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 500,
+      "pricePerUnit": 1800,
+      "orders": 1
+     },
+     {
+      "amount": 3000,
+      "pricePerUnit": 1782,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 1764,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 700000,
+     "sellMovingWeek": 650000
+    }
+   },
+   "ENCHANTED_B": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 1500,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 1515,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 1530,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 1350,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 1336.5,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 1323,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 100000,
+     "sellMovingWeek": 90000
+    }
+   },
+   "THIN": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 10,
+      "pricePerUnit": 400,
+      "orders": 1
+     },
+     {
+      "amount": 10,
+      "pricePerUnit": 404,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 3,
+      "pricePerUnit": 330,
+      "orders": 1
+     },
+     {
+      "amount": 2,
+      "pricePerUnit": 326.7,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 2000000,
+     "sellMovingWeek": 1800000
+    }
+   },
+   "LOW_VOLUME": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 120,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 121.2,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 122.4,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 100,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 99,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 98,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 1400,
+     "sellMovingWeek": 1300
+    }
+   },
+   "EXPENSIVE": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 1300000,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 1313000,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 1326000,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 1250000,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 1237500,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 1225000,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 50000,
+     "sellMovingWeek": 40000
+    }
+   },
+   "QUIET_OUT": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 400,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 404,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 408,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 380,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 376.2,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 372.4,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 2000000,
+     "sellMovingWeek": 1800000
+    }
+   },
+   "ENCHANTMENT_TEST_1": {
+    "product_id": "X",
+    "buy_summary": [
+     {
+      "amount": 5000,
+      "pricePerUnit": 900,
+      "orders": 1
+     },
+     {
+      "amount": 8000,
+      "pricePerUnit": 909,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 918,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [
+     {
+      "amount": 4000,
+      "pricePerUnit": 800,
+      "orders": 1
+     },
+     {
+      "amount": 9000,
+      "pricePerUnit": 792,
+      "orders": 1
+     },
+     {
+      "amount": 20000,
+      "pricePerUnit": 784,
+      "orders": 1
+     }
+    ],
+    "quick_status": {
+     "buyMovingWeek": 500000,
+     "sellMovingWeek": 500000
+    }
+   },
+   "NO_SELL": {
+    "product_id": "NO_SELL",
+    "buy_summary": [
+     {
+      "amount": 100,
+      "pricePerUnit": 300,
+      "orders": 1
+     }
+    ],
+    "sell_summary": [],
+    "quick_status": {
+     "buyMovingWeek": 1000,
+     "sellMovingWeek": 1000
+    }
+   }
+  }
+ },
+ "ah": {
+  "protocol": "goofy-craft-market/1",
+  "generatedAt": 1700000000000,
+  "rows": [
+   {
+    "item": "AH_SWORD",
+    "volume": 50,
+    "median": 900000,
+    "quote": {
+     "protocol": "goofy-ah-price/1",
+     "item": "AH_SWORD",
+     "lowest": 950000,
+     "secondLowest": 990000,
+     "source": "coflnet",
+     "fetchedAt": 1699999990000
+    }
+   },
+   {
+    "item": "AH_NULLVOL",
+    "volume": null,
+    "median": null,
+    "quote": {
+     "protocol": "goofy-ah-price/1",
+     "item": "AH_NULLVOL",
+     "lowest": 90000,
+     "secondLowest": 95000,
+     "source": "coflnet",
+     "fetchedAt": 1699999990000
+    }
+   },
+   {
+    "item": "AH_OUTLIER",
+    "volume": 30,
+    "median": 80000,
+    "quote": {
+     "protocol": "goofy-ah-price/1",
+     "item": "AH_OUTLIER",
+     "lowest": 30000,
+     "secondLowest": 90000,
+     "source": "coflnet",
+     "fetchedAt": 1699999990000
+    }
+   },
+   {
+    "item": "AH_STALE",
+    "volume": 30,
+    "median": 80000,
+    "quote": {
+     "protocol": "goofy-ah-price/1",
+     "item": "AH_STALE",
+     "lowest": 90000,
+     "secondLowest": 95000,
+     "source": "coflnet",
+     "fetchedAt": 1699999939000
+    }
+   },
+   {
+    "item": "AH_STACK",
+    "volume": 30,
+    "median": 80000,
+    "quote": {
+     "protocol": "goofy-ah-price/1",
+     "item": "AH_STACK",
+     "lowest": 90000,
+     "secondLowest": 95000,
+     "source": "coflnet",
+     "fetchedAt": 1699999990000
+    }
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "auto",
+   "settings": {
+    "budget": 2000000,
+    "minimumProfit": 1000,
+    "bazaarTax": 1.25,
+    "maxBatches": 64,
+    "venue": "BOTH",
+    "strategy": "AUTO",
+    "freeSlots": 36
+   },
+   "expected": {
+    "routes": [
+     {
+      "recipeKey": "craft:AH_SWORD:0",
+      "batches": 1,
+      "venue": "AH",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 279212.99072,
+      "profit": 545861.1407799999,
+      "score": 4514.983390334771,
+      "eligible": false,
+      "reason": "AH sale/expiry/claim reconciliation is not implemented; use production test for one verified listing",
+      "inventorySlots": 3,
+      "binPrice": 949999,
+      "fee": 10700
+     },
+     {
+      "recipeKey": "craft:EXPENSIVE:0",
+      "batches": 1,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 1073878,
+      "profit": 123465.75,
+      "score": 1487.539156626506,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTMENT_TEST_1:0",
+      "batches": 34,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 757.5526400000001,
+      "profit": 25296.64736,
+      "score": 138.9925679120879,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 36,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTED_B:0",
+      "batches": 34,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 21264.284079999998,
+      "profit": 22702.178420000004,
+      "score": 99.36177529761906,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 9,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:QUIET_INPUT:0",
+      "batches": 64,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 10283.52,
+      "profit": 13012,
+      "score": 47.838235294117645,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 4,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:THIN:0",
+      "batches": 64,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_OFFER",
+      "capital": 7129.9072,
+      "profit": 17391.692800000004,
+      "score": 24.77166818596172,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 11,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTED_A:0",
+      "batches": 14,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_OFFER",
+      "capital": 24954.6752,
+      "profit": 1195.3123000000014,
+      "score": 3.12476068193884,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 36,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:LOW_VOLUME:0",
+      "batches": 18,
+      "venue": "BAZAAR",
+      "strategy": "ORDER_INSTANT",
+      "capital": 1453.536,
+      "profit": 1994.8140000000003,
+      "score": 0.11910540674603178,
+      "eligible": false,
+      "reason": "Batch exceeds 5% of observed daily market volume",
+      "inventorySlots": 4,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:NO_SELL:0",
+      "batches": 7,
+      "venue": "BAZAAR",
+      "strategy": "ORDER_OFFER",
+      "capital": 282.63200000000006,
+      "profit": 1728.9055,
+      "score": 0.020349363167828687,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     }
+    ],
+    "excludedByOutput": {
+     "ENCHANTED_A": {
+      "Below minimum net profit after fees and price allowance": 87
+     },
+     "BLAZE_POWDER": {
+      "AH quote unavailable": 1
+     },
+     "ENCHANTED_B": {
+      "Below minimum net profit after fees and price allowance": 4
+     },
+     "THIN": {
+      "Below minimum net profit after fees and price allowance": 14,
+      "Insufficient Bazaar sell depth": 118
+     },
+     "LOW_VOLUME": {
+      "Below minimum net profit after fees and price allowance": 31
+     },
+     "EXPENSIVE": {
+      "Missing input prices or insufficient buy depth": 104
+     },
+     "QUIET_OUT": {
+      "Below minimum net profit after fees and price allowance": 16
+     },
+     "ENCHANTMENT_TEST_1": {
+      "Below minimum net profit after fees and price allowance": 4
+     },
+     "AH_NULLVOL": {
+      "AH demand unavailable or too low": 1
+     },
+     "AH_OUTLIER": {
+      "AH lowest BIN looks like an outlier": 1
+     },
+     "AH_STALE": {
+      "AH quote stale": 1
+     },
+     "AH_STACK": {
+      "AH output stacks are not listed automatically": 1
+     },
+     "NO_SELL": {
+      "Below minimum net profit after fees and price allowance": 8,
+      "Insufficient Bazaar sell depth": 128
+     }
+    }
+   }
+  },
+  {
+   "name": "instant-instant",
+   "settings": {
+    "budget": 2000000,
+    "minimumProfit": 1000,
+    "bazaarTax": 1.25,
+    "maxBatches": 64,
+    "venue": "BOTH",
+    "strategy": "INSTANT_INSTANT",
+    "freeSlots": 36
+   },
+   "expected": {
+    "routes": [
+     {
+      "recipeKey": "craft:AH_SWORD:0",
+      "batches": 1,
+      "venue": "AH",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 279212.99072,
+      "profit": 545861.1407799999,
+      "score": 4514.983390334771,
+      "eligible": false,
+      "reason": "AH sale/expiry/claim reconciliation is not implemented; use production test for one verified listing",
+      "inventorySlots": 3,
+      "binPrice": 949999,
+      "fee": 10700
+     },
+     {
+      "recipeKey": "craft:EXPENSIVE:0",
+      "batches": 1,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 1073878,
+      "profit": 123465.75,
+      "score": 1487.539156626506,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTMENT_TEST_1:0",
+      "batches": 34,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 757.5526400000001,
+      "profit": 25296.64736,
+      "score": 138.9925679120879,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 36,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTED_B:0",
+      "batches": 34,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 21264.284079999998,
+      "profit": 22702.178420000004,
+      "score": 99.36177529761906,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 9,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:QUIET_INPUT:0",
+      "batches": 64,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 10283.52,
+      "profit": 13012,
+      "score": 47.838235294117645,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 4,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:THIN:0",
+      "batches": 5,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 557.0240000000001,
+      "profit": 1017.1477749999999,
+      "score": 10.706818684210525,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:LOW_VOLUME:0",
+      "batches": 59,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 5258.30656,
+      "profit": 6044.618440000001,
+      "score": 0.11010789351851855,
+      "eligible": false,
+      "reason": "Batch exceeds 5% of observed daily market volume",
+      "inventorySlots": 10,
+      "binPrice": null,
+      "fee": 0
+     }
+    ],
+    "excludedByOutput": {
+     "ENCHANTED_A": {
+      "Below minimum net profit after fees and price allowance": 64
+     },
+     "BLAZE_POWDER": {
+      "AH quote unavailable": 1
+     },
+     "ENCHANTED_B": {
+      "Below minimum net profit after fees and price allowance": 1
+     },
+     "THIN": {
+      "Below minimum net profit after fees and price allowance": 4,
+      "Insufficient Bazaar sell depth": 59
+     },
+     "LOW_VOLUME": {
+      "Below minimum net profit after fees and price allowance": 9
+     },
+     "EXPENSIVE": {
+      "Missing input prices or insufficient buy depth": 52
+     },
+     "QUIET_OUT": {
+      "Below minimum net profit after fees and price allowance": 4
+     },
+     "ENCHANTMENT_TEST_1": {
+      "Below minimum net profit after fees and price allowance": 1
+     },
+     "AH_NULLVOL": {
+      "AH demand unavailable or too low": 1
+     },
+     "AH_OUTLIER": {
+      "AH lowest BIN looks like an outlier": 1
+     },
+     "AH_STALE": {
+      "AH quote stale": 1
+     },
+     "AH_STACK": {
+      "AH output stacks are not listed automatically": 1
+     },
+     "NO_SELL": {
+      "Insufficient Bazaar sell depth": 64
+     }
+    }
+   }
+  },
+  {
+   "name": "bazaar-small-budget",
+   "settings": {
+    "budget": 15000,
+    "minimumProfit": 1000,
+    "bazaarTax": 1.25,
+    "maxBatches": 16,
+    "venue": "BAZAAR",
+    "strategy": "AUTO",
+    "freeSlots": 6
+   },
+   "expected": {
+    "routes": [
+     {
+      "recipeKey": "craft:EXPENSIVE:0",
+      "batches": 7,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 7618910,
+      "profit": 762496.25,
+      "score": 7204.235166288738,
+      "eligible": false,
+      "reason": "Whole batch exceeds spendable budget",
+      "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTED_B:0",
+      "batches": 16,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 10006.721920000002,
+      "profit": 10683.37808,
+      "score": 65.54219680981595,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 6,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTMENT_TEST_1:0",
+      "batches": 5,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 111.4048,
+      "profit": 3720.0952,
+      "score": 39.158896842105264,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 6,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:QUIET_INPUT:0",
+      "batches": 16,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 2570.88,
+      "profit": 3253,
+      "score": 25.4140625,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:THIN:0",
+      "batches": 16,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_OFFER",
+      "capital": 1782.4768,
+      "profit": 4347.923200000001,
+      "score": 18.460951086956527,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 4,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:ENCHANTED_A:0",
+      "batches": 16,
+      "venue": "BAZAAR",
+      "strategy": "INSTANT_OFFER",
+      "capital": 28519.6288,
+      "profit": 1366.0712000000021,
+      "score": 3.2086402925531967,
+      "eligible": false,
+      "reason": "Whole batch exceeds spendable budget",
+      "inventorySlots": 41,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:LOW_VOLUME:0",
+      "batches": 16,
+      "venue": "BAZAAR",
+      "strategy": "ORDER_INSTANT",
+      "capital": 1292.0320000000002,
+      "profit": 1773.1680000000001,
+      "score": 0.11910540674603176,
+      "eligible": false,
+      "reason": "Batch exceeds 5% of observed daily market volume",
+      "inventorySlots": 3,
+      "binPrice": null,
+      "fee": 0
+     },
+     {
+      "recipeKey": "craft:NO_SELL:0",
+      "batches": 7,
+      "venue": "BAZAAR",
+      "strategy": "ORDER_OFFER",
+      "capital": 282.63200000000006,
+      "profit": 1728.9055,
+      "score": 0.020349363167828687,
+      "eligible": true,
+      "reason": null,
+      "inventorySlots": 2,
+      "binPrice": null,
+      "fee": 0
+     }
+    ],
+    "excludedByOutput": {
+     "ENCHANTED_A": {
+      "Below minimum net profit after fees and price allowance": 39
+     },
+     "ENCHANTED_B": {
+      "Below minimum net profit after fees and price allowance": 4
+     },
+     "THIN": {
+      "Below minimum net profit after fees and price allowance": 14,
+      "Insufficient Bazaar sell depth": 22
+     },
+     "LOW_VOLUME": {
+      "Below minimum net profit after fees and price allowance": 31
+     },
+     "EXPENSIVE": {
+      "Missing input prices or insufficient buy depth": 8
+     },
+     "QUIET_OUT": {
+      "Below minimum net profit after fees and price allowance": 16
+     },
+     "ENCHANTMENT_TEST_1": {
+      "Below minimum net profit after fees and price allowance": 4
+     },
+     "NO_SELL": {
+      "Below minimum net profit after fees and price allowance": 8,
+      "Insufficient Bazaar sell depth": 32
+     }
+    }
+   }
+  },
+  {
+   "name": "ah-only",
+   "settings": {
+    "budget": 2000000,
+    "minimumProfit": 1000,
+    "bazaarTax": 1.25,
+    "maxBatches": 64,
+    "venue": "AH",
+    "strategy": "AUTO",
+    "freeSlots": 36
+   },
+   "expected": {
+    "routes": [
+     {
+      "recipeKey": "craft:AH_SWORD:0",
+      "batches": 1,
+      "venue": "AH",
+      "strategy": "INSTANT_INSTANT",
+      "capital": 279212.99072,
+      "profit": 545861.1407799999,
+      "score": 4514.983390334771,
+      "eligible": false,
+      "reason": "AH sale/expiry/claim reconciliation is not implemented; use production test for one verified listing",
+      "inventorySlots": 3,
+      "binPrice": 949999,
+      "fee": 10700
+     }
+    ],
+    "excludedByOutput": {
+     "BLAZE_POWDER": {
+      "AH quote unavailable": 1
+     },
+     "AH_NULLVOL": {
+      "AH demand unavailable or too low": 1
+     },
+     "AH_OUTLIER": {
+      "AH lowest BIN looks like an outlier": 1
+     },
+     "AH_STALE": {
+      "AH quote stale": 1
+     },
+     "AH_STACK": {
+      "AH output stacks are not listed automatically": 1
+     }
+    }
+   }
+  }
+ ]
+}

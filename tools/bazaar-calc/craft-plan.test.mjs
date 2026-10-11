@@ -76,7 +76,35 @@ test('persisted AH references estimate profit but never bypass a fresh quote or 
  const history={protocol:'goofy-ah-history/1',generatedAt:now,rows:[{item:'RESULT',price:10000,lastAt:now-86400000,volume:42,demandAt:now-86400000}]};
  const m={...market,products:{INPUT:market.products.INPUT}};
  const [r]=planCrafts({...options,market:m,history,budget:100000});assert.ok(r.profit>0);assert.equal(r.eligible,false);assert.equal(r.pricing,'HISTORY');assert.match(r.reason,/Historical/);
- const ah={generatedAt:now,rows:[{item:'RESULT',sourceAt:now,volume:42,quote:{item:'RESULT',lowest:11000,fetchedAt:now}}]};
- const [live]=planCrafts({...options,market:m,history,ah,budget:100000});assert.equal(live.pricing,'LIVE');assert.equal(live.eligible,true);assert.equal(live.binPrice,10999);
+ const ah={generatedAt:now,rows:[{item:'RESULT',sourceAt:now,volume:42,quote:{protocol:'goofy-ah-price/1',item:'RESULT',lowest:11000,fetchedAt:now}}]};
+ // Like the mod, a live AH route is priced but never feasible until sales are reconciled.
+ const [live]=planCrafts({...options,market:m,history,ah,budget:100000});assert.equal(live.pricing,'LIVE');assert.equal(live.eligible,false);assert.match(live.reason,/reconciliation/);assert.equal(live.binPrice,10999);
  history.rows[0].lastAt=now-8*86400000;assert.equal(planCrafts({...options,market:m,history})[0].profit,null);
+});
+
+import {readFileSync} from 'node:fs';
+import {rankLikeMod,STRATEGIES,strategyLabel} from './website-src/craft-plan.mjs';
+test('website ranks exactly what the mod ranks on the shared parity fixture',()=>{
+ const fixture=JSON.parse(readFileSync(new URL('../../integrations/goofyaddons/src/test/resources/fixtures/craft-parity.json',import.meta.url)));
+ for(const c of fixture.cases){
+  const r=rankLikeMod({catalog:fixture.catalog,market:fixture.market,ah:fixture.ah,now:fixture.now,...c.settings});
+  const got=r.routes.map(x=>({recipeKey:x.recipe.key,batches:x.batches,venue:x.venue,strategy:x.strategy,capital:x.capital,profit:x.profit,score:x.score,eligible:x.eligible,reason:x.reason,inventorySlots:x.inventorySlots,binPrice:x.binPrice,fee:x.fee}));
+  assert.deepEqual(got,c.expected.routes,c.name);assert.deepEqual(r.excludedByOutput,c.expected.excludedByOutput,c.name);
+ }
+});
+test('the website evaluates every mod strategy and up to 64 batches',()=>{
+ const deep=(ask,bid)=>({buy_summary:[{pricePerUnit:ask,amount:1e6}],sell_summary:[{pricePerUnit:bid,amount:1e6}],quick_status:{buyMovingWeek:7e7,sellMovingWeek:7e7}});
+ const m={...market,products:{INPUT:deep(100,90),RESULT:deep(1100,1000)}};
+ const [row]=planCrafts({...options,market:m,budget:1e9,maxBatches:64});
+ assert.equal(row.batches,64);assert.ok(STRATEGIES.includes(row.strategy));assert.equal(row.buySell,strategyLabel(row.strategy));assert.ok(row.coinsPerHour>0);
+ for(const strategy of STRATEGIES)assert.equal(planCrafts({...options,market:m,budget:1e9,strategy})[0].strategy,strategy);
+});
+test('crafts the mod skips stay visible as infeasible research rows that say why',()=>{
+ const ah={generatedAt:now,rows:[{item:'RESULT',sourceAt:now,volume:null,quote:{protocol:'goofy-ah-price/1',item:'RESULT',lowest:100000,secondLowest:110000,fetchedAt:now}}]};
+ const [row]=planCrafts({...options,market:{...market,products:{INPUT:market.products.INPUT}},ah});
+ assert.equal(row.eligible,false);assert.match(row.reason,/^Mod skips this craft: AH demand unavailable or too low/);
+});
+test('free inventory slots limit batches exactly like the mod',()=>{
+ const [full]=planCrafts({...options,maxBatches:64,budget:1e9,freeSlots:36}),[tight]=planCrafts({...options,maxBatches:64,budget:1e9,freeSlots:2});
+ assert.ok(full.inventorySlots<=36);assert.ok(tight.inventorySlots<=2||!tight.eligible);
 });

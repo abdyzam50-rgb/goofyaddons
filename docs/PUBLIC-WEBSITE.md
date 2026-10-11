@@ -100,6 +100,21 @@ For an existing installation, deploy the complete updated Worker and calculator
 assets together, preserving the D1 ID and Cloudflare secrets. Copying only the
 standalone Worker cannot update the browser pages.
 
+## Craft plans match the mod
+
+`website-src/craft-plan.mjs` now ports the mod's `CraftFlipPlanner.rank` line for line:
+all four buy/sell strategies (or the best of them), up to 64 batches, the same basic
+ingredient preparation, instant-buy fee, price allowance, sale floor, Bazaar tax, AH
+listing price and fee, 5% volume limit, inventory slots, order-wait scoring and
+exclusion reasons. The page adds strategy and free-slot settings and shows the
+strategy and estimated coins per hour for each route. Crafts the mod skips stay
+visible as research rows that say why.
+
+`integrations/goofyaddons/src/test/resources/fixtures/craft-parity.json` holds shared
+cases. The mod's `CraftPlannerParityTest` and the website's `craft-plan.test.mjs` both
+assert it, and CI runs both, so a change to one planner without the other fails.
+Only in-game facts stay mod-only: held items, other positions and compactors.
+
 ## Live craft plans (0.2.27 website update)
 
 Open `/calculator/flips/craft`. A new production planner sits above the original

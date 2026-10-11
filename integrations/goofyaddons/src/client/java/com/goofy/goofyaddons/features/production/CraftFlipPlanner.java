@@ -59,15 +59,20 @@ final class CraftFlipPlanner {
             var row=value.getAsJsonObject();auctions.put(row.get("item").getAsString(),row);
         }catch(RuntimeException ignored){}
         var best=new HashMap<String,Route>();
+        var books=new Books(products);
+        String compactorConflict=CompactorClearance.unreadable(menu);
+        int freeSlots=Math.max(0,menu.emptyInventorySlots()-reservedSlots);
+        var activity=new HashMap<String,Double>();
         for(var recipe:catalog.recipes()) {
             if(recipe.kind()!=ProductionRecipe.Kind.CRAFT)continue;
-            boolean bz=products.has(recipe.outputId());String sale=bz?"BAZAAR":"AH";
+            boolean bz=books.has(recipe.outputId());String sale=bz?"BAZAAR":"AH";
             if(!venue.equals("BOTH")&&!venue.equals(sale))continue;
             if(!bz&&!auctions.containsKey(recipe.outputId())){exclude(excluded,excludedByOutput,recipe.outputId(),"AH quote unavailable");continue;}
             String requirement=RouteRequirements.craft(recipe.requirement(),skills,unlocks);
             if(requirement==null)requirement=RouteRequirements.product(recipe.outputId(),unlocks);
             if(requirement==null)requirement=RouteRequirements.products(IngredientPreparation.dependencies(catalog,recipe.ingredients().keySet()),unlocks);
             int limit=bz?Math.min(64,maxBatches):1;
+            boolean outputHeld=menu.countInInventory(recipe.outputId())>0;
             var preparations=new HashMap<Integer,IngredientPreparation.Plan>();
             for(var strategy:bz?BazaarStrategy.values():new BazaarStrategy[]{BazaarStrategy.INSTANT_INSTANT}) for(int batches=1;batches<=limit;batches++)try {
                 if(bz && !strategySetting.equals("AUTO") && !strategy.name().equals(strategySetting))continue;
@@ -78,18 +83,18 @@ final class CraftFlipPlanner {
                     return IngredientPreparation.plan(catalog,quantities,Map.of());
                 });
                 String reason=requirement;
-                if(menu.countInInventory(recipe.outputId())>0)reason="Output already held; move it before automatic production";
+                if(outputHeld)reason="Output already held; move it before automatic production";
                 if(blocked.contains(recipe.outputId())||preparation.products().stream().anyMatch(blocked::contains))reason="Product belongs to another position or unresolved production job";
-                String conflict=CompactorClearance.unreadable(menu);if(conflict!=null)reason=conflict;
+                if(compactorConflict!=null)reason=compactorConflict;
                 int outputSlots=inventorySlotsForProduct(recipe.outputId(),Math.multiplyExact(recipe.outputCount(),batches));
                 int slots=outputSlots;double cost=0,orderWait=0;boolean priced=true;
                 for(var entry:preparation.purchases().entrySet()) {
-                    var product=products.get(entry.getKey());
-                    Double amount=product!=null&&product.isJsonObject()?strategy.buy(product.getAsJsonObject(),entry.getValue()):null;
+                    var product=books.element(entry.getKey());
+                    Double amount=product!=null&&product.isJsonObject()?books.buy(strategy,entry.getKey(),entry.getValue()):null;
                     if(amount==null){priced=false;break;}
                     cost+=amount;slots+=inventorySlotsForProduct(entry.getKey(),entry.getValue());
                     if(!strategy.instantBuy) {
-                        double rate=hourlyActivity(product.getAsJsonObject())*0.05;
+                        double rate=activity.computeIfAbsent(entry.getKey(),id->hourlyActivity(product.getAsJsonObject()))*0.05;
                         if(rate<=0){reason="Input order activity unavailable";}
                         // The funded ingredient basket is submitted before any fill wait;
                         // its orders fill concurrently, so the slowest input sets that wait.
@@ -102,11 +107,11 @@ final class CraftFlipPlanner {
                     slots=Math.max(slots,outputSlots+inventorySlotsForProduct(intermediate.outputId(),Math.multiplyExact(intermediate.outputCount(),craft.batches()))+
                         intermediate.ingredients().entrySet().stream().mapToInt(e->inventorySlotsForProduct(e.getKey(),Math.multiplyExact(e.getValue(),craft.batches()))).sum());
                 }
-                if(slots>Math.max(0,menu.emptyInventorySlots()-reservedSlots))reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
+                if(slots>freeSlots)reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;
                 if(bz) {
-                    var product=products.getAsJsonObject(recipe.outputId());
-                    Double gross=strategy.sell(product,recipe.outputCount()*batches);
+                    var product=books.object(recipe.outputId());
+                    Double gross=books.sell(strategy,recipe.outputId(),recipe.outputCount()*batches);
                     if(gross==null){exclude(excluded,excludedByOutput,recipe.outputId(),"Insufficient Bazaar sell depth");continue;}
                     net=gross*ProductionRun.SALE_FLOOR*(1-bazaarTax/100);
                     var quick=product.getAsJsonObject("quick_status");
@@ -116,15 +121,24 @@ final class CraftFlipPlanner {
                     liquidity=week/168;
                     if(!strategy.instantSell)orderWait+=recipe.outputCount()*batches/(liquidity*0.05)*3600;
                 } else {
-                    if(recipe.outputCount()!=1)continue; // Existing BIN executor lists one exact item.
-                    var row=auctions.get(recipe.outputId());var quote=row.getAsJsonObject("quote");
-                    if(quote==null||now-quote.get("fetchedAt").getAsLong()>60000||quote.get("fetchedAt").getAsLong()>now+5000)continue;
-                    price=AuctionPricing.listingPrice(AuctionPricing.parse(quote,recipe.outputId(),now));
+                    // Existing BIN executor lists one exact item.
+                    if(recipe.outputCount()!=1){exclude(excluded,excludedByOutput,recipe.outputId(),"AH output stacks are not listed automatically");continue;}
+                    var row=auctions.get(recipe.outputId());var quote=row.get("quote");
+                    var fetched=quote!=null&&quote.isJsonObject()?quote.getAsJsonObject().get("fetchedAt"):null;
+                    if(fetched==null||!fetched.isJsonPrimitive()||now-fetched.getAsLong()>60000||fetched.getAsLong()>now+5000){exclude(excluded,excludedByOutput,recipe.outputId(),"AH quote stale");continue;}
+                    AuctionPricing.Quote parsed;
+                    try{parsed=AuctionPricing.parse(quote.getAsJsonObject(),recipe.outputId(),now);}
+                    catch(RuntimeException invalid){exclude(excluded,excludedByOutput,recipe.outputId(),"AH quote invalid");continue;}
+                    if(parsed.secondLowest()!=null&&parsed.lowest()*2<parsed.secondLowest()){exclude(excluded,excludedByOutput,recipe.outputId(),"AH lowest BIN looks like an outlier");continue;}
+                    price=AuctionPricing.listingPrice(parsed);
                     fee=ProductionPlanner.listingFeeLimit(price);
                     // Price can vary within the GUI validation band; include conservative claim tax too.
                     net=price*0.90*0.965;
                     if(reason==null)reason="AH sale/expiry/claim reconciliation is not implemented; use production test for one verified listing";
-                    double volume=row.get("volume").getAsDouble();if(!Double.isFinite(volume)||volume<=2)continue;
+                    // Catalog outputs without reported sales arrive with a null volume.
+                    var reported=row.get("volume");
+                    double volume=reported==null||!reported.isJsonPrimitive()?Double.NaN:reported.getAsDouble();
+                    if(!Double.isFinite(volume)||volume<=2){exclude(excluded,excludedByOutput,recipe.outputId(),"AH demand unavailable or too low");continue;}
                     liquidity=Math.min(1,Math.log1p(volume)/Math.log(101));
                 }
                 double capital=cost*1.03+fee,profit=net-capital;
@@ -140,10 +154,61 @@ final class CraftFlipPlanner {
         }
         return best.values().stream().sorted(Comparator.comparingDouble(Route::score).reversed().thenComparing(r->r.recipe().key())).toList();
     }
+    private static final java.util.regex.Pattern BOOK=java.util.regex.Pattern.compile("ENCHANTMENT_[A-Z][A-Z0-9_]*_(?:[1-9][0-9]?|100)");
+    private static final Map<String,Boolean> BOOK_IDS=new java.util.concurrent.ConcurrentHashMap<>();
     /** Books can be unstackable; reserve every unit until an actual stack proves otherwise. */
     static int inventorySlotsForProduct(String id,int units) {
         if(units<0)throw new IllegalArgumentException("Negative inventory quantity");
-        return id!=null && id.matches("ENCHANTMENT_[A-Z][A-Z0-9_]*_(?:[1-9][0-9]?|100)")?units:Math.toIntExact((units+63L)/64);
+        return id!=null && BOOK_IDS.computeIfAbsent(id,key->BOOK.matcher(key).matches())?units:Math.toIntExact((units+63L)/64);
+    }
+    /**
+     * Order books parsed and sorted once per ranking. Ranking walks the same books for every
+     * strategy and batch size; re-reading Gson numbers and re-sorting each time cost most of a
+     * second on the client thread. Arithmetic and validation match ProductionPlanner exactly.
+     */
+    private static final class Books {
+        private record Level(double price,double amount) {}
+        private final Map<String,JsonElement> products=new HashMap<>();
+        private final Map<String,Optional<List<Level>>> asks=new HashMap<>(),bids=new HashMap<>();
+        Books(JsonObject products){for(var entry:products.entrySet())this.products.put(entry.getKey(),entry.getValue());}
+        boolean has(String id){return products.containsKey(id);}
+        JsonElement element(String id){return products.get(id);}
+        JsonObject object(String id){return (JsonObject)products.get(id);}
+        Double buy(BazaarStrategy strategy,String id,int units) {
+            var product=object(id);
+            if(product==null||units<1)return null;
+            if(!strategy.instantBuy)return strategy.buy(product,units);
+            Double book=walk(ladder(asks,id,"buy_summary",false),units);
+            return book==null?null:book*ProductionPlanner.INSTANT_BUY_FEE;
+        }
+        Double sell(BazaarStrategy strategy,String id,int units) {
+            var product=object(id);
+            if(product==null||units<1)return null;
+            if(!strategy.instantSell)return strategy.sell(product,units);
+            return walk(ladder(bids,id,"sell_summary",true),units);
+        }
+        private Optional<List<Level>> ladder(Map<String,Optional<List<Level>>> cache,String id,String side,boolean descending) {
+            return cache.computeIfAbsent(id,key->{
+                var product=object(key);
+                if(product==null||!product.has(side))return Optional.empty();
+                try {
+                    var levels=new ArrayList<Level>();
+                    for(var value:product.getAsJsonArray(side)){var level=value.getAsJsonObject();levels.add(new Level(level.get("pricePerUnit").getAsDouble(),level.get("amount").getAsDouble()));}
+                    Comparator<Level> order=Comparator.comparingDouble(Level::price);
+                    levels.sort(descending?order.reversed():order);
+                    return Optional.of(List.copyOf(levels));
+                }catch(RuntimeException invalid){return Optional.empty();}
+            });
+        }
+        private static Double walk(Optional<List<Level>> ladder,int units) {
+            if(ladder.isEmpty())return null;
+            double total=0;int remaining=units;
+            for(var level:ladder.get()){double price=level.price(),amount=level.amount();
+                if(!Double.isFinite(price) || price<=0 || !Double.isFinite(amount) || amount<0)return null;
+                int take=(int)Math.min(remaining,Math.floor(amount));total+=take*price;remaining-=take;if(remaining==0)return Double.isFinite(total)?total:null;
+            }
+            return null;
+        }
     }
     private static double hourlyActivity(JsonObject product) {
         var quick=product.getAsJsonObject("quick_status");
