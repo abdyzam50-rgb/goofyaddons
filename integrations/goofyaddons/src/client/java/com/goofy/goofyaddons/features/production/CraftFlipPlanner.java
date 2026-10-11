@@ -45,6 +45,17 @@ final class CraftFlipPlanner {
             Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
             double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded,int reservedSlots,String strategySetting,
             Map<String,Map<String,Integer>> excludedByOutput) {
+        return rank(catalog,market,ah,menu,skills,unlocks,blocked,budget,minimumProfit,bazaarTax,maxBatches,venue,now,excluded,reservedSlots,strategySetting,excludedByOutput,0);
+    }
+    /**
+     * With {@code storageSlots}, bought inputs may overflow into that many empty storage slots:
+     * the output and one batch's inputs must still fit the inventory, since crafting runs in
+     * rounds. Routes that prepare intermediates keep the whole run in the inventory.
+     */
+    static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
+            Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
+            double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded,int reservedSlots,String strategySetting,
+            Map<String,Map<String,Integer>> excludedByOutput,int storageSlots) {
         excludedByOutput.clear();excluded.clear();
         if(menu==null){exclude(excluded,"Player inventory unavailable");return List.of();}
         if(!menu.cursorEmpty()){exclude(excluded,"Clear the item held on the cursor");return List.of();}
@@ -105,6 +116,11 @@ final class CraftFlipPlanner {
                     var intermediate=catalog.forOutput(craft.output()).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
                     slots=Math.max(slots,outputSlots+inventorySlotsForProduct(catalog,intermediate.outputId(),Math.multiplyExact(intermediate.outputCount(),craft.batches()))+
                         intermediate.ingredients().entrySet().stream().mapToInt(e->inventorySlotsForProduct(catalog,e.getKey(),Math.multiplyExact(e.getValue(),craft.batches()))).sum());
+                }
+                if(storageSlots>0 && preparation.crafts().isEmpty() && slots>freeSlots) {
+                    int round=outputSlots+1;
+                    for(var entry:recipe.ingredients().entrySet())round+=inventorySlotsForProduct(catalog,entry.getKey(),entry.getValue())+(catalog.unstackable(entry.getKey())?0:1);
+                    if(round<=freeSlots && slots<=freeSlots+storageSlots)slots=freeSlots;
                 }
                 if(slots>freeSlots)reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;

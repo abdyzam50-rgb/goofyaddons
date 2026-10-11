@@ -33,7 +33,56 @@ public final class ProductionLoopFeature implements Feature {
     private long nextSaleRestore;
     public boolean hasRetainedOrders(){return orders.retained();}
     public boolean hasRetainedOrders(String parent){return orders.retained(parent);}
-    public java.util.List<String> releaseOrders(String parent){return queued()?null:orders.release(parent);}
+    public java.util.List<String> releaseOrders(String parent){
+        if(queued())return null;
+        var released=orders.release(parent);
+        if(released==null)return null;
+        var all=new ArrayList<>(released);
+        try{var ledger=storageLedger();if(ledger!=null)ledger.release(parent).forEach(entry->all.add("storage record "+entry));}
+        catch(Exception failed){Diagnostics.failure("production.storage_release_failed",failed);all.add("storage records kept: ledger unreadable");}
+        return all;
+    }
+    private ProductionStorage storageLedger;
+    private java.nio.file.Path storageLedgerPath;
+    private ProductionStorage.Move scanning;
+    /** The pinned profile's storage ledger; throws when it exists but cannot be read. */
+    ProductionStorage storageLedger() {
+        var accounts=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        if(accounts.pinned()==null)return null;
+        var path=accounts.path(com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_STORAGE);
+        if(!path.equals(storageLedgerPath)) {
+            try{storageLedger=new ProductionStorage(path);storageLedgerPath=path;}
+            catch(java.io.IOException unreadable){throw new IllegalStateException(unreadable.getMessage(),unreadable);}
+        }
+        return storageLedger;
+    }
+    private static List<ProductionStorage.Page> storagePages(){return ProductionStorage.pages(GoofyConfig.INSTANCE.craftFlips.storagePages);}
+    /** Empty storage slots the planner may overflow inputs into; zero while storage is off or unread. */
+    int storageSlots() {
+        if(!GoofyConfig.INSTANCE.craftFlips.useStorage)return 0;
+        try{var ledger=storageLedger();return ledger==null?0:Math.max(0,ledger.emptySlots(storagePages()));}
+        catch(RuntimeException unreadable){return 0;}
+    }
+    /** Reads each storage page once, so the planner knows how much may overflow. */
+    private boolean scanStorageIfUnread() {
+        if(!GoofyConfig.INSTANCE.craftFlips.useStorage || scanning!=null)return scanning!=null;
+        try {
+            var ledger=storageLedger();
+            if(ledger==null || ledger.emptySlots(storagePages())>=0)return false;
+            scanning=ProductionStorage.Move.scan(ledger,storagePages());
+            new LiveActions().message("Checking your ender chest and backpacks for free space before planning bigger craft runs.");
+            return true;
+        }catch(RuntimeException unreadable){Diagnostics.failure("production.storage_unreadable",unreadable);return false;}
+    }
+    private void scanStep() {
+        var world=new LiveWorld();
+        var result=scanning.tick(world.menu(),new LiveActions(),world.now());
+        if(result==ProductionStorage.Move.Result.WAITING)return;
+        var move=scanning;scanning=null;
+        if(result==ProductionStorage.Move.Result.BLOCKED){FeatureManager.INSTANCE.safetyPause("Storage check stopped: "+move.failure());return;}
+        Diagnostics.event("INFO","production.storage_scanned",storageLedger().diagnosticState());
+        selection.refresh();
+    }
     public boolean hasOrphanOrders(){return orders.orphaned(work.stream().map(Work::id).collect(java.util.stream.Collectors.toSet()));}
     private double availableFor(String owner,double purse) {
         if(!Double.isFinite(purse)||purse<0)return 0;
@@ -61,6 +110,9 @@ public final class ProductionLoopFeature implements Feature {
         state.put("nextSelectionAt",nextSelection);state.put("selection",selection.diagnosticState());
         state.put("settings",GoofyConfig.INSTANCE.craftFlips);state.put("orders",orders.diagnosticState());
         state.put("lockedProducts",lockedProducts());
+        try{var ledger=storageLedger();state.put("storage",ledger==null?null:ledger.diagnosticState());state.put("storageSlots",storageSlots());}
+        catch(RuntimeException unreadable){state.put("storageError",unreadable.getMessage());}
+        state.put("storageScan",scanning==null?null:scanning.describe());
         state.put("craftDelegateQueued",FeatureManager.INSTANCE.crafting().queued());state.put("auctionDelegateQueued",FeatureManager.INSTANCE.auction().queued());
         state.put("activeRuns",work.stream().map(w->{var row=new LinkedHashMap<>(safeRunState(w.run));row.put("budget",w.budget);row.put("inventorySlots",w.inventorySlots);row.put("nextActionAt",w.nextAction);row.put("lastObservedAt",w.lastObserved);row.put("lastStateChangeAt",w.lastChanged);return row;}).toList());
         try {
@@ -124,6 +176,7 @@ public final class ProductionLoopFeature implements Feature {
         nextSelection=System.currentTimeMillis()+5000;
         var manager=FeatureManager.INSTANCE;
         if(manager.accountRequirementsPending() || hasOrphanOrders())return;
+        if(work.isEmpty() && scanStorageIfUnread())return;
         var candidate=selection.currentRoutes().stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElse(null);
         if(candidate==null)return;
         try {
@@ -242,7 +295,7 @@ public final class ProductionLoopFeature implements Feature {
         foreground=menuLease.select(work,w->w.run.wantsMenu(),FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued());
         return foreground;
     }
-    public boolean needsMenu() { return isRunning() && (recoveringOrders?orders.needsMenu():menuWork()!=null); }
+    public boolean needsMenu() { return isRunning() && (recoveringOrders?orders.needsMenu():scanning!=null || menuWork()!=null); }
     public boolean canYield() { return !needsMenu(); }
 
     /** Recover ingredient buys and verified unsubmitted outputs; never select another craft. */
@@ -312,6 +365,7 @@ public final class ProductionLoopFeature implements Feature {
     @Override public void onTick() {
         if(!needsMenu())return;
         if(recoveringOrders){recoverOrderStep(true);return;}
+        if(scanning!=null){scanStep();return;}
         var current=menuWork();if(current!=null)step(current,true);
     }
     private void step(Work current,boolean ownsMenu) {
@@ -379,7 +433,7 @@ public final class ProductionLoopFeature implements Feature {
                 }
             }
         }catch(Exception failure){Diagnostics.failure("production.journal_failed",failure);}
-        orders.stop();work.clear();foreground=null;menuLease.clear();recoveringOrders=false;
+        orders.stop();work.clear();foreground=null;menuLease.clear();recoveringOrders=false;scanning=null;
     }
 
     private ProductionRun.Environment environment(Work current,boolean buyInputs,boolean marketPricing) throws java.io.IOException {
@@ -457,6 +511,14 @@ public final class ProductionLoopFeature implements Feature {
                 return (marketPricing?auction.queueMarket(product,price,true,maximumFee):auction.queue(product,price,true,maximumFee)) ? auction.jobId() : null;
             }
             public boolean listingQueued() { return FeatureManager.INSTANCE.auction().queued(); }
+            public ProductionStorage storage(){return storageLedger();}
+            public boolean storageEnabled(){return GoofyConfig.INSTANCE.craftFlips.useStorage;}
+            public List<ProductionStorage.Page> storagePages(){return ProductionLoopFeature.storagePages();}
+            public List<String> orderAwaitingStorage(){return orders.awaitingStorage(current.id());}
+            public Set<String> orderStorable(){return orders.storable(current.id());}
+            public Set<String> orderTracked(){return orders.tracked(current.id());}
+            public boolean orderStored(String product,int units){return orders.stored(current.id(),product,units);}
+            public boolean orderIdle(){return orders.idle();}
             public void outputConfirmed(String id,String output,int units,Double cost) {
                 com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE.acquire(id,"craft",output,"craft-output:"+id,units,cost);
             }

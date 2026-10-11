@@ -63,6 +63,31 @@ final class GeneralCancel {
         ctx.claim().retry(ctx);
     }
 
+    /**
+     * A buy claim larger than the inventory: the server claims what fits. Accept an arrival
+     * no larger than the room, once the count settles, then wait for the run to store it.
+     */
+    void partial(GeneralContext ctx) {
+        var active = ctx.active();
+        var trade = ctx.trade();
+        int count = ctx.itemCount(active.item.id());
+        int gained = count - trade.inventoryBefore;
+        if (gained < 0) { ctx.fail("Inventory fell during a partial buy claim; manual reconciliation required."); return; }
+        if (gained > trade.expectedClaim || active.acquiredInventory(count) > active.quantity) {
+            ctx.fail("A partial buy claim returned more than the inventory room; position retained."); return;
+        }
+        if (gained == 0) { ctx.claim().retry(ctx); return; }
+        // The server can deliver one claim over several inventory updates.
+        if (count != trade.partialCount) { trade.partialCount = count; trade.partialSince = ctx.now(); return; }
+        if (ctx.now() - trade.partialSince < 750) return;
+        active.productionAwaitingStorage = true;
+        if (!ctx.save()) return;
+        ctx.services().event("INFO", "order.partial_claim_verified", java.util.Map.of("trade", active.tradeId,
+                "item", active.item.id(), "units", gained, "acquired", active.acquiredInventory(count), "quantity", active.quantity));
+        ctx.actions().closeMenu();
+        ctx.finishWork();
+    }
+
     void verify(GeneralContext ctx) {
         var active = ctx.active();
         var trade = ctx.trade();

@@ -226,4 +226,34 @@ class BazaarInstantBuyTest {
         assertEquals(effects,actions.serverEffects().size());
     }
 
+    @Test void fillModeBuysWhatFitsAtTheSamePerUnitLimitAndReportsIt() {
+        var actions=new RecordingActions();
+        var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",5000,500_000,intents::add,true);
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(product(100),false,actions,1_000_000,0));
+        var amounts=menu(2,"Enchanted Coal \u279c Instant",
+                SlotView.named(12,"Buy a stack!",List.of("Enchanted Coal","","Amount: 64x","","Price: 6,400 coins")),
+                SlotView.named(14,"Fill my inventory!",List.of("Enchanted Coal","","Amount: 2,240x","","Per unit: 100 coins","Price: 224,000 coins")),
+                SlotView.named(16,"Custom Amount",List.of()));
+        purchase.tick(amounts,false,actions,1_000_000,100);
+        assertEquals(List.of("click:10","click:14"),actions.serverEffects());
+        assertEquals(2240,purchase.amount());assertEquals(5000,purchase.requested());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,item(54,"ENCHANTED_COAL",2240)),false,actions,776_000,200));
+        assertEquals(224_000,purchase.spent());
+    }
+    @Test void fillModeRefusesAFillQuoteAboveTheScaledLimit() {
+        var actions=new RecordingActions();
+        var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",5000,500_000,intents::add,true);
+        purchase.tick(product(100),false,actions,1_000_000,0);
+        var amounts=menu(2,"Enchanted Coal \u279c Instant",
+                SlotView.named(14,"Fill my inventory!",List.of("Enchanted Coal","","Amount: 2,240x","","Price: 300,000 coins")),
+                SlotView.named(16,"Custom Amount",List.of()));
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,purchase.tick(amounts,false,actions,1_000_000,100));
+        assertEquals(List.of("click:10"),actions.serverEffects());assertTrue(intents.isEmpty());
+    }
+    @Test void withoutFillModeALargeAmountStillNeedsTheSpace() {
+        var actions=new RecordingActions();
+        var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",5000,500_000,intents::add);
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,purchase.tick(product(100,item(54,"COBBLE",64)),false,actions,1_000_000,0));
+        assertTrue(actions.serverEffects().isEmpty());
+    }
 }

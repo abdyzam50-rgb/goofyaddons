@@ -455,6 +455,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         crafts.row("Minimum net profit",()->"Require this profit after depth, taxes and price movement allowance before buying.",tradingNumber("Craft profit",()->draft.view().craftFlips.minimumProfit,(cfg,v)->cfg.craftFlips.minimumProfit=v));
         crafts.row("Active crafts",()->"1–4 independent jobs. Wait on orders in parallel; GUI actions remain sequential.",tradingWhole("Active crafts",()->draft.view().craftFlips.maxActiveCrafts,1,4,(cfg,v)->cfg.craftFlips.maxActiveCrafts=v));
         crafts.row("Maximum batches",()->"1–64; planning reduces the batch to fit money, depth, volume and inventory.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,64,(cfg,v)->cfg.craftFlips.maxBatches=v));
+        crafts.row("Use storage",()->"Buy more than the inventory holds: claim what fits, park it in ender chest pages 1–3 and backpacks 1–4, then claim the rest. Test it in game first.",
+            new Check(()->draft.view().craftFlips.useStorage,v->editTrading("Use storage",cfg->cfg.craftFlips.useStorage=v)).toggle());
         crafts.row("Inspect ranking",()->"Show estimated coins/hour, batch profit, strategy and route blockers in chat.",new Button("Best crafts",()->manager.production().showCraftPlans(),Button.PLAIN));
         crafts.row("Current plan",manager.production()::discoveryStatus);
         Card auctionTests=card("Auction House tests","Craft and list one BIN. Automatic sale and claim tracking is still pending.");

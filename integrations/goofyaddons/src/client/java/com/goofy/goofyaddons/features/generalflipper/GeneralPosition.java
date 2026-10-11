@@ -18,6 +18,10 @@ public final class GeneralPosition {
     String tradeId;
     String productionParent;
     int productionInventoryBefore;
+    /** Units of this production buy the run moved from the inventory into storage between claims. */
+    int productionStoredUnits;
+    /** A partial claim filled the inventory; the run must store these units before the next claim. */
+    boolean productionAwaitingStorage;
     String saleEvent;
     boolean purchasePriceKnown;
     com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast;
@@ -34,7 +38,7 @@ public final class GeneralPosition {
     double maximumBuyPrice;
     double minimumSellPrice;
     double cost() { return quantity * unitCost; }
-    int acquiredInventory(int total) { return total - (productionBuy ? productionInventoryBefore : 0); }
+    int acquiredInventory(int total) { return productionBuy ? total - productionInventoryBefore + productionStoredUnits : total; }
 
     /** Ordinary flips keep books in their own engine; scoped craft jobs may use one exact Bazaar enchantment. */
     static boolean validProduct(String id,boolean production) {
@@ -71,6 +75,8 @@ public final class GeneralPosition {
                     || position.productionBasket && (!position.productionBuy || position.productionParent==null)
                     || position.productionInventoryBefore<0 || position.productionInventoryBefore>4096
                     || position.productionInventoryBefore>0 && (!position.productionBuy || position.productionParent==null)
+                    || position.productionStoredUnits<0 || position.productionStoredUnits>position.quantity
+                    || (position.productionStoredUnits>0 || position.productionAwaitingStorage) && (!position.productionBuy || position.productionParent==null)
                     || position.rejectedReason!=null && (!position.productionBuy || position.submitted || !position.completed || position.stage!=Stage.PLANNED)
                     || position.stage == null || !ids.add(position.item.id())) {
                 throw new IllegalArgumentException("Invalid saved order position");

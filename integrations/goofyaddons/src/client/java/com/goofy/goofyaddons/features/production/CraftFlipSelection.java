@@ -107,7 +107,7 @@ final class CraftFlipSelection {
             double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(),budget=manager.production().selectionBudget(purse);
             if(cfg.craftFlips.maximumCapital>0)budget=Math.min(budget,cfg.craftFlips.maximumCapital);
             routes=CraftFlipPlanner.rank(RecipeCatalog.instance(),market,ah,world.menu(),manager.observedSkills(),manager.observedUnlocks(),blocked,
-                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded,manager.production().reservedInventorySlots(world.menu()),cfg.craftFlips.strategy,excludedByOutput);
+                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded,manager.production().reservedInventorySlots(world.menu()),cfg.craftFlips.strategy,excludedByOutput,manager.production().storageSlots());
             generatedAt=now;lastMarketSource=market.get("lastUpdated").getAsLong();
             if(error!=null && (error.startsWith("Waiting for") || error.contains("REVIEW jobs remain")
                     || error.startsWith("Resolve retained craft Bazaar orders") || error.equals("Production journal or account data unavailable")))error=null;

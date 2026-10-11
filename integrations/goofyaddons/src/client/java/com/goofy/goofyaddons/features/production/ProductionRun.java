@@ -65,6 +65,20 @@ public final class ProductionRun implements ProductionLoop.Ports {
         /** Queues a published BIN listing through the auction feature; returns its job id or null. */
         String queueListing(String product, long price, double maximumFee);
         boolean listingQueued();
+        /** The storage ledger, whenever it is readable; stored units count as held. */
+        default ProductionStorage storage(){return null;}
+        /** Whether new purchases may overflow into storage. */
+        default boolean storageEnabled(){return false;}
+        default List<ProductionStorage.Page> storagePages(){return List.of();}
+        /** Products whose partial order claims wait for this run to store them. */
+        default List<String> orderAwaitingStorage(){return List.of();}
+        /** Products this run's orders let it move freely. */
+        default Set<String> orderStorable(){return Set.of();}
+        /** Products this run has order positions for. */
+        default Set<String> orderTracked(){return Set.of();}
+        default boolean orderStored(String product,int units){return false;}
+        /** No order transaction is mid-menu, so storage may be opened. */
+        default boolean orderIdle(){return true;}
         default void outputConfirmed(String id,String output,int units,Double cost){}
         default void saleConfirmed(String id,String output,int units,double proceeds){}
     }
@@ -95,6 +109,9 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private double spent;
     private boolean basisUnknown;
     private Set<String> sellInputLocks;
+    private ProductionStorage.Move storing;
+    private Set<String> storingForOrder=Set.of();
+    private int craftedBatches,roundBatches;
     private final CompactorClearance compactorClearance=new CompactorClearance();
 
     private ProductionRun(Environment env, RecipeCatalog catalog, String output, ProductionRecipe.Kind kind, ProductionRecipe recipe,
@@ -223,6 +240,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
         state.put("listingJob",listingJob);state.put("workstationJob",workstationJob);
         state.put("instantBuyItem",buying==null?null:buying.productId());state.put("instantBuySubmitted",buying!=null&&buying.submitted());
         state.put("held",held());state.put("lockedProducts",lockedProducts());
+        var storage=env.storage();state.put("stored",storage==null?Map.of():storage.stored(jobId));
+        state.put("storing",storing==null?null:storing.describe());state.put("craftedBatches",craftedBatches);state.put("roundBatches",roundBatches);
         try {
             state.put("wantsMenu",wantsMenu());state.put("spendable",env.spendable());
             state.put("procurementBlock",env.procurementBlock());
@@ -261,10 +280,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
     /** True while this step owns a menu, including a verified craft-to-craft handoff. */
     public boolean wantsMenu() {
         if (finished() || waitingForOrderRetry || waitingForProcurement) return false;
-        if(orderActive)return env.orderNeedsMenu();
+        if(storing!=null)return true;
+        if(orderActive)return env.orderNeedsMenu() || env.storage()!=null && !env.orderAwaitingStorage().isEmpty();
         return switch (loop.stage()) {
             case PROCURE -> !env.craftQueued() && (compactorClearance.needsMenu(env.menu()) || hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
-            case PROCESS -> kind==ProductionRecipe.Kind.CRAFT ? !env.craftQueued() && hasReusableCraftMenu() : workstationMenuOpen();
+            case PROCESS -> kind==ProductionRecipe.Kind.CRAFT ? !env.craftQueued() && (hasReusableCraftMenu() || craftJob==null && craftsInRounds()) : workstationMenuOpen();
             case CLAIM -> workstationMenuOpen();
             case SELL -> binPrice == SELL_ON_BAZAAR || hasReusableCraftMenu() && !env.listingQueued();
             default -> false;
@@ -280,7 +300,17 @@ public final class ProductionRun implements ProductionLoop.Ports {
     // ---- Stages ------------------------------------------------------------------------
 
     @Override public Outcome procure(long now) {
+        if(storing!=null)return storageStep(now);
         if(orderActive) {
+            var awaiting=env.storage()==null?List.<String>of():env.orderAwaitingStorage();
+            if(!awaiting.isEmpty()) {
+                // A claim filled the inventory: store it, then the order claims the rest.
+                if(!ownsMenu || !env.orderIdle())return Outcome.pending("Claimed what fits; storing it before claiming the rest");
+                var products=new HashSet<>(movableInputs());products.addAll(awaiting);
+                storingForOrder=Set.copyOf(awaiting);
+                storing=ProductionStorage.Move.deposit(jobId,env.storage(),env.storagePages(),products);
+                return storageStep(now);
+            }
             var result=env.tickOrder(ownsMenu);
             if(result==null || result.failed())return Outcome.uncertain(result==null?"Input order unavailable":result.reason());
             if(!result.done())return Outcome.pending("Ingredient order · "+result.reason());
@@ -379,13 +409,25 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if(!env.queueIngredientOrders(List.copyOf(orders)))return Outcome.uncertain("Ingredient order basket could not be queued; check retained craft orders");
             verifiedEmptyOrderHandoff=false;orderActive=true;return Outcome.pending("Placing ingredient buy orders for "+orders.size()+" products");
         }
+        boolean overflow=env.storageEnabled() && env.storage()!=null;
+        if(overflow && env.menu()!=null && env.menu().emptyInventorySlots()<2) {
+            // The inventory is full of bought inputs: store them before buying the next lot.
+            var products=movableInputs();
+            if(products.stream().anyMatch(id->ProductionStorage.Move.inventoryCount(env.menu(),id)>0)) {
+                if(!ownsMenu)return Outcome.pending("Waiting to store bought inputs");
+                storing=ProductionStorage.Move.deposit(jobId,env.storage(),env.storagePages(),products);
+                return storageStep(now);
+            }
+        }
         buying = new BazaarInstantBuy(first.getKey(), env.name(first.getKey()), first.getValue(), limit,
-                reason -> env.jobs().put(parent().withState(ProductionJobs.State.BUYING, reason)));
-        return Outcome.pending("Buying " + first.getValue() + " " + env.name(first.getKey()));
+                reason -> env.jobs().put(parent().withState(ProductionJobs.State.BUYING, reason)),overflow);
+        return Outcome.pending("Buying " + first.getValue() + " " + env.name(first.getKey())+(overflow?" (what fits, then storing)":""));
     }
 
     @Override public Outcome process(long now) {
         if (kind == ProductionRecipe.Kind.CRAFT) {
+            if(storing!=null)return storageStep(now);
+            if(craftsInRounds())return craftRound(now);
             if (craftJob == null) {
                 var requirement=productionRequirement();
                 if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking production prerequisites"):Outcome.blocked(requirementReason(requirement));
@@ -591,7 +633,122 @@ public final class ProductionRun implements ProductionLoop.Ports {
             String id = ProductionMenus.productId(slot);
             if (id != null) counts.merge(id, slot.count(), Integer::sum);
         }
+        // Units this run parked in storage are still its inputs.
+        var storage=env.storage();
+        if(storage!=null)storage.stored(jobId).forEach((id,units)->counts.merge(id,units,Integer::sum));
         return counts;
+    }
+
+    // ---- Storage -----------------------------------------------------------------------
+
+    /** Inputs no order position tracks, or whose orders are settled: this run may move them. */
+    private Set<String> movableInputs() {
+        var ids=new HashSet<String>();var tracked=env.orderTracked();
+        for(String id:requiredProducts())if(!id.equals(output) && !tracked.contains(id))ids.add(id);
+        ids.addAll(env.orderStorable());ids.remove(output);
+        return ids;
+    }
+
+    private Outcome storageStep(long now) {
+        if(!ownsMenu)return Outcome.pending("Waiting to use storage");
+        var move=storing;
+        var result=move.tick(env.menu(),env.actions(),now);
+        if(result==ProductionStorage.Move.Result.WAITING)return Outcome.pending(move.describe());
+        storing=null;
+        var forOrder=storingForOrder;storingForOrder=Set.of();
+        if(result==ProductionStorage.Move.Result.BLOCKED)return Outcome.uncertain(move.failure());
+        for(String product:forOrder) {
+            int units=move.moved(product);
+            // Recording zero lets the order look at the inventory again instead of waiting forever.
+            if(!env.orderStored(product,units))return Outcome.uncertain("Stored "+units+" "+env.name(product)+" but its order could not record it; check storage and orders");
+            if(units==0 && result==ProductionStorage.Move.Result.DONE)
+                return Outcome.blocked("No inventory room to claim "+env.name(product)+"; free some inventory slots");
+        }
+        if(result==ProductionStorage.Move.Result.NO_SPACE)
+            return Outcome.blocked(move.kind()==ProductionStorage.Move.Kind.WITHDRAW?"Not enough free inventory to take inputs back from storage"
+                : "Storage is full; free space in your ender chest pages or backpacks to keep buying");
+        return Outcome.pending(move.kind()==ProductionStorage.Move.Kind.DEPOSIT?"Stored "+move.moved()+" items; continuing":"Took "+move.moved()+" items from storage; crafting next");
+    }
+
+    /** Inputs parked in storage are crafted in rounds that fit the inventory. */
+    private boolean craftsInRounds() {
+        if(craftedBatches>0 || roundBatches>0)return true;
+        var storage=env.storage();
+        return storage!=null && !storage.stored(jobId).isEmpty();
+    }
+
+    private record Round(int batches,Map<String,Integer> withdraw) {}
+
+    private Outcome craftRound(long now) {
+        if(craftJob!=null) {
+            if(env.craftQueued())return Outcome.pending(env.craftActivity());
+            var finished=childFinished(craftJob,Set.of(ProductionJobs.State.OUTPUT_READY,ProductionJobs.State.DONE),"Craft");
+            if(finished!=Outcome.DONE)return finished;
+            craftedBatches+=roundBatches;roundBatches=0;craftJob=null;
+            if(craftedBatches<batches)return Outcome.pending("Crafted "+craftedBatches+"/"+batches+" batches; taking the next inputs from storage");
+        }
+        if(craftedBatches>=batches)return finishRounds();
+        var requirement=productionRequirement();
+        if(requirement!=null)return env.requirementsPending()?Outcome.pending("Checking production prerequisites"):Outcome.blocked(requirementReason(requirement));
+        var menu=env.menu();
+        if(menu==null)return Outcome.pending("Waiting for the inventory");
+        var chosen=recipe!=null?recipe:catalog.forOutput(output).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElse(null);
+        if(chosen==null)return Outcome.uncertain("No craft recipe for the stored inputs");
+        int remaining=batches-craftedBatches;
+        var stored=env.storage()==null?Map.<String,Integer>of():env.storage().stored(jobId);
+        for(var need:chosen.ingredients().entrySet())
+            if((long)ProductionStorage.Move.inventoryCount(menu,need.getKey())+stored.getOrDefault(need.getKey(),0)<(long)need.getValue()*remaining)
+                return Outcome.uncertain("Inputs for the remaining "+remaining+" batches are missing from the inventory and storage");
+        var round=roundPlan(menu,chosen,remaining,stored);
+        if(round==null)return Outcome.blocked("Free some inventory space: one craft batch, its inputs and its output do not fit");
+        if(!round.withdraw().isEmpty()) {
+            if(!ownsMenu)return Outcome.pending("Waiting to take inputs from storage");
+            storing=ProductionStorage.Move.withdraw(jobId,env.storage(),env.storagePages(),round.withdraw());
+            return storageStep(now);
+        }
+        // A storage page closing is asynchronous; crafting refuses to start over another menu.
+        if(menu.title()!=null && !hasReusableCraftMenu()) {
+            if(ownsMenu && menu.cursorEmpty())env.actions().closeMenu();
+            return Outcome.pending("Closing storage before crafting");
+        }
+        craftJob=env.queueCraftRecipe(output,round.batches(),chosen.key());
+        if(craftJob==null)return Outcome.blocked("Craft could not be queued; inputs changed or another production step is queued");
+        roundBatches=round.batches();
+        return Outcome.pending("Crafting "+round.batches()+" of "+remaining+" remaining batches");
+    }
+
+    /** The most batches whose missing inputs, output and a crafting slot fit the free inventory. */
+    private Round roundPlan(MenuSnapshot menu,ProductionRecipe chosen,int remaining,Map<String,Integer> stored) {
+        int free=menu.emptyInventorySlots();
+        for(int k=Math.min(64,remaining);k>=1;k--) {
+            var withdraw=new TreeMap<String,Integer>();int slots=0;boolean covered=true;
+            for(var need:chosen.ingredients().entrySet()) {
+                int missing=Math.multiplyExact(need.getValue(),k)-ProductionStorage.Move.inventoryCount(menu,need.getKey());
+                if(missing<=0)continue;
+                if(stored.getOrDefault(need.getKey(),0)<missing){covered=false;break;}
+                withdraw.put(need.getKey(),missing);
+                // Whole stacks come back, so allow one extra slot for a stackable input.
+                slots+=CraftFlipPlanner.inventorySlotsForProduct(catalog,need.getKey(),missing)+(catalog.unstackable(need.getKey())?0:1);
+            }
+            if(!covered)continue;
+            // Earlier rounds' output already holds slots; new units may top those stacks up.
+            int made=ProductionStorage.Move.inventoryCount(menu,chosen.outputId());
+            int outputs=CraftFlipPlanner.inventorySlotsForProduct(catalog,chosen.outputId(),made+Math.multiplyExact(chosen.outputCount(),k))
+                -CraftFlipPlanner.inventorySlotsForProduct(catalog,chosen.outputId(),made);
+            if(slots+outputs+1<=free)return new Round(k,withdraw);
+        }
+        return null;
+    }
+
+    private Outcome finishRounds() {
+        var storage=env.storage();
+        if(storage!=null && !storage.stored(jobId).isEmpty()) {
+            try {
+                var left=storage.release(jobId);
+                env.actions().message("Craft finished; left in storage: "+String.join(", ",left));
+            }catch(Exception failed){return Outcome.uncertain("Storage ledger could not be saved after crafting");}
+        }
+        return Outcome.DONE;
     }
 
     private boolean workstationMenuOpen() {

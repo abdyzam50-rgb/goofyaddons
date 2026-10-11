@@ -111,6 +111,22 @@ class CraftFlipPlannerTest {
         assertTrue(conflicting.stream().noneMatch(CraftFlipPlanner.Route::eligible));
     }
 
+    @Test void storageLetsInputsOverflowWhileOneBatchAndTheOutputStillFitTheInventory() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",64,"")),Map.of());
+        // Cheap inputs and a deep, busy output market make the largest fitting batch the best.
+        var market=JsonParser.parseString(market(10000).toString().replace("\"pricePerUnit\":5","\"pricePerUnit\":1").replace("10000}","10000000}").replace("Week\":10000,","Week\":10000000,")).getAsJsonObject();
+        var empty=ProductionRunTest.menu(null);
+        var inventoryOnly=CraftFlipPlanner.rank(catalog,market,null,empty,Map.of(),Map.of(),Set.of(),100000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),30,"INSTANT_INSTANT",new LinkedHashMap<>(),0)
+            .stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElseThrow();
+        assertEquals(5,inventoryOnly.batches(),"Six free slots hold five batches of inputs and the output");
+        var withStorage=CraftFlipPlanner.rank(catalog,market,null,empty,Map.of(),Map.of(),Set.of(),100000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),30,"INSTANT_INSTANT",new LinkedHashMap<>(),100)
+            .stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElseThrow();
+        assertEquals(16,withStorage.batches());assertEquals(6,withStorage.inventorySlots(),"A storage run reserves the free inventory for its rounds");
+        var tooLittle=CraftFlipPlanner.rank(catalog,market,null,empty,Map.of(),Map.of(),Set.of(),100000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),30,"INSTANT_INSTANT",new LinkedHashMap<>(),3)
+            .stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElseThrow();
+        assertEquals(8,tooLittle.batches(),"Inputs may only overflow into the storage slots observed empty");
+    }
+
     @Test void largerHotspotBaitRunsCountAllOutputStacksAndRespectStrategySelection() {
         var recipe=RecipeCatalog.instance().forOutput("HOTSPOT_BAIT").stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
         assertEquals(32,recipe.outputCount());

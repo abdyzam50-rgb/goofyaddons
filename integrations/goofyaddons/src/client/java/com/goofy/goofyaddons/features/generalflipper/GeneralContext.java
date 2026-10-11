@@ -45,6 +45,8 @@ interface GeneralContext {
     double unitPrice(int slot);
     int itemCount(String id);
     int capacityFor(String id);
+    /** Every unit of this item the inventory can physically take now, with no slots kept spare. */
+    int roomFor(String id);
 
     boolean ordersReady();
     boolean ambiguousOrders();

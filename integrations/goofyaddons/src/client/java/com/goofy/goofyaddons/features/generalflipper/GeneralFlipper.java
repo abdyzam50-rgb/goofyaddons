@@ -18,7 +18,7 @@ public class GeneralFlipper implements Feature {
     private static final Logger LOGGER = LoggerFactory.getLogger(GeneralFlipper.class);
     static final String OWNER = "general";
     enum Step { OPEN_ORDERS, ORDERS, CANCEL_DETAIL, VERIFY_CANCEL, OPEN_PRODUCT,
-        PRODUCT, QUANTITY, SIGN, PRICE, CONFIRM, VERIFY_ORDER, VERIFY_SALE }
+        PRODUCT, QUANTITY, SIGN, PRICE, CONFIRM, VERIFY_ORDER, VERIFY_SALE, PARTIAL_CLAIM }
 
 
     /** External services stay replaceable so tests can drive real execution without Minecraft or HTTP. */
@@ -35,6 +35,8 @@ public class GeneralFlipper implements Feature {
         void sell(GeneralPosition position, int units, Double proceeds);
         void safetyPause(String reason);
         default boolean productionOnly(){return false;}
+        /** Production buys may claim in parts, storing between claims. */
+        default boolean productionStorage(){return false;}
         default double productionMinimumSellPrice(GeneralPosition position){return position.minimumSellPrice;}
         default void placed(GeneralPosition position) {}
         default com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {return null;}
@@ -148,6 +150,7 @@ public class GeneralFlipper implements Feature {
             details.put("settlementPending",position.settlementPending);
             details.put("parent",position.productionParent==null?"legacy":position.productionParent);
             details.put("productionInventoryBefore",position.productionInventoryBefore);
+            details.put("productionStoredUnits",position.productionStoredUnits);details.put("productionAwaitingStorage",position.productionAwaitingStorage);
             details.put("productionBasket",position.productionBasket);
             details.put("unitCost",position.unitCost);details.put("maximumBuyPrice",position.maximumBuyPrice);details.put("minimumSellPrice",position.minimumSellPrice);
             details.put("placedAt",position.placedAt);details.put("checkedAt",position.checkedAt);details.put("completed",position.completed);details.put("rejectedReason",position.rejectedReason);details.put("verifiedProceeds",position.verifiedProceeds);
@@ -350,6 +353,7 @@ public class GeneralFlipper implements Feature {
                 case ORDERS -> review.inspect(session);
                 case CANCEL_DETAIL -> cancellation.detail(session);
                 case VERIFY_CANCEL -> cancellation.verify(session);
+                case PARTIAL_CLAIM -> cancellation.partial(session);
                 case OPEN_PRODUCT -> entry.openProduct(session);
                 case PRODUCT -> entry.product(session);
                 case QUANTITY -> entry.quantity(session, world.signEditorOpen());
@@ -367,7 +371,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean workDue(GeneralPosition position, long now) {
-        if(position.completed || services.productionOnly() && position.productionBuy && position.stage==Stage.INVENTORY)return false;
+        if(position.completed || services.productionOnly() && position.productionBuy && (position.stage==Stage.INVENTORY || position.productionAwaitingStorage))return false;
         long interval = position.stage == Stage.INVENTORY ? 2000 : settings().refreshSeconds * 1000L;
         return position.stage == Stage.RECONCILE || now - position.checkedAt >= interval;
     }
@@ -756,6 +760,7 @@ public class GeneralFlipper implements Feature {
         @Override public double unitPrice(int slot) { return GeneralFlipper.this.unitPrice(slot); }
         @Override public int itemCount(String id) { return GeneralFlipper.this.itemCount(id); }
         @Override public int capacityFor(String id) { return GeneralFlipper.this.capacityFor(id); }
+        @Override public int roomFor(String id) { return view.emptyInventorySlots() * view.stackLimitFor(id) + view.partialStackSpace(id); }
         @Override public boolean ordersReady() { return GeneralFlipper.this.ordersReady(); }
         @Override public boolean ambiguousOrders() { return GeneralFlipper.this.ambiguousOrders(); }
         @Override public int findOrder(boolean sell) { return GeneralFlipper.this.findOrder(sell); }
@@ -825,6 +830,33 @@ public class GeneralFlipper implements Feature {
     java.util.List<GeneralPosition> productionPositions(){restoreBudget();return blocked?java.util.List.of():java.util.List.copyOf(positions);}
     GeneralPosition productionPosition(String parent){return positions.stream().filter(p->java.util.Objects.equals(p.productionParent,parent)).findFirst().orElse(null);}
     boolean consumeProduction(){return consumeProduction(productionPosition());}
+    /** No order transaction is in progress, so another menu may be opened safely. */
+    boolean productionIdle(){return active==null;}
+    /** Products whose partial claims wait for the run to store them. */
+    java.util.List<String> productionAwaitingStorage(String parent){
+        return positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent) && p.productionAwaitingStorage && !p.completed).map(p->p.item.id()).toList();
+    }
+    /** Products the run may move freely: claimed in full, or waiting to be stored. */
+    java.util.Set<String> productionStorable(String parent){
+        var ids=new java.util.HashSet<String>();
+        for(var p:positions)if(java.util.Objects.equals(parent,p.productionParent) && p.productionBuy
+                && (p.completed || p.stage==Stage.INVENTORY || p.productionAwaitingStorage))ids.add(p.item.id());
+        return java.util.Set.copyOf(ids);
+    }
+    /** Records units of a waiting partial claim that the run verified into storage. */
+    boolean productionStored(String parent,String product,int units){
+        var p=positions.stream().filter(x->java.util.Objects.equals(parent,x.productionParent) && x.item.id().equals(product)).findFirst().orElse(null);
+        if(units<0 || p==null || p==active || !p.productionBuy || p.completed || !p.productionAwaitingStorage)return false;
+        int before=p.productionInventoryBefore,stored=p.productionStoredUnits;
+        // Units held before the order were moved too; they leave the baseline before counting as stored.
+        int fromBaseline=Math.min(before,units);
+        p.productionInventoryBefore=before-fromBaseline;p.productionStoredUnits=stored+units-fromBaseline;
+        if(p.productionStoredUnits>p.quantity){p.productionInventoryBefore=before;p.productionStoredUnits=stored;return false;}
+        p.productionAwaitingStorage=false;p.checkedAt=0;
+        if(!save()){p.productionInventoryBefore=before;p.productionStoredUnits=stored;p.productionAwaitingStorage=true;return false;}
+        services.event("INFO","order.claim_stored",java.util.Map.of("trade",p.tradeId,"item",product,"units",units,"stored",p.productionStoredUnits,"quantity",p.quantity));
+        return true;
+    }
     boolean consumeProduction(String parent){
         var selected=positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent)).toList();
         if(selected.isEmpty()||selected.stream().anyMatch(p->!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY)))return false;

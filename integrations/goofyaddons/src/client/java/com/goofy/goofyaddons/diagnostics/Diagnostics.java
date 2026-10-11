@@ -210,7 +210,8 @@ public final class Diagnostics {
             var journals=new LinkedHashMap<String,java.nio.file.Path>();
             var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
             for(String name:List.of(com.goofy.goofyaddons.features.account.AccountStorage.BOOK_ORDERS,com.goofy.goofyaddons.features.account.AccountStorage.GENERAL_ORDERS,
-                    com.goofy.goofyaddons.features.account.AccountStorage.CRAFT_ORDERS,com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_JOBS)) {
+                    com.goofy.goofyaddons.features.account.AccountStorage.CRAFT_ORDERS,com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_JOBS,
+                    com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_STORAGE)) {
                 var path=storage.displayPath(name);if(path!=null)journals.put(name,path);
             }
             feedback.accept("Creating diagnostic bundle with the current GUI...");

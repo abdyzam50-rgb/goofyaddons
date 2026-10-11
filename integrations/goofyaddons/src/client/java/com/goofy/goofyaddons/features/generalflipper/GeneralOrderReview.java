@@ -118,7 +118,32 @@ final class GeneralOrderReview {
         trade.selling = false;
         trade.inventoryBefore = ctx.itemCount(active.item.id());
         trade.expectedClaim = claimable;
-        if (claimable > ctx.capacityFor(active.item.id())) {
+        int room = ctx.capacityFor(active.item.id());
+        if (claimable > room && active.productionBuy && ctx.services().productionStorage()) {
+            // A storage-backed craft claims what fits, stores it, then claims the rest of the
+            // same order. Less than a stack of room means storing comes first.
+            if (room < Math.min(claimable, 64)) {
+                active.productionAwaitingStorage = true;
+                if (!ctx.save()) return;
+                ctx.services().event("INFO", "order.claim_needs_storage", java.util.Map.of("trade", active.tradeId,
+                        "item", active.item.id(), "claimable", claimable, "room", room, "stored", active.productionStoredUnits));
+                ctx.actions().closeMenu();
+                ctx.finishWork();
+                return;
+            }
+            // The server fills the whole inventory, including the slots the engine keeps spare.
+            trade.expectedClaim = Math.min(claimable, ctx.roomFor(active.item.id()));
+            trade.partialClaim = true;
+            trade.partialCount = -1;
+            trade.receipt = false;
+            ctx.services().event("INFO", "order.partial_claim", java.util.Map.of("trade", active.tradeId,
+                    "item", active.item.id(), "claimable", claimable, "room", room, "stored", active.productionStoredUnits));
+            ctx.claim().arm(ctx, buy);
+            ctx.transition(Step.PARTIAL_CLAIM);
+            ctx.click(buy);
+            return;
+        }
+        if (claimable > room) {
             ctx.fail("Insufficient inventory space to claim the tracked buy order."); return;
         }
         trade.receipt = false;

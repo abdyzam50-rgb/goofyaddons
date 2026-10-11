@@ -29,7 +29,8 @@ public final class AccountStorage {
     public static final String EXECUTION = "goofyaddons-execution.json";
     public static final String TRANSACTIONS = "goofyaddons-transactions.jsonl";
     public static final String PRODUCTION_JOBS = "goofyaddons-production-jobs.json";
-    public static final List<String> FILES = List.of(BOOK_ORDERS, GENERAL_ORDERS, CRAFT_ORDERS, PROFIT, EXECUTION, TRANSACTIONS, PRODUCTION_JOBS);
+    public static final String PRODUCTION_STORAGE = "goofyaddons-production-storage.json";
+    public static final List<String> FILES = List.of(BOOK_ORDERS, GENERAL_ORDERS, CRAFT_ORDERS, PROFIT, EXECUTION, TRANSACTIONS, PRODUCTION_JOBS, PRODUCTION_STORAGE);
 
     public static final AccountStorage INSTANCE = new AccountStorage(
             () -> net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir());

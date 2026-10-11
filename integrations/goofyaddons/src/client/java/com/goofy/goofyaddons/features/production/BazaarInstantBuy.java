@@ -25,8 +25,10 @@ public final class BazaarInstantBuy {
     private final String productId, name;
     private final BazaarSearch search;
     private final NavigationRetry navigation=new NavigationRetry();
-    private final int amount;
-    private final double maximumCost;
+    private final int requested;
+    private final boolean fill;
+    private int amount;
+    private double maximumCost;
     private final Intent intent;
     private Step step = Step.OPEN;
     private long started, stepAt, heldSince;
@@ -35,10 +37,18 @@ public final class BazaarInstantBuy {
     private String failure;
 
     public BazaarInstantBuy(String productId, String name, int amount, double maximumCost, Intent intent) {
+        this(productId,name,amount,maximumCost,intent,false);
+    }
+
+    /**
+     * With {@code fill}, an amount larger than the inventory buys what "Fill my inventory!" quotes
+     * instead, at the same per-unit limit; {@link #amount()} then reports what was bought.
+     */
+    public BazaarInstantBuy(String productId, String name, int amount, double maximumCost, Intent intent, boolean fill) {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
                 || amount < 1 || amount > 71680 || !Double.isFinite(maximumCost) || maximumCost <= 0 || intent == null)
             throw new IllegalArgumentException("Invalid instant buy");
-        this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.maximumCost = maximumCost; this.intent = intent;
+        this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.requested = amount; this.fill = fill; this.maximumCost = maximumCost; this.intent = intent;
     }
 
     /** Once submitted, verify its outcome before permitting any new market decision. */
@@ -46,6 +56,8 @@ public final class BazaarInstantBuy {
     public String failure() { return failure; }
     public String productId() { return productId; }
     public int amount() { return amount; }
+    /** The amount asked for, before any "Fill my inventory!" reduction. */
+    public int requested() { return requested; }
     /** Coins the verified purchase took from the purse; zero until it is verified. */
     public double spent() { return spent; }
 
@@ -85,7 +97,8 @@ public final class BazaarInstantBuy {
                 if (unit * amount > maximumCost + 1e-6) return block(String.format(java.util.Locale.ROOT,
                         "Instant buy of %d %s would cost about %,.0f coins, above the %,.0f limit", amount, name, unit * amount, maximumCost));
                 if (!Double.isFinite(purse) || purse < unit * amount) return block("Purse cannot cover the instant buy");
-                if (menu.emptyInventorySlots() * 64 < amount) return block("Not enough inventory space for " + amount + " " + name);
+                if (!fill && menu.emptyInventorySlots() * 64 < amount) return block("Not enough inventory space for " + amount + " " + name);
+                if (fill && menu.emptyInventorySlots() == 0) return block("No free inventory slot to buy " + name + " into");
                 before = count(menu); purseBefore = purse;
                 actions.click(control, false); navigation.sent(menu,control,now); step = Step.AMOUNT; stepAt = now;
             }
@@ -100,6 +113,16 @@ public final class BazaarInstantBuy {
                 // "Buy only one!" and "Buy a stack!" quote their exact total, so they skip the sign and
                 // are checked against the limit by their own price.
                 int preset = amount == 1 ? menu.firstByHoverName("Buy only one!", true) : amount == 64 ? menu.firstByHoverName("Buy a stack!", true) : -1;
+                // Storage-backed runs buy what fits, store it, and come back for the rest.
+                int filler = fill ? menu.firstByHoverName("Fill my inventory!", true) : -1;
+                Integer fits = filler < 0 ? null : quotedAmount(menu.slot(filler).lore(), name);
+                if (filler >= 0 && fits == null) return block("Fill my inventory amount for " + name + " is unreadable");
+                if (fits != null && fits < amount) {
+                    if (fits < 1) return block("No inventory room to buy " + name);
+                    maximumCost = maximumCost * fits / amount;
+                    amount = fits;
+                    preset = filler;
+                }
                 if (preset >= 0) {
                     Double total = quotedTotal(menu.slot(preset).lore(), name, amount);
                     if (total == null) return block("Instant buy preset for " + name + " is unreadable");
@@ -197,6 +220,17 @@ public final class BazaarInstantBuy {
             double value = Double.parseDouble(matcher.group(1).replace(",", ""));
             return Double.isFinite(value) && value > 0 ? value : null;
         } catch (NumberFormatException invalid) { return null; }
+    }
+
+    /** The amount an amount button quotes, when it names this product. */
+    static Integer quotedAmount(String lore, String name) {
+        if (lore == null) return null;
+        String text = Chat.strip(lore);
+        if (!text.lines().map(String::strip).anyMatch(name::equalsIgnoreCase)) return null;
+        var units = java.util.regex.Pattern.compile("(?im)^\\s*amount:\\s*([0-9][0-9,]*)x\\s*$").matcher(text);
+        if (!units.find()) return null;
+        try { return Integer.parseInt(units.group(1).replace(",", "")); }
+        catch (NumberFormatException invalid) { return null; }
     }
 
     /** The quoted total of an amount button or confirmation item, when it names this product and amount. */

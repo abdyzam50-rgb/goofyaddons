@@ -44,6 +44,7 @@ public final class ProductionBazaarOrders {
         var settings=new GeneralSettings();settings.items=List.of();settings.maxReprices=0;settings.orderTimeoutSeconds=180;
         engine=new GeneralFlipper(new LiveWorld(),new LiveActions(),new JsonGeneralOrderRepository(()->AccountStorage.INSTANCE.path(AccountStorage.CRAFT_ORDERS)),new GeneralFlipper.Services(){
             public boolean productionOnly(){return true;}
+            public boolean productionStorage(){return com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.craftFlips.useStorage;}
             public CapitalManager capital(){return CapitalManager.INSTANCE;}
             public GeneralSettings settings(){return settings;}
             public double taxPercentage(){return com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.bazaarTaxPercentage;}
@@ -100,6 +101,16 @@ public final class ProductionBazaarOrders {
     }
     public boolean needsMenu(String parent){return engine.needsMenu() && java.util.Objects.equals(parent,engine.productionMenuParent());}
     public boolean acknowledge(String parent){return engine.consumeProduction(parent);}
+    /** Products whose partial buy claims wait for this run to store them. */
+    public List<String> awaitingStorage(String parent){return engine.productionAwaitingStorage(parent);}
+    /** Products this run may move to storage without upsetting a tracked claim. */
+    public Set<String> storable(String parent){return engine.productionStorable(parent);}
+    /** Every product this run has an order position for. */
+    public Set<String> tracked(String parent){
+        var ids=new HashSet<String>();for(var p:engine.productionPositions())if(Objects.equals(parent,p.productionParent))ids.add(p.item.id());return Set.copyOf(ids);
+    }
+    public boolean stored(String parent,String product,int units){return engine.productionStored(parent,product,units);}
+    public boolean idle(){return engine.productionIdle();}
     public double commitment(String parent){return engine.productionCommitment(parent);}
     public double buyCommitment(String parent){return engine.productionBuyCommitment(parent);}
     public boolean orphaned(Set<String> activeParents){if(AccountStorage.INSTANCE.pinned()==null)return false;bind();return engine.orphanProductionOrders(activeParents);}
