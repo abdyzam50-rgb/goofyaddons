@@ -177,6 +177,9 @@ def build(source, baseline, enchants, extra=None):
     if len({r['key'] for r in recipes}) != len(recipes):
         raise ValueError('Duplicate recipe keys')
     used = {id for r in recipes for id in (r['outputId'], *r['ingredients'])}
+    # A grid slot holding more than one unit, or a yield above one, proves the item stacks.
+    single -= {cell['id'] for r in recipes for cell in r.get('grid') or [] if cell and cell['count'] > 1}
+    single -= {r['outputId'] for r in recipes if r.get('outputCount', 1) > 1}
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip()
     return {**baseline, 'source': f'https://github.com/NotEnoughUpdates/NotEnoughUpdates-REPO/tree/{revision}',
             'sourceRevision': revision, 'names': dict(sorted(names.items())), 'recipes': recipes,

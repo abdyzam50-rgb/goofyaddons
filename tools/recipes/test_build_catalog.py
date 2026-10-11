@@ -70,5 +70,17 @@ class CatalogImportTest(unittest.TestCase):
             self.assertEqual('PET.json',result['unsupportedCrafts'][0]['sourceFile'])
             self.assertEqual({'A1':'EGG:1'},result['unsupportedCrafts'][0]['grid'])
 
+    def test_a_grid_that_stacks_an_item_overrides_its_lore_category(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source=Path(directory);(source/'items').mkdir()
+            for name,lore,recipe in [('COAL',['§8Minion Fuel','§f§lCOMMON ORE'],None),('SMELTER',['§8Minion Upgrade','§f§lCOMMON'],None),
+                                     ('ENCHANTED_COAL',['§a§lUNCOMMON'],{'A1':'COAL:32','A2':'COAL:32','B1':'SMELTER:1'})]:
+                item={'internalname':name,'displayname':name,'lore':lore}
+                if recipe:item['recipe']=recipe
+                (source/f'items/{name}.json').write_text(json.dumps(item))
+            with patch('build_catalog.subprocess.check_output',return_value='abc123\n'):
+                result=build(source,{'names':{},'recipes':[]},set())
+            self.assertEqual(['SMELTER'],result['unstackable'])
+
 if __name__ == '__main__':
     unittest.main()
