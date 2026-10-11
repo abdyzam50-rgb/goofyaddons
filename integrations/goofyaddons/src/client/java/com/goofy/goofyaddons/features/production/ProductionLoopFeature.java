@@ -18,6 +18,10 @@ public final class ProductionLoopFeature implements Feature {
         int inventorySlots;
         long nextAction;
         String lastReason;
+        String lastObservation;
+        long lastObserved,lastChanged;
+        long lastTickAt=System.currentTimeMillis();
+        final ProductionWaitEvidence waitEvidence=new ProductionWaitEvidence();
         String id(){return run.jobId();}
     }
     private final List<Work> work=new ArrayList<>();
@@ -46,6 +50,58 @@ public final class ProductionLoopFeature implements Feature {
         view.put("maxActiveCrafts",GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts);
         view.put("activeCrafts",work.stream().map(w->Map.of("job",w.id(),"output",w.run.output(),"stage",w.run.stage().name(),"reason",w.run.reason()==null?"":w.run.reason(),"budget",w.budget,"spent",w.run.spent(),"inventorySlots",w.inventorySlots)).toList());return view;
     }
+    /** Complete current ownership plus durable blockers, including jobs absent from the live queue. */
+    public Map<String,Object> diagnosticState() {
+        var state=new LinkedHashMap<String,Object>();var world=new LiveWorld();
+        state.put("schema",1);state.put("observedAt",world.now());state.put("running",running);state.put("paused",paused);
+        state.put("recoveringOrders",recoveringOrders);state.put("foregroundJob",foreground==null?null:foreground.id());
+        state.put("nextSelectionAt",nextSelection);state.put("selection",selection.diagnosticState());
+        state.put("settings",GoofyConfig.INSTANCE.craftFlips);state.put("orders",orders.diagnosticState());
+        state.put("lockedProducts",lockedProducts());
+        state.put("craftDelegateQueued",FeatureManager.INSTANCE.crafting().queued());state.put("auctionDelegateQueued",FeatureManager.INSTANCE.auction().queued());
+        state.put("activeRuns",work.stream().map(w->{var row=new LinkedHashMap<>(safeRunState(w.run));row.put("budget",w.budget);row.put("inventorySlots",w.inventorySlots);row.put("nextActionAt",w.nextAction);row.put("lastObservedAt",w.lastObserved);row.put("lastStateChangeAt",w.lastChanged);return row;}).toList());
+        try {
+            var jobs=FeatureManager.INSTANCE.crafting().journal().stream().filter(j->j.account().equals(world.username())).toList();
+            state.put("journalCount",jobs.size());
+            state.put("journal",jobs.stream().map(j->{var row=new LinkedHashMap<String,Object>();row.put("job",j.id());row.put("recipe",j.recipeKey());row.put("state",j.state().name());row.put("reason",j.reason());row.put("batches",j.batches());row.put("completedBatches",j.completedBatches());row.put("costBasis",j.costBasis());row.put("submittedAt",j.submittedAt());row.put("readyAt",j.readyAt());return row;}).toList());
+            state.put("reviewJobs",jobs.stream().filter(j->j.state()==ProductionJobs.State.REVIEW).map(ProductionJobs.Job::id).toList());
+            state.put("selectionBudget",selectionBudget(new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse()));
+            state.put("reservedInventorySlots",reservedInventorySlots(world.menu()));
+            state.put("emptyInventorySlots",world.menu()==null?null:world.menu().emptyInventorySlots());
+        }catch(Exception unavailable){state.put("journalError",unavailable.getClass().getSimpleName()+": "+unavailable.getMessage());}
+        return state;
+    }
+    private static Map<String,Object> safeRunState(ProductionRun run) {
+        try{return run.diagnosticState();}
+        catch(RuntimeException failed){return Map.of("job",run.jobId(),"observationError",failed.getClass().getSimpleName());}
+    }
+    private void checkWait(Work current,long now) {
+        String signature=current.run.stage()+":"+current.run.reason()+":"+current.run.spent();
+        if(current.waitEvidence.due(signature,now)) {
+            var data=new LinkedHashMap<>(incident(current,"State unchanged for at least 120 seconds; this is evidence, not proof of a failed order"));
+            data.put("lastTickAt",current.lastTickAt);data.put("craftDelegateQueued",FeatureManager.INSTANCE.crafting().queued());
+            data.put("auctionDelegateQueued",FeatureManager.INSTANCE.auction().queued());
+            Diagnostics.event("WARN","production.wait_observed",data);
+        }
+    }
+    private void observeRun(Work current,ProductionLoop.Step result,boolean ownsMenu,long now) {
+        String signature=current.run.stage()+":"+result+":"+current.run.reason()+":"+current.run.spent();
+        boolean changed=!Objects.equals(signature,current.lastObservation);
+        if(changed){current.lastObservation=signature;current.lastChanged=now;}
+        if(!changed && now-current.lastObserved<30000)return;
+        current.lastObserved=now;
+        var data=new LinkedHashMap<>(safeRunState(current.run));data.put("result",result.name());
+        data.put("ownsMenu",ownsMenu);data.put("foregroundJob",foreground==null?null:foreground.id());
+        data.put("unchangedForMs",now-current.lastChanged);data.put("orders",orders.diagnosticState());
+        Diagnostics.event("INFO","production.run_observed",data);
+    }
+    private Map<String,Object> incident(Work current,String reason) {
+        var data=new LinkedHashMap<String,Object>();data.put("job",current.id());data.put("reason",reason);
+        data.put("run",safeRunState(current.run));data.put("orders",orders.diagnosticState());
+        data.put("menu",com.goofy.goofyaddons.diagnostics.DebugMenuCapture.describe(new LiveWorld().menu()));
+        data.put("foregroundJob",foreground==null?null:foreground.id());return data;
+    }
+
     public void showCraftPlans(){
         selection.refresh();var actions=new LiveActions();
         var rows=selection.currentRoutes();
@@ -213,6 +269,7 @@ public final class ProductionLoopFeature implements Feature {
         if(recoveringOrders){recoverOrderStep(false);return;}
         boolean manual=work.stream().anyMatch(w->w.budget<=0);
         for(var current:List.copyOf(work)) {
+            checkWait(current,System.currentTimeMillis());
             if(!current.run.wantsMenu())step(current,false);
             if(!isRunning())return;
         }
@@ -226,9 +283,11 @@ public final class ProductionLoopFeature implements Feature {
     private void step(Work current,boolean ownsMenu) {
         long now=System.currentTimeMillis();var run=current.run;
         if(now<current.nextAction)return;
+        current.lastTickAt=now;
         current.nextAction=now+(run.hasReusableCraftMenu() && (run.stage()==ProductionLoop.Stage.PROCURE || run.stage()==ProductionLoop.Stage.PROCESS)?50:com.goofy.goofyaddons.utils.ActionDelay.next());
         try {
             var result=run.tick(ownsMenu,now);
+            observeRun(current,result,ownsMenu,now);
             switch(result) {
                 case DONE -> {
                     if(ownsMenu && run.hasReusableCraftMenu())new LiveActions().closeMenu();
@@ -238,7 +297,7 @@ public final class ProductionLoopFeature implements Feature {
                 }
                 case UNCERTAIN -> {
                     String reason=run.reason()==null?"Production step could not be verified":run.reason();
-                    Diagnostics.event("WARN","production.run_review",Map.of("job",run.jobId(),"reason",reason));
+                    Diagnostics.event("WARN","production.run_review",incident(current,reason));
                     work.remove(current);if(foreground==current)foreground=null;
                     FeatureManager.INSTANCE.safetyPause("Production needs review: "+reason);
                 }
@@ -264,6 +323,7 @@ public final class ProductionLoopFeature implements Feature {
             for(var current:work) {
                 var run=current.run;var job=jobs.find(run.jobId()).orElse(null);
                 if(job!=null && job.state()!=ProductionJobs.State.WAITING && job.state()!=ProductionJobs.State.DONE) {
+                    Diagnostics.event("WARN","production.run_interrupted",incident(current,why+"; prior journal state "+job.state()));
                     boolean untouched=job.state()==ProductionJobs.State.PLANNED && run.stage()==ProductionLoop.Stage.PROCURE;
                     jobs.put(job.withState(untouched?ProductionJobs.State.CANCELLED:ProductionJobs.State.REVIEW,why+"; inspect inventory, workstation and listings before requeueing"));
                 }

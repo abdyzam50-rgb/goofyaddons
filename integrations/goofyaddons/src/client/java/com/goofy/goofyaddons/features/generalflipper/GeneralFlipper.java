@@ -142,9 +142,13 @@ public class GeneralFlipper implements Feature {
             details.put("purchasePriceKnown",position.purchasePriceKnown);
             details.put("settlementPending",position.settlementPending);
             details.put("parent",position.productionParent==null?"legacy":position.productionParent);
+            details.put("unitCost",position.unitCost);details.put("maximumBuyPrice",position.maximumBuyPrice);details.put("minimumSellPrice",position.minimumSellPrice);
+            details.put("placedAt",position.placedAt);details.put("checkedAt",position.checkedAt);details.put("completed",position.completed);details.put("rejectedReason",position.rejectedReason);details.put("verifiedProceeds",position.verifiedProceeds);
             details.put("submitted",position.submitted);details.put("cancelRequested",position.cancelRequested);details.put("reprices",position.reprices);
             retained.add(details);
         }
+        state.put("quotesAt",quotesAt);state.put("quotesFresh",freshQuotes());state.put("nextPollAt",nextPoll);state.put("nextActionAt",nextAction);
+        state.put("lastFailure",lastFailure);state.put("lastFailureParent",lastFailureParent);
         state.put("positions",retained);return state;
     }
     public String retainedItem() {

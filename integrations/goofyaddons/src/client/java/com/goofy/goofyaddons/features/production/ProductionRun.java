@@ -172,6 +172,28 @@ public final class ProductionRun implements ProductionLoop.Ports {
     public boolean isCraftRun(){return kind==ProductionRecipe.Kind.CRAFT;}
     public boolean hasVerifiedInputBasis(){return !basisUnknown;}
 
+    /** Read-only evidence for exports: never tick a child, acknowledge an order or save a job. */
+    public Map<String,Object> diagnosticState() {
+        var state=new LinkedHashMap<String,Object>();
+        state.put("job",jobId);state.put("output",output);state.put("recipe",recipe==null?null:recipe.key());
+        state.put("stage",stage().name());state.put("reason",reason());state.put("batches",batches);
+        state.put("strategy",strategy.name());state.put("spent",spent);state.put("inputBasisVerified",hasVerifiedInputBasis());
+        state.put("orderActive",orderActive);state.put("orderCostRecorded",orderCostRecorded);
+        state.put("waitingForOrderRetry",waitingForOrderRetry);state.put("retryAt",orderRetryAfter);
+        state.put("waitingForProcurement",waitingForProcurement);state.put("compactorInProgress",compactorClearance.inProgress());
+        state.put("ingredientCraftJob",ingredientCraftJob);state.put("craftJob",craftJob);
+        state.put("listingJob",listingJob);state.put("workstationJob",workstationJob);
+        state.put("instantBuyItem",buying==null?null:buying.productId());state.put("instantBuySubmitted",buying!=null&&buying.submitted());
+        state.put("held",held());state.put("lockedProducts",lockedProducts());
+        try {
+            state.put("wantsMenu",wantsMenu());state.put("spendable",env.spendable());
+            state.put("procurementBlock",env.procurementBlock());
+            state.put("missingPurchases",preparation().purchases());
+            state.put("remainingPurchaseCost",remainingPurchaseCost());state.put("expectedBazaarSale",expectedBazaarSale());
+        }catch(RuntimeException unavailable){state.put("observationError",unavailable.getClass().getSimpleName()+": "+unavailable.getMessage());}
+        return state;
+    }
+
     /** Products this run must keep away from traders. */
     public Set<String> lockedProducts() {
         var ids = new HashSet<String>();ids.add(output);

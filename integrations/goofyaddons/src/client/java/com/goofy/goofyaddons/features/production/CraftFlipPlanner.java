@@ -39,7 +39,13 @@ final class CraftFlipPlanner {
     static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
             Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
             double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded,int reservedSlots,String strategySetting) {
-        excluded.clear();
+        return rank(catalog,market,ah,menu,skills,unlocks,blocked,budget,minimumProfit,bazaarTax,maxBatches,venue,now,excluded,reservedSlots,strategySetting,new LinkedHashMap<>());
+    }
+    static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
+            Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
+            double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded,int reservedSlots,String strategySetting,
+            Map<String,Map<String,Integer>> excludedByOutput) {
+        excludedByOutput.clear();excluded.clear();
         if(menu==null){exclude(excluded,"Player inventory unavailable");return List.of();}
         if(!menu.cursorEmpty()){exclude(excluded,"Clear the item held on the cursor");return List.of();}
         if(!Double.isFinite(budget)||budget<=0){exclude(excluded,"No observed spendable budget");return List.of();}
@@ -57,7 +63,7 @@ final class CraftFlipPlanner {
             if(recipe.kind()!=ProductionRecipe.Kind.CRAFT)continue;
             boolean bz=products.has(recipe.outputId());String sale=bz?"BAZAAR":"AH";
             if(!venue.equals("BOTH")&&!venue.equals(sale))continue;
-            if(!bz&&!auctions.containsKey(recipe.outputId())){exclude(excluded,"AH quote unavailable");continue;}
+            if(!bz&&!auctions.containsKey(recipe.outputId())){exclude(excluded,excludedByOutput,recipe.outputId(),"AH quote unavailable");continue;}
             String requirement=RouteRequirements.craft(recipe.requirement(),skills,unlocks);
             if(requirement==null)requirement=RouteRequirements.product(recipe.outputId(),unlocks);
             if(requirement==null)requirement=RouteRequirements.products(IngredientPreparation.dependencies(catalog,recipe.ingredients().keySet()),unlocks);
@@ -88,7 +94,7 @@ final class CraftFlipPlanner {
                         else orderWait+=entry.getValue()/rate*3600;
                     }
                 }
-                if(!priced||cost<=0){exclude(excluded,"Missing input prices or insufficient buy depth");continue;}
+                if(!priced||cost<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Missing input prices or insufficient buy depth");continue;}
                 for(var craft:preparation.crafts()) {
                     var intermediate=catalog.forOutput(craft.output()).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
                     slots=Math.max(slots,outputSlots+(intermediate.outputCount()*craft.batches()+63)/64+
@@ -99,11 +105,11 @@ final class CraftFlipPlanner {
                 if(bz) {
                     var product=products.getAsJsonObject(recipe.outputId());
                     Double gross=strategy.sell(product,recipe.outputCount()*batches);
-                    if(gross==null){exclude(excluded,"Insufficient Bazaar sell depth");continue;}
+                    if(gross==null){exclude(excluded,excludedByOutput,recipe.outputId(),"Insufficient Bazaar sell depth");continue;}
                     net=gross*ProductionRun.SALE_FLOOR*(1-bazaarTax/100);
                     var quick=product.getAsJsonObject("quick_status");
                     double week=quick==null?0:Math.min(quick.get("buyMovingWeek").getAsDouble(),quick.get("sellMovingWeek").getAsDouble());
-                    if(!Double.isFinite(week)||week<=0){exclude(excluded,"Daily volume unavailable");continue;}
+                    if(!Double.isFinite(week)||week<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Daily volume unavailable");continue;}
                     if(recipe.outputCount()*batches>week/7*0.05)reason="Batch exceeds 5% of observed daily market volume";
                     liquidity=week/168;
                     if(!strategy.instantSell)orderWait+=recipe.outputCount()*batches/(liquidity*0.05)*3600;
@@ -120,7 +126,7 @@ final class CraftFlipPlanner {
                     liquidity=Math.min(1,Math.log1p(volume)/Math.log(101));
                 }
                 double capital=cost*1.03+fee,profit=net-capital;
-                if(!Double.isFinite(profit)||profit<minimumProfit||profit<=0){exclude(excluded,"Below minimum net profit after fees and price allowance");continue;}
+                if(!Double.isFinite(profit)||profit<minimumProfit||profit<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Below minimum net profit after fees and price allowance");continue;}
                 if(capital>budget)reason="Whole batch exceeds spendable budget";
                 double seconds=60+preparation.purchases().size()*20+preparation.crafts().size()*15+batches*3+orderWait;
                 if(bz)seconds=Math.max(seconds,recipe.outputCount()*batches/liquidity*3600);
@@ -128,7 +134,7 @@ final class CraftFlipPlanner {
                 var route=new Route(recipe,batches,sale,capital,profit,price,fee,score,reason,strategy,slots);
                 var old=best.get(recipe.outputId());
                 if(old==null||route.eligible()&&!old.eligible()||route.eligible()==old.eligible()&&route.score()>old.score())best.put(recipe.outputId(),route);
-            }catch(RuntimeException malformed){/* Invalid quotes/unsupported grids never authorize a route. */}
+            }catch(RuntimeException malformed){exclude(excluded,excludedByOutput,recipe.outputId(),"Malformed quote or unsupported recipe: "+malformed.getClass().getSimpleName());}
         }
         return best.values().stream().sorted(Comparator.comparingDouble(Route::score).reversed().thenComparing(r->r.recipe().key())).toList();
     }
@@ -137,6 +143,9 @@ final class CraftFlipPlanner {
         if(quick==null || !quick.has("buyMovingWeek") || !quick.has("sellMovingWeek"))return 0;
         double week=Math.min(quick.get("buyMovingWeek").getAsDouble(),quick.get("sellMovingWeek").getAsDouble());
         return Double.isFinite(week)&&week>0?week/168:0;
+    }
+    private static void exclude(Map<String,Integer> excluded,Map<String,Map<String,Integer>> byOutput,String output,String reason) {
+        exclude(excluded,reason);byOutput.computeIfAbsent(output,id->new LinkedHashMap<>()).merge(reason,1,Integer::sum);
     }
     private static void exclude(Map<String,Integer> excluded,String reason) { excluded.merge(reason,1,Integer::sum); }
 }

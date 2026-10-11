@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.65
+# Craft flip discovery and execution — 0.2.66
 
 ## Shipped behavior
 
@@ -971,3 +971,43 @@ Four active crafts is a ceiling, not an entitlement: 1,760 input items occupy 28
 a shared four-slot claim buffer. Additional routes may be excluded for inventory,
 shared ingredients, prerequisites, profit, or capital. Do not remove these guards
 merely to fill all four slots.
+
+## 0.2.66 debug evidence
+
+The existing Debug export key (usable inside menus) and
+`.a* goofyaddon debug export` produce the same enriched ZIP. Reproduce a stall,
+leave its menu/job state intact, and export **before stopping or acknowledging**
+when possible. For a silent wait, leave it running for two minutes so the wait
+monitor can capture evidence. No additional diagnostic command is necessary.
+This release collects evidence; it does not authorize replaying uncertain actions.
+
+`production-debug.json` contains current craft settings, all ranked routes,
+per-output exclusion counts, all current-account journal records with exact saved
+reasons/costs/completed batches, review IDs, active run/child IDs, held and missing
+materials, procurement gates and quoted costs, budget/workspace reservations,
+foreground ownership, delegate activity and observation/action timestamps.
+Snapshot engine order state includes price ceilings, order/last-check timestamps,
+completion/rejection state, quote freshness/source time and failure parent.
+No journal acknowledgement or transaction is performed by exporting.
+
+Run observations are recorded on state/result/reason/cost changes and at most once
+per 30 seconds otherwise. The unchanged-state monitor records one incident after
+120 seconds per unchanged state, including menu evidence, delegate ownership and
+last-tick time. It labels this as a wait, not a failed order, and never cancels or
+pauses on that evidence alone. Reason/state/cost changes reset the monitor; this
+is not proof that a provider order is filling or that the main thread is healthy.
+A completely frozen client cannot execute the debug key or polling monitor.
+
+`incidents/` in the ZIP retains the last 16 review, interruption, long-wait, safety
+pause or error records independently of rotating ordinary events and across
+restarts. Review/interruption capture includes the run, order and menu evidence
+before removing the run from the queue. Existing redaction covers all files.
+An incident over 2 MiB is explicitly marked truncated and retains a redacted
+prefix; event drop counts and logging errors remain visible in the snapshot.
+Account names, UUIDs or credential files are not added to the production journal
+export. Existing exports still include the selected current menu and companion
+log tails; the diagnostic ZIP remains local until the user shares it.
+
+Tests verify incident survival after rotation/restart, retention/redaction and
+oversize handling, read-only run observation, rate-limited long-wait capture, and
+output-specific exclusions without changing ranked results.

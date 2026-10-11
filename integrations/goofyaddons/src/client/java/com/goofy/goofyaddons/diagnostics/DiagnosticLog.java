@@ -39,7 +39,7 @@ public final class DiagnosticLog {
         text=VENDOR_LINE.matcher(text).replaceAll("<vendor redacted>");
         text=CREDENTIAL.matcher(text).replaceAll("$1$2<redacted>");
         text=BEARER.matcher(text).replaceAll("Bearer <redacted>");
-        return EMAIL.matcher(text).replaceAll("<email>");
+        return text.indexOf('@')<0?text:EMAIL.matcher(text).replaceAll("<email>");
     }
     private String safeJson(Object value) {
         var tree=gson.toJsonTree(value);
@@ -82,6 +82,22 @@ public final class DiagnosticLog {
             Files.move(current,directory.resolve("events.1.jsonl"),StandardCopyOption.REPLACE_EXISTING);
         }
         Files.write(current,bytes,StandardOpenOption.CREATE,StandardOpenOption.APPEND);
+        if(captured.type().equals("production.wait_observed") || captured.type().equals("production.run_review") || captured.type().equals("production.run_interrupted")
+                || captured.type().equals("safety.pause") || captured.level().equals("ERROR"))retainIncident(captured,bytes);
+    }
+    /** Last sixteen incidents survive ordinary heartbeat/ranking rotation and client restarts. */
+    private void retainIncident(Captured captured,byte[] bytes)throws IOException {
+        Path incidents=directory.resolve("incidents");Files.createDirectories(incidents);
+        if(bytes.length>2*1024*1024) {
+            bytes=(safeJson(Map.of("event",captured.type(),"time",captured.time(),"evidenceTruncated",true,
+                "originalBytes",bytes.length,"redactedPrefix",new String(bytes,java.nio.charset.StandardCharsets.UTF_8).substring(0,32768)))+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+        Path file=incidents.resolve(String.format("%019d-%s-%019d.json",System.currentTimeMillis(),session,captured.sequence()));
+        Files.write(file,bytes,StandardOpenOption.CREATE_NEW);
+        try(var paths=Files.list(incidents)) {
+            var old=paths.filter(p->p.getFileName().toString().endsWith(".json")).sorted().toList();
+            for(int i=0;i<old.size()-16;i++)Files.deleteIfExists(old.get(i));
+        }
     }
     public synchronized Path export(Map<String,?> snapshot) throws IOException {
         Files.createDirectories(directory);
@@ -97,6 +113,16 @@ public final class DiagnosticLog {
             if(snapshot.get("currentMenu") instanceof Map<?,?> menu) {
                 zip.putNextEntry(new ZipEntry("current-menu.json"));
                 zip.write(safeJson(menu).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            }
+            if(snapshot.get("productionDebug") instanceof Map<?,?> production) {
+                zip.putNextEntry(new ZipEntry("production-debug.json"));
+                zip.write(safeJson(production).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            }
+            Path incidents=directory.resolve("incidents");
+            if(Files.isDirectory(incidents))try(var paths=Files.list(incidents)) {
+                for(var file:paths.filter(p->p.getFileName().toString().endsWith(".json")).sorted().toList()) {
+                    zip.putNextEntry(new ZipEntry("incidents/"+file.getFileName()));Files.copy(file,zip);zip.closeEntry();
+                }
             }
             for(int i=0;i<=archives;i++) {
                 Path file=directory.resolve(i==0?"events.jsonl":"events."+i+".jsonl");

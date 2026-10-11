@@ -72,6 +72,19 @@ class CraftFlipPlannerTest {
         assertEquals(Map.of("No observed spendable budget",1),counts);
     }
 
+    @Test void diagnosticExclusionsIdentifyTheOutputAndDoNotChangeRankings() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
+        var counts=new LinkedHashMap<String,Integer>();var byOutput=new LinkedHashMap<String,Map<String,Integer>>();
+        var detailed=CraftFlipPlanner.rank(catalog,market(100),null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),100000,
+            10000,1.25,16,"BAZAAR",NOW,counts,0,"AUTO",byOutput);
+        assertTrue(detailed.isEmpty());assertEquals(16,byOutput.get("OUTPUT").get("Below minimum net profit after fees and price allowance"));
+        var normal=CraftFlipPlanner.rank(catalog,market(100),null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),100000,
+            1,1.25,16,"BAZAAR",NOW,counts,0,"AUTO");
+        detailed=CraftFlipPlanner.rank(catalog,market(100),null,ProductionRunTest.menu(null),Map.of(),Map.of(),Set.of(),100000,
+            1,1.25,16,"BAZAAR",NOW,counts,0,"AUTO",byOutput);
+        assertEquals(normal,detailed);
+    }
+
     @Test void orderIngredientsAndOutputOffersMakePreviouslyUnprofitableCraftExecutable(){
         var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
         var market=market(100);var products=market.getAsJsonObject("products");

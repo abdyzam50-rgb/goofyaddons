@@ -21,13 +21,14 @@ final class CraftFlipSelection {
     private String scope,error="Waiting for craft market data";
     private List<CraftFlipPlanner.Route> routes=List.of();
     private final Map<String,Integer> excluded=new LinkedHashMap<>();
+    private final Map<String,Map<String,Integer>> excludedByOutput=new LinkedHashMap<>();
     List<CraftFlipPlanner.Route> routes(){return routes;}
     boolean calculated(){return generatedAt>0;}
     String emptyReason(){
         if(!excluded.isEmpty())return "Main exclusion: "+excluded.entrySet().stream().max(Map.Entry.comparingByValue()).orElseThrow().getKey();
         return error==null?"Waiting for priced routes that meet minimum profit and market depth":error;
     }
-    void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;ah=null;routes=List.of();excluded.clear();scope=null;nextRefresh=0;generatedAt=0;lastMarketSource=0;rankingRefresh.clear();bazaarPending=null;}
+    void clear(){generation++;if(pending!=null)pending.cancel(true);pending=null;ah=null;routes=List.of();excluded.clear();excludedByOutput.clear();scope=null;nextRefresh=0;generatedAt=0;lastMarketSource=0;rankingRefresh.clear();bazaarPending=null;}
     void refresh() {
         var world=new LiveWorld();long now=world.now();
         if(!world.inWorld()){if(scope!=null)clear();return;}
@@ -40,7 +41,7 @@ final class CraftFlipSelection {
         if(market!=null && rankingRefresh.due(now,market.get("lastUpdated").getAsLong(),cfg))rebuild(now);
         if(now<nextRefresh)return;nextRefresh=now+20000;
         if(market==null) {
-            routes=List.of();excluded.clear();generatedAt=0;error="Waiting for fresh Hypixel Bazaar data";
+            routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error="Waiting for fresh Hypixel Bazaar data";
             if(bazaarPending==null) {
                 long epoch=generation;
                 var request=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.fetch();bazaarPending=request;
@@ -83,7 +84,7 @@ final class CraftFlipSelection {
         blocked.addAll(manager.production().lockedProducts());
         try {
             if(manager.production().hasOrphanOrders()){
-                routes=List.of();excluded.clear();generatedAt=0;error="Resolve retained craft Bazaar orders before starting another production run";return;
+                routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error="Resolve retained craft Bazaar orders before starting another production run";return;
             }
             var journal=manager.crafting().journal();
             long reviews=journal.stream().filter(j->j.account().equals(world.username())&&j.state()==ProductionJobs.State.REVIEW).count();
@@ -91,27 +92,34 @@ final class CraftFlipSelection {
                     &&job.state()!=ProductionJobs.State.CANCELLED&&job.state()!=ProductionJobs.State.SELLING) {
                 var recipe=RecipeCatalog.instance().byKey(job.recipeKey()).orElse(null);
                 if(recipe!=null){blocked.add(recipe.outputId());blocked.addAll(recipe.ingredients().keySet());}
-                else if(job.state()==ProductionJobs.State.REVIEW){routes=List.of();excluded.clear();generatedAt=0;error=reviews+" REVIEW jobs remain (e.g. "+job.id().substring(0,Math.min(8,job.id().length()))+"); stop trading, inspect production jobs, then acknowledge reviewed IDs or all";return;}
+                else if(job.state()==ProductionJobs.State.REVIEW){routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error=reviews+" REVIEW jobs remain (e.g. "+job.id().substring(0,Math.min(8,job.id().length()))+"); stop trading, inspect production jobs, then acknowledge reviewed IDs or all";return;}
             }
             for(var job:manager.crafting().journal())if(job.account().equals(world.username())&&job.state()==ProductionJobs.State.SELLING) {
                 String output=job.recipeKey().startsWith("auction:")?job.recipeKey().substring(job.recipeKey().lastIndexOf(':')+1):null;
                 if(output!=null)blocked.add(output);
             }
             var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
-            if(market==null){routes=List.of();excluded.clear();generatedAt=0;error="Waiting for fresh Hypixel Bazaar data";return;}
+            if(market==null){routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error="Waiting for fresh Hypixel Bazaar data";return;}
             double purse=new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(),budget=manager.production().selectionBudget(purse);
             if(cfg.craftFlips.maximumCapital>0)budget=Math.min(budget,cfg.craftFlips.maximumCapital);
             routes=CraftFlipPlanner.rank(RecipeCatalog.instance(),market,ah,world.menu(),manager.observedSkills(),manager.observedUnlocks(),blocked,
-                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded,manager.production().reservedInventorySlots(world.menu()),cfg.craftFlips.strategy);
+                budget,cfg.craftFlips.minimumProfit,cfg.bazaarTaxPercentage,cfg.craftFlips.maxBatches,cfg.craftFlips.venue,now,excluded,manager.production().reservedInventorySlots(world.menu()),cfg.craftFlips.strategy,excludedByOutput);
             generatedAt=now;lastMarketSource=market.get("lastUpdated").getAsLong();
             if(error!=null && (error.startsWith("Waiting for") || error.contains("REVIEW jobs remain")
                     || error.startsWith("Resolve retained craft Bazaar orders") || error.equals("Production journal or account data unavailable")))error=null;
             com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.ranking_updated",Map.of(
                 "marketAt",lastMarketSource,"eligibleRoutes",routes.stream().filter(CraftFlipPlanner.Route::eligible).count(),
                 "pricedRoutes",routes.size(),"excludedCandidateCounts",Map.copyOf(excluded),"budget",budget));
-        }catch(Exception unavailable){routes=List.of();excluded.clear();generatedAt=0;error="Production journal or account data unavailable";com.goofy.goofyaddons.diagnostics.Diagnostics.failure("production.ranking_failed",unavailable);}
+        }catch(Exception unavailable){routes=List.of();excluded.clear();excludedByOutput.clear();generatedAt=0;error="Production journal or account data unavailable";com.goofy.goofyaddons.diagnostics.Diagnostics.failure("production.ranking_failed",unavailable);}
     }
     List<CraftFlipPlanner.Route> currentRoutes(){rebuild(System.currentTimeMillis());return routes;}
+    Map<String,Object> diagnosticState() {
+        var result=new LinkedHashMap<>(view());
+        result.put("excludedByOutput",Map.copyOf(excludedByOutput));
+        result.put("rows",routes.stream().map(r->r.describe(RecipeCatalog.instance())).toList());
+        result.put("blockedProducts",FeatureManager.INSTANCE.production().lockedProducts());
+        return result;
+    }
     Map<String,Object> view() {
         var result=new LinkedHashMap<String,Object>();result.put("generatedAt",generatedAt);result.put("calculated",calculated());result.put("error",error);result.put("excludedCandidateCounts",Map.copyOf(excluded));
         result.put("strategy",GoofyConfig.INSTANCE.craftFlips.strategy);result.put("minimumProfit",GoofyConfig.INSTANCE.craftFlips.minimumProfit);result.put("maxBatches",GoofyConfig.INSTANCE.craftFlips.maxBatches);result.put("venue",GoofyConfig.INSTANCE.craftFlips.venue);

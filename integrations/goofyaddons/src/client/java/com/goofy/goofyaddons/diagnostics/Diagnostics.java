@@ -28,7 +28,7 @@ public final class Diagnostics {
         try {
             var captured=LOG.capture(level,type,data);
             boolean critical=level.equals("ERROR") || level.equals("WARN") || type.startsWith("trade.")
-                    || type.startsWith("order.") || type.startsWith("safety.") || type.startsWith("session.");
+                    || type.startsWith("production.order.") || type.equals("production.run_observed") || type.startsWith("order.") || type.startsWith("safety.") || type.startsWith("session.");
             boolean accepted=WORKER.submit(critical,()->{
                 long dropped=WORKER.takePendingDropped();
                 try {
@@ -134,6 +134,7 @@ public final class Diagnostics {
         }
         if(detailed) {
             data.put("engines",manager.diagnosticState());
+            data.put("productionDebug",manager.production().diagnosticState());
             data.put("currentMenu",DebugMenuCapture.describe(new com.goofy.goofyaddons.menu.LiveWorld().menu()));
         }
         data.put("droppedEvents",WORKER.totalDropped());data.put("criticalDroppedEvents",WORKER.criticalDropped());data.put("logError",error==null?"none":error);

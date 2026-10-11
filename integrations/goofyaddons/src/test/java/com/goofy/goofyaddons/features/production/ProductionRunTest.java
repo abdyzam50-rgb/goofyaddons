@@ -410,6 +410,17 @@ class ProductionRunTest {
         run.tick(false,1100);assertTrue(run.reason().contains("verify order"));
     }
 
+    @Test void diagnosticObservationContainsOwnershipAndGatesWithoutAdvancingTheRun()throws Exception {
+        var env=new Env();env.buying=true;env.procurementBlock="Fresh prices unavailable";
+        var recipe=catalog().forOutput("OUTPUT").stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
+        run.tick(true,1000);var before=env.jobs.all();
+        var state=run.diagnosticState();
+        assertEquals(run.jobId(),state.get("job"));assertEquals("Fresh prices unavailable",state.get("procurementBlock"));
+        assertEquals(true,state.get("waitingForProcurement"));assertEquals(false,state.get("wantsMenu"));
+        assertEquals(Map.of("INPUT",2),state.get("missingPurchases"));
+        assertEquals(before,env.jobs.all());assertTrue(env.actions.serverEffects().isEmpty());assertTrue(env.orders.isEmpty());
+    }
     @Test void unrelatedPurseIncreaseCannotConfirmBoundedCraftSaleProfit() {
         var actions=new RecordingActions();
         var sale=new BazaarInstantSell("OUTPUT","Output",1,900,1100,reason->{});

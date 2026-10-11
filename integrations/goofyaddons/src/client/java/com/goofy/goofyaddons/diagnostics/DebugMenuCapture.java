@@ -4,9 +4,9 @@ import com.goofy.goofyaddons.menu.*;
 import java.util.*;
 
 /** Selected GUI facts only; never serialize raw metadata, item UUIDs or credentials. */
-final class DebugMenuCapture {
+public final class DebugMenuCapture {
     private DebugMenuCapture() {}
-    static Map<String,Object> describe(MenuSnapshot menu) {
+    public static Map<String,Object> describe(MenuSnapshot menu) {
         if(menu==null)return Map.of("available",false);
         var result=new LinkedHashMap<String,Object>();
         result.put("available",true);result.put("title",menu.title());

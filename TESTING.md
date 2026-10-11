@@ -445,3 +445,7 @@ causes remain unverified; price ceilings are not relaxed.
 ## 0.2.65 craft scheduler audit
 
 `./gradlew -p client test build --console=plain` passed 1132 Java tests with no failures or errors. Added regressions for blocked procurement yielding and waking, compactor verification during market changes, and child order status visibility. Live Minecraft execution remains unverified.
+
+## 0.2.66 debug evidence
+
+The final `./gradlew -p client test build --console=plain` run passed 1137 Java tests with zero failures/errors. Coverage includes persistent incident retention, redaction/oversize handling, read-only run export, unchanged-state monitoring, and per-output exclusions with ranking equivalence. An oversized-message regression exposed expensive email matching; messages without an at-sign now bypass that scan. Live in-game export remains unverified.

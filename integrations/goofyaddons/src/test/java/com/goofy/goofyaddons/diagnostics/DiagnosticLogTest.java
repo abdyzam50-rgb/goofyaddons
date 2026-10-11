@@ -64,4 +64,28 @@ class DiagnosticLogTest {
         }
     }
 
+    @Test void incidentsSurviveEventRotationAndRestartWithBoundedRedactedEvidence()throws Exception {
+        var log=new DiagnosticLog(directory,200,1);
+        log.append("WARN","production.run_review",Map.of("job","blocked-job","reason","Unverified claim","apiKey","private-secret"));
+        for(int i=0;i<20;i++)log.append("INFO","heartbeat",Map.of("index",i));
+        var restarted=new DiagnosticLog(directory,200,1);
+        try(var zip=new ZipFile(restarted.export(Map.of("productionDebug",Map.of("reviewJobs",List.of("blocked-job")))).toFile())) {
+            assertNotNull(zip.getEntry("production-debug.json"));
+            var entries=zip.stream().filter(e->e.getName().startsWith("incidents/")).toList();assertEquals(1,entries.size());
+            String text=new String(zip.getInputStream(entries.getFirst()).readAllBytes());
+            assertTrue(text.contains("blocked-job"));assertFalse(text.contains("private-secret"));
+        }
+        for(int i=0;i<20;i++)restarted.append("WARN","production.run_interrupted",Map.of("job","job-"+i));
+        try(var files=Files.list(directory.resolve("incidents"))){assertEquals(16,files.count());}
+    }
+    @Test void oversizedIncidentReportsTruncationInsteadOfGrowingUnbounded()throws Exception {
+        var log=new DiagnosticLog(directory,3000000,1);
+        log.append("ERROR","failure",Map.of("message","x".repeat(2100000),"authorization","private-secret"));
+        try(var files=Files.list(directory.resolve("incidents"))) {
+            var file=files.findFirst().orElseThrow();assertTrue(Files.size(file)<40000);
+            var incident=JsonParser.parseString(Files.readString(file)).getAsJsonObject();assertTrue(incident.get("evidenceTruncated").getAsBoolean());
+            assertFalse(Files.readString(file).contains("private-secret"));
+        }
+    }
+
 }
