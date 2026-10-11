@@ -1,4 +1,4 @@
-# Craft flip discovery and execution — 0.2.66
+# Craft flip discovery and execution — 0.2.67
 
 ## Shipped behavior
 
@@ -1011,3 +1011,28 @@ log tails; the diagnostic ZIP remains local until the user shares it.
 Tests verify incident survival after rotation/restart, retention/redaction and
 oversize handling, read-only run observation, rate-limited long-wait capture, and
 output-specific exclusions without changing ranked results.
+
+## 0.2.67 verified empty-order reselection
+
+The 1791678831183 export identifies a retained parent from an older session:
+ENCHANTED_COOKED_FISH, 11 batches, plan capital 453,743.84. Its 1,760-unit input
+order at 250.9 was submitted for 441,584 coins, then cancelled with that exact
+refund verified. The child handoff completed with zero acquired units. A fresh
+basket exceeded the selected plan's capital, so PROCURE blocked indefinitely;
+the configured 5M cap was not the same as the selected job's allocation. Stopping
+marked its BUYING parent REVIEW, despite no remaining order or acquired inputs.
+Restarting later releases did not clear that saved review.
+
+Reselection now accepts this narrowly proven empty handoff after the child has
+been durably acknowledged, with zero spent, no buyer/order/craft/compactor action
+in progress, a readable empty cursor and no held locked products. A blocked
+automatic run becomes CANCELLED and discovery recalculates the route/batch/budget.
+Stop uses the same guard. A new order invalidates the empty-handoff proof.
+Unverified intents, partial fills, acquired ingredients and outstanding orders
+still require preservation/recovery. The proof is live-session evidence; older
+REVIEW records are not automatically deleted or treated as verified.
+
+The existing 1160e2ba review may be acknowledged manually based on the exported
+zero craft positions, inventory and correlated verified refund. Do not apply that
+instruction to unrelated REVIEW jobs. New diagnostics expose
+`verifiedEmptyOrderHandoff` to show whether reselection has this evidence.

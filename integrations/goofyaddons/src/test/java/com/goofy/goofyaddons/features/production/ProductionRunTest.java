@@ -550,6 +550,29 @@ class ProductionRunTest {
         }
     }
 
+    @Test void verifiedEmptyCancellationCanRetireAStaleBudgetWithoutReview()throws Exception {
+        var env=new Env();env.buying=true;var recipe=catalog().forOutput("OUTPUT").getFirst();
+        var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);assertFalse(run.cancelUnstarted("order still pending"));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,0,0,null,"Refund verified");
+        run.tick(true,1100);assertEquals(1,env.orderAcknowledgements);
+        env.procurementBlock="Remaining ingredients exceed selected budget";
+        assertEquals(Step.BLOCKED,run.tick(false,1200));
+        assertTrue(run.cancelUnstarted("Recompute price, batch size and ranking"));
+        assertEquals(ProductionJobs.State.CANCELLED,env.jobs.find(run.jobId()).orElseThrow().state());
+        assertEquals(0,run.spent());assertTrue(env.actions.serverEffects().isEmpty());
+    }
+    @Test void partialFillOrUnexpectedHeldInputsCannotUseEmptyCancellationProof()throws Exception {
+        for(boolean filled:List.of(false,true)) {
+            var env=new Env();env.buying=true;var recipe=catalog().forOutput("OUTPUT").getFirst();
+            var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+            run.tick(true,1000);
+            env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,filled?1:0,filled?50:0,null,"Verified cancellation");
+            env.menu=menu(null,item(54,"INPUT",1));run.tick(true,1100);
+            assertFalse(run.cancelUnstarted("no unsafe reselection"));
+        }
+    }
+
     @Test void uncertainInputOrderNeverStartsCraftingOrPretendsToAcquireInputs()throws Exception {
         var env=new Env();env.buying=true;var catalog=catalog();
         var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);

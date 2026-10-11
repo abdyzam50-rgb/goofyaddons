@@ -324,6 +324,7 @@ public final class ProductionLoopFeature implements Feature {
                 var run=current.run;var job=jobs.find(run.jobId()).orElse(null);
                 if(job!=null && job.state()!=ProductionJobs.State.WAITING && job.state()!=ProductionJobs.State.DONE) {
                     Diagnostics.event("WARN","production.run_interrupted",incident(current,why+"; prior journal state "+job.state()));
+                    if(run.cancelUnstarted(why+"; verified no acquired inputs or pending order"))continue;
                     boolean untouched=job.state()==ProductionJobs.State.PLANNED && run.stage()==ProductionLoop.Stage.PROCURE;
                     jobs.put(job.withState(untouched?ProductionJobs.State.CANCELLED:ProductionJobs.State.REVIEW,why+"; inspect inventory, workstation and listings before requeueing"));
                 }

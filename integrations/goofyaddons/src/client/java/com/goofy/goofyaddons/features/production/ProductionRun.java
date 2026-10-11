@@ -82,6 +82,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private long orderRetryAfter;
     private boolean waitingForOrderRetry;
     private boolean waitingForProcurement;
+    private boolean verifiedEmptyOrderHandoff;
     private ProductionRecipe recipe;
     private String craftJob, listingJob, workstationJob;
     private String ingredientCraftJob;
@@ -156,11 +157,15 @@ public final class ProductionRun implements ProductionLoop.Ports {
         return run;
     }
 
-    /** Reselect only when no transaction or craft/compactor intent has been journaled. */
+    /** Reselect untouched plans or a fully verified zero-input order handoff; never uncertain intent. */
     public boolean cancelUnstarted(String reason)throws Exception {
         if(stage()!=Stage.PROCURE||spent!=0||buying!=null||orderActive||ingredientCraftJob!=null||craftJob!=null)return false;
         var job=env.jobs().find(jobId).orElse(null);
-        if(job==null||job.state()!=ProductionJobs.State.PLANNED)return false;
+        if(job==null)return false;
+        boolean emptyVerified=verifiedEmptyOrderHandoff && job.state()==ProductionJobs.State.BUYING
+            && !compactorClearance.inProgress() && env.menu()!=null && env.menu().cursorEmpty()
+            && held().entrySet().stream().noneMatch(e->e.getValue()>0 && lockedProducts().contains(e.getKey()));
+        if(job.state()!=ProductionJobs.State.PLANNED && !emptyVerified)return false;
         env.jobs().put(job.withState(ProductionJobs.State.CANCELLED,reason));return true;
     }
 
@@ -178,6 +183,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         state.put("job",jobId);state.put("output",output);state.put("recipe",recipe==null?null:recipe.key());
         state.put("stage",stage().name());state.put("reason",reason());state.put("batches",batches);
         state.put("strategy",strategy.name());state.put("spent",spent);state.put("inputBasisVerified",hasVerifiedInputBasis());
+        state.put("verifiedEmptyOrderHandoff",verifiedEmptyOrderHandoff);
         state.put("orderActive",orderActive);state.put("orderCostRecorded",orderCostRecorded);
         state.put("waitingForOrderRetry",waitingForOrderRetry);state.put("retryAt",orderRetryAfter);
         state.put("waitingForProcurement",waitingForProcurement);state.put("compactorInProgress",compactorClearance.inProgress());
@@ -235,6 +241,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 if(!orderCostRecorded){spent+=result.cost();env.jobs().put(parent().withCost(spent,"Ingredient order claim verified"));orderCostRecorded=true;}
                 if(!env.acknowledgeOrder())return Outcome.uncertain("Claimed ingredient handoff could not be persisted");
                 orderActive=false;orderCostRecorded=false;
+                verifiedEmptyOrderHandoff=result.units()==0 && result.cost()==0;
                 if(result.rejected()){waitingForOrderRetry=true;orderRetryAfter=now+30000;return Outcome.pending("Ingredient quote changed; refreshing prices before retrying: "+result.reason());}
                 return Outcome.pending(result.units()>0
                     ? "Claimed ingredients; checking remaining inputs" : "Ingredient order cancelled; checking replacement budget and profit");
@@ -313,7 +320,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             catch(Exception failure){return Outcome.blocked("Ingredient order intent could not be saved");}
             int units=Math.min(4096,first.getValue());double unit=basket.limits().get(first.getKey())/first.getValue()/1.03;
             if(!env.queueOrder(first.getKey(),units,unit,true,limit/first.getValue()))return Outcome.uncertain("Ingredient order could not be queued; check retained craft orders");
-            orderActive=true;return Outcome.pending("Placing ingredient buy order");
+            verifiedEmptyOrderHandoff=false;orderActive=true;return Outcome.pending("Placing ingredient buy order");
         }
         buying = new BazaarInstantBuy(first.getKey(), env.name(first.getKey()), first.getValue(), limit,
                 reason -> env.jobs().put(parent().withState(ProductionJobs.State.BUYING, reason)));

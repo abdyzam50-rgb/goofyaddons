@@ -449,3 +449,7 @@ causes remain unverified; price ceilings are not relaxed.
 ## 0.2.66 debug evidence
 
 The final `./gradlew -p client test build --console=plain` run passed 1137 Java tests with zero failures/errors. Coverage includes persistent incident retention, redaction/oversize handling, read-only run export, unchanged-state monitoring, and per-output exclusions with ranking equivalence. An oversized-message regression exposed expensive email matching; messages without an at-sign now bypass that scan. Live in-game export remains unverified.
+
+## 0.2.67 verified empty craft reselection
+
+`./gradlew -p client test build --console=plain` passed 1139 Java tests with zero failures/errors. Added regressions for fully refunded zero-input handoff allowing stale-plan cancellation, and partial fills/unexpected held ingredients preventing it. Existing unknown-intent and submitted-purchase guards remain covered. In-game execution remains unverified.
