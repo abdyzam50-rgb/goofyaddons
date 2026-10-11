@@ -1036,3 +1036,23 @@ The existing 1160e2ba review may be acknowledged manually based on the exported
 zero craft positions, inventory and correlated verified refund. Do not apply that
 instruction to unrelated REVIEW jobs. New diagnostics expose
 `verifiedEmptyOrderHandoff` to show whether reselection has this evidence.
+
+## 0.2.69 pre-submission rejection reaches reselection
+
+The 1791680266952 export shows an empty Enchanted Cooked Cod run repeatedly
+retrying the same plan. The GUI quoted 483.8 then 483.9 per Enchanted Raw Fish,
+against a 467.105 ceiling. No order was submitted. At export, the selected
+allocation was 822,104.8 while the remaining basket cost 877,032.64; spent was
+zero, the child was acknowledged, and no craft positions or held ingredients
+remained. There were no REVIEW jobs. The rejection was correctly conservative,
+but returning PENDING bypassed automatic empty-run reselection.
+
+A durably acknowledged pre-submission rejection now returns BLOCKED, allowing
+the existing cancelUnstarted guard to retire a proven empty automatic run and
+rerank after the scheduler's five-second delay. This recalculates the selected
+budget, batches and strategy rather than retaining a stale allocation. Manual
+runs and runs with acquired inputs retain the 30-second retry delay. Unknown
+intent, outstanding orders, nonempty cursors and acquired stock still prevent
+empty-plan cancellation. Price ceilings and profit checks remain unchanged.
+Moving prices can still reject a new plan; this change does not guarantee that
+an API quote will match the later GUI quote.

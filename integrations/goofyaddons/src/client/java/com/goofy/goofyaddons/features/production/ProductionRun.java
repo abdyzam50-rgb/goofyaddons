@@ -242,7 +242,13 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 if(!env.acknowledgeOrder())return Outcome.uncertain("Claimed ingredient handoff could not be persisted");
                 orderActive=false;orderCostRecorded=false;
                 verifiedEmptyOrderHandoff=result.units()==0 && result.cost()==0;
-                if(result.rejected()){waitingForOrderRetry=true;orderRetryAfter=now+30000;return Outcome.pending("Ingredient quote changed; refreshing prices before retrying: "+result.reason());}
+                if(result.rejected()){
+                    waitingForOrderRetry=true;orderRetryAfter=now+30000;
+                    // A safe pre-submission rejection must reach the scheduler's empty-run
+                    // reselection guard. PENDING bypasses that guard and pins the old budget.
+                    // Runs with acquired inputs still fail cancelUnstarted and retain the delay.
+                    return Outcome.blocked("Ingredient quote changed; recalculating an empty plan or refreshing remaining inputs: "+result.reason());
+                }
                 return Outcome.pending(result.units()>0
                     ? "Claimed ingredients; checking remaining inputs" : "Ingredient order cancelled; checking replacement budget and profit");
             }catch(Exception failure){return Outcome.uncertain("Ingredient order cost could not be persisted");}

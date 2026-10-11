@@ -609,10 +609,33 @@ class ProductionRunTest {
         var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
         run.tick(true,1000);
         env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,0,0,null,"Price moved",true);
-        assertEquals(Step.PENDING,run.tick(true,1100));assertEquals(0,run.spent());assertEquals(1,env.orderAcknowledgements);assertFalse(run.wantsMenu(),"Retry waits yield the GUI to other crafts");
+        assertEquals(Step.BLOCKED,run.tick(true,1100));assertEquals(0,run.spent());assertEquals(1,env.orderAcknowledgements);assertFalse(run.wantsMenu(),"Retry waits yield the GUI to other crafts");
         assertNotEquals(ProductionJobs.State.REVIEW,env.jobs.find(run.jobId()).orElseThrow().state());
         run.tick(true,30000);assertEquals(1,env.orders.size());assertTrue(env.crafts.isEmpty());
         env.procurementBlock="Fresh basket no longer profitable";assertEquals(Step.BLOCKED,run.tick(true,31100));assertEquals(1,env.orders.size());
         env.procurementBlock=null;run.tick(true,31200);assertEquals(2,env.orders.size());assertEquals(0,run.spent());
+    }
+
+    @Test void emptyPreflightRejectionImmediatelyAllowsAutomaticReselection()throws Exception {
+        var env=new Env();env.buying=true;var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,0,0,null,"GUI 483.9 exceeds ceiling 467.105",true);
+        assertEquals(Step.BLOCKED,run.tick(false,1100));
+        assertTrue(run.cancelUnstarted(run.reason()));
+        assertEquals(ProductionJobs.State.CANCELLED,env.jobs.find(run.jobId()).orElseThrow().state());
+        assertEquals(1,env.orderAcknowledgements);assertEquals(0,run.spent());assertTrue(env.actions.serverEffects().isEmpty());
+    }
+
+    @Test void rejectionAfterPartialAcquisitionPreservesInputsAndRetryDelay()throws Exception {
+        var env=new Env();env.buying=true;var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,1,50,null,"Partial claim verified");
+        env.menu=menu(null,item(54,"INPUT",1));run.tick(true,1100);run.tick(true,1200);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,0,0,null,"Remaining input price moved",true);
+        assertEquals(Step.BLOCKED,run.tick(false,1300));assertFalse(run.cancelUnstarted(run.reason()));
+        assertEquals(50,run.spent());assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state());
+        assertEquals(Step.PENDING,run.tick(false,30000));assertEquals(2,env.orders.size());assertFalse(run.wantsMenu());
     }
 }

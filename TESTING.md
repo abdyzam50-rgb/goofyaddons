@@ -457,3 +457,12 @@ The final `./gradlew -p client test build --console=plain` run passed 1137 Java 
 ## 0.2.68 A* status GUI and logo
 
 `./gradlew -p client test build --console=plain` passed 1140 Java tests with zero failures/errors. Existing responsive layout checks plus a new short-screen task-priority regression passed. The packaged animated logo exactly matches upstream 4bf09c3 (24,659 bytes). In-game rendering and button interaction remain unverified.
+
+## 0.2.69 rejected ingredient plan reselection
+
+Added regressions for an acknowledged zero-input preflight rejection immediately
+reaching safe cancellation, and a rejection after partial acquisition preserving
+cost, input ownership and the 30-second delay. The existing delayed-retry and
+fresh-basket blocking coverage remains applicable to retained/manual runs.
+
+`./gradlew -p client test build --console=plain` passed 1142 Java tests with zero failures/errors. Live Minecraft execution remains unverified.
