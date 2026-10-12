@@ -62,7 +62,8 @@ public class GoofyConfig {
         public boolean useStorage=false;
         /** Storage pages in the order they fill. */
         public String storagePages=com.goofy.goofyaddons.features.production.ProductionStorage.DEFAULT_PAGES;
-        public void validate() {
+        private static boolean validCategoryDelay(int min,int max){return min==0&&max==0 || min>=1&&max>min&&max<=60000;}
+    public void validate() {
             if(!Set.of("AUTO","ORDER_OFFER","INSTANT_OFFER","ORDER_INSTANT","INSTANT_INSTANT").contains(strategy)
                     ||!Set.of("BOTH","BAZAAR","AH").contains(venue)||!Double.isFinite(maximumCapital)||maximumCapital<0
                     ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>64||maxActiveCrafts<1||maxActiveCrafts>4
@@ -76,6 +77,7 @@ public class GoofyConfig {
     public int reloadKey = InputConstants.KEY_F8;
     public int minActionDelay = 60;
     public int maxActionDelay = 70;
+    public int minCraftDelay=0,maxCraftDelay=0,minStorageDelay=0,maxStorageDelay=0;
     public double bazaarTaxPercentage = 1.25;
     public double minNetProfit = 0;
     public int maxBookHoldingSeconds = 21600;
@@ -170,6 +172,7 @@ public class GoofyConfig {
         return loadError;
     }
 
+    private static boolean validCategoryDelay(int min,int max){return min==0&&max==0 || min>=1&&max>min&&max<=60000;}
     public void validate() {
         if (keyCodeSchema!=2 || tradingMode == null || general == null || !Double.isFinite(maxTradingCapital)
                 || maxTradingCapital <= 0 || !Double.isFinite(purseReserve) || purseReserve < 0
@@ -188,6 +191,7 @@ public class GoofyConfig {
         marketAnalysis.validate();
         if (!Double.isFinite(profitHudScale) || profitHudScale<0.75 || profitHudScale>3.0) throw new IllegalArgumentException("HUD scale must be between 0.75 and 3.0");
         if (!"LEFT".equals(profitHudSide) && !"RIGHT".equals(profitHudSide)) throw new IllegalArgumentException("HUD side must be LEFT or RIGHT");
+        if(!validCategoryDelay(minCraftDelay,maxCraftDelay)||!validCategoryDelay(minStorageDelay,maxStorageDelay))throw new IllegalArgumentException("Craft/storage delays must both be 0 to inherit navigation, or 1 <= min < max <= 60000");
         if (minActionDelay < 1 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
             throw new IllegalArgumentException("Require 1 <= minActionDelay < maxActionDelay <= 60000");
         }

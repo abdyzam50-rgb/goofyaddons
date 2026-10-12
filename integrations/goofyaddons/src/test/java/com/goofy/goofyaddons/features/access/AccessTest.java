@@ -151,12 +151,20 @@ class AccessTest {
     }
     @Test void unrelatedMenuOccupiedCursorOrAmbiguousControlsNeverGetClicked() {
         var nav=new BazaarNavigation();var port=new Port();nav.request("bz Coal",1000);
-        port.view=menu(1,"Storage",true);nav.tick(port,1000,90);assertEquals(BazaarNavigation.State.FAILED,nav.state());
+        port.view=menu(1,"Storage",true);nav.tick(port,1000,90);assertEquals(BazaarNavigation.State.OPEN,nav.state());
+        nav.tick(port,4000,90);assertEquals(BazaarNavigation.State.FAILED,nav.state());
         nav.request("bz Coal",2000);port.view=menu(1,"Bazaar",false);nav.tick(port,2000,90);
         assertEquals(BazaarNavigation.State.FAILED,nav.state());
         nav.request("bz Coal",3000);port.view=menu(1,"Bazaar",true,
             SlotView.named(45,"Search",List.of()),SlotView.named(46,"Search",List.of()));
         nav.tick(port,3000,90);nav.tick(port,3500,90);assertTrue(port.effects.isEmpty());
+    }
+    @Test void closingStorageMayDisappearBeforeNpcNavigationContinues(){
+        var nav=new BazaarNavigation();var port=new Port();nav.request("managebazaarorders",1000);
+        port.view=menu(1,"Ender Chest (2/3)",true);nav.tick(port,1000,90);nav.tick(port,1200,90);
+        assertEquals(BazaarNavigation.State.OPEN,nav.state());assertTrue(port.effects.isEmpty());
+        port.view=menu(2,"Co-op Bazaar Orders",true);nav.tick(port,1500,90);
+        assertEquals(BazaarNavigation.State.DONE,nav.state());assertTrue(port.effects.isEmpty());
     }
     @Test void ignoredSearchClickRetriesOnlyUnchangedReversibleControlAndStopsAfterThree() {
         var nav=new BazaarNavigation();var port=new Port();nav.request("bz Coal",1000);

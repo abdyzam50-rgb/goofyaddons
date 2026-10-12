@@ -1,3 +1,23 @@
+### 0.2.96 Independent timing and asynchronous storage close
+
+The book startup export paused because NPC Bazaar navigation observed a storage
+menu that was still closing. Navigation now allows up to three seconds for the
+old menu to disappear, sends no input to it, and still rejects a genuinely
+unrelated menu or an occupied cursor.
+
+G → Macros → Limits includes independent fastest/slowest ranges for navigation,
+storage, and crafting/anvil. New category fields set to zero inherit navigation
+for compatibility. Both crafting and anvil use the crafting range, production
+and book storage use the storage range. Book inventory observations scale with
+the active ranges while keeping a 50 ms minimum stable observation and a 150 ms
+upper bound. Server acknowledgements and unchanged-contents checks remain
+mandatory; the production storage initial page settle remains in place.
+
+Regression coverage checks category independence and inheritance, invalid pairs,
+closing-storage navigation, rejection of persistent unrelated menus, and the
+50 ms observation floor with reset on contents changes. 1360 Java tests
+passed; release build succeeded. Live verification remains needed.
+
 ### 0.2.95 Instant book routes enter the execution pipeline
 
 The export repeatedly selected Sunset I to V using instant buy and sell offer,
@@ -204,7 +224,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.95 JAR](dist/astar-client-0.2.95-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.96 JAR](dist/astar-client-0.2.96-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

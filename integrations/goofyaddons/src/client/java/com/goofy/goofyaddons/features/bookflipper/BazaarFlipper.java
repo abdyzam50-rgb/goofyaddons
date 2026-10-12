@@ -92,7 +92,7 @@ public class BazaarFlipper implements Feature {
 
     private final BookTransfer bookTransfer = new BookTransfer();
     private final BookCombiner bookCombiner = new BookCombiner();
-    private final InventoryMemory inventoryMemory = new InventoryMemory();
+    private final InventoryMemory inventoryMemory;
     private final BookLocations bookLocations = new BookLocations();
     private final BookPopulation bookPopulation = new BookPopulation();
     private com.goofy.goofyaddons.menu.MenuSnapshot observedMenu;
@@ -135,6 +135,7 @@ public class BazaarFlipper implements Feature {
         this.actions=java.util.Objects.requireNonNull(actions);
         this.repository=java.util.Objects.requireNonNull(repository);
         this.services=java.util.Objects.requireNonNull(services);
+        this.inventoryMemory=new InventoryMemory(services::observationDelay);
         this.capital=java.util.Objects.requireNonNull(services.capital());
         this.accounting=java.util.Objects.requireNonNull(services.accounting());
         this.clock=new Clock(world::now);

@@ -302,7 +302,7 @@ public final class ProductionStorage {
 
         private Result click(MenuSnapshot menu,GameActions actions,SlotView slot,String id,long now) {
             pendingProduct=id;pendingSlot=slot.index();clickRetries=0;clickedAt=now;
-            nextMoveAt=now+com.goofy.goofyaddons.utils.ActionDelay.next();
+            nextMoveAt=now+com.goofy.goofyaddons.utils.ActionDelay.storage();
             beforeInventory=inventoryCount(menu,id);beforeStorage=storageCount(menu,id);
             actions.click(slot.index(),true);
             return Result.WAITING;
@@ -330,7 +330,7 @@ public final class ProductionStorage {
             if(now-clickedAt>CLICK_TIMEOUT_MS)return block("Storage move of "+pendingProduct+" was not acknowledged");
             if(now>=nextMoveAt && now-clickedAt>CLICK_RETRY_MS*(clickRetries+1) && clickRetries<2) {
                 var slot=menu.slot(pendingSlot);
-                if(slot!=null && !slot.empty() && pendingProduct.equals(ProductionMenus.productId(slot))){clickRetries++;nextMoveAt=now+com.goofy.goofyaddons.utils.ActionDelay.next();actions.click(pendingSlot,true);}
+                if(slot!=null && !slot.empty() && pendingProduct.equals(ProductionMenus.productId(slot))){clickRetries++;nextMoveAt=now+com.goofy.goofyaddons.utils.ActionDelay.storage();actions.click(pendingSlot,true);}
             }
             return Result.WAITING;
         }

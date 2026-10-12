@@ -60,6 +60,9 @@ public final class BookTraderFactory {
                         c.firstPage,c.secondPage,c.marketAnalysis.automaticSelection,c.liquidateStaleBooks,c.bookStaleSeconds,
                         c.bookOrderRecheckSeconds,c.maxBookHoldingSeconds,c.maxBookDrawdownPercentage,c.maxBookReprices,c.bookRepriceCooldownSeconds);
             }
+            public int observationDelay(){return Math.max(50,Math.min(150,Math.min(craftDelay(),storageDelay())));}
+            public int craftDelay(){return com.goofy.goofyaddons.utils.ActionDelay.craft();}
+            public int storageDelay(){return com.goofy.goofyaddons.utils.ActionDelay.storage();}
             public CapitalManager capital() {return CapitalManager.INSTANCE;}
             public java.util.Set<String> excludedProducts(){return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded();}
             public BookAccounting accounting() {return accounting;}

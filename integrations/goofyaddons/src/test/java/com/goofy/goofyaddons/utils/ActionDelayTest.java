@@ -5,6 +5,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ActionDelayTest {
+    @Test void categoryRangesAreIndependentAndInheritNavigationUntilConfigured(){
+        var old=GoofyConfig.INSTANCE;
+        try {
+            var c=new GoofyConfig();c.minActionDelay=100;c.maxActionDelay=101;GoofyConfig.INSTANCE=c;
+            assertEquals(100,ActionDelay.craft());assertEquals(100,ActionDelay.storage());
+            c.minCraftDelay=10;c.maxCraftDelay=11;c.minStorageDelay=20;c.maxStorageDelay=21;c.validate();
+            assertEquals(100,ActionDelay.next());assertEquals(10,ActionDelay.craft());assertEquals(20,ActionDelay.storage());
+            c.maxStorageDelay=0;assertThrows(IllegalArgumentException.class,c::validate);
+        }finally{GoofyConfig.INSTANCE=old;}
+    }
     @Test void oneToTwoMillisecondRangeValidates(){
         var old=GoofyConfig.INSTANCE;
         try {

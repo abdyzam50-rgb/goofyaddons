@@ -14,6 +14,9 @@ public interface BookServices {
     BookAccounting accounting();
     double purse();
     int actionDelay();
+    default int observationDelay(){return 150;}
+    default int craftDelay(){return actionDelay();}
+    default int storageDelay(){return actionDelay();}
     JsonObject latestQuotes();
     CompletableFuture<JsonObject> fetchQuotes();
     Map<String,Integer> observedSkills();

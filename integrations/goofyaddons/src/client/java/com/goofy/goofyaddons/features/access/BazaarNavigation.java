@@ -44,7 +44,7 @@ public final class BazaarNavigation {
         if(state==State.OPEN) {
             if(orders && title!=null && TradingSafety.ordersTitle(title)){port.stopWalking();state=State.DONE;return;}
             if(title!=null && title.contains("Bazaar")) {port.stopWalking();state=orders?State.ORDERS:query.isBlank()?State.DONE:State.SEARCH;return;}
-            if(title!=null){fail("Close the unrelated menu before NPC Bazaar navigation",port);return;}
+            if(title!=null){port.stopWalking();if(now-began>=3000)fail("Close the unrelated menu before NPC Bazaar navigation",port);return;}
             if(!port.nearNpc()) {
                 if(!walkRequested){walkRequested=true;if(!port.walk()){fail("Stand next to the Bazaar NPC; automatic walking needs the custom pathfinder",port);}}
                 else if(!port.walking())fail("Pathfinder stopped before reaching the Bazaar NPC",port);

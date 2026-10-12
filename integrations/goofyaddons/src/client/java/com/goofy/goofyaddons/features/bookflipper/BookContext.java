@@ -26,6 +26,8 @@ import java.util.List;
  */
 interface BookContext {
     long now();
+    default int craftDelay(){return services().craftDelay();}
+    default int storageDelay(){return services().storageDelay();}
     boolean signOpen();
     String username();
     GameActions actions();

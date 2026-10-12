@@ -409,11 +409,20 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
     private void buildTradingLimits() {
         var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
-        Card timing=card("Menu action timing","Shared timing for Bazaar navigation, crafting and storage. Lower delays are faster; each action varies within this range.");
+        Card timing=card("Menu action timing","Navigation timing. Crafting and storage follow this range until their own timing is configured.");
         timing.row("Fastest delay (ms)",()->"Minimum delay between actions. Server updates must still be verified.",
             tradingWhole("Fastest delay",()->draft.view().minActionDelay,1,1999,(cfg,v)->{cfg.minActionDelay=v;cfg.maxActionDelay=Math.max(cfg.maxActionDelay,v+1);}));
         timing.row("Slowest delay (ms)",()->"Maximum randomized delay. Keep the range narrow for consistent speed or widen it for more variation.",
             tradingWhole("Slowest delay",()->draft.view().maxActionDelay,2,2000,(cfg,v)->{cfg.maxActionDelay=v;cfg.minActionDelay=Math.min(cfg.minActionDelay,v-1);}));
+        Card workTiming=card("Crafting and storage timing","Crafting and anvil share one range. Storage has its own range. Until edited, both follow navigation timing; server acknowledgements still apply.");
+        workTiming.row("Craft / anvil fastest (ms)",()->"Ingredient placement, grid actions and book combining.",
+            tradingWhole("Craft fastest",()->draft.view().minCraftDelay==0?draft.view().minActionDelay:draft.view().minCraftDelay,1,1999,(cfg,v)->{cfg.minCraftDelay=v;cfg.maxCraftDelay=Math.max(cfg.maxCraftDelay==0?cfg.maxActionDelay:cfg.maxCraftDelay,v+1);}));
+        workTiming.row("Craft / anvil slowest (ms)",()->"Upper end of randomized crafting delay.",
+            tradingWhole("Craft slowest",()->draft.view().maxCraftDelay==0?draft.view().maxActionDelay:draft.view().maxCraftDelay,2,2000,(cfg,v)->{cfg.maxCraftDelay=v;cfg.minCraftDelay=Math.min(cfg.minCraftDelay==0?cfg.minActionDelay:cfg.minCraftDelay,v-1);}));
+        workTiming.row("Storage fastest (ms)",()->"Deposits, withdrawals and book storage moves.",
+            tradingWhole("Storage fastest",()->draft.view().minStorageDelay==0?draft.view().minActionDelay:draft.view().minStorageDelay,1,1999,(cfg,v)->{cfg.minStorageDelay=v;cfg.maxStorageDelay=Math.max(cfg.maxStorageDelay==0?cfg.maxActionDelay:cfg.maxStorageDelay,v+1);}));
+        workTiming.row("Storage slowest (ms)",()->"Upper end of randomized storage delay.",
+            tradingWhole("Storage slowest",()->draft.view().maxStorageDelay==0?draft.view().maxActionDelay:draft.view().maxStorageDelay,2,2000,(cfg,v)->{cfg.maxStorageDelay=v;cfg.minStorageDelay=Math.min(cfg.minStorageDelay==0?cfg.minActionDelay:cfg.minStorageDelay,v-1);}));
         Card capital=card("Spending limits","These limits apply to every purchase. Changes require stopping the trader.");
         capital.row("Capital limit",()->"Maximum committed trading capital, in coins.",tradingNumber("Capital limit",()->draft.view().maxTradingCapital,(cfg,v)->cfg.maxTradingCapital=v));
         capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber("Purse reserve",()->draft.view().purseReserve,(cfg,v)->cfg.purseReserve=v));

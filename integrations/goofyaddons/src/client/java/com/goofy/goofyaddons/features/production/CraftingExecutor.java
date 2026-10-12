@@ -15,7 +15,7 @@ public final class CraftingExecutor {
     private static final int RESULT=23;
     private static final long FAST_SETTLE_MS=50;
     private final java.util.function.IntSupplier actionDelay;
-    public CraftingExecutor(){this(com.goofy.goofyaddons.utils.ActionDelay::next);}
+    public CraftingExecutor(){this(com.goofy.goofyaddons.utils.ActionDelay::craft);}
     CraftingExecutor(java.util.function.IntSupplier actionDelay){this.actionDelay=Objects.requireNonNull(actionDelay);}
     private ProductionRecipe recipe,capacityWaitRecipe;
     private int capacityWaitContainer;
