@@ -221,7 +221,7 @@ public final class ProductionStorage {
                     // A locked page or an empty backpack slot never opens; skip it rather than stop.
                     // Record it as full so the planner stops rescanning every page before each pick.
                     ledger.observe(page.command(),0,now);skippedPages.add(page.command());
-                    finishedPages.add(page.command());page=null;return Result.WAITING;
+                    finishedPages.add(page.command());page=null;commandAt=now+com.goofy.goofyaddons.utils.ActionDelay.next();closeAt=0;return Result.WAITING;
                 }
                 if(menu!=null && menu.title()!=null) {
                     if(!menu.cursorEmpty())return now-openSince>OPEN_TIMEOUT_MS/2?block("Storage needs an empty cursor"):Result.WAITING;
@@ -251,7 +251,7 @@ public final class ProductionStorage {
                 verified=true;
             }
             return switch(kind) {
-                case SCAN -> nextOnPage(menu,actions);
+                case SCAN -> nextOnPage(menu,actions,now);
                 case DEPOSIT -> depositStep(menu,actions,now);
                 case WITHDRAW -> withdrawStep(menu,actions,now);
             };
@@ -280,7 +280,7 @@ public final class ProductionStorage {
                 if(!room)break;
                 return click(menu,actions,slot,id,now);
             }
-            return nextOnPage(menu,actions);
+            return nextOnPage(menu,actions,now);
         }
 
         private Result withdrawStep(MenuSnapshot menu,GameActions actions,long now) {
@@ -295,7 +295,7 @@ public final class ProductionStorage {
                 boolean bestFits=best!=null && best.count()<=remaining.get(bestId);
                 if(best==null || fits && !bestFits || fits==bestFits && (fits?slot.count()>best.count():slot.count()<best.count())){best=slot;bestId=id;}
             }
-            if(best==null)return nextOnPage(menu,actions);
+            if(best==null)return nextOnPage(menu,actions,now);
             if(menu.emptyInventorySlots()==0 && menu.partialStackSpace(bestId)<best.count())return Result.NO_SPACE;
             return click(menu,actions,best,bestId,now);
         }
@@ -335,8 +335,10 @@ public final class ProductionStorage {
             return Result.WAITING;
         }
 
-        private Result nextOnPage(MenuSnapshot menu,GameActions actions) {
+        private Result nextOnPage(MenuSnapshot menu,GameActions actions,long now) {
             finishedPages.add(page.command());page=null;
+            // A different page is a new navigation action, not a retry of the old command.
+            commandAt=now+com.goofy.goofyaddons.utils.ActionDelay.next();closeAt=0;
             if(menu!=null && menu.cursorEmpty())actions.closeMenu();
             return Result.WAITING;
         }

@@ -10,6 +10,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionStorageTest {
     @TempDir Path dir;
+    @Test void scanningTheNextPageDoesNotInheritThePreviousPagesRetryDeadline()throws Exception {
+        var old=com.goofy.goofyaddons.config.GoofyConfig.INSTANCE;
+        try {
+            var cfg=new com.goofy.goofyaddons.config.GoofyConfig();cfg.minActionDelay=100;cfg.maxActionDelay=101;
+            com.goofy.goofyaddons.config.GoofyConfig.INSTANCE=cfg;
+            var world=new World().page("ec 1",45).page("ec 2",45);var ledger=new ProductionStorage(null);
+            var pages=ProductionStorage.pages("ec 1,ec 2");var scan=Move.scan(ledger,pages);
+            var result=Move.Result.WAITING;
+            for(long now=1000;now<=3000&&result==Move.Result.WAITING;now+=100)result=scan.tick(world.menu(),world,now);
+            assertEquals(Move.Result.DONE,result);assertEquals(List.of("ec 1","ec 2"),world.commands);
+            assertEquals(90,ledger.emptySlots(pages));assertEquals(0,world.clicks);
+        }finally{com.goofy.goofyaddons.config.GoofyConfig.INSTANCE=old;}
+    }
     @Test void acknowledgedStorageClicksUseSharedDelayWithoutAnotherFixedSettle()throws Exception {
         var old=com.goofy.goofyaddons.config.GoofyConfig.INSTANCE;
         try {

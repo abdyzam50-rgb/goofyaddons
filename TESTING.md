@@ -1,3 +1,18 @@
+### 0.2.98 Storage page transition pacing
+
+The export showed about 5.16 seconds between ec 1 and ec 2. The storage move
+carried its old command retry deadline into a different page. Successful page
+completion and skipped-page transitions now schedule the next page using the
+configured navigation delay. Five-second backoff applies only to retries of
+the same unopened page. Cursor checks, page identity, initial contents settle,
+storage ownership and move receipts remain in place.
+
+A regression simulation completes a two-page scan within two seconds with a
+100 ms navigation range, verifies both capacity observations, and emits no item
+clicks. Existing storage and forty-output production tests remain covered.
+1361 Java tests passed and the release build succeeded. Live verification is
+still needed.
+
 ### 0.2.97 Bazaar access during test sessions
 
 The export queued a two-compactor production test but it remained at its first
@@ -238,7 +253,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.97 JAR](dist/astar-client-0.2.97-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.98 JAR](dist/astar-client-0.2.98-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
