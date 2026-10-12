@@ -17,6 +17,7 @@ public final class ProductionLoopFeature implements Feature {
         double budget;
         double estimatedCapital;
         int inventorySlots;
+        boolean storageRequested;
         long nextAction;
         String lastReason;
         String lastObservation,lastBlockCaptured;
@@ -26,6 +27,7 @@ public final class ProductionLoopFeature implements Feature {
         String id(){return run.jobId();}
     }
     private final List<Work> work=new ArrayList<>();
+    public boolean storageEnabled(){return GoofyConfig.INSTANCE.craftFlips.useStorage||work.stream().anyMatch(w->w.storageRequested);}
     private Work foreground;
     private final CraftMenuLease<Work> menuLease=new CraftMenuLease<>();
     private boolean recoveringOrders;
@@ -311,11 +313,12 @@ public final class ProductionLoopFeature implements Feature {
                     .orElseThrow(() -> new IllegalArgumentException("no verified crafting recipe for " + output));
             var chosen = strategy != null ? strategy : route != null ? route.strategy() : BazaarStrategy.ORDER_OFFER;
             var current = new Work();
+            current.storageRequested=true;
             current.run = ProductionRun.startCraft(environment(current, true, false), catalog, recipe, batches, ProductionRun.SELL_ON_BAZAAR, 0, chosen);
             work.add(current);
             FeatureManager.INSTANCE.invalidateMarketReport();
             actions.message("Pipeline test: " + catalog.name(output) + " · " + batches + (batches == 1 ? " batch" : " batches") + " · " + chosen.label()
-                    + (GoofyConfig.INSTANCE.craftFlips.useStorage ? " · storage on" : "") + ". The trading toggle or stop ends it.");
+                    + " · configured storage enabled for this test. The trading toggle or stop ends it.");
             Diagnostics.event("INFO", "production.pipeline_test", Map.of("job", current.id(), "output", output, "batches", batches, "strategy", chosen.name()));
             return true;
         } catch (IllegalArgumentException invalid) {
@@ -672,7 +675,7 @@ public final class ProductionLoopFeature implements Feature {
             }
             public boolean listingQueued() { return FeatureManager.INSTANCE.auction().queued(); }
             public ProductionStorage storage(){return storageLedger();}
-            public boolean storageEnabled(){return GoofyConfig.INSTANCE.craftFlips.useStorage;}
+            public boolean storageEnabled(){return GoofyConfig.INSTANCE.craftFlips.useStorage||current.storageRequested;}
             public List<ProductionStorage.Page> storagePages(){return ProductionLoopFeature.storagePages();}
             public List<String> orderAwaitingStorage(){return orders.awaitingStorage(current.id());}
             public Set<String> orderStorable(){return orders.storable(current.id());}

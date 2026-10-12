@@ -174,6 +174,7 @@ public final class ProductionStorage {
         private long clickedAt;
         private String failure;
         private int moved;
+        private int freeSlotsTarget;
         private final Map<String,Integer> movedByProduct=new HashMap<>();
 
         private Move(Kind kind,String parent,ProductionStorage ledger,List<Page> pages,Set<String> products,Map<String,Integer> remaining) {
@@ -182,6 +183,10 @@ public final class ProductionStorage {
         /** Moves every inventory unit of these products into storage, page by page. */
         public static Move deposit(String parent,ProductionStorage ledger,List<Page> pages,Set<String> products) {
             return new Move(Kind.DEPOSIT,parent,ledger,pages,products,Map.of());
+        }
+        /** Park only enough stacks to make the requested inventory room. */
+        public static Move makeRoom(String parent,ProductionStorage ledger,List<Page> pages,Set<String> products,int emptySlots) {
+            var move=deposit(parent,ledger,pages,products);move.freeSlotsTarget=Math.max(1,Math.min(36,emptySlots));return move;
         }
         /** Brings at least these units back into the inventory, from pages the run owns them on. */
         public static Move withdraw(String parent,ProductionStorage ledger,List<Page> pages,Map<String,Integer> units) {
@@ -252,6 +257,7 @@ public final class ProductionStorage {
         }
 
         private Result depositStep(MenuSnapshot menu,GameActions actions,long now) {
+            if(freeSlotsTarget>0&&menu.emptyInventorySlots()>=freeSlotsTarget)return finish(menu,actions);
             if(products.stream().allMatch(id->inventoryCount(menu,id)==0))return finish(menu,actions);
             for(var slot:menu.slots()) {
                 if(!inventorySlot(slot))continue;
@@ -299,6 +305,7 @@ public final class ProductionStorage {
             if(out>0 && out==in) {
                 try{ledger.move(parent,page.command(),pendingProduct,kind==Kind.DEPOSIT?out:-out);}
                 catch(Exception failed){return block("Storage ledger could not be saved after a verified move; stop and check storage");}
+                ledger.observe(page.command(),menu.emptyContainerSlots(),now);
                 moved+=out;movedByProduct.merge(pendingProduct,out,Integer::sum);
                 if(kind==Kind.WITHDRAW)remaining.merge(pendingProduct,-out,Integer::sum);
                 pendingProduct=null;seenSince=now;return Result.WAITING;
@@ -322,7 +329,7 @@ public final class ProductionStorage {
 
         private Result finish(MenuSnapshot menu,GameActions actions) {
             if(menu!=null && menu.title()!=null && menu.cursorEmpty() && pages.stream().anyMatch(p->p.open(menu)))actions.closeMenu();
-            if(kind==Kind.DEPOSIT && menu!=null && products.stream().anyMatch(id->inventoryCount(menu,id)>0))return Result.NO_SPACE;
+            if(kind==Kind.DEPOSIT && menu!=null && (freeSlotsTarget>0?menu.emptyInventorySlots()<freeSlotsTarget:products.stream().anyMatch(id->inventoryCount(menu,id)>0)))return Result.NO_SPACE;
             if(kind==Kind.WITHDRAW && remaining.entrySet().stream().anyMatch(e->e.getValue()>0 && ledger.stored(parent,e.getKey())>0))
                 return block("Stored units could not be found on any storage page");
             return Result.DONE;
@@ -342,8 +349,12 @@ public final class ProductionStorage {
             return total;
         }
         private static int storageRoom(MenuSnapshot menu,String id) {
+            if(RecipeCatalog.instance().unstackable(id))return 0;
             int room=0;
-            for(var slot:menu.slots())if(!slot.inPlayerInventory() && !slot.empty() && id.equals(ProductionMenus.productId(slot)))room+=Math.max(0,slot.maxStackSize()-slot.count());
+            for(var slot:menu.slots())if(!slot.inPlayerInventory() && !slot.empty() && id.equals(ProductionMenus.productId(slot))
+                    && (slot.metadata().uuid()==null||slot.metadata().uuid().isBlank())
+                    && menu.slots().stream().anyMatch(source->inventorySlot(source)&&id.equals(ProductionMenus.productId(source))&&source.canStackWith(slot)))
+                room+=Math.max(0,slot.maxStackSize()-slot.count());
             return room;
         }
     }

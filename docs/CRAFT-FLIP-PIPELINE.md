@@ -113,7 +113,25 @@ inputs are bought by buy orders or instantly, crafted, and the output is sold on
 the Bazaar. Without a strategy it uses the planner's pick for that craft, or
 `order` (ORDER_OFFER) when the planner has none; `instant` means INSTANT_INSTANT,
 and the four strategy names are accepted too. Trading must be stopped; the run
-starts at once, spendable capital caps the buying, and Use storage applies.
+starts at once and spendable capital caps the buying. Named pipeline tests enable
+the configured storage pages for that run without changing the saved setting.
+
+Before a basket exceeding main-inventory space is submitted, the run inspects its
+configured ender chest/backpack pages and verifies combined space. It parks
+movable inputs and identifiable loose main-inventory items first. Hotbar items
+unrelated to the recipe, Personal Compactors, the SkyBlock Menu and other tracked
+positions are protected. Verified transfers stay in the profile's storage ledger;
+the completion message lists items left in storage.
+
+A storage-backed instant purchase submits the full funded quantity once, rather
+than repeatedly buying whatever fits. If payment is observed but delivery is
+short, the same purchase remains active. The run uses `/pickupstash`, parks
+delivered inputs when it needs space, and picks up the rest in bounded rounds.
+Only inventory plus units durably verified into this run's storage count toward
+the original quantity; the purse debit is recorded once after complete delivery.
+No progress, full/unreadable storage, changed ownership or mismatched quantities
+still stop for review. A submitted confirmation failure cannot clear the intent
+and silently start another purchase.
 
 ## Remaining AH pipeline work
 

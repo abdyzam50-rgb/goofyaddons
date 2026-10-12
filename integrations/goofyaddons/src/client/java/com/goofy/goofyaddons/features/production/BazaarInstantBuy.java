@@ -35,6 +35,9 @@ public final class BazaarInstantBuy {
     static final long STASH_AFTER_MS = 1_500;
     private Step step = Step.OPEN;
     private boolean stashPicked;
+    private boolean stashNeedsSpace;
+    private int storedUnits,stashAttempts,lastStashTotal=-1,lastObservedTotal=-1;
+    private long progressAt;
     private long started, stepAt, heldSince;
     private int before = -1, confirmContainer = Integer.MIN_VALUE;
     private double purseBefore = Double.NaN, spent;
@@ -45,8 +48,8 @@ public final class BazaarInstantBuy {
     }
 
     /**
-     * With {@code fill}, an amount larger than the inventory buys what "Fill my inventory!" quotes
-     * instead, at the same per-unit limit; {@link #amount()} then reports what was bought.
+     * With {@code fill}, the storage-backed caller may make room between stash deliveries.
+     * The requested purchase is submitted once; partial deliveries do not place another buy.
      */
     public BazaarInstantBuy(String productId, String name, int amount, double maximumCost, Intent intent, boolean fill) {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
@@ -66,8 +69,15 @@ public final class BazaarInstantBuy {
     public double spent() { return spent; }
     public double maximumCost() { return maximumCost; }
     public boolean usedStash() { return stashPicked; }
+    public boolean stashNeedsSpace(){return stashNeedsSpace;}
+    public void roomPrepared(long now){stashNeedsSpace=false;stepAt=now;progressAt=now;}
 
     public Result tick(MenuSnapshot menu, boolean signOpen, GameActions actions, double purse, long now) {
+        return tick(menu,signOpen,actions,purse,now,0);
+    }
+    /** Stored units count only after the storage ledger verified their transfer. */
+    public Result tick(MenuSnapshot menu, boolean signOpen, GameActions actions, double purse, long now,int verifiedStoredUnits) {
+        storedUnits=verifiedStoredUnits;
         if (step == Step.DONE) return Result.BOUGHT;
         if (started == 0) started = now;
         if (stepAt == 0) stepAt = now;
@@ -88,7 +98,7 @@ public final class BazaarInstantBuy {
             return now - heldSince > RecoveryRules.INPUT_RESTART_MS ? block("Instant buy needs an empty cursor") : Result.WAITING;
         switch (step) {
             case OPEN -> {
-                if (!held && menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, signOpen, actions, purse, now); }
+                if (!held && menu != null && productControl(menu) >= 0) { step = Step.PRODUCT; stepAt = now; return tick(menu, signOpen, actions, purse, now,storedUnits); }
                 String stuck = search.step(menu, held, actions, now);
                 if (stuck != null) return block(held ? "Instant buy needs an empty cursor" : stuck);
             }
@@ -103,13 +113,13 @@ public final class BazaarInstantBuy {
                 if (unit * amount > maximumCost + 1e-6) return block(String.format(java.util.Locale.ROOT,
                         "Instant buy of %d %s would cost about %,.0f coins, above the %,.0f limit", amount, name, unit * amount, maximumCost));
                 if (!Double.isFinite(purse) || purse < unit * amount) return block("Purse cannot cover the instant buy");
-                if (!fill && menu.emptyInventorySlots() * 64 < amount) return block("Not enough inventory space for " + amount + " " + name);
+                if (!fill && ProductionInventorySpace.capacity(RecipeCatalog.instance(),menu,productId) < amount) return block("Not enough inventory space for " + amount + " " + name);
                 if (fill && menu.emptyInventorySlots() == 0) return block("No free inventory slot to buy " + name + " into");
                 before = count(menu); purseBefore = purse;
                 actions.click(control, false); navigation.sent(menu,control,now); step = Step.AMOUNT; stepAt = now;
             }
             case AMOUNT -> {
-                if (signOpen) { step = Step.SIGN; stepAt = now; return tick(menu, true, actions, purse, now); }
+                if (signOpen) { step = Step.SIGN; stepAt = now; return tick(menu, true, actions, purse, now,storedUnits); }
                 if (menu == null || menu.title() == null) return Result.WAITING;
                 // Hypixel cuts long titles ("Enchanted Gold Ingot ➜ Instant"), so the amount menu is
                 // recognised by its Custom Amount control once the product page is gone.
@@ -119,16 +129,6 @@ public final class BazaarInstantBuy {
                 // "Buy only one!" and "Buy a stack!" quote their exact total, so they skip the sign and
                 // are checked against the limit by their own price.
                 int preset = amount == 1 ? menu.firstByHoverName("Buy only one!", true) : amount == 64 ? menu.firstByHoverName("Buy a stack!", true) : -1;
-                // Storage-backed runs buy what fits, store it, and come back for the rest.
-                int filler = fill ? menu.firstByHoverName("Fill my inventory!", true) : -1;
-                Integer fits = filler < 0 ? null : quotedAmount(menu.slot(filler).lore(), name);
-                if (filler >= 0 && fits == null) return block("Fill my inventory amount for " + name + " is unreadable");
-                if (fits != null && fits < amount) {
-                    if (fits < 1) return block("No inventory room to buy " + name);
-                    maximumCost = maximumCost * fits / amount;
-                    amount = fits;
-                    preset = filler;
-                }
                 if (preset >= 0) {
                     Double total = quotedTotal(menu.slot(preset).lore(), name, amount);
                     if (total == null) return block("Instant buy preset for " + name + " is unreadable");
@@ -183,10 +183,16 @@ public final class BazaarInstantBuy {
         if (proven != null) return proven;
         // Hypixel sends instant-bought units that do not fit to the stash. Once the purse shows
         // the payment and the inventory stays short, pick them up once, then prove it again.
-        if (!stashPicked && paidButShort(menu, purse) && now - stepAt > STASH_AFTER_MS) {
-            if (menu.emptyInventorySlots() == 0)
-                return uncertain("Part of the " + name + " instant buy went to your stash and the inventory has no free slot; make room and run /pickupstash");
-            stashPicked = true; stepAt = now;
+        int total=menu==null?-1:count(menu);
+        if(total>lastObservedTotal){progressAt=now;lastObservedTotal=total;}
+        if (paidButShort(menu, purse) && now - stepAt > STASH_AFTER_MS && (!stashPicked || fill && total>lastStashTotal)) {
+            if (ProductionInventorySpace.capacity(RecipeCatalog.instance(),menu,productId)==0) {
+                if(fill){stashNeedsSpace=true;return Result.WAITING;}
+                return uncertain("The paid " + name + " purchase is incomplete and the inventory has no free slot; make room and run /pickupstash");
+            }
+            if(stashAttempts>=32)return uncertain("Stash collection exceeded its bounded attempts; purchase retained for review");
+            stashPicked = true;stashAttempts++;lastStashTotal=total; stepAt = now;
+            if(menu.title()!=null&&menu.cursorEmpty())actions.closeMenu();
             actions.command("pickupstash");
             return Result.WAITING;
         }
@@ -195,7 +201,7 @@ public final class BazaarInstantBuy {
         if (confirmContainer == Integer.MIN_VALUE && menu != null && menu.title() != null
                 && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
             return uncertain("Unexpected instant buy confirmation screen; inspect it before continuing");
-        return now - stepAt > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant buy of " + name + " was not confirmed by inventory and purse"
+        return now - Math.max(stepAt,progressAt) > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant buy of " + name + " was not confirmed by inventory and purse"
                 + (stashPicked ? " after /pickupstash; check your stash" : "")) : Result.WAITING;
     }
 
@@ -230,7 +236,7 @@ public final class BazaarInstantBuy {
     }
 
     private int count(MenuSnapshot menu) {
-        int total = 0;
+        int total = storedUnits;
         for (var slot : menu.slots())
             if (slot.inPlayerInventory() && slot.containerSlot() < 36 && !slot.empty() && ProductIdentity.matches(slot,productId)) total += slot.count();
         return total;

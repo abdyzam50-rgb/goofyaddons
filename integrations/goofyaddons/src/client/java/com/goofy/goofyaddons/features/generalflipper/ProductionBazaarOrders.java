@@ -49,7 +49,7 @@ public final class ProductionBazaarOrders {
         var settings=new GeneralSettings();settings.items=List.of();settings.maxReprices=0;settings.orderTimeoutSeconds=180;
         engine=new GeneralFlipper(new LiveWorld(),new LiveActions(),new JsonGeneralOrderRepository(()->AccountStorage.INSTANCE.path(AccountStorage.CRAFT_ORDERS)),new GeneralFlipper.Services(){
             public boolean productionOnly(){return true;}
-            public boolean productionStorage(){return com.goofy.goofyaddons.config.GoofyConfig.INSTANCE.craftFlips.useStorage;}
+            public boolean productionStorage(){return FeatureManager.INSTANCE.production().storageEnabled();}
             public String accountScope(){
                 var pinned=AccountStorage.INSTANCE.pinned();
                 return pinned!=null && pinned.equals(AccountStorage.INSTANCE.current())?pinned.label():null;

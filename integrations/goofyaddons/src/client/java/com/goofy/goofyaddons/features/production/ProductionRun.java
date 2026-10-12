@@ -98,6 +98,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private ProductionLoop loop;
     private boolean ownsMenu;
     private BazaarInstantBuy buying;
+    private boolean purchaseStorageScanned,scanningPurchaseStorage,storingForStash;
     private BazaarInstantSell selling;
     private BazaarStrategy strategy=BazaarStrategy.INSTANT_INSTANT;
     private boolean orderActive,orderCostRecorded;
@@ -399,6 +400,14 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         if (buying != null) {
             if (!ownsMenu) return Outcome.pending("Waiting to buy " + env.name(buying.productId()));
+            if(buying.stashNeedsSpace()) {
+                var wait=storageWait(now);if(wait!=null)return wait;
+                var products=spaceMakingProducts();
+                if(products.isEmpty())return Outcome.uncertain("Paid purchase remains incomplete; no movable inventory items can make room for /pickupstash");
+                storingForStash=true;
+                storing=ProductionStorage.Move.makeRoom(jobId,env.storage(),env.storagePages(),products,roomTarget(products,32));
+                return storageStep(now);
+            }
             if(!buying.submitted()) {
                 String changed=env.procurementBlock();
                 var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),this::purchaseCost);
@@ -410,7 +419,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
                     return Outcome.blocked(changed);
                 }
             }
-            var result = buying.tick(env.menu(), env.signOpen(), env.actions(), env.purse(), now);
+            int stored=env.storage()==null?0:env.storage().stored(jobId,buying.productId());
+            var result = buying.tick(env.menu(), env.signOpen(), env.actions(), env.purse(), now,stored);
             switch (result) {
                 case BOUGHT -> {
                     var evidence=new LinkedHashMap<String,Object>();evidence.put("job",jobId);evidence.put("product",buying.productId());
@@ -419,7 +429,12 @@ public final class ProductionRun implements ProductionLoop.Ports {
                     env.event("INFO","production.instant_buy_verified",evidence);
                     addCost(buying); buying = null; env.actions().closeMenu(); return Outcome.pending("Bought inputs; checking the rest"); }
                 case UNCERTAIN -> { return Outcome.uncertain(buying.failure()); }
-                case BLOCKED -> { String why = buying.failure(); buying = null; env.actions().closeMenu(); return Outcome.blocked(why); }
+                case BLOCKED -> {
+                    String why=buying.failure();
+                    if(buying.submitted())return Outcome.uncertain(why+"; submitted purchase retained, not repeated");
+                    if(!env.signOpen()){buying=null;env.actions().closeMenu();}
+                    return Outcome.blocked(why);
+                }
                 default -> { return Outcome.PENDING; }
             }
         }
@@ -459,6 +474,31 @@ public final class ProductionRun implements ProductionLoop.Ports {
         var basket=ProductionPlanner.purchaseQuote(missing,this::purchaseCost);
         if(!basket.complete())return Outcome.blocked("No fresh Bazaar quote covers all remaining inputs: "+env.name(basket.blockedProduct()));
         if(ProductionPlanner.exceedsFunds(basket.total(),env.spendable()))return Outcome.blocked("All remaining ingredients would exceed spendable capital; nothing bought");
+        boolean overflow=trade==null && env.storageEnabled() && env.storage()!=null;
+        var inventory=env.menu();
+        int projectedSlots=inventory==null?Integer.MAX_VALUE:missing.entrySet().stream().mapToInt(e->ProductionInventorySpace.slots(catalog,inventory,e.getKey(),e.getValue())).sum();
+        if(overflow && (inventory==null || projectedSlots>Math.max(0,inventory.emptyInventorySlots()-2))) {
+            var waitForStorage=storageWait(now);if(waitForStorage!=null)return waitForStorage;
+            if(!purchaseStorageScanned) {
+                if(!ownsMenu)return Outcome.pending("Waiting to plan inventory and storage before buying");
+                scanningPurchaseStorage=true;storing=ProductionStorage.Move.scan(env.storage(),env.storagePages());
+                return storageStep(now);
+            }
+            var menu=env.menu();if(menu==null)return Outcome.pending("Waiting for current inventory before buying");
+            int need=missing.entrySet().stream().mapToInt(e->ProductionInventorySpace.slots(catalog,menu,e.getKey(),e.getValue())).sum();
+            int available=menu.emptyInventorySlots()+Math.max(0,env.storage().emptySlots(env.storagePages()));
+            if(need>available)return storageFailed("Remaining ingredients exceed verified inventory and storage space; nothing further bought",now);
+            if(menu.emptyInventorySlots()<Math.min(32,need)) {
+                var products=spaceMakingProducts();
+                if(!products.isEmpty()) {
+                    if(!ownsMenu)return Outcome.pending("Waiting to make inventory room before buying");
+                    var wait=storageWait(now);if(wait!=null)return wait;
+                    storing=ProductionStorage.Move.makeRoom(jobId,env.storage(),env.storagePages(),products,roomTarget(products,Math.min(32,need)));
+                    return storageStep(now);
+                }
+                if(menu.emptyInventorySlots()==0)return storageFailed("No movable inventory items can make purchase or stash room; free inventory space",now);
+            }
+        }
         var first = missing.entrySet().iterator().next();
         // Instant-buy inputs whose bids would never fill before ordering the rest.
         // A trade test places the order the player asked for, even one unlikely to fill.
@@ -478,7 +518,6 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if(!env.queueIngredientOrders(List.copyOf(orders)))return Outcome.uncertain("Ingredient order basket could not be queued; check retained craft orders");
             verifiedEmptyOrderHandoff=false;orderActive=true;return Outcome.pending("Placing ingredient buy orders for "+orders.size()+" products");
         }
-        boolean overflow=trade==null && env.storageEnabled() && env.storage()!=null;
         if(overflow && env.menu()!=null && env.menu().emptyInventorySlots()<2) {
             // The inventory is full of bought inputs: store them before buying the next lot.
             var products=movableInputs();
@@ -737,6 +776,29 @@ public final class ProductionRun implements ProductionLoop.Ports {
         ids.addAll(env.orderStorable());ids.remove(output);
         return ids;
     }
+    /** Keep hotbar tools, compactors, menu items and other positions; park loose main-inventory items. */
+    private Set<String> spaceMakingProducts() {
+        var ids=new HashSet<>(movableInputs());var menu=env.menu();
+        if(menu==null)return Set.of();
+        var protectedIds=new HashSet<String>();
+        for(var slot:menu.slots())if(ProductionStorage.Move.inventorySlot(slot)&&slot.containerSlot()<9) {
+            String id=ProductionMenus.productId(slot);if(id!=null&&!ids.contains(id))protectedIds.add(id);
+        }
+        for(var slot:menu.slots())if(ProductionStorage.Move.inventorySlot(slot)&&slot.containerSlot()>=9) {
+            String id=ProductionMenus.productId(slot);
+            if(id!=null&&!id.equals(output)&&!id.equals("SKYBLOCK_MENU")&&!id.startsWith("PERSONAL_COMPACTOR_")
+                    &&!env.occupied().contains(id)&&!env.orderTracked().contains(id))ids.add(id);
+        }
+        ids.removeIf(id->ProductionStorage.Move.inventoryCount(menu,id)==0);
+        ids.removeAll(protectedIds);
+        ids.remove("SKYBLOCK_MENU");ids.removeIf(id->id.startsWith("PERSONAL_COMPACTOR_"));
+        return ids;
+    }
+    private int roomTarget(Set<String> products,int desired) {
+        var menu=env.menu();int possible=menu.emptyInventorySlots();
+        for(var slot:menu.slots())if(ProductionStorage.Move.inventorySlot(slot)&&products.contains(ProductionMenus.productId(slot)))possible++;
+        return Math.max(1,Math.min(desired,possible));
+    }
 
     private Outcome storageWait(long now){
         return now<storageRetryAt?Outcome.blocked(storageFailure+"; waiting a minute before trying storage again"):null;
@@ -752,6 +814,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         var result=move.tick(env.menu(),env.actions(),now);
         if(result==ProductionStorage.Move.Result.WAITING)return Outcome.pending(move.describe());
         storing=null;
+        if(scanningPurchaseStorage){scanningPurchaseStorage=false;if(result==ProductionStorage.Move.Result.DONE)purchaseStorageScanned=true;}
         var forOrder=storingForOrder;storingForOrder=Set.of();
         if(result==ProductionStorage.Move.Result.BLOCKED)return Outcome.uncertain(move.failure());
         for(String product:forOrder) {
@@ -765,6 +828,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             return storageFailed(move.kind()==ProductionStorage.Move.Kind.WITHDRAW?"Not enough free inventory to take inputs back from storage"
                 : "Storage is full; free space in your ender chest pages or backpacks to keep buying",now);
         if(move.moved()>0){storageFailures=0;storageRetryAt=0;storageFailure=null;}
+        if(storingForStash){storingForStash=false;buying.roomPrepared(now);}
         return Outcome.pending(move.kind()==ProductionStorage.Move.Kind.DEPOSIT?"Stored "+move.moved()+" items; continuing":"Took "+move.moved()+" items from storage; crafting next");
     }
 

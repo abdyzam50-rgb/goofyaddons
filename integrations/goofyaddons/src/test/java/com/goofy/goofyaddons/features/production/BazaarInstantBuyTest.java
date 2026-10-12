@@ -226,7 +226,7 @@ class BazaarInstantBuyTest {
         assertEquals(effects,actions.serverEffects().size());
     }
 
-    @Test void fillModeBuysWhatFitsAtTheSamePerUnitLimitAndReportsIt() {
+    @Test void storageBackedPurchaseSubmitsWholeAmountAndCountsVerifiedStoredDeliveries() {
         var actions=new RecordingActions();
         var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",5000,500_000,intents::add,true);
         assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(product(100),false,actions,1_000_000,0));
@@ -235,20 +235,43 @@ class BazaarInstantBuyTest {
                 SlotView.named(14,"Fill my inventory!",List.of("Enchanted Coal","","Amount: 2,240x","","Per unit: 100 coins","Price: 224,000 coins")),
                 SlotView.named(16,"Custom Amount",List.of()));
         purchase.tick(amounts,false,actions,1_000_000,100);
-        assertEquals(List.of("click:10","click:14"),actions.serverEffects());
-        assertEquals(2240,purchase.amount());assertEquals(5000,purchase.requested());
-        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,item(54,"ENCHANTED_COAL",2240)),false,actions,776_000,200));
-        assertEquals(224_000,purchase.spent());
+        assertEquals(List.of("click:10","click:16"),actions.serverEffects());
+        purchase.tick(amounts,true,actions,1_000_000,200);
+        assertEquals(5000,purchase.amount());assertEquals(5000,purchase.requested());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,item(54,"ENCHANTED_COAL",40)),false,actions,500_000,300,4960));
+        assertEquals(500_000,purchase.spent());
+        assertEquals(1,actions.serverEffects().stream().filter("sign:5000"::equals).count());
     }
-    @Test void fillModeRefusesAFillQuoteAboveTheScaledLimit() {
+    @Test void storageBackedPurchaseKeepsItsWholeAmountPriceLimit() {
         var actions=new RecordingActions();
         var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",5000,500_000,intents::add,true);
         purchase.tick(product(100),false,actions,1_000_000,0);
         var amounts=menu(2,"Enchanted Coal \u279c Instant",
                 SlotView.named(14,"Fill my inventory!",List.of("Enchanted Coal","","Amount: 2,240x","","Price: 300,000 coins")),
                 SlotView.named(16,"Custom Amount",List.of()));
-        assertEquals(BazaarInstantBuy.Result.BLOCKED,purchase.tick(amounts,false,actions,1_000_000,100));
-        assertEquals(List.of("click:10"),actions.serverEffects());assertTrue(intents.isEmpty());
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(amounts,false,actions,1_000_000,100));
+        purchase.tick(amounts,true,actions,1_000_000,200);
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,purchase.tick(confirmation(5000,"600,000"),false,actions,1_000_000,300));
+        assertFalse(actions.serverEffects().contains("click:13"));assertEquals(500_000,purchase.maximumCost());
+    }
+    @Test void paidOverflowCanBeStoredAndPickedUpInSeveralRoundsWithoutBuyingAgain() {
+        var actions=new RecordingActions();var purchase=new BazaarInstantBuy("SUPER_COMPACTOR_3000","Super Compactor 3000",10,1100,intents::add,true);
+        var product=menu(1,"Super Compactor 3000",item(13,"SUPER_COMPACTOR_3000",1),SlotView.named(10,"Buy Instantly",List.of("Super Compactor 3000","Price per unit: 100 coins")));
+        purchase.tick(product,false,actions,5000,1000);
+        var amounts=menu(2,"Amount",SlotView.named(16,"Custom Amount",List.of()));purchase.tick(amounts,false,actions,5000,1100);purchase.tick(amounts,true,actions,5000,1200);
+        var full=new ArrayList<SlotView>();for(int i=54;i<86;i++)full.add(item(i,"COBBLE",64));for(int i=86;i<90;i++)full.add(item(i,"SUPER_COMPACTOR_3000",1));
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(menu(3,null,full.toArray(SlotView[]::new)),false,actions,4000,3000));
+        assertTrue(purchase.stashNeedsSpace());
+        var room=full.subList(0,32).toArray(SlotView[]::new);purchase.roomPrepared(3500);
+        purchase.tick(menu(3,null,room),false,actions,4000,5100,4);
+        assertEquals(1,actions.serverEffects().stream().filter("command:pickupstash"::equals).count());
+        purchase.tick(menu(3,null,full.toArray(SlotView[]::new)),false,actions,4000,5200,4);
+        purchase.tick(menu(3,null,full.toArray(SlotView[]::new)),false,actions,4000,6800,4);assertTrue(purchase.stashNeedsSpace());
+        purchase.roomPrepared(7000);purchase.tick(menu(3,null,room),false,actions,4000,8600,8);
+        var finalItems=new ArrayList<>(full.subList(0,32));finalItems.add(item(86,"SUPER_COMPACTOR_3000",1));finalItems.add(item(87,"SUPER_COMPACTOR_3000",1));
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,finalItems.toArray(SlotView[]::new)),false,actions,4000,8700,8));
+        assertEquals(1000,purchase.spent());assertEquals(2,actions.serverEffects().stream().filter("command:pickupstash"::equals).count());
+        assertEquals(1,intents.size());assertEquals(1,actions.serverEffects().stream().filter("sign:10"::equals).count());
     }
     @Test void withoutFillModeALargeAmountStillNeedsTheSpace() {
         var actions=new RecordingActions();
@@ -292,13 +315,12 @@ class BazaarInstantBuyTest {
         assertEquals(BazaarInstantBuy.Result.UNCERTAIN,purchase.tick(menu(3,null),false,actions,5000,20000));
         assertFalse(actions.serverEffects().contains("command:pickupstash"));
     }
-    @Test void aFullInventoryAsksThePlayerToMakeRoomForTheStash() {
+    @Test void occupiedSlotsStillAllowStashPickupIntoACompatiblePartialStack() {
         var actions=new RecordingActions();var purchase=paidForTen(actions);
         var full=new ArrayList<SlotView>(List.of(item(54,"ENCHANTED_COAL",4)));
         for(int i=55;i<90;i++)full.add(item(i,"COBBLE",64));
-        assertEquals(BazaarInstantBuy.Result.UNCERTAIN,purchase.tick(menu(3,null,full.toArray(SlotView[]::new)),false,actions,4000,2000));
-        assertTrue(purchase.failure().contains("stash"),purchase.failure());
-        assertFalse(actions.serverEffects().contains("command:pickupstash"));
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(menu(3,null,full.toArray(SlotView[]::new)),false,actions,4000,2000));
+        assertTrue(actions.serverEffects().contains("command:pickupstash"));
     }
     @Test void aPresetPurchaseThatOverflowedPicksUpTheStashToo() {
         var actions=new RecordingActions();

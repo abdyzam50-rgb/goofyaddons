@@ -1,7 +1,26 @@
 # Testing the combined client
 
+### 0.2.84 Pipeline purchase space and stash delivery
+
+Validated on `claude/project-thread-wmox9w`: 1,333 Java tests passed with zero
+failures, errors or skips (1,206 client and 127 shared trading tests), and the
+release build succeeded. Focused storage/instant-buy/command coverage passed
+44 tests before the final complete run.
+
+A pipeline simulation purchases 4,096 inputs once, observes partial delivery,
+stores verified units, collects two stash rounds and reaches processing with
+the original quantity and one 40,960-coin cost record. A separate simulation
+moves six loose inventory stacks into storage before submitting the funded
+ingredient order, keeps the other twenty stacks in inventory, and verifies the
+remaining storage-capacity reading. Unit coverage checks immutable whole-amount
+pricing, multi-round unstackable stash delivery, compatible partial-stack space,
+missing/unpaid stash outcomes and existing storage conservation/recovery.
+
+The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
+live Minecraft execution remains to be checked in the next user run.
+
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.83 JAR](dist/astar-client-0.2.83-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.84 JAR](dist/astar-client-0.2.84-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

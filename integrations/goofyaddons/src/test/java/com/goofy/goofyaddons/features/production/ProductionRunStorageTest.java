@@ -20,7 +20,7 @@ class ProductionRunStorageTest {
         return new RecipeCatalog(List.of(craft),Map.of("INPUT","Input","OUTPUT","Output"));
     }
 
-    final class Env implements ProductionRun.Environment {
+    class Env implements ProductionRun.Environment {
         final ProductionStorageTest.World world=new ProductionStorageTest.World().page("ec 1",45);
         final ProductionJobs jobs;final ProductionStorage storage;
         boolean craftQueued;
@@ -105,6 +105,73 @@ class ProductionRunStorageTest {
         assertEquals(Step.PENDING,run.tick(true,clock[0]+=500));assertEquals(1,env.acknowledgements);assertEquals(1280,run.spent());
         advanceTo(run,Stage.PROCESS,clock);
         assertEquals(List.of("INPUT:128"),env.orders,"Stored units count as held, so nothing more is bought");
+    }
+    @Test void loosePlayerItemsAreStoredBeforeAFundedOrderBasketIsSubmitted()throws Exception {
+        var env=new Env();env.junk(26);long now=1000;
+        var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",64),
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT",64),null,null,null,null,null,null,null,null),0,0,"",null);
+        var catalog=new RecipeCatalog(List.of(recipe),Map.of("INPUT","Input","OUTPUT","Output"));
+        var run=ProductionRun.startCraft(env,catalog,recipe,16,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        assertEquals(Step.PENDING,run.tick(true,now));assertTrue(env.orders.isEmpty());
+        for(int i=0;i<160&&env.orders.isEmpty();i++) {
+            assertEquals(Step.PENDING,run.tick(true,now+=500),run.reason());
+        }
+        assertEquals(List.of("INPUT:1024"),env.orders);
+        assertEquals(384,env.storage.stored(run.jobId(),"COBBLE"),"Only six stacks need to move");
+        assertEquals(384,env.world.stored("ec 1","COBBLE"));
+        assertEquals(39,env.storage.emptySlots(env.storagePages()),"Planning must retain the remaining capacity after the deposit");
+        assertEquals(1280,ProductionStorage.Move.inventoryCount(env.world.menu(),"COBBLE"));
+        assertEquals(0,run.spent());assertEquals(1,env.orders.size());
+    }
+    @Test void overflowingInstantPurchaseUsesStorageAndStashUntilTheOriginalAmountIsVerified()throws Exception {
+        class DeliveryEnv extends Env {
+            String market;boolean sign;double balance=1_000_000;int writes,stash;
+            DeliveryEnv()throws Exception{}
+            public double purse(){return balance;}
+            public Set<String> orderTracked(){return Set.of();}
+            public boolean signOpen(){return sign;}
+            public MenuSnapshot menu(){
+                if(world.open!=null||market==null)return world.menu();
+                var slots=new ArrayList<SlotView>();for(int i=0;i<54;i++)slots.add(SlotView.empty(i,false,i));
+                for(int i=0;i<36;i++)slots.add(world.invIds[i]==null?SlotView.empty(54+i,true,i):ProductionRunTest.item(54+i,world.invIds[i],world.invCounts[i]));
+                if(market.equals("Input")) {
+                    slots.set(13,ProductionRunTest.item(13,"INPUT",1));
+                    slots.set(10,SlotView.named(10,"Buy Instantly",List.of("Input","Price per unit: 10 coins")));
+                }else slots.set(16,SlotView.named(16,"Custom Amount",List.of()));
+                return new MenuSnapshot(market.equals("Input")?500:501,market,true,slots);
+            }
+            public GameActions actions(){return new GameActions(){
+                public void click(int slot,boolean shift){
+                    if(world.open!=null){world.click(slot,shift);return;}
+                    if(slot==10)market="Amount";else if(slot==16)sign=true;
+                }
+                public void closeMenu(){market=null;world.closeMenu();}
+                public void command(String text){
+                    world.command(text);
+                    if(text.equals("bz Input"))market="Input";
+                    if(text.equals("pickupstash")) {
+                        int delivered=Math.min(stash,world.menu().emptyInventorySlots()*64);give("INPUT",delivered);stash-=delivered;
+                    }
+                }
+                public void message(String text){}
+                public boolean writeSign(String text){
+                    writes++;assertEquals("4096",text);sign=false;market=null;balance-=40960;
+                    give("INPUT",2048);stash=2048;return true;
+                }
+            };}
+        }
+        var env=new DeliveryEnv();
+        var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",64),
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT",64),null,null,null,null,null,null,null,null),0,0,"",null);
+        var catalog=new RecipeCatalog(List.of(recipe),Map.of("INPUT","Input","OUTPUT","Output"));
+        var run=ProductionRun.startCraft(env,catalog,recipe,64,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.INSTANT_OFFER);
+        long now=1000;
+        for(int i=0;i<300&&run.stage()==Stage.PROCURE;i++)assertEquals(Step.PENDING,run.tick(true,now+=500),run.reason());
+        assertEquals(Stage.PROCESS,run.stage(),run.reason());assertEquals(1,env.writes);assertEquals(0,env.stash);
+        assertEquals(2,env.world.commands.stream().filter("pickupstash"::equals).count());
+        assertEquals(40960,run.spent());
+        assertEquals(4096,env.world.inventory("INPUT")+env.storage.stored(run.jobId(),"INPUT"));
+        assertEquals(40960,env.jobs.find(run.jobId()).orElseThrow().costBasis());assertTrue(env.orders.isEmpty());
     }
 
     @Test void storedInputsAreCraftedInRoundsThatFitTheInventory()throws Exception {
