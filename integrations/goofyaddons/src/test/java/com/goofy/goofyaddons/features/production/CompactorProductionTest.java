@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CompactorProductionTest {
     @TempDir Path dir;
     class Env implements ProductionRun.Environment,GameActions {
-        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
+        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall,cursorWhenQueued;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
         final List<String> effects=new ArrayList<>();
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
@@ -36,6 +36,8 @@ class CompactorProductionTest {
             var slots=new ArrayList<>(m.slots());
             if(raw>0)slots.set(36,new SlotView(36,true,9,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,raw,64));
             if(outputs>0)slots.set(37,new SlotView(37,true,10,false,"Enchanted Gold","Enchanted Gold",List.of(),"ENCHANTED_GOLD",null,outputs,64));
+            if(cursorWhenQueued&&queued)return new MenuSnapshot(0,"Craft Item",false,slots,
+                new SlotView(-1,false,-1,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,1,64));
             return new MenuSnapshot(open?1:0,m.title(),true,slots);
         }
         public boolean openCompactor(SlotView device){opens++;open=true;return true;}
@@ -72,6 +74,19 @@ class CompactorProductionTest {
         for(long now=1000;now<20000&&result.step()==ProductionLoop.Step.PENDING;now+=500){result=bulk.tick(true,now);if(env.queued)env.finishSeed();}
         assertEquals(ProductionLoop.Step.DONE,result.step(),result.reason());assertEquals(2,env.outputs);
         assertTrue(bulk.remainingInputs().isEmpty());assertFalse(bulk.active());assertTrue(env.filters.isEmpty());
+    }
+
+    @Test void parentWaitsForSeedChildWhileItsCraftingCursorIsOccupied()throws Exception {
+        var env=new Env();env.cursorWhenQueued=true;
+        var r=RecipeCatalog.instance().forOutput("ENCHANTED_GOLD").getFirst();
+        var bulk=new CompactorProduction(env,r,2,CompactorProduction.available(env.menu()),(reason,cost)->{});
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,1000).step());assertTrue(env.queued);
+        assertFalse(env.menu().cursorEmpty());
+        for(long now=1200;now<=2200;now+=200)assertEquals(ProductionLoop.Step.PENDING,bulk.tick(false,now).step());
+        assertEquals(0,env.opens);assertTrue(env.effects.isEmpty());
+        env.finishSeed();
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,2400).step());
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,2600).step());assertEquals(1,env.opens);
     }
 
     @Test void unacknowledgedInstallationIsNotClickedTwiceAndKeepsSeed()throws Exception {

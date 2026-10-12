@@ -74,6 +74,8 @@ final class CompactorProduction {
             spent+=purchase.spent();journal.record("Compactor input lot paid and equivalent units verified",spent);purchase=null;
             deadline=now+8000;return pending();
         }
+        // The child owns its grid and cursor until its durable completion receipt.
+        if((phase==Phase.CRAFT||phase==Phase.SEED) && env.craftQueued())return pending();
         if(env.menu()==null || now<next)return pending();
         if(!env.menu().cursorEmpty())return uncertain("Compactor production cursor is occupied");
         if(phase==Phase.SEED) {
