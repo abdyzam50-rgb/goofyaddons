@@ -10,6 +10,35 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionStorageTest {
     @TempDir Path dir;
+    @Test void fullPageWithAnOwnedCompatiblePartialStackStillAcceptsADeposit()throws Exception{
+        var world=new World().page("ec 1",1);world.put("ec 1",0,"INPUT",32);
+        var ledger=new ProductionStorage(dir.resolve("partial.json"));ledger.move("partial","ec 1","INPUT",32);
+        var pages=ProductionStorage.pages("ec 1");var scan=Move.scan(ledger,pages);
+        var result=Move.Result.WAITING;for(long now=1000;now<10000&&result==Move.Result.WAITING;now+=100)result=scan.tick(world.menu(),world,now);
+        assertEquals(Move.Result.DONE,result);assertEquals(0,ledger.emptySlots(pages));world.hold(0,"INPUT",32);world.commands.clear();
+        // The persisted capacity remembers potential partial room after a restart.
+        ledger=new ProductionStorage(dir.resolve("partial.json"));var move=Move.deposit("partial",ledger,pages,Set.of("INPUT"));
+        result=Move.Result.WAITING;for(long now=10000;now<20000&&result==Move.Result.WAITING;now+=100)result=move.tick(world.menu(),world,now);
+        assertEquals(Move.Result.DONE,result);assertEquals(64,ledger.stored("partial","INPUT"));assertEquals(List.of("ec 1"),world.commands);
+    }
+    @Test void fullPageIsSkippedAndWholeDepositUsesOnePageWithEnoughRoom()throws Exception {
+        var world=new World().page("ec 1",4).page("ec 2",6).page("ec 3",6);
+        for(int i=0;i<4;i++)world.put("ec 1",i,"COBBLE",64);
+        world.put("ec 2",0,"COBBLE",64);world.put("ec 2",1,"COBBLE",64);world.put("ec 2",2,"COBBLE",64);world.put("ec 2",3,"COBBLE",64);
+        for(int i=0;i<3;i++)world.hold(i,"INPUT",64);
+        var ledger=new ProductionStorage(null);ledger.observe("ec 1",0,1000);ledger.observe("ec 2",2,1000);ledger.observe("ec 3",6,1000);
+        var move=Move.deposit("whole-lot",ledger,ProductionStorage.pages("ec 1,ec 2,ec 3"),Set.of("INPUT"));
+        var result=Move.Result.WAITING;for(long now=1000;now<10000&&result==Move.Result.WAITING;now+=100)result=move.tick(world.menu(),world,now);
+        assertEquals(Move.Result.DONE,result);assertEquals(List.of("ec 3"),world.commands);
+        assertEquals(192,ledger.stored("whole-lot","INPUT"));assertEquals(192,world.stored("ec 3","INPUT"));assertEquals(0,world.stored("ec 2","INPUT"));
+    }
+    @Test void aCachedFullPageIsRecheckedAfterItsCapacityExpires()throws Exception {
+        var world=new World().page("ec 1",4);world.hold(0,"INPUT",64);
+        var ledger=new ProductionStorage(null);ledger.observe("ec 1",0,1000);
+        var move=Move.deposit("refresh",ledger,ProductionStorage.pages("ec 1"),Set.of("INPUT"));
+        var result=Move.Result.WAITING;for(long now=121001;now<130000&&result==Move.Result.WAITING;now+=100)result=move.tick(world.menu(),world,now);
+        assertEquals(Move.Result.DONE,result);assertEquals(List.of("ec 1"),world.commands);assertEquals(64,ledger.stored("refresh","INPUT"));
+    }
     @Test void scanningTheNextPageDoesNotInheritThePreviousPagesRetryDeadline()throws Exception {
         var old=com.goofy.goofyaddons.config.GoofyConfig.INSTANCE;
         try {

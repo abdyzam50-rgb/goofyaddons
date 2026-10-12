@@ -1,3 +1,22 @@
+### 0.2.99 Storage destination planning
+
+Deposits prefer a known page that fits the whole lot instead of scattering it
+over the first small gaps. An already open suitable page is preferred. Fresh
+capacity observations skip full pages during scans and deposits, except when
+compatible owned partial stacks can still accept the product. Withdrawals always
+visit pages holding the run’s items regardless of their fullness.
+
+Capacity is advisory for two minutes, then reobserved to account for manual
+changes. Partial-product knowledge persists in the storage journal; old journals
+remain readable and uncertain partial capacity is conservatively checked live.
+Each shift-click still requires a verified movement and durable ownership update.
+
+Regression simulations verify skipping a full page, choosing one larger page
+over a two-slot gap for a three-stack lot, stale-capacity refresh, and merging
+into a compatible partial stack on a full page after journal reload.
+1364 Java tests passed; release build succeeded. Live verification remains
+needed.
+
 ### 0.2.98 Storage page transition pacing
 
 The export showed about 5.16 seconds between ec 1 and ec 2. The storage move
@@ -253,7 +272,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.98 JAR](dist/astar-client-0.2.98-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.99 JAR](dist/astar-client-0.2.99-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

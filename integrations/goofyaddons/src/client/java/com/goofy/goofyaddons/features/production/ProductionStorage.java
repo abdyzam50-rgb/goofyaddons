@@ -51,6 +51,27 @@ public final class ProductionStorage {
     private final Path path;
     private final List<Entry> entries=new ArrayList<>();
     private final Map<String,Observation> observed=new HashMap<>();
+    private final Map<String,List<SlotView>> partialStacks=new HashMap<>();
+    private final Map<String,Set<String>> partialProducts=new HashMap<>();
+    private static final long CAPACITY_FRESH_MS=120_000;
+    private synchronized Observation freshCapacity(String page,long now){
+        var o=observed.get(page);return o!=null && now>=o.at() && now-o.at()<CAPACITY_FRESH_MS?o:null;
+    }
+    private synchronized boolean canMerge(String page,MenuSnapshot menu,Set<String> products){
+        var partial=partialStacks.get(page);
+        if(partial==null){var known=partialProducts.get(page);return known!=null?products.stream().anyMatch(known::contains):products.stream().anyMatch(id->owned(page,id)>0);}
+        return partial.stream().anyMatch(target->menu!=null && menu.slots().stream().anyMatch(source->
+                Move.inventorySlot(source) && products.contains(ProductionMenus.productId(source)) && source.canStackWith(target)));
+    }
+    private synchronized void observe(String page,MenuSnapshot menu,long now){
+        var partial=menu.slots().stream().filter(s->!s.inPlayerInventory()&&!s.empty()&&s.count()<s.maxStackSize()
+                && (s.metadata().uuid()==null||s.metadata().uuid().isBlank())
+                && !RecipeCatalog.instance().unstackable(ProductionMenus.productId(s))
+                && Move.storageCount(menu,ProductionMenus.productId(s))==owned(page,ProductionMenus.productId(s))).toList();
+        observed.put(page,new Observation(menu.emptyContainerSlots(),now));partialStacks.put(page,partial);
+        partialProducts.put(page,partial.stream().map(ProductionMenus::productId).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
+        try{save();}catch(java.io.IOException ignored){/* Advisory capacity; every real move still verifies the live page. */}
+    }
 
     public ProductionStorage(Path path)throws java.io.IOException {
         this.path=path;
@@ -66,6 +87,7 @@ public final class ProductionStorage {
                 if(root.has("observed"))for(var page:root.getAsJsonObject("observed").entrySet()) {
                     var row=page.getValue().getAsJsonObject();
                     observed.put(page.getKey(),new Observation(row.get("emptySlots").getAsInt(),row.get("at").getAsLong()));
+                    if(row.has("partialProducts")){var ids=new HashSet<String>();for(var id:row.getAsJsonArray("partialProducts"))ids.add(id.getAsString());partialProducts.put(page.getKey(),Set.copyOf(ids));}
                 }
             }catch(RuntimeException malformed){throw new java.io.IOException("Production storage ledger is unreadable; nothing will be moved",malformed);}
         }
@@ -116,6 +138,8 @@ public final class ProductionStorage {
 
     /** Remembers how many empty slots a page showed; planning uses the latest reading. */
     public synchronized void observe(String page,int emptySlots,long now) {
+        partialStacks.remove(page);
+        partialProducts.remove(page);
         observed.put(page,new Observation(Math.max(0,emptySlots),now));
         try{save();}catch(java.io.IOException ignored){/* The reading is advisory; the next visit refreshes it. */}
     }
@@ -141,7 +165,8 @@ public final class ProductionStorage {
         for(var e:entries){var row=new JsonObject();row.addProperty("parent",e.parent());row.addProperty("page",e.page());row.addProperty("product",e.product());row.addProperty("units",e.units());rows.add(row);}
         root.add("entries",rows);
         var pages=new JsonObject();
-        observed.forEach((page,o)->{var row=new JsonObject();row.addProperty("emptySlots",o.emptySlots());row.addProperty("at",o.at());pages.add(page,row);});
+        observed.forEach((page,o)->{var row=new JsonObject();row.addProperty("emptySlots",o.emptySlots());row.addProperty("at",o.at());
+            if(partialProducts.containsKey(page))row.add("partialProducts",new Gson().toJsonTree(new TreeSet<>(partialProducts.get(page))));pages.add(page,row);});
         root.add("observed",pages);
         Path temporary=path.resolveSibling(path.getFileName()+".tmp");
         Files.writeString(temporary,new GsonBuilder().setPrettyPrinting().create().toJson(root));
@@ -211,7 +236,7 @@ public final class ProductionStorage {
             if(failure!=null)return Result.BLOCKED;
             if(pendingProduct!=null)return settle(menu,actions,now);
             if(page==null) {
-                page=nextPage(menu);
+                page=nextPage(menu,now);
                 if(page==null)return finish(menu,actions);
                 openSince=0;verified=false;seenSince=0;container=Integer.MIN_VALUE;initialContents=null;
             }
@@ -247,7 +272,7 @@ public final class ProductionStorage {
                     int owned=ledger.owned(page.command(),product),found=storageCount(menu,product);
                     if(found!=owned)return block("Storage page "+page.command()+" should hold "+owned+" "+product+" but holds "+found+"; nothing moved");
                 }
-                ledger.observe(page.command(),menu.emptyContainerSlots(),now);
+                ledger.observe(page.command(),menu,now);
                 verified=true;
             }
             return switch(kind) {
@@ -257,14 +282,20 @@ public final class ProductionStorage {
             };
         }
 
-        private Page nextPage(MenuSnapshot menu) {
-            for(var candidate:pages) {
-                if(finishedPages.contains(candidate.command()))continue;
-                if(kind==Kind.WITHDRAW && remaining.keySet().stream().noneMatch(id->remaining.get(id)>0 && ledger.owned(parent,candidate.command(),id)>0))continue;
-                // Prefer the page already open, so a deposit does not reopen storage for nothing.
-                return candidate;
-            }
-            return null;
+        private Page nextPage(MenuSnapshot menu,long now) {
+            var candidates=pages.stream().filter(p->!finishedPages.contains(p.command())).filter(p->
+                    kind!=Kind.WITHDRAW || remaining.keySet().stream().anyMatch(id->remaining.get(id)>0 && ledger.owned(parent,p.command(),id)>0))
+                .filter(p->{var capacity=ledger.freshCapacity(p.command(),now);
+                    return kind==Kind.WITHDRAW || capacity==null || capacity.emptySlots()>0
+                        || kind==Kind.DEPOSIT && ledger.canMerge(p.command(),menu,products);}).toList();
+            if(kind!=Kind.DEPOSIT)return candidates.isEmpty()?null:candidates.getFirst();
+            int slots=menu==null?Integer.MAX_VALUE:(int)menu.slots().stream().filter(s->inventorySlot(s)&&products.contains(ProductionMenus.productId(s))).count();
+            // Avoid scattering a lot over small gaps when a known page fits it all.
+            return candidates.stream().min(Comparator.comparingInt((Page p)->{
+                var c=ledger.freshCapacity(p.command(),now);
+                return c!=null && c.emptySlots()>=slots?0:c==null?1:2;
+            }).thenComparingInt(p->p.open(menu)?0:1).thenComparingInt(p->{var c=ledger.freshCapacity(p.command(),now);
+                return c==null?0:-c.emptySlots();})).orElse(null);
         }
 
         private Result depositStep(MenuSnapshot menu,GameActions actions,long now) {
@@ -318,7 +349,7 @@ public final class ProductionStorage {
             if(out>0 && out==in) {
                 try{ledger.move(parent,page.command(),pendingProduct,kind==Kind.DEPOSIT?out:-out);}
                 catch(Exception failed){return block("Storage ledger could not be saved after a verified move; stop and check storage");}
-                ledger.observe(page.command(),menu.emptyContainerSlots(),now);
+                ledger.observe(page.command(),menu,now);
                 moved+=out;movedByProduct.merge(pendingProduct,out,Integer::sum);
                 if(kind==Kind.WITHDRAW)remaining.merge(pendingProduct,-out,Integer::sum);
                 pendingProduct=null;
