@@ -49,7 +49,14 @@ class ProductionTest {
     class Server implements GameActions {
         final SlotView[] slots=new SlotView[90];SlotView cursor=SlotView.empty(-1,false,-1);ProductionRecipe r;
         int quickAvailable;boolean wrongQuickRecipe;Map<String,Integer> resultEnchantments;
-        int clicks,swaps;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime;String title="Craft Item",forceSwapProduct,quickPreviewProduct="OUTPUT";
+        int clicks,swaps;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime,drag;String title="Craft Item",forceSwapProduct,quickPreviewProduct="OUTPUT";
+        public boolean supportsDrag(){return drag;}
+        public void dragSplit(int[] targets){
+            clicks++;inputs.add("drag:"+Arrays.toString(targets));if(discard)return;
+            int each=cursor.count()/targets.length;
+            for(int slot:targets){assertTrue(slots[slot].empty());slots[slot]=reindex(cursor,slot,each);}
+            cursor=reindex(cursor,-1,cursor.count()-each*targets.length);
+        }
         final List<String> inputs=new ArrayList<>();
         final List<SlotView> consumedIngredients=new ArrayList<>();
         Server(ProductionRecipe r,int input){this.r=r;for(int i=0;i<90;i++)slots[i]=stack(i,"",0);slots[54]=stack(54,"INPUT",input);slots[55]=stack(55,"SECOND",1);}
@@ -342,6 +349,32 @@ class ProductionTest {
         assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
         assertEquals("left:56",server.inputs.getFirst());assertEquals(64,server.slots[54].count());
     }
+    @Test void mixedUnstackableCraftsKeepStackableInputsLoadedAndRefillOnlyConsumedCells(){
+        var base=recipe(8);var r=new ProductionRecipe(base.key(),base.kind(),"BLAZE_POWDER",1,base.ingredients(),base.grid(),0,0,base.requirement(),null);
+        var server=new Server(r,64);
+        for(int i=55;i<59;i++) {
+            var v=stack(i,"SECOND",1);
+            server.slots[i]=new SlotView(i,true,i-54,false,v.customName(),v.hoverName(),List.of(),v.customId(),null,1,1);
+        }
+        var executor=new CraftingExecutor(()->50);var result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<30000&&result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,4,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(4,executor.completedBatches());
+        assertEquals(4,server.inputs.stream().filter(v->v.equals("shift:23")).count());
+        assertEquals(1,server.inputs.stream().filter(v->v.equals("left:10")).count(),"Stackable ingredient should be loaded only once");
+        assertEquals(32,server.slots[54].count());assertTrue(CraftingExecutor.reusableMenu(server.menu()));
+    }
+    @Test void nativeDragFillsEightEqualRecipeCellsInOneAcknowledgedDistribution(){
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,new ProductionRecipe.Ingredient("INPUT",8)));
+        grid.set(4,new ProductionRecipe.Ingredient("SECOND",1));
+        var r=new ProductionRecipe("craft:drag",ProductionRecipe.Kind.CRAFT,"BLAZE_POWDER",1,Map.of("INPUT",64,"SECOND",1),grid,0,0,"Collection II",null);
+        var server=new Server(r,64);server.drag=true;var executor=new CraftingExecutor(()->50);var result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
+        assertEquals(1,server.inputs.stream().filter(v->v.startsWith("drag:")).count());assertTrue(server.cursor.empty());
+        assertEquals(5,server.clicks);
+    }
     @Test void arbitraryAndOddStackSplitsCraftExactAmountsAndPreserveEveryRemainder(){
         for(int stack:new int[]{17,31,47,63,64})for(int wanted=1;wanted<=stack;wanted++) {
             var base=recipe(1);var r=new ProductionRecipe(base.key(),base.kind(),"BLAZE_POWDER",1,base.ingredients(),base.grid(),0,0,base.requirement(),null);
@@ -468,7 +501,7 @@ class ProductionTest {
         assertTrue(now-1000<=1600,"Acknowledged crafting added unnecessary delays: "+(now-1000));
         assertEquals("ENCHANTED_EYE_OF_ENDER",server.slots[56].customId());assertTrue(server.cursor.empty());
     }
-    @Test void uniqueUuidMinionUpgradesCraftFourDwarvenCompactorsInExactSingleBatchRounds()throws Exception {
+    @Test void uniqueUuidMinionUpgradesCraftFourDwarvenCompactorsWithBufferedMithril()throws Exception {
         assertDwarvenCompactorRounds(true);
     }
     @Test void distinctComponentsWithoutUuidAlsoPreventMinionUpgradeStackMerging()throws Exception {
@@ -496,8 +529,8 @@ class ProductionTest {
             for(;now<60000 && result==CraftingExecutor.Result.WAITING;now+=50)
                 result=executor.tick(r,remaining,server.menu(),server,Map.of(),Map.of(),now);
             assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
-            assertEquals(1,executor.completedBatches(),"Distinct minion upgrades must stay in individual craft rounds");
-            remaining-=executor.completedBatches();job=job.completedBatch();jobs.put(job);
+            assertEquals(remaining,executor.completedBatches(),"Distinct minion upgrades refill individually while mithril stays loaded");
+            remaining-=executor.completedBatches();for(int i=0;i<executor.completedBatches();i++)job=job.completedBatch();jobs.put(job);
             assertEquals(cost,jobs.find(job.id()).orElseThrow().costBasis());
             assertTrue(CraftingExecutor.reusableMenu(server.menu()));
         }

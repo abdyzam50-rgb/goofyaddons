@@ -1633,3 +1633,11 @@ waits for explicit loading placeholders and an initial stable contents window
 before recording capacity or moving items. Transaction receipts still require
 verified inventory/purse changes; no loading state authorizes a replay. Failed
 instant sales back off 30 seconds before reopening.
+
+### Buffered grid and drag distribution (0.2.91)
+
+Mixed recipes keep reusable stackable ingredients in the grid between crafts
+and refill exhausted cells. Buffered amounts never exceed the requested work.
+Native left-drag is used for equal empty cell targets when even distribution
+produces their exact counts; uneven targets use the exact splitter. Every
+distribution still requires observed server acknowledgement and item conservation.

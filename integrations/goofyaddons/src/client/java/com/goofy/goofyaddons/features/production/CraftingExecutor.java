@@ -29,13 +29,14 @@ public final class CraftingExecutor {
     private long sentAt,started,next,inconsistentSince,resultSince;
     private long settleMs=FAST_SETTLE_MS,cooldownUntil,actionDelayMs,loadingSince=-1;
     private int retries;
-    private boolean submitted,quick;
+    private boolean submitted,quick,buffered;
+    private int[] cellLimits;
     private String failure;
     public String failure(){return failure;}
     public boolean busy(){return recipe!=null;}
     public boolean quickCrafting(){return recipe!=null && quick;}
     public boolean outputCapacityWaiting(){return capacityWaitRecipe!=null;}
-    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;resultSince=0;capacityWaitRecipe=null;capacityWaitSince=0;logicalAttempts.clear();}
+    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;buffered=false;cellLimits=null;actionDrag=null;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;resultSince=0;capacityWaitRecipe=null;capacityWaitSince=0;logicalAttempts.clear();}
     public void slowdown(long now) {
         if(recipe==null)return;
         settleMs=Math.min(500,settleMs+100);cooldownUntil=Math.max(cooldownUntil,now+1000);
@@ -67,11 +68,19 @@ public final class CraftingExecutor {
             for(int slot:GRID)if(!empty(menu.slot(slot)))return block("Crafting grid already contains items; ownership must be reconciled");
             before=inventory(menu);
             batchCount=Math.min(64,requestedBatches);
+            cellLimits=new int[9];Arrays.fill(cellLimits,64);
+            for(int i=0;i<9;i++)if(wanted.grid().get(i)!=null){
+                var cell=wanted.grid().get(i);
+                cellLimits[i]=stock(menu,cell.id()).stream().mapToInt(v->v.metadata()!=null&&v.metadata().uuid()!=null?1:Math.min(v.maxStackSize(),compatibleUnits(v,menu))).max().orElse(1);
+            }
+            buffered=requestedBatches>1 && Arrays.stream(cellLimits).anyMatch(n->n==1)
+                    && gridBatchLimit(wanted,menu,1)>0;
+            for(int i=0;i<9;i++)if(wanted.grid().get(i)!=null && wanted.grid().get(i).count()>cellLimits[i])buffered=false;
             var quickSlot=quickSlot(wanted,menu,before);
             for(var cell:wanted.grid())if(cell!=null && quickSlot==null) {
                 int limit=menu.slots().stream().filter(v->v.inPlayerInventory() && !v.empty() && cell.id().equals(v.bazaarProductId()))
                     .mapToInt(v->v.maxStackSize()).min().orElse(1);
-                batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
+                if(!buffered)batchCount=Math.min(batchCount,Math.min(64,limit)/cell.count());
             }
             for(var need:wanted.ingredients().entrySet())batchCount=Math.min(batchCount,before.getOrDefault(need.getKey(),0)/need.getValue());
             if(batchCount<1)return block("Insufficient ingredients or ingredient stack capacity for a whole craft");
@@ -100,7 +109,7 @@ public final class CraftingExecutor {
             if(quickSlot!=null && craftable(quickSlot)<=batchCount){quick=true;batchCount=craftable(quickSlot);}
             else {
                 quickSlot=null;
-                batchCount=gridBatchLimit(wanted,menu,batchCount);
+                if(!buffered)batchCount=gridBatchLimit(wanted,menu,batchCount);
             }
             if(batchCount<1)return block("Ingredient grid stack limits do not fit a whole craft of "+wanted.outputId());
             for(var need:wanted.ingredients().entrySet())if(before.getOrDefault(need.getKey(),0)<need.getValue())return block("Missing ingredient: "+need.getKey());
@@ -119,7 +128,7 @@ public final class CraftingExecutor {
             if(now-sentAt>8000)return block("No server inventory acknowledgement; crafting cursor/grid retained");
             return Result.WAITING;
         }
-        if(!conserved(menu,submitted)) {
+        if(!conserved(menu,submitted||buffered)) {
             if(inconsistentSince==0)inconsistentSince=now;
             if(now-inconsistentSince>=1500)return block("Crafting inventory/grid changed unexpectedly; items retained");
             return Result.WAITING;
@@ -127,7 +136,7 @@ public final class CraftingExecutor {
         inconsistentSince=0;
         if(now<cooldownUntil)return Result.WAITING;
         int verifiedBatches=quick?convertedBatches(menu):batchCount;
-        if(submitted && verifiedBatches>0 && completed(menu,verifiedBatches) && now-sentAt>=Math.max(settleMs,actionDelayMs)){lastCompletedBatches=verifiedBatches;reset();return Result.CRAFTED;}
+        if(submitted && verifiedBatches>0 && (!buffered || verifiedBatches==batchCount) && completed(menu,verifiedBatches) && now-sentAt>=Math.max(settleMs,actionDelayMs)){lastCompletedBatches=verifiedBatches;reset();return Result.CRAFTED;}
         if(sent!=null) {
             if(!sameContents(sent,menu)) {sent=null;retries=0;next=sentAt+Math.max(settleMs,actionDelayMs);}
             else if(now-sentAt>=2000) {
@@ -141,20 +150,22 @@ public final class CraftingExecutor {
         if(now<next)return Result.WAITING;
         if(submitted) {
             int made=convertedBatches(menu);
-            if(made>0 && made<batchCount && remainingGrid(menu,batchCount-made))return takeOutput(menu,actions,skills,unlocks,now);
-            return Result.WAITING;
+            if(buffered && made>0 && made<batchCount && menu.cursorEmpty() && now-sentAt>=Math.max(settleMs,actionDelayMs)) {
+                submitted=false;sent=null;splitTargets.clear();
+            } else if(made>0 && made<batchCount && remainingGrid(menu,batchCount-made))return takeOutput(menu,actions,skills,unlocks,now);
+            if(submitted)return Result.WAITING;
         }
         int target=-1,donor=-1;
         for(int i=0;i<9;i++) {
             var expected=recipe.grid().get(i);var actual=menu.slot(GRID[i]);
             if(expected==null){if(!empty(actual))return block("Unexpected item in recipe grid");continue;}
             if(!empty(actual) && !expected.id().equals(actual.bazaarProductId()))return block("Recipe grid identity/count mismatch");
-            if(count(actual)>expected.count()*batchCount) {
-                if(!splitTargets.contains(i) || !canPark(count(actual),expected.count()*batchCount))return block("Crafting stack split changed unexpectedly; grid and cursor retained");
+            if(count(actual)>cellAmount(i,menu)) {
+                if(!splitTargets.contains(i) || !canPark(count(actual),cellAmount(i,menu)))return block("Crafting stack split changed unexpectedly; grid and cursor retained");
                 if(donor<0)donor=i;
             } else {
                 splitTargets.remove(i);
-                if(count(actual)<expected.count()*batchCount && (target<0 || expected.id().equals(recipe.grid().get(target).id())
+                if(count(actual)<cellAmount(i,menu) && (target<0 || expected.id().equals(recipe.grid().get(target).id())
                         && expected.count()>recipe.grid().get(target).count()))target=i;
             }
         }
@@ -164,20 +175,33 @@ public final class CraftingExecutor {
         if(!menu.cursorEmpty()) {
             var cursor=menu.carried();
             if(cursor==null || cursor.empty() || cursor.bazaarProductId()==null)return block("Unreadable crafting cursor");
+            if(actions.supportsDrag()) {
+                var cells=new ArrayList<Integer>();int perCell=-1;
+                for(int i=0;i<9;i++)if(recipe.grid().get(i)!=null
+                        && recipe.grid().get(i).id().equals(cursor.bazaarProductId()) && empty(menu.slot(GRID[i]))) {
+                    int amount=cellAmount(i,menu);
+                    if(perCell<0)perCell=amount;
+                    if(amount==perCell)cells.add(GRID[i]);
+                }
+                if(cells.size()>1 && cursor.count()/cells.size()==perCell && perCell<=cursor.maxStackSize()) {
+                    sent=menu;sentAt=now;retries=0;actionDrag=cells.stream().mapToInt(Integer::intValue).toArray();
+                    actionSlot=actionDrag[0];actionShift=false;actionRight=false;return replay(actions);
+                }
+            }
             // Match the capacity plan's largest-cell-first allocation within this
             // ingredient, including its already parked halves and partial cells.
             int cursorTarget=-1;
             for(int i=0;i<9;i++) {
                 var expected=recipe.grid().get(i);
-                if(expected!=null && expected.id().equals(cursor.bazaarProductId()) && count(menu.slot(GRID[i]))<expected.count()*batchCount
+                if(expected!=null && expected.id().equals(cursor.bazaarProductId()) && count(menu.slot(GRID[i]))<cellAmount(i,menu)
                         && (empty(menu.slot(GRID[i])) || cursor.canStackWith(menu.slot(GRID[i])))
-                        && cursor.count()+compatibleUnits(cursor,menu)>=expected.count()*batchCount-count(menu.slot(GRID[i]))
+                        && cursor.count()+compatibleUnits(cursor,menu)>=cellAmount(i,menu)-count(menu.slot(GRID[i]))
                         && (cursorTarget<0 || expected.count()>recipe.grid().get(cursorTarget).count()))cursorTarget=i;
             }
             target=cursorTarget;
             if(target>=0 && recipe.grid().get(target).id().equals(cursor.bazaarProductId())
                     && (empty(menu.slot(GRID[target])) || cursor.canStackWith(menu.slot(GRID[target])))) {
-                int remaining=recipe.grid().get(target).count()*batchCount-count(menu.slot(GRID[target]));
+                int remaining=cellAmount(target,menu)-count(menu.slot(GRID[target]));
                 if(empty(menu.slot(GRID[target])) && cursor.count()>remaining && canPark(cursor.count(),remaining)) {
                     // Park the whole stack in the grid; reuse each half in another matching cell.
                     splitTargets.add(target);return send(menu,actions,GRID[target],false,false,now);
@@ -191,7 +215,7 @@ public final class CraftingExecutor {
         }
         if(target>=0) {
             var need=recipe.grid().get(target);
-            var current=menu.slot(GRID[target]);int remaining=need.count()*batchCount-count(current);
+            var current=menu.slot(GRID[target]);int remaining=cellAmount(target,menu)-count(current);
             var available=stock(menu,need.id()).stream().filter(v->empty(current)||v.canStackWith(current))
                 .filter(v->compatibleUnits(v,menu)>=remaining).toList();
             if(available.isEmpty())return block("No compatible ingredient stack can fill the owned recipe cell for "+need.id()+"; grid and cursor retained");
@@ -203,6 +227,12 @@ public final class CraftingExecutor {
             source=stack.index();return send(menu,actions,source,false,false,now);
         }
         return takeOutput(menu,actions,skills,unlocks,now);
+    }
+    private int cellAmount(int index,MenuSnapshot menu){
+        var cell=recipe.grid().get(index);
+        if(!buffered)return cell.count()*batchCount;
+        int remaining=buffered?batchCount-Math.max(0,convertedBatches(menu)):batchCount;
+        return cell.count()*Math.min(remaining,Math.max(1,cellLimits[index]/cell.count()));
     }
     private Result takeOutput(MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,long now) {
         // Hypixel's Quick Crafting column (16, 25, 34) can show the same item before the grid is
@@ -294,7 +324,9 @@ public final class CraftingExecutor {
         try{return Integer.parseInt(match.group(1).replace(",",""));}catch(NumberFormatException e){return -1;}
     }
     private int actionSlot;private boolean actionShift,actionRight;
+    private int[] actionDrag;
     private Result send(MenuSnapshot menu,GameActions actions,int slot,boolean shift,boolean right,long now){
+        actionDrag=null;
         sent=menu;sentAt=now;retries=0;actionSlot=slot;actionShift=shift;actionRight=right;return replay(actions);
     }
     private Result replay(GameActions actions){
@@ -310,7 +342,8 @@ public final class CraftingExecutor {
                 +"); grid and cursor retained");
         }
         actionDelayMs=Math.max(FAST_SETTLE_MS,actionDelay.getAsInt());
-        if(actionRight)actions.rightClick(actionSlot);else actions.click(actionSlot,actionShift);
+        if(actionDrag!=null)actions.dragSplit(actionDrag);
+        else if(actionRight)actions.rightClick(actionSlot);else actions.click(actionSlot,actionShift);
         return Result.WAITING;
     }
     private String logicalState(MenuSnapshot menu){

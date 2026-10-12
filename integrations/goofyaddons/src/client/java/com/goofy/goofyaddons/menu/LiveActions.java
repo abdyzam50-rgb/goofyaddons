@@ -15,6 +15,8 @@ public final class LiveActions implements GameActions {
     }
 
     @Override public void rightClick(int slot){InventoryUtils.clickSlot(slot,false,1);}
+    @Override public boolean supportsDrag(){return true;}
+    @Override public void dragSplit(int[] slots){InventoryUtils.dragSplit(slots);}
 
     /** Guards internally, so callers need no null checks of their own. */
     @Override public void closeMenu() {

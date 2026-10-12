@@ -1,3 +1,24 @@
+### 0.2.91 Buffered mixed crafts and native drag splitting
+
+Recipes containing unstackable inputs can retain stackable cells between output
+collections. Each cell loads up to its stack capacity and the remaining requested
+batches, then the executor refills only consumed/short cells. Cumulative output
+and exact ingredient conservation are checked through the entire batch. UUID
+items are treated as individual items even when vanilla reports a stack limit.
+
+Native left-drag distributes a cursor stack across empty matching recipe cells
+only when its even distribution equals every selected cell target. The real
+client sends the native QUICK_CRAFT start/add/end sequence. Other action ports
+fall back to the existing splitter. Post-drag inventory/grid acknowledgement,
+conservation checks, pacing and bounded retries apply. Unequal cells use the
+existing exact splitter. No shift-click into the grid is assumed.
+
+Regression coverage proves four mixed crafts load the stackable cell once,
+refill four unstackable items, and leave the grid/cursor empty; it also proves an
+eight-cell drag plus exact ingredient consumption and output. Live Hypixel drag
+behavior remains to be verified. 1349 Java tests passed and the release build
+succeeded.
+
 ### 0.2.90 Exact stack splitting
 
 Crafting compares repeated grid halves plus remainder placements against
@@ -111,7 +132,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.90 JAR](dist/astar-client-0.2.90-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.91 JAR](dist/astar-client-0.2.91-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
