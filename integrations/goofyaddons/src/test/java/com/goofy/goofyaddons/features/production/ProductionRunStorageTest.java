@@ -123,7 +123,7 @@ class ProductionRunStorageTest {
         assertEquals(1280,ProductionStorage.Move.inventoryCount(env.world.menu(),"COBBLE"));
         assertEquals(0,run.spent());assertEquals(1,env.orders.size());
     }
-    @Test void overflowingInstantPurchaseUsesStorageAndStashUntilTheOriginalAmountIsVerified()throws Exception {
+    @Test void overflowingInstantPurchaseBuysInventorySizedLotsAndReplansTheExactRemainder()throws Exception {
         class DeliveryEnv extends Env {
             String market;boolean sign;double balance=1_000_000;int writes,stash;
             DeliveryEnv()throws Exception{}
@@ -155,8 +155,8 @@ class ProductionRunStorageTest {
                 }
                 public void message(String text){}
                 public boolean writeSign(String text){
-                    writes++;assertEquals("4096",text);sign=false;market=null;balance-=40960;
-                    give("INPUT",2048);stash=2048;return true;
+                    writes++;int quantity=Integer.parseInt(text);assertTrue(quantity<=world.menu().emptyInventorySlots()*64);sign=false;market=null;balance-=quantity*10;
+                    give("INPUT",quantity);return true;
                 }
             };}
         }
@@ -167,8 +167,8 @@ class ProductionRunStorageTest {
         var run=ProductionRun.startCraft(env,catalog,recipe,64,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.INSTANT_OFFER);
         long now=1000;
         for(int i=0;i<300&&run.stage()==Stage.PROCURE;i++)assertEquals(Step.PENDING,run.tick(true,now+=500),run.reason());
-        assertEquals(Stage.PROCESS,run.stage(),run.reason());assertEquals(1,env.writes);assertEquals(0,env.stash);
-        assertEquals(2,env.world.commands.stream().filter("pickupstash"::equals).count());
+        assertEquals(Stage.PROCESS,run.stage(),run.reason());assertEquals(2,env.writes);assertEquals(0,env.stash);
+        assertEquals(0,env.world.commands.stream().filter("pickupstash"::equals).count());
         assertEquals(40960,run.spent());
         assertEquals(4096,env.world.inventory("INPUT")+env.storage.stored(run.jobId(),"INPUT"));
         assertEquals(40960,env.jobs.find(run.jobId()).orElseThrow().costBasis());assertTrue(env.orders.isEmpty());

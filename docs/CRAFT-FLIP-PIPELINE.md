@@ -1641,3 +1641,12 @@ and refill exhausted cells. Buffered amounts never exceed the requested work.
 Native left-drag is used for equal empty cell targets when even distribution
 produces their exact counts; uneven targets use the exact splitter. Every
 distribution still requires observed server acknowledgement and item conservation.
+
+### Inventory-sized instant buying (0.2.92)
+
+Each storage-backed instant purchase is capped to current inventory capacity.
+Use the verified Fill my inventory quote when its amount fits the remaining
+requirement; otherwise submit the exact capped quantity. After receipt and
+storage, replan the outstanding quantity from owned inventory plus storage.
+Existing submitted purchases must finish receipt/stash recovery before any
+replacement lot can be queued. Buy-order placement is unaffected.

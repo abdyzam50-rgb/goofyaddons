@@ -1,3 +1,22 @@
+### 0.2.92 Inventory-sized instant purchases
+
+Hypixel rejected the exported Enchanted Mithril instant purchase because its
+amount exceeded inventory capacity. Storage-backed instant buys now cap a lot
+to observed inventory capacity. A valid Fill my inventory quote is used only
+when it fits that cap and the remaining requirement. Otherwise the exact capped
+amount is entered. The price ceiling scales with the lot size.
+
+After a verified lot the existing procurement planner counts inventory plus
+owned storage, makes room, and buys only the remainder. Paid short deliveries
+retain stash recovery and never cause a fresh purchase until their receipt is
+resolved. Buy orders retain their existing behavior.
+
+Regression coverage verifies 4096 units across two capacity-sized purchases,
+no stash commands, total cost counted once per lot, a quoted fill purchase, an
+overpriced fill rejection, partial stack space with no empty slots, and a final
+remainder smaller than a fill quote. 1351 Java tests passed; release build
+succeeded. Live Hypixel verification remains needed.
+
 ### 0.2.91 Buffered mixed crafts and native drag splitting
 
 Recipes containing unstackable inputs can retain stackable cells between output
@@ -132,7 +151,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.91 JAR](dist/astar-client-0.2.91-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.92 JAR](dist/astar-client-0.2.92-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

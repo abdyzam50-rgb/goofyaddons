@@ -48,8 +48,8 @@ public final class BazaarInstantBuy {
     }
 
     /**
-     * With {@code fill}, the storage-backed caller may make room between stash deliveries.
-     * The requested purchase is submitted once; partial deliveries do not place another buy.
+     * With {@code fill}, buy an inventory-sized lot. The caller stores the verified
+     * delivery and replans the remainder. A submitted lot is never repeated.
      */
     public BazaarInstantBuy(String productId, String name, int amount, double maximumCost, Intent intent, boolean fill) {
         if (!ProductionRecipe.validId(productId) || productId.contains(";") || name == null || name.isBlank()
@@ -107,6 +107,11 @@ public final class BazaarInstantBuy {
                 int control = productControl(menu);
                 if (control < 0) return Result.WAITING;
                 if(menu.loading(control))return Result.WAITING;
+                if(fill) {
+                    int capacity=ProductionInventorySpace.capacity(RecipeCatalog.instance(),menu,productId);
+                    if(capacity<1)return block("No inventory room to buy "+name+"; store inputs before buying");
+                    resize(Math.min(amount,capacity));
+                }
                 String unmet=com.goofy.goofyaddons.features.generalflipper.BazaarAccess.unmet(menu.slot(control).lore());
                 if(unmet!=null)return block("Cannot buy "+name+": "+unmet);
                 Double unit = unitPrice(menu.slot(control).lore());
@@ -115,7 +120,6 @@ public final class BazaarInstantBuy {
                         "Instant buy of %d %s would cost about %,.0f coins, above the %,.0f limit", amount, name, unit * amount, maximumCost));
                 if (!Double.isFinite(purse) || purse < unit * amount) return block("Purse cannot cover the instant buy");
                 if (!fill && ProductionInventorySpace.capacity(RecipeCatalog.instance(),menu,productId) < amount) return block("Not enough inventory space for " + amount + " " + name);
-                if (fill && menu.emptyInventorySlots() == 0) return block("No free inventory slot to buy " + name + " into");
                 before = count(menu); purseBefore = purse;
                 actions.click(control, false); navigation.sent(menu,control,now); step = Step.AMOUNT; stepAt = now;
             }
@@ -130,6 +134,17 @@ public final class BazaarInstantBuy {
                 // "Buy only one!" and "Buy a stack!" quote their exact total, so they skip the sign and
                 // are checked against the limit by their own price.
                 int preset = amount == 1 ? menu.firstByHoverName("Buy only one!", true) : amount == 64 ? menu.firstByHoverName("Buy a stack!", true) : -1;
+                if(preset<0 && fill) {
+                    int fillSlot=menu.firstByHoverName("Fill my inventory!",true);
+                    if(fillSlot>=0) {
+                        if(menu.loading(fillSlot))return Result.WAITING;
+                        Integer units=quotedAmount(menu.slot(fillSlot).lore(),name);
+                        int capacity=ProductionInventorySpace.capacity(RecipeCatalog.instance(),menu,productId);
+                        if(units!=null && units>0 && units<=amount && units<=capacity) {
+                            resize(units);preset=fillSlot;
+                        }
+                    }
+                }
                 if (preset >= 0) {
                     if(menu.loading(preset))return Result.WAITING;
                     Double total = quotedTotal(menu.slot(preset).lore(), name, amount);
@@ -282,5 +297,8 @@ public final class BazaarInstantBuy {
     }
 
     private Result block(String reason) { failure = reason; return Result.BLOCKED; }
+    private void resize(int units){
+        if(units<amount){maximumCost=maximumCost*units/amount;amount=units;}
+    }
     private Result uncertain(String reason) { failure = reason; return Result.UNCERTAIN; }
 }

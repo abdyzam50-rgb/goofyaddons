@@ -226,7 +226,7 @@ class BazaarInstantBuyTest {
         assertEquals(effects,actions.serverEffects().size());
     }
 
-    @Test void storageBackedPurchaseSubmitsWholeAmountAndCountsVerifiedStoredDeliveries() {
+    @Test void storageBackedPurchaseUsesQuotedFillAndVerifiesOnlyThatLot() {
         var actions=new RecordingActions();
         var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",5000,500_000,intents::add,true);
         assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(product(100),false,actions,1_000_000,0));
@@ -235,24 +235,38 @@ class BazaarInstantBuyTest {
                 SlotView.named(14,"Fill my inventory!",List.of("Enchanted Coal","","Amount: 2,240x","","Per unit: 100 coins","Price: 224,000 coins")),
                 SlotView.named(16,"Custom Amount",List.of()));
         purchase.tick(amounts,false,actions,1_000_000,100);
-        assertEquals(List.of("click:10","click:16"),actions.serverEffects());
-        purchase.tick(amounts,true,actions,1_000_000,200);
-        assertEquals(5000,purchase.amount());assertEquals(5000,purchase.requested());
-        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,item(54,"ENCHANTED_COAL",40)),false,actions,500_000,300,4960));
-        assertEquals(500_000,purchase.spent());
-        assertEquals(1,actions.serverEffects().stream().filter("sign:5000"::equals).count());
+        assertEquals(List.of("click:10","click:14"),actions.serverEffects());
+        purchase.tick(amounts,false,actions,1_000_000,200);
+        assertEquals(2240,purchase.amount());assertEquals(5000,purchase.requested());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,item(54,"ENCHANTED_COAL",40)),false,actions,776_000,300,2200));
+        assertEquals(224_000,purchase.spent());
+        assertTrue(actions.serverEffects().stream().noneMatch(v->v.startsWith("sign:")));
     }
-    @Test void storageBackedPurchaseKeepsItsWholeAmountPriceLimit() {
+    @Test void storageBackedPurchaseScalesPriceLimitAndRejectsAnOverpricedFill() {
         var actions=new RecordingActions();
         var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",5000,500_000,intents::add,true);
         purchase.tick(product(100),false,actions,1_000_000,0);
         var amounts=menu(2,"Enchanted Coal \u279c Instant",
                 SlotView.named(14,"Fill my inventory!",List.of("Enchanted Coal","","Amount: 2,240x","","Price: 300,000 coins")),
                 SlotView.named(16,"Custom Amount",List.of()));
-        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(amounts,false,actions,1_000_000,100));
-        purchase.tick(amounts,true,actions,1_000_000,200);
-        assertEquals(BazaarInstantBuy.Result.BLOCKED,purchase.tick(confirmation(5000,"600,000"),false,actions,1_000_000,300));
-        assertFalse(actions.serverEffects().contains("click:13"));assertEquals(500_000,purchase.maximumCost());
+        assertEquals(BazaarInstantBuy.Result.BLOCKED,purchase.tick(amounts,false,actions,1_000_000,100));
+        assertFalse(actions.serverEffects().contains("click:13"));assertFalse(actions.serverEffects().contains("click:14"));assertEquals(224_000,purchase.maximumCost());
+    }
+    @Test void capacityIncludesPartialStacksEvenWithNoEmptyInventorySlots(){
+        var inventory=new ArrayList<SlotView>();inventory.add(item(54,"ENCHANTED_COAL",40));
+        for(int i=55;i<90;i++)inventory.add(item(i,"COBBLE",64));
+        var actions=new RecordingActions();var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",40,4000,intents::add,true);
+        assertEquals(BazaarInstantBuy.Result.WAITING,purchase.tick(product(100,inventory.toArray(SlotView[]::new)),false,actions,10000,1000));
+        assertEquals(24,purchase.amount());assertEquals(2400,purchase.maximumCost());assertEquals(List.of("click:10"),actions.serverEffects());
+    }
+    @Test void finalRemainderUsesCustomAmountWhenFillWouldBuyTooMany(){
+        var actions=new RecordingActions();var purchase=new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",180,18000,intents::add,true);
+        purchase.tick(product(100),false,actions,100000,1000);
+        var amounts=menu(2,"Amount",SlotView.named(14,"Fill my inventory!",List.of("Enchanted Coal","Amount: 2,240x","Price: 224,000 coins")),SlotView.named(16,"Custom Amount",List.of()));
+        purchase.tick(amounts,false,actions,100000,1100);purchase.tick(amounts,true,actions,100000,1200);
+        assertEquals(180,purchase.amount());assertTrue(actions.serverEffects().contains("sign:180"));assertFalse(actions.serverEffects().contains("click:14"));
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,purchase.tick(menu(3,null,item(54,"ENCHANTED_COAL",64),item(55,"ENCHANTED_COAL",64),item(56,"ENCHANTED_COAL",52)),false,actions,82000,1300));
+        assertEquals(18000,purchase.spent());
     }
     @Test void paidOverflowCanBeStoredAndPickedUpInSeveralRoundsWithoutBuyingAgain() {
         var actions=new RecordingActions();var purchase=new BazaarInstantBuy("SUPER_COMPACTOR_3000","Super Compactor 3000",10,1100,intents::add,true);
