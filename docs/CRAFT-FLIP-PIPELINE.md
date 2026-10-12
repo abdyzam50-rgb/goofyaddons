@@ -1624,3 +1624,12 @@ per second. The client tick and observed server acknowledgements determine when
 the next action is possible. New window headers do not acknowledge navigation
 until named controls have arrived. Crafting keeps its
 50 ms minimum settle and adaptive rejection backoff.
+
+### Loading placeholders (0.2.88)
+
+A button marked Loading is a pending server response. Instant buy and sell
+executors wait in the current menu for the quote to become numeric. Storage
+waits for explicit loading placeholders and an initial stable contents window
+before recording capacity or moving items. Transaction receipts still require
+verified inventory/purse changes; no loading state authorizes a replay. Failed
+instant sales back off 30 seconds before reopening.

@@ -106,6 +106,7 @@ public final class BazaarInstantBuy {
                 if (menu == null) return Result.WAITING;
                 int control = productControl(menu);
                 if (control < 0) return Result.WAITING;
+                if(menu.loading(control))return Result.WAITING;
                 String unmet=com.goofy.goofyaddons.features.generalflipper.BazaarAccess.unmet(menu.slot(control).lore());
                 if(unmet!=null)return block("Cannot buy "+name+": "+unmet);
                 Double unit = unitPrice(menu.slot(control).lore());
@@ -130,6 +131,7 @@ public final class BazaarInstantBuy {
                 // are checked against the limit by their own price.
                 int preset = amount == 1 ? menu.firstByHoverName("Buy only one!", true) : amount == 64 ? menu.firstByHoverName("Buy a stack!", true) : -1;
                 if (preset >= 0) {
+                    if(menu.loading(preset))return Result.WAITING;
                     Double total = quotedTotal(menu.slot(preset).lore(), name, amount);
                     if (total == null) return block("Instant buy preset for " + name + " is unreadable");
                     String refused = refuse(total, purse);

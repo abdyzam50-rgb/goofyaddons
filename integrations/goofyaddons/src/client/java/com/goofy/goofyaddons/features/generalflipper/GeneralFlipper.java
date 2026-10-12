@@ -341,6 +341,7 @@ public class GeneralFlipper implements Feature {
             return;
         }
         if (now - stepSince > com.goofy.goofyaddons.features.transaction.RecoveryRules.STEP_TIMEOUT_MS) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
+        if(view!=null && view.loadingContents())return;
         if (now < nextAction || claim.coolingDown(now)) return;
         nextAction = now + services.actionDelay();
         try {

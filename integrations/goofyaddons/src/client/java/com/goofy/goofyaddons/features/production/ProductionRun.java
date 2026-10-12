@@ -103,6 +103,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private BazaarStrategy strategy=BazaarStrategy.INSTANT_INSTANT;
     private boolean orderActive,orderCostRecorded;
     private long orderRetryAfter;
+    private long sellRetryAfter;
     private boolean waitingForOrderRetry;
     private boolean waitingForProcurement;
     private boolean verifiedEmptyOrderHandoff;
@@ -637,6 +638,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
             orderActive=false;return Outcome.DONE;
         }
         if (!ownsMenu) return Outcome.pending("Waiting to sell " + env.name(output));
+        if(now<sellRetryAfter)return Outcome.pending("Waiting to retry selling "+env.name(output));
         if (selling == null) {
             int units = held().getOrDefault(output, 0);
             if (units == 0) return Outcome.uncertain("The crafted " + env.name(output) + " is not in the inventory");
@@ -654,8 +656,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 else if(kind==ProductionRecipe.Kind.CRAFT)env.saleConfirmed(jobId,output,selling.amount(),selling.proceeds());
                 env.actions().closeMenu();yield Outcome.DONE; }
             case UNCERTAIN -> Outcome.uncertain(selling.failure());
-            case BLOCKED -> { String why = selling.failure(); selling = null; env.actions().closeMenu(); yield Outcome.blocked(why); }
-            default -> Outcome.pending("Selling " + env.name(output));
+            case BLOCKED -> { String why = selling.failure(); selling = null; sellRetryAfter=now+30_000; env.actions().closeMenu(); yield Outcome.blocked(why); }
+            default -> Outcome.pending(env.menu()!=null && env.menu().loadingContents()?"Waiting for live sell price for "+env.name(output):"Selling " + env.name(output));
         };
     }
 

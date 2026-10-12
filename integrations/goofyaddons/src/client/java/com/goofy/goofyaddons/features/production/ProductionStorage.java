@@ -173,6 +173,7 @@ public final class ProductionStorage {
         private int beforeInventory,beforeStorage,pendingSlot,clickRetries;
         private long clickedAt;
         private long nextMoveAt;
+        private List<SlotView> initialContents;
         private String failure;
         private int moved;
         private int freeSlotsTarget;
@@ -212,7 +213,7 @@ public final class ProductionStorage {
             if(page==null) {
                 page=nextPage(menu);
                 if(page==null)return finish(menu,actions);
-                openSince=0;verified=false;seenSince=0;container=Integer.MIN_VALUE;
+                openSince=0;verified=false;seenSince=0;container=Integer.MIN_VALUE;initialContents=null;
             }
             if(!page.open(menu)) {
                 if(openSince==0)openSince=now;
@@ -231,6 +232,14 @@ public final class ProductionStorage {
                 return Result.WAITING;
             }
             if(container==Integer.MIN_VALUE || container!=menu.containerId()){container=menu.containerId();seenSince=now;}
+            if(openSince==0)openSince=now;
+            if(!verified) {
+                if(menu.loadingContents() || !Objects.equals(initialContents,menu.slots())) {
+                    initialContents=menu.slots();seenSince=now;
+                    if(now-openSince>OPEN_TIMEOUT_MS)return block("Storage contents did not finish loading; nothing moved");
+                    return Result.WAITING;
+                }
+            }
             if(now-seenSince<SETTLE_MS || !menu.cursorEmpty())return Result.WAITING;
             if(now<nextMoveAt)return Result.WAITING;
             if(!verified) {
@@ -301,6 +310,7 @@ public final class ProductionStorage {
 
         private Result settle(MenuSnapshot menu,GameActions actions,long now) {
             if(!page.open(menu) || menu.containerId()!=container)return block("Storage page closed during a move; the ledger was not changed");
+            if(menu.loadingContents())return now-clickedAt>CLICK_TIMEOUT_MS?block("Storage contents did not reload after a move; ledger retained"):Result.WAITING;
             if(!menu.cursorEmpty())return now-clickedAt>CLICK_TIMEOUT_MS?block("Storage move left an item on the cursor"):Result.WAITING;
             int inventory=inventoryCount(menu,pendingProduct),storage=storageCount(menu,pendingProduct);
             int out=kind==Kind.DEPOSIT?beforeInventory-inventory:beforeStorage-storage;

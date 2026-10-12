@@ -18,6 +18,7 @@ public final class WorkstationExecutor {
     private Double purseBefore;
     private double expectedCharge;
     private String failure;
+    private long loadingSince=-1;
     public String failure(){return failure;}
     public WorkstationExecutor(ProductionRecipe recipe,String jobId,ProductionJobs journal,ItemMetadata pet) {
         if(recipe.kind()==ProductionRecipe.Kind.CRAFT)throw new IllegalArgumentException("Crafting is not a timed workstation");
@@ -33,6 +34,11 @@ public final class WorkstationExecutor {
             var job=journal.find(jobId).orElseThrow();
             if(job.batches()!=1 || !job.account().equals(account) || !job.recipeKey().equals(recipe.key()))return block("Workstation job account/recipe changed");
             if(menu==null || !menu.cursorEmpty())return block("Workstation transaction requires a readable menu and empty cursor");
+            if(menu.loadingContents()) {
+                if(loadingSince<0)loadingSince=now;
+                return now-loadingSince>=15000?block("Workstation contents did not finish loading; transaction retained"):Result.WAITING;
+            }
+            loadingSince=-1;
             if(job.state()==ProductionJobs.State.PLANNED) {
                 String prerequisite=com.goofy.goofyaddons.features.access.RouteRequirements.craft(recipe.requirement(),skills,unlocks);
                 if(prerequisite!=null)return block(prerequisite);

@@ -48,6 +48,7 @@ public final class BinListingExecutor {
             if(started==0)started=now;
             if(now-started>=90000)return review(job,"BIN preparation timed out; inspect the item and sell slot");
             if(menu==null)return Result.WAITING;
+            if(menu.loadingContents())return Result.WAITING;
             // Expected sign submission moves no items. Hypixel can leave a transient
             // carried control while its sign editor is open; verify cursor/item on return.
             if(step==Step.SIGN&&signOpen) {

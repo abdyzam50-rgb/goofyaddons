@@ -27,7 +27,7 @@ public final class CraftingExecutor {
     private Map<String,Integer> before;
     private MenuSnapshot sent;
     private long sentAt,started,next,inconsistentSince,resultSince;
-    private long settleMs=FAST_SETTLE_MS,cooldownUntil,actionDelayMs;
+    private long settleMs=FAST_SETTLE_MS,cooldownUntil,actionDelayMs,loadingSince=-1;
     private int retries;
     private boolean submitted,quick;
     private String failure;
@@ -54,6 +54,11 @@ public final class CraftingExecutor {
         var compactorConflict=PersonalCompactors.conflict(menu,wanted.ingredients().keySet(),RecipeCatalog.instance());
         if(compactorConflict!=null)return block(compactorConflict);
         if(menu==null || !"Craft Item".equals(Chat.strip(menu.title())))return block("Open the SkyBlock Craft Item menu before crafting");
+        if(menu.loadingContents()) {
+            if(loadingSince<0)loadingSince=now;
+            return now-loadingSince>=8000?block("Craft menu contents did not finish loading; items retained"):Result.WAITING;
+        }
+        loadingSince=-1;
         if(wanted.kind()!=ProductionRecipe.Kind.CRAFT)return block("Not a crafting recipe");
         if(recipe==null) {
             if(capacityWaitRecipe!=null && (!wanted.equals(capacityWaitRecipe) || menu.containerId()!=capacityWaitContainer))

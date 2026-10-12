@@ -1,3 +1,24 @@
+### 0.2.88 Loading prices and storage contents
+
+Captured failure: the Dwarven Super Compactor Sell Instantly lore contained
+`Total: Loading...`; the executor classified it as malformed and the run reopened
+the menu repeatedly. Instant selling and buying now wait in place for explicit
+loading placeholders. A genuinely blocked instant sale has a 30-second retry
+cooldown. Existing overall price-loading deadlines still apply.
+
+Storage scans, deposits and withdrawals wait for placeholders to disappear and
+initial contents to remain stable for 400 ms before reading capacity or checking
+ownership. Move receipt checks remain mandatory and loading during a receipt
+never authorizes another click. Auction, craft, workstation, book and general
+trade paths also wait for explicit loading contents with their existing or newly
+bounded timeout. The configured fast action range remains unchanged.
+
+1344 Java tests passed; release build succeeded. Live Minecraft verification
+is still needed.
+
+Regression simulations cover a delayed live sell total then exactly one verified
+sale, delayed buy price, permanent loading timeout and delayed storage scanning.
+
 ### 0.2.87 Fast menu timing
 
 The GUI and config now allow a 10–20 ms randomized action range. Navigation keeps
@@ -64,7 +85,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.87 JAR](dist/astar-client-0.2.87-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.88 JAR](dist/astar-client-0.2.88-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

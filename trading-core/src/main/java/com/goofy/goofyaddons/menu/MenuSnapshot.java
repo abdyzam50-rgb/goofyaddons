@@ -152,6 +152,16 @@ public record MenuSnapshot(int containerId, String title, boolean cursorEmpty, L
         return slot >= 0 && slot < slots.size() && !slots.get(slot).empty();
     }
 
+    /** Explicit server placeholders are not prices, item identities or storage contents. */
+    private static final java.util.regex.Pattern LOADING=java.util.regex.Pattern.compile("(?i)\\bloading\\b");
+    public boolean loading(int slot) {
+        var view=slot(slot);
+        return view!=null && !view.empty() && LOADING.matcher(com.goofy.goofyaddons.utils.Chat.strip(view.hoverName()+"\n"+view.lore())).find();
+    }
+    public boolean loadingContents() {
+        return slots.stream().anyMatch(s->!s.inPlayerInventory() && loading(s.index()));
+    }
+
     public String loreAt(int slot) {
         return slot >= 0 && slot < slots.size() ? slots.get(slot).lore() : "";
     }

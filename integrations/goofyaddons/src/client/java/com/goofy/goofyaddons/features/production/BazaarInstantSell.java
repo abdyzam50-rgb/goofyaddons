@@ -63,6 +63,7 @@ public final class BazaarInstantSell {
         }
         int control = productControl(menu);
         if (control < 0) return Result.WAITING;
+        if(menu.loading(control))return Result.WAITING;
         if (count(menu) != amount) return block("Inventory holds a different amount of " + name + " than the run made; sell it by hand");
         Double quoted = quotedProceeds(menu.slot(control).lore(), amount);
         if (quoted == null) return block("Instant sale price for " + name + " is unreadable: " + Chat.strip(menu.slot(control).lore()).replace('\n', ' '));
