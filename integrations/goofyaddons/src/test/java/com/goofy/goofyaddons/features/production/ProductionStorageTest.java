@@ -10,6 +10,26 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionStorageTest {
     @TempDir Path dir;
+    @Test void storageControlsWithoutProductIdsAreIgnoredWhileOwnedPartialStacksRemainUsable()throws Exception {
+        var world=new World(){
+            @Override MenuSnapshot menu(){
+                var menu=super.menu();if(open==null)return menu;
+                var slots=new ArrayList<>(menu.slots());
+                slots.set(0,new SlotView(0,false,0,false,"Close","Close",List.of(),null,null,1,64));
+                return new MenuSnapshot(menu.containerId(),menu.title(),menu.cursorEmpty(),slots);
+            }
+        };
+        world.page("ec 1",2);world.put("ec 1",1,"INPUT",32);
+        var ledger=new ProductionStorage(dir.resolve("controls.json"));ledger.move("run","ec 1","INPUT",32);
+        var pages=ProductionStorage.pages("ec 1");long[] clock={1000};
+        assertEquals(Move.Result.DONE,run(Move.scan(ledger,pages),world,clock,100));
+        assertEquals(0,ledger.emptySlots(pages),"GUI control is occupied, not available storage");
+        world.hold(0,"INPUT",32);
+        assertEquals(Move.Result.DONE,run(Move.deposit("run",ledger,pages,Set.of("INPUT")),world,clock,100));
+        assertEquals(64,ledger.stored("run","INPUT"));assertEquals(64,world.stored("ec 1","INPUT"));
+        assertEquals(1,world.clicks,"Only the actual inventory stack should be clicked");
+    }
+
     @Test void fullPageWithAnOwnedCompatiblePartialStackStillAcceptsADeposit()throws Exception{
         var world=new World().page("ec 1",1);world.put("ec 1",0,"INPUT",32);
         var ledger=new ProductionStorage(dir.resolve("partial.json"));ledger.move("partial","ec 1","INPUT",32);
@@ -67,7 +87,7 @@ class ProductionStorageTest {
     }
 
     /** A tiny Hypixel: storage pages open by command and shift-clicks move whole stacks. */
-    static final class World implements GameActions {
+    static class World implements GameActions {
         final Map<String,String[]> pageIds=new LinkedHashMap<>();
         final Map<String,int[]> pageCounts=new LinkedHashMap<>();
         final Set<String> locked=new HashSet<>();

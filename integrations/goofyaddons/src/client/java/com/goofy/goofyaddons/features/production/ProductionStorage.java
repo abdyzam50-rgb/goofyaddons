@@ -64,7 +64,7 @@ public final class ProductionStorage {
                 Move.inventorySlot(source) && products.contains(ProductionMenus.productId(source)) && source.canStackWith(target)));
     }
     private synchronized void observe(String page,MenuSnapshot menu,long now){
-        var partial=menu.slots().stream().filter(s->!s.inPlayerInventory()&&!s.empty()&&s.count()<s.maxStackSize()
+        var partial=menu.slots().stream().filter(s->!s.inPlayerInventory()&&!s.empty()&&ProductionMenus.productId(s)!=null&&s.count()<s.maxStackSize()
                 && (s.metadata().uuid()==null||s.metadata().uuid().isBlank())
                 && !RecipeCatalog.instance().unstackable(ProductionMenus.productId(s))
                 && Move.storageCount(menu,ProductionMenus.productId(s))==owned(page,ProductionMenus.productId(s))).toList();
