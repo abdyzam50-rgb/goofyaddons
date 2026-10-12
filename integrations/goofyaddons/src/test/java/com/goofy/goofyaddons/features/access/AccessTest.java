@@ -34,6 +34,9 @@ class AccessTest {
         assertTrue(BazaarNpcAccess.cookieDenial("You need a Booster Cookie to use this!"));
         assertFalse(BazaarNpcAccess.cookieDenial("[VIP] Someone: You need a Booster Cookie to use this!"));
         assertFalse(BazaarNpcAccess.cookieDenial("Your Cookie Buff expires in 2 days"));
+        assertTrue(BazaarNpcAccess.cookieActivated("You consumed a Booster Cookie! Scrumptious!"));
+        assertFalse(BazaarNpcAccess.cookieActivated("[MVP+] Someone: You consumed a Booster Cookie!"));
+        assertFalse(BazaarNpcAccess.cookieActivated("You need a Booster Cookie to use this!"));
     }
     @Test void decimalAndRomanLevelsAreParsedWithoutInventingUnknownLevels() {
         var facts=ActionRequirements.skills(menu(1,"Your Skills",true,

@@ -101,10 +101,10 @@ public class FeatureManager {
         CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);
         production.refreshSelection();
         marketAnalysis.poll(started()?mode:GoofyConfig.INSTANCE.tradingMode);
+        if(!paused() && (started() || productionTest || engineTest!=null) && com.goofy.goofyaddons.features.access.BazaarNpcAccess.tick())return;
         if (productionTest && !started()) { tickProductionTest(); return; }
         if (engineTest != null && !started()) { tickEngineTest(); return; }
         if (!started() || paused()) return;
-        if(com.goofy.goofyaddons.features.access.BazaarNpcAccess.tick())return;
         if(skillPreflight.pending()) {
             if(accountUnlocks.pending())return; // Fast profile request first; Skills remains the fallback.
             try {skillPreflight.tick(new com.goofy.goofyaddons.menu.LiveWorld().menu(),new com.goofy.goofyaddons.menu.LiveActions(),System.currentTimeMillis());
@@ -409,16 +409,18 @@ public class FeatureManager {
     public boolean canReloadConfig() { return !started(); }
     public boolean isTradingActive() { return started() && !skillPreflight.pending() && !paused() && !books.recoveryPending(); }
     public String status() {
+        if((productionTest || engineTest!=null) && !lifecycle.blocked())return paused()?"PAUSED":"TESTING";
         if (!started()) return lifecycle.blocked() ? "BLOCKED" : "STOPPED";
         return paused() ? "PAUSED" : skillPreflight.pending()?"RECOVERING":books.recoveryPending()?"RECOVERING":"RUNNING";
     }
-    public String modeLabel() { return (started() ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
+    public String modeLabel() { if(productionTest)return "CRAFT";if(engineTest!=null)return engineTest==books?"BOOKS":"GENERAL";return (started() ? mode : GoofyConfig.INSTANCE.tradingMode).name(); }
     public java.util.Map<String,Object> diagnosticState() {
         return java.util.Map.of("capabilities",com.goofy.goofyaddons.features.capability.Capabilities.diagnosticState(),"lifecycle",lifecycle.diagnosticState(),"marketAnalysis",marketAnalysis.diagnosticState(),"books",books.diagnosticState(),"general",general.diagnosticState(),"owner",previousOwner==null?"none":previousOwner.name(),"requestedMode",requested==null?"none":requested.name(),
             "accountRequirements",accountUnlocks.diagnosticState(now()),"production",java.util.Map.of("queued",production.queued(),"activity",production.activity(),
                 "craftPlan",production.craftPlan(),"personalCompactor",com.goofy.goofyaddons.features.production.PersonalCompactors.status(new com.goofy.goofyaddons.menu.LiveWorld().menu())));
     }
     public String taskItem() {
+        if(productionTest)return production.activity();if(engineTest!=null)return engineTest==books?books.taskItem():general.taskItem();
         if (!started() || paused()) return general.hasRetainedPositions()?general.retainedItem():books.hasRetainedTasks()?"Retained book tasks: review required":"No pending orders";
         if(production.queued() && (previousOwner==production || previousOwner==crafting || previousOwner==auction || previousOwner==null))return production.activity();
         if(previousOwner==crafting)return crafting.activity();
@@ -430,6 +432,7 @@ public class FeatureManager {
     public String activity() {
         if (lifecycle.blocked()) return lifecycle.reason();
         if (paused()) return "Paused for travel or review";
+        if(productionTest)return production.activity();if(engineTest!=null)return engineTest==books?books.activity():general.activity();
         if (!started()) return "Use the trading toggle to start";
         if(skillPreflight.pending())return "Checking account skill requirements";
         if(books.recoveryPending())return books.activity();

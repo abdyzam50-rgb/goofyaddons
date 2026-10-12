@@ -33,7 +33,9 @@ public final class BazaarNpcAccess {
     public static boolean cookieDenial(String text) {
         return Chat.strip(text).trim().matches("(?i)^(?:you (?:must have|need|require)|this command requires).*(?:booster cookie|cookie buff).*");
     }
+    public static boolean cookieActivated(String text){return Chat.strip(text).trim().matches("(?i)^You consumed a Booster Cookie!.*");}
     private static void denied(String text) {
+        if(cookieActivated(text)){cookieDenied=false;if(GoofyConfig.INSTANCE.access.bazaarMode.equals("AUTO"))cancel();return;}
         if(!GoofyConfig.INSTANCE.access.bazaarMode.equals("AUTO") || recentCommand==null || System.currentTimeMillis()-recentAt>10000 || !cookieDenial(text))return;
         cookieDenied=true;navigation.request(recentCommand,System.currentTimeMillis());recentCommand=null;
     }

@@ -1,3 +1,17 @@
+### 0.2.97 Bazaar access during test sessions
+
+The export queued a two-compactor production test but it remained at its first
+Auto Smelter purchase with no debit. NPC navigation was intercepted but never
+ticked in standalone test sessions. Shared access navigation now ticks for
+production, book and general tests as well as normal trading.
+
+A server-confirmed Booster Cookie consumption clears the cached AUTO-mode
+command denial and cancels obsolete NPC routing; explicit NPC mode is retained.
+The HUD reports TESTING and the actual test mode/activity instead of STOPPED
+and Use the trading toggle while the test is active. Cookie-message regression
+checks reject player-chat lookalikes. 1360 Java tests passed and the release
+build succeeded. Live NPC/test-session verification remains needed.
+
 ### 0.2.96 Independent timing and asynchronous storage close
 
 The book startup export paused because NPC Bazaar navigation observed a storage
@@ -224,7 +238,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.96 JAR](dist/astar-client-0.2.96-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.97 JAR](dist/astar-client-0.2.97-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
