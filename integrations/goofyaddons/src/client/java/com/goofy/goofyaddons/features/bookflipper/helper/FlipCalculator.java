@@ -26,6 +26,9 @@ public class FlipCalculator {
     private final Supplier<Inputs> inputs;
     private final java.util.function.LongSupplier now;
     private boolean running;
+    private long requestedAt;
+    private String lastProblem;
+    public String lastProblem(){return lastProblem;}
     private int generation;
     private CompletableFuture<JsonObject> request;
     private List<FlipItem> flipItemsList = List.of();
@@ -47,8 +50,8 @@ public class FlipCalculator {
     }
 
     public void Refresh() {
-        if (running) return;
-        running = true;
+        if (isRunning()) return;
+        running = true;requestedAt=now.getAsLong();lastProblem=null;
         flipItemsList = List.of();
         int run = generation;
         try {
@@ -64,7 +67,7 @@ public class FlipCalculator {
                     TradingSafety.sourceTime(root, now.getAsLong());
                     flipItemsList = calculate(root.getAsJsonObject("products"), books, tax, minimumProfit);
                 } catch (Exception failure) {
-                    LOGGER.warn("Bazaar fetch failed; retrying later", failure);
+                    lastProblem="Bazaar quote request failed; retrying";LOGGER.warn("Bazaar fetch failed; retrying later", failure);
                 } finally {
                     running = false;
                     request = null;
@@ -73,12 +76,12 @@ public class FlipCalculator {
         } catch (Exception failure) {
             running = false;
             request = null;
-            LOGGER.warn("Bazaar fetch failed; retrying later", failure);
+            lastProblem="Bazaar quote request failed; retrying";LOGGER.warn("Bazaar fetch failed; retrying later", failure);
         }
     }
 
     public void reset() {
-        generation++;
+        lastProblem=null;generation++;
         if (request != null) request.cancel(true);
         request = null;
         running = false;
@@ -86,6 +89,11 @@ public class FlipCalculator {
     }
 
     public boolean isRunning() {
+        if(running && now.getAsLong()-requestedAt>=15000) {
+            generation++;var pending=request;request=null;running=false;
+            lastProblem="Bazaar quote request timed out; retrying";
+            if(pending!=null)pending.cancel(true);
+        }
         return running;
     }
 

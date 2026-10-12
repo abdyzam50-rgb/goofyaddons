@@ -34,7 +34,7 @@ final class BookCombine {
         if (!ctx.screenOpen() && ctx.clock().shouldFire()) ctx.actions().command("anvil");
         if (!ctx.containerNameCheck("Anvil")) return;
         ctx.clock().start(ctx.delay());
-        if (!ctx.scanner().isMenuLoaded(8) || !ctx.clock().shouldFire()) return;
+        if (!ctx.inventoryMemory().fresh(-2) || !ctx.clock().shouldFire()) return;
         int previousRetries = combiner.actionRetries();
         combiner.observedSkills(ctx.services().observedSkills());
         var result = combiner.tick(task, ctx.menu(), ctx.actions(), ctx.now());

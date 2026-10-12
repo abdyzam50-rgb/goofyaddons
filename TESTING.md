@@ -1,3 +1,21 @@
+### 0.2.94 Book startup and quote-wait recovery
+
+The supplied launcher log showed Started then Stopped with no book exception;
+it did not identify the exact live wait. Inspection reproduced a separate book
+startup/storage defect: storage was considered visible only when ordinary slot
+8 was nonempty. Empty or sparse pages could stall. Startup and storage now use
+the existing stable, complete inventory observations; combining likewise uses
+confirmed anvil observations instead of slot 8. Loading placeholders remain
+excluded from storage recognition.
+
+Book selection and outbid-monitor requests now expire after 15 seconds and
+retry without adopting a late response. HUD activity distinguishes fetching,
+calculator selection, no configured routes and no feasible profitable routes.
+Regression coverage verifies sparse-page startup and retrying stalled requests.
+1356 Java tests passed; release build succeeded. Live verification is still
+needed. The launcher texture-signature warnings were not treated as a trading
+diagnosis.
+
 ### 0.2.93 Crafted-output space and sale lots
 
 The export stalled after 29/40 Dwarven Compactors because storage space-making
@@ -170,7 +188,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.93 JAR](dist/astar-client-0.2.93-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.94 JAR](dist/astar-client-0.2.94-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

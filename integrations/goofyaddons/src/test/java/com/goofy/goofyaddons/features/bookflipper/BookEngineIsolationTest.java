@@ -14,6 +14,18 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BookEngineIsolationTest {
+    @Test void emptyStorageSlotEightDoesNotBlockStartupScanning()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        field(engine,"state",BazaarFlipper.State.STARTUP_CHECK);
+        for(int page=1;page<=2;page++) {
+            var original=menu(page);var slots=new ArrayList<>(original.slots());slots.set(8,SlotView.empty(8,false,8));
+            world.showing(new MenuSnapshot(page,original.title(),true,slots));engine.onTick();world.advance(200);engine.onTick();
+            world.advance(100);
+        }
+        assertEquals("STARTUP_BAZAAR_CHECK",engine.diagnosticState().get("state"));
+        assertNull(services.pauseReason);assertTrue(engine.isRunning());
+    }
     private static final Book BOOK=new Book("ENCHANTMENT_ULTIMATE_WISDOM",1,5,"Wisdom",0,0);
     private static class Store implements BookOrderRepository {
         List<BookPosition> data=List.of();int reads,writes,backups;

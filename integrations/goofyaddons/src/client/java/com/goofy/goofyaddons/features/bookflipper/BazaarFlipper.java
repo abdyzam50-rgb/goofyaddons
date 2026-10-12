@@ -207,6 +207,13 @@ public class BazaarFlipper implements Feature {
         if (claim.pendingBuy() != null) return "Verifying book claim";
         if(recoveryAwaitQuotes)return "Waiting for fresh quotes to resume saved books";
         if(state==State.RECOVERY_CHECK && recoveryCheck!=null)return recoveryCheck.progress();
+        if(state==State.FETCHING) {
+            if(settings().automaticSelection())return services.automaticReport()==null?"Books: waiting for calculator selection":"Books: no feasible profitable route";
+            if(flipCalculator.isRunning())return "Books: fetching Bazaar quotes";
+            if(settings().books().isEmpty())return "Books: no routes configured";
+            if(flipCalculator.lastProblem()!=null)return "Books: "+flipCalculator.lastProblem();
+            return "Books: no profitable route meets settings and unlocks";
+        }
         return "Books: " + state.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
     }
 
@@ -440,7 +447,7 @@ public class BazaarFlipper implements Feature {
         if (watchdog.stalled(progress, canYield(), world.now())) {
             safetyHalt("Book transaction stopped making progress; positions preserved."); return;
         }
-        if(observedMenu.loadingContents() && !world.signEditorOpen())return;
+        if(observedMenu!=null && observedMenu.loadingContents() && !world.signEditorOpen())return;
         if (!claim.verifyBuy(session)) return;
         if (isStartUpCheckCompleted && !bookCombiner.pending() && !bookTransfer.pending()
                 && claim.pendingSale() == null && placement.submittedTask() == null && !reconcileBookLocations(visiblePage)) return;
@@ -514,7 +521,7 @@ public class BazaarFlipper implements Feature {
 
                 if (containerNameCheck("Ender Chest") || containerNameCheck("Jumbo Backpack") || containerNameCheck("Greater Backpack"))
                     clock.start(randomizer());
-                if ((containerNameCheck("Ender Chest") || containerNameCheck("Jumbo Backpack") || containerNameCheck("Greater Backpack")) && inventoryScanner.isMenuLoaded(8) && clock.shouldFire()) {
+                if ((containerNameCheck("Ender Chest") || containerNameCheck("Jumbo Backpack") || containerNameCheck("Greater Backpack")) && inventoryMemory.fresh(visiblePage) && visiblePage>0 && clock.shouldFire()) {
                     if (!BookTransfer.pageMatches(
                             menuTitle(), checkedFirstPage ? settings().secondPage() : settings().firstPage())) {
                         safetyHalt("Startup storage page differs or is unsupported; no book holdings adopted.");
@@ -740,7 +747,7 @@ public class BazaarFlipper implements Feature {
     }
 
     private int visibleStoragePage(com.goofy.goofyaddons.menu.MenuSnapshot menu) {
-        if (menu == null || !menu.loaded(8)) return 0;
+        if (menu == null || menu.title()==null || menu.loadingContents()) return 0;
         if (BookTransfer.pageMatches(menu.title(),settings().firstPage())) return 1;
         if (BookTransfer.pageMatches(menu.title(),settings().secondPage())) return 2;
         return 0;

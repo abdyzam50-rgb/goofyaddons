@@ -21,6 +21,7 @@ public class BazaarMonitor {
     private boolean running;
     private static final long DURATION = 20000;
     private long startMs;
+    private long requestedAt;
     private long lastUpdated;
     private int generation;
     private CompletableFuture<JsonObject> request;
@@ -61,7 +62,12 @@ public class BazaarMonitor {
     }
 
     public void onTick() {
-        if (!running || monitorItemList.isEmpty() || request != null) return;
+        if(!running)return;
+        if(request!=null && now.getAsLong()-requestedAt>=15000) {
+            generation++;var pending=request;request=null;pending.cancel(true);
+            LOGGER.warn("Book order quote request timed out; monitoring will retry");
+        }
+        if (monitorItemList.isEmpty() || request != null) return;
         if (now.getAsLong() - startMs < DURATION) return;
         startMs = now.getAsLong();
         refresh();
@@ -84,6 +90,7 @@ public class BazaarMonitor {
         if (!running || request != null) return;
         int run = generation;
         try {
+            requestedAt=now.getAsLong();
             request = fetch.get();
             request.whenComplete((root, error) -> clientThread.execute(() -> {
                 if (run != generation || !running) return;
