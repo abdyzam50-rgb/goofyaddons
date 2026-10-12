@@ -194,6 +194,44 @@ class ProductionRunStorageTest {
         assertEquals(64,ProductionStorage.Move.inventoryCount(env.world.menu(),"OUTPUT"));
         assertEquals(0,env.storage.stored(run.jobId(),"INPUT"));assertEquals(0,env.world.stored("ec 1","INPUT"));
     }
+    @Test void fullDwarvenInventoryParksExcessInputsAndCompletesWithoutBuyingAgain()throws Exception {
+        var env=new Env(){
+            public Map<String,Integer> unlocks(){return Map.of("hotm",10);}
+            public MenuSnapshot menu(){
+                var view=world.menu();var slots=new ArrayList<>(view.slots());
+                for(int i=0;i<slots.size();i++) {
+                    var s=slots.get(i);if(!"PERSONAL_COMPACTOR_7000".equals(s.customId()))continue;
+                    var metadata=new ItemMetadata(null,null,null,null,null,null,null,"minecraft:dropper",new CompactorData(7000,true,Map.of()));
+                    slots.set(i,new SlotView(s.index(),s.inPlayerInventory(),s.containerSlot(),s.empty(),s.customName(),s.hoverName(),s.loreLines(),s.customId(),s.enchantments(),s.count(),s.maxStackSize(),metadata));
+                }
+                return new MenuSnapshot(view.containerId(),view.title(),view.cursorEmpty(),slots);
+            }
+        };
+        env.world.hold(0,"PERSONAL_COMPACTOR_7000",1);env.world.hold(1,"AUTO_SMELTER",1);
+        env.world.hold(2,"SKYBLOCK_MENU",1);env.world.hold(3,"AUTO_SMELTER",1);
+        for(int i=4;i<16;i++)env.world.hold(i,"ENCHANTED_MITHRIL",i==15?32:64);
+        for(int i=16;i<36;i++)env.world.hold(i,"SUPER_COMPACTOR_3000",1);
+        var catalog=RecipeCatalog.instance();var recipe=catalog.forOutput("DWARVEN_COMPACTOR").getFirst();
+        var run=ProductionRun.startCraft(env,catalog,recipe,20,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.INSTANT_INSTANT);
+        for(int i=0;i<18;i++)env.world.put("ec 1",i,"AUTO_SMELTER",1);
+        for(int i=18;i<24;i++)env.world.put("ec 1",i,"ENCHANTED_MITHRIL",64);
+        env.storage.move(run.jobId(),"ec 1","AUTO_SMELTER",18);
+        env.storage.move(run.jobId(),"ec 1","ENCHANTED_MITHRIL",384);
+        assertEquals(0,env.menu().emptyInventorySlots());
+        long now=1000;advanceTo(run,Stage.PROCESS,new long[]{now});
+        for(int i=0;i<700&&run.stage()!=Stage.SELL;i++) {
+            assertEquals(Step.PENDING,run.tick(true,now+=500),run.reason());
+            if(env.craftQueued) {
+                int batches=env.crafts.getLast();env.take("AUTO_SMELTER",batches);env.take("SUPER_COMPACTOR_3000",batches);
+                env.take("ENCHANTED_MITHRIL",56*batches);env.give("DWARVEN_COMPACTOR",batches);env.craftQueued=false;
+                env.jobs.put(env.jobs.find("craft-"+(env.crafts.size()-1)).orElseThrow().withState(ProductionJobs.State.DONE,null));
+            }
+        }
+        assertEquals(Stage.SELL,run.stage(),run.reason());assertEquals(20,env.crafts.stream().mapToInt(Integer::intValue).sum());
+        assertEquals(20,env.world.inventory("DWARVEN_COMPACTOR"));assertTrue(env.orders.isEmpty());
+        assertTrue(env.world.commands.stream().noneMatch(c->c.startsWith("bz ")||c.equals("pickupstash")));
+        assertEquals(1,env.world.inventory("PERSONAL_COMPACTOR_7000"));assertEquals(1,env.world.inventory("SKYBLOCK_MENU"));
+    }
 
     @Test void fullStorageWaitsBetweenAttemptsAndAsksForReviewAfterSeveral()throws Exception {
         var env=new Env();var catalog=catalog();long[] clock={1000};

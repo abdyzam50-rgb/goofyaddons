@@ -133,6 +133,15 @@ No progress, full/unreadable storage, changed ownership or mismatched quantities
 still stop for review. A submitted confirmation failure cannot clear the intent
 and silently start another purchase.
 
+After procurement, a full main inventory also triggers storage preparation
+before crafting. The run parks enough movable inputs to reserve space for one
+complete batch, whole-stack withdrawals and output, then recomputes its crafting
+round from live inventory and its existing storage ownership. It keeps the same
+parent, cost and inputs, and never returns to buying just to make crafting room.
+Full storage or unavailable movable items use the existing bounded retry/review
+path. This resolves the 0.2.84 Dwarven run that acquired all twenty batches but
+could not begin crafting with zero empty inventory slots.
+
 ## Remaining AH pipeline work
 
 AH crafts appear in the plan with an explicit settlement blocker. The existing

@@ -1,5 +1,19 @@
 # Testing the combined client
 
+### 0.2.85 Full-inventory crafting handoff
+
+The storage-backed round planner now makes room before crafting when no batch
+fits. A regression recreates twenty Dwarven inputs across a completely full main
+inventory and existing storage ownership, including a readable cleared Personal
+Compactor. It verifies all twenty crafts finish, no Bazaar or stash purchase
+command is issued, and the compactor/menu stay in inventory. Existing storage
+and stash checks remain passing.
+
+Validation: 1,334 Java tests passed with zero failures, errors or skips (1,207
+client and 127 shared trading tests); the focused storage suite passed seven
+tests. The 0.2.85-BETA release build succeeded. Live Minecraft validation remains
+for the next user run. Saved interrupted jobs still require review after restart.
+
 ### 0.2.84 Pipeline purchase space and stash delivery
 
 Validated on `claude/project-thread-wmox9w`: 1,333 Java tests passed with zero
@@ -20,7 +34,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.84 JAR](dist/astar-client-0.2.84-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.85 JAR](dist/astar-client-0.2.85-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
