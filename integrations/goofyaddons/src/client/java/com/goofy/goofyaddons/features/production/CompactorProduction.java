@@ -110,7 +110,8 @@ final class CompactorProduction {
         }
         if(phase==Phase.INSTALL||phase==Phase.ENABLE) {
             if(!owns)return pending();
-            if(!installationConserved())return uncertain("Inventory changed while installing the compactor filter");
+            if(phase==Phase.INSTALL&&!clicked&&!installationConserved())
+                return now>deadline?uncertain("Inventory changed before compactor filter installation"):pending();
             var controls=CompactorClearance.controls(env.menu());
             if(controls==null)return now>deadline?uncertain("Personal Compactor controls did not load"):pending();
             if(controls.tier()!=device.metadata().compactor().tier())return uncertain("Wrong Personal Compactor menu opened");
@@ -127,7 +128,7 @@ final class CompactorProduction {
             }
             if(!controls.recipes().equals(Map.of(0,recipe.outputId())))return uncertain("Personal Compactor filter changed while enabling");
             if(controls.active()) {
-                if(now<settled)return pending();intent("Closing configured Personal Compactor");env.actions().closeMenu();phase=Phase.CLOSE;deadline=now+8000;return pending();
+                if(now<settled)return pending();intent("Closing configured Personal Compactor");env.actions().closeMenu();phase=Phase.CLOSE;deadline=now+8000;settled=now+300;return pending();
             }
             if(clicked)return now>deadline?uncertain("Personal Compactor activation was not acknowledged"):pending();
             var toggle=env.menu().slots().stream().filter(s->!s.inPlayerInventory()&&"Compactor Currently OFF!".equals(com.goofy.goofyaddons.utils.Chat.strip(s.hoverName()))&&s.hasLoreLine("Click to toggle!")).findFirst().orElse(null);
@@ -136,6 +137,12 @@ final class CompactorProduction {
         }
         if(phase==Phase.CLOSE) {
             if(env.menu().title()!=null)return now>deadline?uncertain("Personal Compactor menu did not close"):pending();
+            if(now<settled)return pending();
+            if(!installationConserved()) {
+                if(now<=deadline)return pending();
+                env.event("ERROR","production.compactor_install_counts",Map.of("expected",installedInventory,"observed",inventory(),"output",recipe.outputId()));
+                return uncertain("Compactor setup counts did not reconcile after closing; expected "+(installedInventory.getOrDefault(input,0)+ratio*installedInventory.getOrDefault(recipe.outputId(),0))+" raw-equivalent units, observed "+equivalent());
+            }
             phase=Phase.BUY;deadline=now+8000;return pending();
         }
         if(phase==Phase.BUY) {

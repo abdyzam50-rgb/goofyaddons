@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CompactorProductionTest {
     @TempDir Path dir;
     class Env implements ProductionRun.Environment,GameActions {
-        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall,cursorWhenQueued;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
+        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall,cursorWhenQueued,laggedOutputs;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
         final List<String> effects=new ArrayList<>();
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
@@ -35,7 +35,7 @@ class CompactorProductionTest {
             var m=CompactorClearanceTest.menu(open?"Personal Compactor 7000":null,active,filters,filters);
             var slots=new ArrayList<>(m.slots());
             if(raw>0)slots.set(36,new SlotView(36,true,9,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,raw,64));
-            if(outputs>0)slots.set(37,new SlotView(37,true,10,false,"Enchanted Gold","Enchanted Gold",List.of(),"ENCHANTED_GOLD",null,outputs,64));
+            if(outputs>0)slots.set(37,new SlotView(37,true,10,false,"Enchanted Gold","Enchanted Gold",List.of(),"ENCHANTED_GOLD",null,laggedOutputs?Math.max(1,outputs-1):outputs,64));
             if(cursorWhenQueued&&queued)return new MenuSnapshot(0,"Craft Item",false,slots,
                 new SlotView(-1,false,-1,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,1,64));
             return new MenuSnapshot(open?1:0,m.title(),true,slots);
@@ -87,6 +87,29 @@ class CompactorProductionTest {
         env.finishSeed();
         assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,2400).step());
         assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,2600).step());assertEquals(1,env.opens);
+    }
+
+    @Test void filterAcknowledgementClosesMenuBeforeReconcilingLaggedConvertedOutputs()throws Exception {filterReceiptRecovery(true);}
+    @Test void permanentlyMissingConvertedOutputsNeverAuthorizeAnotherPurchase()throws Exception {filterReceiptRecovery(false);}
+    private void filterReceiptRecovery(boolean resolves)throws Exception {
+        var env=new Env();env.active=true;env.convertOnInstall=true;
+        var r=RecipeCatalog.instance().forOutput("ENCHANTED_GOLD").getFirst();
+        var bulk=new CompactorProduction(env,r,2,CompactorProduction.available(env.menu()),(reason,cost)->{});
+        for(long now=1000;now<6000;now+=500){
+            var result=bulk.tick(true,now);assertEquals(ProductionLoop.Step.PENDING,result.step(),result.reason());
+            if(env.queued)env.finishSeed();
+            if(env.filters.size()==1&&env.open)env.laggedOutputs=true;
+            if(!env.open&&env.filters.size()==1)break;
+        }
+        assertFalse(env.open,"Close the acknowledged filter GUI even while output packets lag");assertTrue(env.laggedOutputs);
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,6500).step());
+        if(resolves)env.laggedOutputs=false;
+        var result=ProductionLoop.Outcome.PENDING;
+        for(long now=7000;now<20000&&result.step()==ProductionLoop.Step.PENDING;now+=500)result=bulk.tick(true,now);
+        assertEquals(resolves?ProductionLoop.Step.DONE:ProductionLoop.Step.UNCERTAIN,result.step(),result.reason());
+        assertEquals(resolves,env.filters.isEmpty());assertEquals(2,env.outputs);
+        assertTrue(env.effects.stream().noneMatch(e->e.startsWith("bz")),"Never buy while setup counts are short");
+        if(!resolves)assertTrue(result.reason().contains("raw-equivalent"));
     }
 
     @Test void unacknowledgedInstallationIsNotClickedTwiceAndKeepsSeed()throws Exception {

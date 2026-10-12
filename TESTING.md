@@ -1,3 +1,5 @@
+Compactor filter installation now acknowledges the observed filter and closes its GUI before reconciling converted inventory counts. Allows up to eight seconds for staggered input/output updates; no further purchase occurs until the original raw-equivalent baseline and unrelated items reconcile. Persistent mismatch records expected/observed counts and remains REVIEW.
+
 Compactor production now waits for the delegated seed craft while that child owns the cursor/grid. The parent checks cursor safety only after the craft finishes; it cannot open the compactor or issue clicks during the child. Regression reproduces an occupied Gold cursor across multiple child ticks. Fixes diagnostics-1791836767363.
 
 Personal Compactor production supports single-input 160:1 enchanted recipes with instant-buy strategies and a readable hotbar device. Clears old filters, buys an inventory-sized seed lot, crafts one seed, installs/enables its filter once, proves later purchases by raw-equivalent input/output counts and purse debit, then clears the filter before sale. Mixed recipes and buy orders keep the existing path. Craft run/settings/pipeline limits are now 1–1024; child craft jobs remain at most 64 and purchases remain inventory-sized. Existing maximum-batch defaults are preserved. Live filter installation still requires in-game verification.
@@ -10,7 +12,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.105 Storage destination planning
+### 0.2.106 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -284,7 +286,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.105 JAR](dist/astar-client-0.2.105-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.106 JAR](dist/astar-client-0.2.106-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
