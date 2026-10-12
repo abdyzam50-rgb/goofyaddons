@@ -22,7 +22,7 @@ public final class CraftingFeature implements Feature {
     public boolean queued(){return recipe!=null;}
     /** The journal id of the most recently queued job, for callers that follow it. */
     public String jobId(){return jobId;}
-    public String activity(){return recipe==null?"No craft queued":(executor.outputCapacityWaiting()?"Waiting for output stack size: ":executor.quickCrafting()?"Quick crafting ":"Crafting ")+RecipeCatalog.instance().name(recipe.outputId())+" · "+remaining+" batches remaining"+(compactorStatus==null?"":" · "+compactorStatus);}
+    public String activity(){return recipe==null?"No craft queued":(executor.recovering()?"Reconciling crafting inventory: ":executor.outputCapacityWaiting()?"Waiting for output stack size: ":executor.quickCrafting()?"Quick crafting ":"Crafting ")+RecipeCatalog.instance().name(recipe.outputId())+" · "+remaining+" batches remaining"+(compactorStatus==null?"":" · "+compactorStatus);}
     public Set<String> lockedProducts(){if(recipe==null)return Set.of();var ids=new HashSet<>(recipe.ingredients().keySet());ids.add(recipe.outputId());return Set.copyOf(ids);}
     private ProductionJobs jobs()throws java.io.IOException {
         if(jobs==null) {
@@ -114,11 +114,11 @@ public final class CraftingFeature implements Feature {
                 jobs().put(jobs().find(jobId).orElseThrow().withState(ProductionJobs.State.PROCESSING,null));
                 opening=true;openedAt=now;nextCommand=0;
             }
-            if(menu==null || menu.title()==null) {
+            if(!executor.recovering() && (menu==null || menu.title()==null)) {
                 if(now-openedAt>25000){fail("Craft Item menu did not open");return;}
                 if(now>=nextCommand){nextCommand=now+8000;actions.command("craft");}return;
             }
-            if(!"Craft Item".equals(Chat.strip(menu.title()))){fail("Crafting menu was replaced; inventory retained");return;}
+            if(!executor.recovering() && !"Craft Item".equals(Chat.strip(menu.title()))){fail("Crafting menu was replaced; inventory retained");return;}
             // Hypixel answers a click only when it disagrees with the client's prediction, so the
             // client's menu is the state to act on; a rejected click reverts it, and the executor
             // re-reads it after a settle delay before every next click.

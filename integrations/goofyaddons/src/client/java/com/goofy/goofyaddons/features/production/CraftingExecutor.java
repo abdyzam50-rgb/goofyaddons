@@ -32,11 +32,16 @@ public final class CraftingExecutor {
     private boolean submitted,quick,buffered;
     private int[] cellLimits;
     private String failure;
+    private int recoveryPhase,recoveryAttempts;
+    private long recoveryAt,recoveryNext;
+    private MenuSnapshot recoverySent,recoveryStable;
+    public boolean recovering(){return recoveryPhase!=0;}
+
     public String failure(){return failure;}
     public boolean busy(){return recipe!=null;}
     public boolean quickCrafting(){return recipe!=null && quick;}
     public boolean outputCapacityWaiting(){return capacityWaitRecipe!=null;}
-    public void reset(){recipe=null;sent=null;before=null;submitted=false;quick=false;buffered=false;cellLimits=null;actionDrag=null;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;resultSince=0;capacityWaitRecipe=null;capacityWaitSince=0;logicalAttempts.clear();}
+    public void reset(){recoveryPhase=0;recoveryAttempts=0;recoverySent=null;recoveryStable=null;recipe=null;sent=null;before=null;submitted=false;quick=false;buffered=false;cellLimits=null;actionDrag=null;source=-1;splitTargets.clear();failure=null;inconsistentSince=0;resultSince=0;capacityWaitRecipe=null;capacityWaitSince=0;logicalAttempts.clear();}
     public void slowdown(long now) {
         if(recipe==null)return;
         settleMs=Math.min(500,settleMs+100);cooldownUntil=Math.max(cooldownUntil,now+1000);
@@ -50,6 +55,7 @@ public final class CraftingExecutor {
     }
     public Result tick(ProductionRecipe wanted,int requestedBatches,MenuSnapshot menu,GameActions actions,Map<String,Integer> skills,Map<String,Integer> unlocks,long now) {
         if(failure!=null)return Result.BLOCKED;
+        if(recovering()){if(!wanted.equals(recipe))return block("Craft recovery owner changed; items retained");return recover(menu,actions,now);}
         if(requestedBatches<1)return block("No craft batches requested");
         if(recipe==null){String reason=com.goofy.goofyaddons.features.access.RouteRequirements.craft(wanted.requirement(),skills,unlocks);if(reason!=null)return block(reason);}
         var compactorConflict=PersonalCompactors.conflict(menu,wanted.ingredients().keySet(),RecipeCatalog.instance());
@@ -130,7 +136,14 @@ public final class CraftingExecutor {
         }
         if(!conserved(menu,submitted||buffered)) {
             if(inconsistentSince==0)inconsistentSince=now;
-            if(now-inconsistentSince>=1500)return block("Crafting inventory/grid changed unexpectedly; items retained");
+            if(now-inconsistentSince>=1500) {
+                if(menu.cursorEmpty() && Arrays.stream(GRID).allMatch(slot->empty(menu.slot(slot))))
+                    return block("Crafting inventory/grid changed unexpectedly; items retained");
+                if(recoveryAttempts++>=1)return block("Crafting counts changed again after reopening; items retained");
+                recoveryPhase=1;recoveryAt=now;recoveryNext=now;recoverySent=null;recoveryStable=null;
+                com.goofy.goofyaddons.diagnostics.Diagnostics.event("WARN","production.craft_recovery_start",Map.of("recipe",recipe.key(),"container",container,"baseline",before,"observed",ownedCounts(menu)));
+                return Result.WAITING;
+            }
             return Result.WAITING;
         }
         inconsistentSince=0;
@@ -382,6 +395,61 @@ public final class CraftingExecutor {
         for(var e:recipe.ingredients().entrySet())if(counts.getOrDefault(e.getKey(),0)!=before.getOrDefault(e.getKey(),0)-e.getValue()*batches)return false;
         return true;
     }
+    /** Clear owned recipe items once, then reconcile a newly opened server container. */
+    private Result recover(MenuSnapshot menu,GameActions actions,long now) {
+        if(now-recoveryAt>25000)return block("Craft menu recovery timed out; inspect cursor, grid and inventory");
+        if(now<recoveryNext || menu==null || menu.loadingContents())return Result.WAITING;
+        if(recoveryPhase==1) {
+            if(menu.containerId()!=container || !"Craft Item".equals(Chat.strip(menu.title())))return block("Craft recovery menu changed before items were returned");
+            if(recoverySent!=null) {
+                if(sameContents(recoverySent,menu)) {
+                    if(now-recoveryNext>2000)return block("Craft recovery transfer was not acknowledged; items retained");
+                    return Result.WAITING;
+                }
+                recoverySent=null;recoveryNext=now+Math.max(150,actionDelay.getAsInt());return Result.WAITING;
+            }
+            if(!menu.cursorEmpty()) {
+                var cursor=menu.carried();
+                if(cursor==null || !recipe.ingredients().containsKey(cursor.bazaarProductId()) && !recipe.outputId().equals(cursor.bazaarProductId()))return block("Craft recovery found an unrelated cursor item; items retained");
+                var target=menu.slots().stream().filter(v->v.inPlayerInventory()&&v.containerSlot()<36&&v.empty()).findFirst().orElse(null);
+                if(target==null)return block("Free an inventory slot to return the crafting cursor item");
+                recoverySent=menu;recoveryNext=now+Math.max(150,actionDelay.getAsInt());actions.click(target.index(),false);return Result.WAITING;
+            }
+            for(int i=0;i<GRID.length;i++) {
+                var item=menu.slot(GRID[i]);if(empty(item))continue;
+                var need=recipe.grid().get(i);
+                if(need==null || !need.id().equals(item.bazaarProductId()))return block("Craft recovery found an unrelated grid item; items retained");
+                if(menu.emptyInventorySlots()<1)return block("Free inventory space to return crafting grid ingredients");
+                recoverySent=menu;recoveryNext=now+Math.max(150,actionDelay.getAsInt());actions.click(GRID[i],true);return Result.WAITING;
+            }
+            recoveryPhase=2;recoveryNext=now+150;actions.closeMenu();return Result.WAITING;
+        }
+        if(recoveryPhase==2) {
+            if(menu.title()!=null)return Result.WAITING;
+            recoveryPhase=3;recoveryNext=now+150;actions.command("craft");return Result.WAITING;
+        }
+        if(menu.title()==null)return Result.WAITING;
+        if(!"Craft Item".equals(Chat.strip(menu.title())) || menu.containerId()==container)return block("Craft recovery did not receive a new crafting menu");
+        if(!reusableMenu(menu))return block("Reopened craft menu has grid or cursor items; inspect before continuing");
+        if(recoveryStable==null || !sameContents(recoveryStable,menu)) {
+            recoveryStable=menu;recoveryNext=now+300;return Result.WAITING;
+        }
+        if(!conserved(menu,true)) {
+            com.goofy.goofyaddons.diagnostics.Diagnostics.event("ERROR","production.craft_recovery_mismatch",Map.of("recipe",recipe.key(),"baseline",before,"observed",ownedCounts(menu)));
+            return block("Reopened crafting counts do not reconcile; inspect ingredients and outputs");
+        }
+        int made=convertedBatches(menu);
+        com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.craft_recovery_verified",Map.of("recipe",recipe.key(),"completed",made,"remaining",batchCount-made));
+        recoveryPhase=0;recoverySent=null;recoveryStable=null;sent=null;inconsistentSince=0;
+        if(made>0){lastCompletedBatches=made;reset();return Result.CRAFTED;}
+        container=menu.containerId();submitted=false;next=now;source=-1;splitTargets.clear();logicalAttempts.clear();
+        return Result.WAITING;
+    }
+    private Map<String,Integer> ownedCounts(MenuSnapshot menu) {
+        var counts=inventory(menu);for(int slot:GRID)add(counts,menu.slot(slot));
+        if(!menu.cursorEmpty())add(counts,menu.carried());return counts;
+    }
+
     private int convertedBatches(MenuSnapshot menu) {
         int delta=inventory(menu).getOrDefault(recipe.outputId(),0)-before.getOrDefault(recipe.outputId(),0);
         return delta>=0 && delta%recipe.outputCount()==0?delta/recipe.outputCount():-1;
