@@ -40,7 +40,19 @@ public final class AccountUnlocks {
             .thenApply(response->parseResponse(response.statusCode(),response.body()));
     }
     static Response parseResponse(int status,String body) {
-        try{return new Response(status,JsonParser.parseString(body).getAsJsonObject());}
+        try{
+            var parsed=JsonParser.parseString(body).getAsJsonObject();
+            // Older deployed collectors returned only this fixed public message.
+            // Classify it without ever displaying arbitrary response/error text.
+            if(status==502 && !parsed.has("failureCode")) {
+                String error=safeString(parsed,"error");
+                for(int upstream:new int[]{401,403})if(error.equals("Hypixel rejected profile access (HTTP "+upstream+"). Check the Worker HYPIXEL_API_KEY and its Hypixel application permissions")) {
+                    parsed.addProperty("failureCode",upstream==403?"HYPIXEL_FORBIDDEN":"HYPIXEL_UNAUTHORIZED");
+                    parsed.addProperty("upstreamService","HYPIXEL");parsed.addProperty("upstreamStatus",upstream);
+                }
+            }
+            return new Response(status,parsed);
+        }
         catch(RuntimeException invalid){
             // A gateway may return HTML. Preserve its HTTP failure without
             // displaying the body or mistaking it for a successful profile.

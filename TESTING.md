@@ -1,10 +1,12 @@
+Legacy profile Worker error responses now identify Hypixel 401/403 credential rejection instead of displaying only a generic gateway 502. Only the fixed known public error is classified; arbitrary provider text is never displayed. Live curedmc lookup confirmed the deployed Worker is returning Hypixel 403. Update its HYPIXEL_API_KEY secret to restore lookup.
+
 Craft inventory mismatch recovery returns owned cursor/grid ingredients one acknowledged transfer at a time, reopens Craft Item once, and reconciles the stable new container against the original input/output baseline. Verified partial outputs count toward completion; unresolved counts, unrelated items, missing room, or timeouts remain REVIEW. Recovery diagnostics include baseline and observed counts.
 
 Storage scans now exclude GUI controls without a product ID from partial-stack detection. Regression covers an Ender Chest Close button alongside an owned partial input stack, then verifies the real stack still accepts a deposit. Fixes the PROCURE null-pointer failure in diagnostics-1791830123997.
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.102 Storage destination planning
+### 0.2.103 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -278,7 +280,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.102 JAR](dist/astar-client-0.2.102-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.103 JAR](dist/astar-client-0.2.103-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

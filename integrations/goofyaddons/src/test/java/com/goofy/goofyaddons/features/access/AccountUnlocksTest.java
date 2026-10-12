@@ -8,6 +8,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AccountUnlocksTest {
+    @Test void legacyWorkerErrorsIdentifyRejectedHypixelKeysWithoutDisplayingRawErrors() {
+        for(int status:new int[]{401,403}) {
+            var body=new JsonObject();body.addProperty("error","Hypixel rejected profile access (HTTP "+status+"). Check the Worker HYPIXEL_API_KEY and its Hypixel application permissions");
+            var response=AccountUnlocks.parseResponse(502,body.toString());
+            assertEquals(status==403?"HYPIXEL_FORBIDDEN":"HYPIXEL_UNAUTHORIZED",response.body().get("failureCode").getAsString());
+            assertEquals(status,response.body().get("upstreamStatus").getAsInt());
+        }
+        assertFalse(AccountUnlocks.parseResponse(502,"{\"error\":\"private-api-secret\"}").body().has("failureCode"));
+    }
+
     @Test void publicAccountServiceConnectionRetriesAfterFiveSecondsAndRecovers() {
         var clock=new AtomicLong(1000000);var calls=new AtomicLong();
         var account=new AccountUnlocks(uri->calls.incrementAndGet()==1
