@@ -1,3 +1,19 @@
+### 0.2.95 Instant book routes enter the execution pipeline
+
+The export repeatedly selected Sunset I to V using instant buy and sell offer,
+then returned to IDLE with no tasks. TradeBudget still rejected every candidate
+using instant buying or selling, despite the receipt-verified instant executors
+added previously. This obsolete planning filter is removed; capital and occupied
+product constraints still apply.
+
+Regression coverage checks order and instant modes through budget selection,
+including insufficient budget, and verifies an instant-buy recommendation
+creates a task and reserves capital instead of silently returning to empty IDLE.
+Account exclusions are supplied by BookServices so this entry test needs no
+live Fabric filesystem. Existing instant-buy/sale receipt tests remain active.
+1357 Java tests passed; release build succeeded. Live verification remains
+needed.
+
 ### 0.2.94 Book startup and quote-wait recovery
 
 The supplied launcher log showed Started then Stopped with no book exception;
@@ -188,7 +204,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.94 JAR](dist/astar-client-0.2.94-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.95 JAR](dist/astar-client-0.2.95-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

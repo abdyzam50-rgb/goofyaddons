@@ -31,8 +31,7 @@ public final class TradeBudget {
         for (Task task : tasks) owned.add(task.getBook().id());
         List<FlipItem> selected = new ArrayList<>();
         for (FlipItem item : candidates) {
-            // The engine safety-halts on instant buys/sells, so never plan them.
-            if (item.instaBuy() || item.instaSell()) continue;
+            // Instant routes have receipt-verified executors, just like order routes.
             if (owned.contains(item.book().id()) || !Double.isFinite(item.totalCost())
                     || item.totalCost() <= 0 || item.totalCost() > available) continue;
             available -= item.totalCost();

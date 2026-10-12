@@ -61,6 +61,7 @@ public final class BookTraderFactory {
                         c.bookOrderRecheckSeconds,c.maxBookHoldingSeconds,c.maxBookDrawdownPercentage,c.maxBookReprices,c.bookRepriceCooldownSeconds);
             }
             public CapitalManager capital() {return CapitalManager.INSTANCE;}
+            public java.util.Set<String> excludedProducts(){return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded();}
             public BookAccounting accounting() {return accounting;}
             public double purse() {return new ScoreboardUtils().getPurse();}
             public int actionDelay() {return ActionDelay.next();}

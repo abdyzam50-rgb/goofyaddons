@@ -14,6 +14,18 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BookEngineIsolationTest {
+    @Test void profitableInstantBuyProposalCreatesABookTaskInsteadOfReturningToEmptyIdle()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        @SuppressWarnings("unchecked") var candidates=(List<FlipItem>)readField(engine,"flipItemList");
+        candidates.add(new FlipItem(BOOK,1600,100,true,false));
+        var process=BazaarFlipper.class.getDeclaredMethod("processData");process.setAccessible(true);process.invoke(engine);
+        assertEquals("STARTUP_CHECK",engine.diagnosticState().get("state"));
+        assertEquals(1,((List<?>)engine.diagnosticState().get("tasks")).size());assertEquals(1600,services.capital.committed());
+    }
+    private static Object readField(BazaarFlipper engine,String name)throws Exception{
+        var f=BazaarFlipper.class.getDeclaredField(name);f.setAccessible(true);return f.get(engine);
+    }
     @Test void emptyStorageSlotEightDoesNotBlockStartupScanning()throws Exception {
         var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
         var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();

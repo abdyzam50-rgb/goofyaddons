@@ -889,7 +889,7 @@ public class BazaarFlipper implements Feature {
             return;
         }
         if (capital.purchaseSettling()) { state = State.IDLE; return; }
-        var denied=com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded();
+        var denied=services.excludedProducts();
         var eligible=flipItemList.stream().filter(f->!retirementExclusions().contains(f.book().id())
                 && !denied.contains(f.book().getLevel(f.book().level())) && !denied.contains(f.book().getLevel(f.book().sellLevel()))).toList();
         for (FlipItem flipItem : TradeBudget.select(eligible, taskList,

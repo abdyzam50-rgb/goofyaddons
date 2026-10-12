@@ -242,13 +242,14 @@ class TradingRegressionTest {
     }
 
     @Test
-    void instantRoutesAreNeverPlannedBecauseTheEngineRefusesThem() {
+    void instantRoutesArePlannedAlongsideOrderRoutesWithinTheSameBudget() {
         Book other = new Book("ENCHANTMENT_OTHER", 1, 2, "Other", 0, 0);
         Book third = new Book("ENCHANTMENT_THIRD", 1, 2, "Third", 0, 0);
         List<FlipItem> items = List.of(new FlipItem(book, 10, 3, true, false),
                 new FlipItem(other, 10, 2, false, true), new FlipItem(third, 10, 1, false, false));
         List<FlipItem> selected = TradeBudget.select(items, List.of(), 100);
-        assertEquals(List.of(third), selected.stream().map(FlipItem::book).toList());
+        assertEquals(List.of(book,other,third), selected.stream().map(FlipItem::book).toList());
+        assertEquals(1,TradeBudget.select(items,List.of(),10).size());
     }
 
     @Test
