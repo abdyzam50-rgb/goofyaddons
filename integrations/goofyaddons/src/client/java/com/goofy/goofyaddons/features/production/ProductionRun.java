@@ -124,6 +124,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private String saleReceiptId;
     private boolean sellingForSpace;
     private final CompactorClearance compactorClearance=new CompactorClearance();
+    private CompactorProduction compactorProduction;
     /** Which halves of a Bazaar trade test this run does; null for every production run. */
     public enum TradePart { BUY, SELL, BOTH; public boolean buys(){return this!=SELL;} public boolean sells(){return this!=BUY;} }
     private TradePart trade;
@@ -145,7 +146,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if (options.isEmpty()) throw new IllegalArgumentException("No supported " + kind.name().toLowerCase(Locale.ROOT) + " recipe for " + output);
         boolean timed = kind != ProductionRecipe.Kind.CRAFT;
         if (timed && batches != 1) throw new IllegalArgumentException("Forge and Kat runs process one batch");
-        if (!timed && (batches < 1 || batches > 64)) throw new IllegalArgumentException("Craft runs take 1–64 batches");
+        if (!timed && (batches < 1 || batches > 1024)) throw new IllegalArgumentException("Craft runs take 1–1024 batches");
         if (kind == ProductionRecipe.Kind.FORGE && (forgeSlot < 0 || forgeSlot > 6)) throw new IllegalArgumentException("Forge slot must be 1–7");
         if (binPrice < SELL_ON_BAZAAR || binPrice > 1_000_000_000_000L || !Double.isFinite(maximumFee) || maximumFee < 0) throw new IllegalArgumentException("Invalid BIN price or fee");
         var occupied = env.occupied();
@@ -293,7 +294,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         state.put("verifiedEmptyOrderHandoff",verifiedEmptyOrderHandoff);
         state.put("orderActive",orderActive);state.put("orderCostRecorded",orderCostRecorded);
         state.put("waitingForOrderRetry",waitingForOrderRetry);state.put("retryAt",orderRetryAfter);
-        state.put("waitingForProcurement",waitingForProcurement);state.put("compactorInProgress",compactorClearance.inProgress());
+        state.put("waitingForProcurement",waitingForProcurement);state.put("compactorInProgress",compactorClearance.inProgress());if(compactorProduction!=null)state.put("compactorProduction",compactorProduction.diagnostics());
         state.put("ingredientCraftJob",ingredientCraftJob);state.put("craftJob",craftJob);
         state.put("listingJob",listingJob);state.put("workstationJob",workstationJob);
         state.put("instantBuyItem",buying==null?null:buying.productId());state.put("instantBuySubmitted",buying!=null&&buying.submitted());
@@ -305,7 +306,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         try {
             state.put("wantsMenu",wantsMenu());state.put("spendable",env.spendable());
             state.put("procurementBlock",env.procurementBlock());
-            state.put("missingPurchases",preparation().purchases());
+            state.put("missingPurchases",compactorProduction==null?preparation().purchases():compactorProduction.remainingInputs());
             state.put("remainingPurchaseCost",remainingPurchaseCost());state.put("expectedBazaarSale",expectedBazaarSale());
         }catch(RuntimeException unavailable){state.put("observationError",unavailable.getClass().getSimpleName()+": "+unavailable.getMessage());}
         return state;
@@ -313,6 +314,9 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** Products this run must keep away from traders. */
     public Set<String> lockedProducts() {
+        if(compactorProduction!=null&&compactorProduction.active()) {
+            var ids=new HashSet<>(requiredProducts());ids.add(CompactorProduction.LOCK);return Set.copyOf(ids);
+        }
         if(loop!=null && loop.stage()==Stage.SELL && sellInputLocks!=null) {
             var ids=new HashSet<>(sellInputLocks);ids.add(output);return Set.copyOf(ids);
         }
@@ -344,7 +348,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(storing!=null)return true;
         if(orderActive)return env.orderNeedsMenu() || env.storage()!=null && !env.orderAwaitingStorage().isEmpty();
         return switch (loop.stage()) {
-            case PROCURE -> !env.craftQueued() && (compactorClearance.needsMenu(env.menu()) || hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
+            case PROCURE -> compactorProduction!=null?compactorProduction.wantsMenu():!env.craftQueued() && (compactorClearance.needsMenu(env.menu()) || hasReusableCraftMenu() || ingredientCraftJob==null && (buying != null || env.buyingAllowed() && !preparation().purchases().isEmpty()));
             case PROCESS -> trade!=null ? false : kind==ProductionRecipe.Kind.CRAFT ? !env.craftQueued() && (hasReusableCraftMenu() || craftJob==null && craftsInRounds()) : workstationMenuOpen();
             case CLAIM -> workstationMenuOpen();
             case SELL -> binPrice == SELL_ON_BAZAAR || hasReusableCraftMenu() && !env.listingQueued();
@@ -361,6 +365,16 @@ public final class ProductionRun implements ProductionLoop.Ports {
     // ---- Stages ------------------------------------------------------------------------
 
     @Override public Outcome procure(long now) {
+        if(compactorProduction==null && buying==null && !orderActive && ingredientCraftJob==null && env.occupied().contains(CompactorProduction.LOCK))return Outcome.pending("Waiting for another run to finish its Personal Compactor filter");
+        if(compactorProduction!=null) {
+            if(compactorProduction.needsRequirements()) {
+                String requirement=productionRequirement();
+                if(requirement!=null)return Outcome.blocked(requirementReason(requirement));
+            }
+            var outcome=compactorProduction.tick(ownsMenu,now);
+            if(outcome.step()==ProductionLoop.Step.DONE)craftedBatches=batches;
+            return outcome;
+        }
         if(storing!=null)return storageStep(now);
         if(orderActive) {
             var awaiting=env.storage()==null?List.<String>of():env.orderAwaitingStorage();
@@ -441,6 +455,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 default -> { return Outcome.PENDING; }
             }
         }
+        if(env.occupied().contains(CompactorProduction.LOCK))return Outcome.pending("Waiting for another run to finish its Personal Compactor filter");
         // Once a compactor action starts, finish its evidence checks before applying market gates.
         waitingForProcurement=false;
         String marketBlock=compactorClearance.inProgress()?null:env.procurementBlock();
@@ -454,6 +469,19 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(cleared.step()!=ProductionLoop.Step.DONE)return cleared;
         marketBlock=env.procurementBlock();
         if(marketBlock!=null){waitingForProcurement=true;return Outcome.blocked(marketBlock);}
+        if(trade==null && strategy.instantBuy && batches>1 && CompactorProduction.supported(recipe,catalog)
+                && (env.storage()==null || env.storage().stored(jobId).isEmpty())
+                && !env.occupied().contains(output) && recipe.ingredients().keySet().stream().noneMatch(env.occupied()::contains)
+                && env.menu()!=null && ProductionStorage.Move.inventoryCount(env.menu(),output)==0
+                && ProductionStorage.Move.inventoryCount(env.menu(),recipe.ingredients().keySet().iterator().next())<=160*batches) {
+            var device=CompactorProduction.available(env.menu());
+            if(device!=null) {
+                compactorProduction=new CompactorProduction(env,recipe,batches,device,(reason,cost)->{
+                    spent=cost;env.jobs().put(parent().withCost(spent,reason).withState(ProductionJobs.State.PROCESSING,reason));
+                });
+                return compactorProduction.tick(ownsMenu,now);
+            }
+        }
         var compactorConflict=PersonalCompactors.conflict(env.menu(),lockedProducts(),catalog);
         if(compactorConflict!=null)return Outcome.blocked(compactorConflict);
         var preparation=preparation();var missing=preparation.purchases();
@@ -537,6 +565,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     }
 
     @Override public Outcome process(long now) {
+        if(compactorProduction==null && env.occupied().contains(CompactorProduction.LOCK))return Outcome.pending("Waiting for another run to finish its Personal Compactor filter");
         if(trade!=null)return tradeBought();
         if (kind == ProductionRecipe.Kind.CRAFT) {
             if(storing!=null)return storageStep(now);
@@ -759,7 +788,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** Fresh, fee-inclusive ceiling for every still-missing purchase, including base preparations. */
     public Double remainingPurchaseCost() {
-        var basket=ProductionPlanner.purchaseQuote(preparation().purchases(),this::purchaseCost);
+        var basket=ProductionPlanner.purchaseQuote(compactorProduction==null?preparation().purchases():compactorProduction.remainingInputs(),this::purchaseCost);
         return basket.complete()?basket.total():null;
     }
 
@@ -883,7 +912,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     /** Inputs parked in storage are crafted in rounds that fit the inventory. */
     private boolean craftsInRounds() {
-        if(craftedBatches>0 || roundBatches>0)return true;
+        if(batches>64 || craftedBatches>0 || roundBatches>0)return true;
         var storage=env.storage();
         return storage!=null && !storage.stored(jobId).isEmpty();
     }

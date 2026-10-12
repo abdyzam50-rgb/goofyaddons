@@ -196,7 +196,7 @@ export function rankLikeMod({catalog,market,ah,now,budget,minimumProfit,bazaarTa
  if(!(Number.isFinite(budget)&&budget>0)){exclude('No observed spendable budget');return result;}
  if(!market||!('lastUpdated' in market)||!fresh(market.lastUpdated,now)
   ||!Number.isFinite(minimumProfit)||minimumProfit<0||!Number.isFinite(bazaarTax)||bazaarTax<0||bazaarTax>=100
-  ||!Number.isInteger(maxBatches)||maxBatches<1||maxBatches>64||!['BOTH','BAZAAR','AH'].includes(venue)
+  ||!Number.isInteger(maxBatches)||maxBatches<1||maxBatches>1024||!['BOTH','BAZAAR','AH'].includes(venue)
   ||!(strategySetting==='AUTO'||STRATEGIES.includes(strategySetting))){exclude('Fresh Bazaar prices or valid craft settings unavailable');return result;}
  const products=market.products;if(!products||typeof products!=='object'){exclude('Bazaar products unavailable');return result;}
  const auctions=new Map();for(const row of Array.isArray(ah?.rows)?ah.rows:[])if(row&&typeof row.item==='string')auctions.set(row.item,row);
@@ -209,7 +209,7 @@ export function rankLikeMod({catalog,market,ah,now,budget,minimumProfit,bazaarTa
   if(!bz&&!auctions.has(output)){exclude('AH quote unavailable',output);continue;}
   let requirement;
   try{requirement=requirementFor(recipe,dependencies(byOutput,Object.keys(recipe.ingredients)))??null;}catch(e){exclude('Malformed quote or unsupported recipe',output);continue;}
-  const limit=bz?Math.min(64,maxBatches):1,preparations=new Map();
+  const limit=bz?Math.min(1024,maxBatches):1,preparations=new Map();
   for(const strategy of bz?STRATEGIES:['INSTANT_INSTANT'])for(let batches=1;batches<=limit;batches++)try{
    if(bz&&strategySetting!=='AUTO'&&strategy!==strategySetting)continue;
    const [instantBuy,instantSell]=STRATEGY[strategy];
@@ -280,7 +280,7 @@ const topReason=reasons=>Object.entries(reasons??{}).sort((a,b)=>b[1]-a[1])[0]?.
  */
 export function planCrafts({catalog,market,ah,history,now=Date.now(),budget=0,minProfit=10000,maxBatches=64,tax=1.25,requirements={},venue='BOTH',strategy='AUTO',freeSlots=36}){
  if(!market?.success||!fresh(market.lastUpdated,now))return [];
- const ranked=rankLikeMod({catalog,market,ah,now,budget,minimumProfit:minProfit,bazaarTax:tax,maxBatches:Math.max(1,Math.min(64,Math.floor(maxBatches)||1)),venue,strategy,freeSlots,
+ const ranked=rankLikeMod({catalog,market,ah,now,budget,minimumProfit:minProfit,bazaarTax:tax,maxBatches:Math.max(1,Math.min(1024,Math.floor(maxBatches)||1)),venue,strategy,freeSlots,
   requirementFor:recipe=>(requirements[recipe.key]??[]).join('; ')||null});
  const names=catalog.names??{},rows=ranked.routes.map(r=>({pricing:'LIVE',key:r.recipe.key,output:r.recipe.outputId,name:names[r.recipe.outputId]??r.recipe.outputId,batches:r.batches,units:r.recipe.outputCount*r.batches,venue:r.venue,
   strategy:r.strategy,buySell:r.venue==='BAZAAR'?strategyLabel(r.strategy):null,capital:r.capital,profit:r.profit,score:r.score,coinsPerHour:r.score*3600,eligible:r.eligible,reason:r.reason??'',requirement:r.recipe.requirement,

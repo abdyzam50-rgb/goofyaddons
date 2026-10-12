@@ -24,6 +24,8 @@ public final class BazaarInstantBuy {
     private enum Step { OPEN, PRODUCT, AMOUNT, SIGN, CONFIRM, VERIFY, DONE }
 
     private final String productId, name;
+    private String conversionOutput;
+    private int conversionRatio;
     private final BazaarSearch search;
     private final NavigationRetry navigation=new NavigationRetry();
     private final int requested;
@@ -56,6 +58,13 @@ public final class BazaarInstantBuy {
                 || amount < 1 || amount > 71680 || !Double.isFinite(maximumCost) || maximumCost <= 0 || intent == null)
             throw new IllegalArgumentException("Invalid instant buy");
         this.productId = productId; this.name = name; search = new BazaarSearch(productId,name); this.amount = amount; this.requested = amount; this.fill = fill; this.maximumCost = maximumCost; this.intent = intent;
+    }
+
+    /** Credit only exact single-input conversions; the caller owns and verifies the filter. */
+    BazaarInstantBuy withConversion(String output,int inputPerOutput) {
+        if(step!=Step.OPEN || !ProductionRecipe.validId(output) || output.equals(productId) || inputPerOutput<2)
+            throw new IllegalArgumentException("Invalid compactor receipt mapping");
+        conversionOutput=output;conversionRatio=inputPerOutput;return this;
     }
 
     /** Once submitted, verify its outcome before permitting any new market decision. */
@@ -256,6 +265,9 @@ public final class BazaarInstantBuy {
         int total = storedUnits;
         for (var slot : menu.slots())
             if (slot.inPlayerInventory() && slot.containerSlot() < 36 && !slot.empty() && ProductIdentity.matches(slot,productId)) total += slot.count();
+        if(conversionOutput!=null)for(var slot:menu.slots())
+            if(slot.inPlayerInventory()&&slot.containerSlot()<36&&!slot.empty()&&ProductIdentity.matches(slot,conversionOutput))
+                total=Math.addExact(total,Math.multiplyExact(slot.count(),conversionRatio));
         return total;
     }
 

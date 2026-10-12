@@ -20,6 +20,21 @@ class BazaarInstantBuyTest {
     final List<String> intents=new ArrayList<>();
     BazaarInstantBuy buy(double limit){return new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",10,limit,intents::add);}
 
+    @Test void compactorReceiptCountsRawRemainderAndConvertedOutputsWithoutRepeatingPayment() {
+        var buy=new BazaarInstantBuy("GOLD_INGOT","Gold Ingot",390,410,r->intents.add(r)).withConversion("ENCHANTED_GOLD",160);
+        var actions=new RecordingActions();
+        var seed=item(54,"ENCHANTED_GOLD",1);
+        buy.tick(menu(1,"Gold Ingot",item(13,"GOLD_INGOT",1),seed,
+            SlotView.named(10,"Buy Instantly",List.of("Gold Ingot","Price per unit: 1 coins"))),false,actions,5000,1000);
+        buy.tick(menu(2,"How many do you want?",seed,SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,1100);
+        buy.tick(null,true,actions,5000,1200);
+        var converted=menu(3,null,item(54,"ENCHANTED_GOLD",3),item(55,"GOLD_INGOT",70));
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,buy.tick(converted,false,actions,4610,1300),buy.failure());
+        assertEquals(390,buy.spent());assertEquals(1,intents.size());
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,buy.tick(converted,false,actions,4610,1400));
+        assertFalse(actions.serverEffects().contains("command:pickupstash"));
+    }
+
     @Test void buysExactlyOnceAfterRecordingIntentAndProvesItByInventoryAndPurse() {
         var actions=new RecordingActions();var buy=buy(1100);
         assertEquals(BazaarInstantBuy.Result.WAITING,buy.tick(null,false,actions,5000,0));

@@ -66,7 +66,7 @@ public class GoofyConfig {
     public void validate() {
             if(!Set.of("AUTO","ORDER_OFFER","INSTANT_OFFER","ORDER_INSTANT","INSTANT_INSTANT").contains(strategy)
                     ||!Set.of("BOTH","BAZAAR","AH").contains(venue)||!Double.isFinite(maximumCapital)||maximumCapital<0
-                    ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>64||maxActiveCrafts<1||maxActiveCrafts>4
+                    ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>1024||maxActiveCrafts<1||maxActiveCrafts>4
                     ||storagePages==null||useStorage&&com.goofy.goofyaddons.features.production.ProductionStorage.pages(storagePages).isEmpty())
                 throw new IllegalArgumentException("Invalid craft-flip limits");
         }

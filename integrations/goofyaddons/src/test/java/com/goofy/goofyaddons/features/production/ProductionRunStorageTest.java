@@ -13,6 +13,18 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Runs that buy more than the inventory holds park inputs in storage and craft in rounds. */
 class ProductionRunStorageTest {
     @TempDir Path dir;
+    @Test void largerRunUsesSixtyFourBatchChildrenWithoutTruncatingOutput()throws Exception {
+        var env=new Env();var catalog=catalog();
+        for(int i=0;i<6;i++)env.world.put("ec 1",i,"INPUT",64);
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),192,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        env.storage.move(run.jobId(),"ec 1","INPUT",384);long now=1000;
+        for(int i=0;i<1000&&run.stage()!=Stage.SELL;i++){
+            assertEquals(Step.PENDING,run.tick(true,now+=500),run.reason());if(env.craftQueued)env.finishCraft();
+        }
+        assertEquals(Stage.SELL,run.stage(),run.reason());assertEquals(List.of(64,64,64),env.crafts);
+        assertEquals(192,env.world.inventory("OUTPUT"));assertEquals(0,env.storage.stored(run.jobId(),"INPUT"));
+    }
+
     @Test void fortyUnstackableOutputsAreStoredThenSoldInVerifiedInventorySizedLots()throws Exception{outputSpaceRun(false);}
     @Test void fullOutputStorageSellsAVerifiedPartialLotThenContinuesCrafting()throws Exception{outputSpaceRun(true);}
     void outputSpaceRun(boolean full)throws Exception {

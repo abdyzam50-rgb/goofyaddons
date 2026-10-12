@@ -107,11 +107,11 @@ public final class ProductionCommands {
                     }catch(Exception failure){actions.message("Review was not acknowledged: "+failure.getMessage());return 0;}
                 })))
                 .then(ClientCommands.literal("run").then(ClientCommands.argument("output",StringArgumentType.string())
-                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
+                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,1024))
                         .executes(c->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,0,0))
                         .then(sale((c,price,fee)->run(StringArgumentType.getString(c,"output"),ProductionRecipe.Kind.CRAFT,IntegerArgumentType.getInteger(c,"batches"),-1,price,fee))))))
                 .then(ClientCommands.literal("pipeline").then(ClientCommands.argument("output",StringArgumentType.string())
-                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
+                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,1024))
                         .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),null))
                         .then(ClientCommands.argument("strategy",StringArgumentType.word())
                             .executes(c->pipeline(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"),StringArgumentType.getString(c,"strategy")))
@@ -202,7 +202,7 @@ public final class ProductionCommands {
                     .then(ClientCommands.argument("sell",StringArgumentType.word())
                         .executes(c->book(arg(c,"book"),arg(c,"buy"),arg(c,"sell")))))))
             .then(ClientCommands.literal("pipeline").then(ClientCommands.argument("item",StringArgumentType.string())
-                .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
+                .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,1024))
                     .then(ClientCommands.argument("buy",StringArgumentType.word())
                         .then(ClientCommands.argument("sell",StringArgumentType.word())
                             .executes(c->pipeline(arg(c,"item"),IntegerArgumentType.getInteger(c,"batches"),arg(c,"buy")+" "+arg(c,"sell"))))))));

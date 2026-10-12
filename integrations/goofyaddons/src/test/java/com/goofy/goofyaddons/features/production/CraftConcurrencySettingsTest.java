@@ -18,7 +18,8 @@ class CraftConcurrencySettingsTest {
         var old=new com.google.gson.Gson().fromJson("{\"maxBatches\":16}",GoofyConfig.CraftFlips.class);
         assertEquals(16,old.maxBatches);assertEquals("AUTO",old.strategy);assertDoesNotThrow(old::validate);
         old.maxBatches=64;old.strategy="INSTANT_OFFER";assertDoesNotThrow(old::validate);
-        old.maxBatches=65;assertThrows(IllegalArgumentException.class,old::validate);
+        old.maxBatches=1024;assertDoesNotThrow(old::validate);
+        old.maxBatches=1025;assertThrows(IllegalArgumentException.class,old::validate);
         old.maxBatches=64;old.strategy="UNKNOWN";assertThrows(IllegalArgumentException.class,old::validate);
     }
 }

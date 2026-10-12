@@ -62,7 +62,7 @@ final class CraftFlipPlanner {
         if(!Double.isFinite(budget)||budget<=0){exclude(excluded,"No observed spendable budget");return List.of();}
         if(market==null||!market.has("lastUpdated")||!TradingSafety.fresh(market.get("lastUpdated").getAsLong(),now)
                 ||!Double.isFinite(minimumProfit)||minimumProfit<0
-                ||!Double.isFinite(bazaarTax)||bazaarTax<0||bazaarTax>=100||maxBatches<1||maxBatches>64||!Set.of("BOTH","BAZAAR","AH").contains(venue)
+                ||!Double.isFinite(bazaarTax)||bazaarTax<0||bazaarTax>=100||maxBatches<1||maxBatches>1024||!Set.of("BOTH","BAZAAR","AH").contains(venue)
                 ||!Set.of("AUTO","ORDER_OFFER","INSTANT_OFFER","ORDER_INSTANT","INSTANT_INSTANT").contains(strategySetting)){exclude(excluded,"Fresh Bazaar prices or valid craft settings unavailable");return List.of();}
         var products=market.getAsJsonObject("products");if(products==null){exclude(excluded,"Bazaar products unavailable");return List.of();}
         var auctions=new HashMap<String,JsonObject>();
@@ -81,7 +81,7 @@ final class CraftFlipPlanner {
             String requirement=RouteRequirements.craft(recipe.requirement(),skills,unlocks);
             if(requirement==null)requirement=RouteRequirements.product(recipe.outputId(),unlocks);
             if(requirement==null)requirement=RouteRequirements.products(IngredientPreparation.dependencies(catalog,recipe.ingredients().keySet()),unlocks);
-            int limit=bz?Math.min(64,maxBatches):1;
+            int limit=bz?Math.min(1024,maxBatches):1;
             boolean outputHeld=menu.countInInventory(recipe.outputId())>0;
             var preparations=new HashMap<Integer,IngredientPreparation.Plan>();
             for(var strategy:bz?BazaarStrategy.values():new BazaarStrategy[]{BazaarStrategy.INSTANT_INSTANT}) for(int batches=1;batches<=limit;batches++)try {
@@ -123,6 +123,9 @@ final class CraftFlipPlanner {
                     for(var entry:recipe.ingredients().entrySet())round+=inventorySlotsForProduct(catalog,entry.getKey(),entry.getValue())+(catalog.unstackable(entry.getKey())?0:1);
                     if(round<=freeSlots && slots<=freeSlots+storageSlots)slots=freeSlots;
                 }
+                if(strategy.instantBuy && CompactorProduction.supported(recipe,catalog) && CompactorProduction.available(menu)!=null
+                        && preparation.crafts().isEmpty() && ProductionStorage.Move.inventoryCount(menu,recipe.outputId())==0)
+                    slots=outputSlots+4; // One seed plus an inventory-sized raw lot; conversions free the raw slots.
                 if(slots>freeSlots)reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;
                 if(bz) {

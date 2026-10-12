@@ -1,3 +1,5 @@
+Personal Compactor production supports single-input 160:1 enchanted recipes with instant-buy strategies and a readable hotbar device. Clears old filters, buys an inventory-sized seed lot, crafts one seed, installs/enables its filter once, proves later purchases by raw-equivalent input/output counts and purse debit, then clears the filter before sale. Mixed recipes and buy orders keep the existing path. Craft run/settings/pipeline limits are now 1–1024; child craft jobs remain at most 64 and purchases remain inventory-sized. Existing maximum-batch defaults are preserved. Live filter installation still requires in-game verification.
+
 Legacy profile Worker error responses now identify Hypixel 401/403 credential rejection instead of displaying only a generic gateway 502. Only the fixed known public error is classified; arbitrary provider text is never displayed. Live curedmc lookup confirmed the deployed Worker is returning Hypixel 403. Update its HYPIXEL_API_KEY secret to restore lookup.
 
 Craft inventory mismatch recovery returns owned cursor/grid ingredients one acknowledged transfer at a time, reopens Craft Item once, and reconciles the stable new container against the original input/output baseline. Verified partial outputs count toward completion; unresolved counts, unrelated items, missing room, or timeouts remain REVIEW. Recovery diagnostics include baseline and observed counts.
@@ -6,7 +8,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.103 Storage destination planning
+### 0.2.104 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -280,7 +282,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.103 JAR](dist/astar-client-0.2.103-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.104 JAR](dist/astar-client-0.2.104-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

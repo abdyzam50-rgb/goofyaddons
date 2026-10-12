@@ -10,13 +10,20 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
-    @Test void productionAcceptsFullSixtyFourBatchCraftPlanAndRejectsAboveTheExecutorLimit()throws Exception {
+    @Test void anotherCompactorOwnerPreventsFilterClearingOrCrafting()throws Exception {
+        var env=new Env();env.occupied=Set.of(CompactorProduction.LOCK);env.buying=true;
+        var catalog=catalog();var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),2,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.INSTANT_INSTANT);
+        assertEquals(Step.PENDING,run.tick(true,1000));assertTrue(run.reason().contains("Personal Compactor"));
+        assertTrue(env.actions.serverEffects().isEmpty());assertTrue(env.orders.isEmpty());assertTrue(env.crafts.isEmpty());
+    }
+
+    @Test void productionPreservesSixtyFourBatchPlanAndRejectsAboveTheRunLimit()throws Exception {
         var env=new Env();var catalog=catalog();var recipe=catalog.forOutput("OUTPUT").getFirst();
         var run=ProductionRun.startCraft(env,catalog,recipe,64,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
         assertEquals(64,run.outputUnits());assertEquals(64,env.jobs.find(run.jobId()).orElseThrow().batches());
         env.buying=true;assertEquals(Step.PENDING,run.tick(true,1000));assertEquals(List.of("BUY:INPUT:128"),env.orders);
         int jobs=env.jobs.all().size();
-        assertThrows(IllegalArgumentException.class,()->ProductionRun.startCraft(env,catalog,recipe,65,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startCraft(env,catalog,recipe,1025,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER));
         assertEquals(jobs,env.jobs.all().size(),"Rejected quantities must not create a parent or issue actions");
         assertTrue(env.actions.serverEffects().isEmpty());
     }
