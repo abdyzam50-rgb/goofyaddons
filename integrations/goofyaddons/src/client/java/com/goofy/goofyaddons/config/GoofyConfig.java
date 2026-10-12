@@ -74,8 +74,8 @@ public class GoofyConfig {
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings();
     public int toggleKey = InputConstants.KEY_F6;
     public int reloadKey = InputConstants.KEY_F8;
-    public int minActionDelay = 100;
-    public int maxActionDelay = 500;
+    public int minActionDelay = 60;
+    public int maxActionDelay = 70;
     public double bazaarTaxPercentage = 1.25;
     public double minNetProfit = 0;
     public int maxBookHoldingSeconds = 21600;
@@ -188,8 +188,8 @@ public class GoofyConfig {
         marketAnalysis.validate();
         if (!Double.isFinite(profitHudScale) || profitHudScale<0.75 || profitHudScale>3.0) throw new IllegalArgumentException("HUD scale must be between 0.75 and 3.0");
         if (!"LEFT".equals(profitHudSide) && !"RIGHT".equals(profitHudSide)) throw new IllegalArgumentException("HUD side must be LEFT or RIGHT");
-        if (minActionDelay < 10 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
-            throw new IllegalArgumentException("Require 10 <= minActionDelay < maxActionDelay <= 60000");
+        if (minActionDelay < 1 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
+            throw new IllegalArgumentException("Require 1 <= minActionDelay < maxActionDelay <= 60000");
         }
         if (!Double.isFinite(bazaarTaxPercentage) || bazaarTaxPercentage < 0 || bazaarTaxPercentage >= 100
                 || !Double.isFinite(minNetProfit) || minNetProfit < 0 || maxBookHoldingSeconds < 60

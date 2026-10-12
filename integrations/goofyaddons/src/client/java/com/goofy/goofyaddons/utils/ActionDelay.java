@@ -13,8 +13,8 @@ public final class ActionDelay {
     /** Milliseconds to wait before the next menu action. */
     public static int next() {
         var config=GoofyConfig.INSTANCE;
-        int min = config==null?100:config.minActionDelay;
-        int max = config==null?500:config.maxActionDelay;
+        int min = config==null?60:config.minActionDelay;
+        int max = config==null?70:config.maxActionDelay;
         // Config validation enforces min < max, but defaults must never make this throw.
         return max > min ? RANDOM.nextInt(min, max) : Math.max(1, min);
     }

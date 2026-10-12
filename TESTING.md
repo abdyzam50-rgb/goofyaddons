@@ -1,3 +1,13 @@
+### 0.2.89 Timing limits and fresh-install defaults
+
+The fastest delay accepts 1 ms and the slowest accepts 2 ms. New config defaults
+and pre-config startup fallback use 60–70 ms. Existing saved settings retain
+their configured values. Receipt verification, client ticks and server-response
+waits remain in effect. The shared delay covers ingredient pickup, placement,
+right-click splitting, output collection and Quick Craft. Crafting keeps its
+50 ms minimum server-settle check. Regression coverage verifies 1–2 ms validation and the
+new-install and startup defaults.
+
 ### 0.2.88 Loading prices and storage contents
 
 Captured failure: the Dwarven Super Compactor Sell Instantly lore contained
@@ -85,7 +95,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.88 JAR](dist/astar-client-0.2.88-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.89 JAR](dist/astar-client-0.2.89-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

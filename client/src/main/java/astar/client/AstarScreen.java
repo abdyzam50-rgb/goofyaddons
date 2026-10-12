@@ -411,9 +411,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
         Card timing=card("Menu action timing","Shared timing for Bazaar navigation, crafting and storage. Lower delays are faster; each action varies within this range.");
         timing.row("Fastest delay (ms)",()->"Minimum delay between actions. Server updates must still be verified.",
-            tradingWhole("Fastest delay",()->draft.view().minActionDelay,10,1999,(cfg,v)->{cfg.minActionDelay=v;cfg.maxActionDelay=Math.max(cfg.maxActionDelay,v+1);}));
+            tradingWhole("Fastest delay",()->draft.view().minActionDelay,1,1999,(cfg,v)->{cfg.minActionDelay=v;cfg.maxActionDelay=Math.max(cfg.maxActionDelay,v+1);}));
         timing.row("Slowest delay (ms)",()->"Maximum randomized delay. Keep the range narrow for consistent speed or widen it for more variation.",
-            tradingWhole("Slowest delay",()->draft.view().maxActionDelay,11,2000,(cfg,v)->{cfg.maxActionDelay=v;cfg.minActionDelay=Math.min(cfg.minActionDelay,v-1);}));
+            tradingWhole("Slowest delay",()->draft.view().maxActionDelay,2,2000,(cfg,v)->{cfg.maxActionDelay=v;cfg.minActionDelay=Math.min(cfg.minActionDelay,v-1);}));
         Card capital=card("Spending limits","These limits apply to every purchase. Changes require stopping the trader.");
         capital.row("Capital limit",()->"Maximum committed trading capital, in coins.",tradingNumber("Capital limit",()->draft.view().maxTradingCapital,(cfg,v)->cfg.maxTradingCapital=v));
         capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber("Purse reserve",()->draft.view().purseReserve,(cfg,v)->cfg.purseReserve=v));
