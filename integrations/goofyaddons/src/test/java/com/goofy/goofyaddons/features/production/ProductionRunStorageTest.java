@@ -208,6 +208,24 @@ class ProductionRunStorageTest {
         assertEquals(40960,env.jobs.find(run.jobId()).orElseThrow().costBasis());assertTrue(env.orders.isEmpty());
     }
 
+    @Test void parksLooseItemsBeforeAcceptingATinyOtherwiseFeasibleRound()throws Exception {
+        var env=new Env();
+        for(int i=0;i<34;i++)env.world.hold(i,"JUNK_"+i,64);
+        env.world.put("ec 1",0,"INPUT",20);
+        var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",64,Map.of("INPUT",2),
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT",2),null,null,null,null,null,null,null,null),0,0,"",null);
+        var catalog=new RecipeCatalog(List.of(recipe),Map.of("INPUT","Input","OUTPUT","Output"));
+        var run=ProductionRun.startCraft(env,catalog,recipe,10,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        env.storage.move(run.jobId(),"ec 1","INPUT",20);
+        long[] clock={1000};advanceTo(run,Stage.PROCESS,clock);
+        for(int i=0;i<400&&!env.craftQueued;i++) {
+            assertEquals(Step.PENDING,run.tick(true,clock[0]+=500),run.reason());
+        }
+        assertEquals(List.of(10),env.crafts,"Make room and load the complete round rather than repeatedly withdrawing tiny lots");
+        for(int i=0;i<9;i++)assertEquals("JUNK_"+i,env.world.invIds[i],"Protected hotbar item moved");
+        assertTrue(env.orders.isEmpty());
+    }
+
     @Test void storedInputsAreCraftedInRoundsThatFitTheInventory()throws Exception {
         var env=new Env();var catalog=catalog();long[] clock={1000};
         env.junk(32);env.give("INPUT",28); // Four free slots after the inputs.

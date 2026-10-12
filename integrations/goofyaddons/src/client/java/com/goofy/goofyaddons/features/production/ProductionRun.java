@@ -912,15 +912,28 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if((long)ProductionStorage.Move.inventoryCount(menu,need.getKey())+stored.getOrDefault(need.getKey(),0)<(long)need.getValue()*remaining)
                 return Outcome.uncertain("Inputs for the remaining "+remaining+" batches are missing from the inventory and storage");
         var round=roundPlan(menu,chosen,remaining,stored);
-        if(round==null) {
+        var movable=spaceMakingProducts();
+        int capacity=roomTarget(movable,36), plannedSlots=0, plannedBatches=0;
+        // Plan against a cleared inventory, not just the gaps left by the previous round.
+        // Keep the same conservative whole-stack and output reservations as withdrawals.
+        for(int k=Math.min(64,remaining);k>=1;k--) {
+            int slots=1+CraftFlipPlanner.inventorySlotsForProduct(catalog,chosen.outputId(),Math.multiplyExact(chosen.outputCount(),k));
+            for(var need:chosen.ingredients().entrySet())
+                slots+=CraftFlipPlanner.inventorySlotsForProduct(catalog,need.getKey(),Math.multiplyExact(need.getValue(),k))+(catalog.unstackable(need.getKey())?0:1);
+            if(slots<=capacity){plannedSlots=slots;plannedBatches=k;break;}
+        }
+        if(round==null || (plannedBatches>round.batches() && plannedSlots>menu.emptyInventorySlots() && !movable.isEmpty())) {
             if(!ownsMenu)return Outcome.pending("Waiting to store excess inputs before crafting");
             var wait=storageWait(now);if(wait!=null)return wait;
             var products=spaceMakingProducts();
             if(products.isEmpty())return storageFailed("No movable inputs can make room for one craft batch; free inventory space",now);
             // Reserve for a complete one-batch withdrawal even if parking a whole stack
             // temporarily removes the last of an ingredient already held.
-            int slots=2+CraftFlipPlanner.inventorySlotsForProduct(catalog,chosen.outputId(),chosen.outputCount());
-            for(var need:chosen.ingredients().entrySet())slots+=CraftFlipPlanner.inventorySlotsForProduct(catalog,need.getKey(),need.getValue())+(catalog.unstackable(need.getKey())?0:1);
+            int slots=plannedSlots;
+            if(slots==0) {
+                slots=2+CraftFlipPlanner.inventorySlotsForProduct(catalog,chosen.outputId(),chosen.outputCount());
+                for(var need:chosen.ingredients().entrySet())slots+=CraftFlipPlanner.inventorySlotsForProduct(catalog,need.getKey(),need.getValue())+(catalog.unstackable(need.getKey())?0:1);
+            }
             if(slots>36)return storageFailed("One craft batch exceeds main inventory capacity even with storage",now);
             storing=ProductionStorage.Move.makeRoom(jobId,env.storage(),env.storagePages(),products,roomTarget(products,slots));
             return storageStep(now);
