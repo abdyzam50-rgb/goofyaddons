@@ -334,6 +334,27 @@ class ProductionTest {
         assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());assertEquals(47,executor.completedBatches());assertEquals(17,server.slots[54].count());
         assertTrue(server.clicks<30,"47 exact inputs should use a half-stack plus remainder, not 47 placements");
     }
+    @Test void exactInventoryStackIsPreferredOverSplittingALargerCompatibleStack(){
+        var r=recipe(20);var server=new Server(r,64);server.slots[56]=stack(56,"INPUT",20);
+        var executor=new CraftingExecutor(()->50);var result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
+        assertEquals("left:56",server.inputs.getFirst());assertEquals(64,server.slots[54].count());
+    }
+    @Test void arbitraryAndOddStackSplitsCraftExactAmountsAndPreserveEveryRemainder(){
+        for(int stack:new int[]{17,31,47,63,64})for(int wanted=1;wanted<=stack;wanted++) {
+            var base=recipe(1);var r=new ProductionRecipe(base.key(),base.kind(),"BLAZE_POWDER",1,base.ingredients(),base.grid(),0,0,base.requirement(),null);
+            var server=new Server(r,stack);server.slots[55]=stack(55,"SECOND",wanted);
+            var executor=new CraftingExecutor(()->50);var result=CraftingExecutor.Result.WAITING;
+            for(long now=1000;now<30000&&result==CraftingExecutor.Result.WAITING;now+=50)
+                result=executor.tick(r,wanted,server.menu(),server,Map.of(),Map.of("collection",2),now);
+            assertEquals(CraftingExecutor.Result.CRAFTED,result,"stack="+stack+", need="+wanted+": "+executor.failure());
+            assertEquals(wanted,executor.completedBatches());assertTrue(server.cursor.empty());
+            assertEquals(stack-wanted,Arrays.stream(server.slots).filter(v->"INPUT".equals(v.bazaarProductId())).mapToInt(SlotView::count).sum());
+            if(stack==64&&wanted==20)assertTrue(server.clicks<=15,"Twenty ingredients should use repeated halves plus four placements: "+server.inputs);
+        }
+    }
     @Test void consecutivePowderAndEyeCraftsUseTheSameContainerWithoutReopening() {
         var powder=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();var eye=RecipeCatalog.instance().forOutput("ENCHANTED_EYE_OF_ENDER").getFirst();
         var server=new Server(powder,0);server.slots[54]=stack(54,"BLAZE_ROD",32);server.slots[55]=stack(55,"ENCHANTED_ENDER_PEARL",16);

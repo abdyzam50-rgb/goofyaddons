@@ -198,6 +198,7 @@ public final class CraftingExecutor {
             // Preserve component groups selected by the grid capacity plan, then take
             // the largest fragment within the smallest group that fills this cell.
             var stack=available.stream().min(Comparator.comparingInt((SlotView v)->compatibleUnits(v,menu))
+                .thenComparingInt(v->v.count()<=remaining?1:canPark(v.count(),remaining)?splitClicks(v.count(),remaining):remaining+1)
                 .thenComparing(Comparator.comparingInt(SlotView::count).reversed())).orElseThrow();
             source=stack.index();return send(menu,actions,source,false,false,now);
         }
@@ -322,9 +323,19 @@ public final class CraftingExecutor {
         return state.toString();
     }
     private static boolean canPark(int stack,int required) {
-        // Also halve an almost-full target once, then top it up: 64 -> 32 + 15 for 47,
-        // instead of right-clicking 47 individual items from the inventory stack.
-        return canSplit(stack,required) || required>=(stack+1)/2;
+        if(required<1 || stack<=required)return false;
+        // Compare exact click counts, including returning the unused cursor stack.
+        // Repeated halves cover arbitrary amounts, e.g. 64 -> 32 -> 16 + 4
+        // for 20, rather than twenty individual placements. Odd stacks leave
+        // floor(n/2) in the grid and put ceil(n/2) on the cursor.
+        int individualClicks=required+1;
+        // Exact halves may also feed other matching recipe cells directly.
+        return canSplit(stack,required) || splitClicks(stack,required)<individualClicks;
+    }
+    private static int splitClicks(int stack,int required){
+        int parked=stack,halves=0;
+        while(parked>required){parked/=2;halves++;}
+        return 1+2*halves+(required-parked);
     }
     private static boolean canSplit(int stack,int required) {
         if(required<1 || stack<=required || stack%required!=0)return false;

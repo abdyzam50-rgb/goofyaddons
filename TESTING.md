@@ -1,3 +1,19 @@
+### 0.2.90 Exact stack splitting
+
+Crafting compares repeated grid halves plus remainder placements against
+individual placements, including cursor-return clicks. Odd stacks correctly
+leave floor(n/2) in the grid. Existing exact-half reuse across matching recipe
+cells remains available. Within a compatible component group, source selection
+prefers fewer placement clicks, so an exact stack beats splitting a larger one.
+
+Regression coverage exercises every requested amount for stack sizes 17, 31,
+47, 63 and 64, verifies exact output and all leftovers, checks the 64-to-20 click
+budget, and confirms exact source-stack selection. Server acknowledgement and
+configured pacing remain mandatory for every click.
+
+1347 Java tests passed and the release build succeeded. Live Minecraft testing
+remains to be performed.
+
 ### 0.2.89 Timing limits and fresh-install defaults
 
 The fastest delay accepts 1 ms and the slowest accepts 2 ms. New config defaults
@@ -95,7 +111,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.89 JAR](dist/astar-client-0.2.89-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.90 JAR](dist/astar-client-0.2.90-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
