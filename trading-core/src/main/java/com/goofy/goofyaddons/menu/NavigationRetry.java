@@ -40,8 +40,17 @@ public final class NavigationRetry {
     public void slowdown(long now){blockedUntil=Math.max(blockedUntil,now+1500);stable=null;}
     public Result observe(MenuSnapshot menu,boolean signOpen,GameActions actions,long now){
         if(!pending())return Result.READY;
-        if(signOpen || menu!=null && menu.title()!=null
+        if(signOpen){reset();return Result.READY;}
+        if(menu!=null && menu.title()!=null
                 && (menu.containerId()!=source.containerId() || !Objects.equals(menu.title(),source.title()))){
+            // Opening packets arrive before their contents. At short action delays,
+            // acknowledging the header alone lets the next engine inspect an empty
+            // or placeholder menu. Keep ownership until actual controls arrive.
+            if(now-started>=15_000)return Result.EXHAUSTED;
+            boolean controlsLoaded=menu.slots().stream().anyMatch(s->
+                    !s.empty() && !s.inPlayerInventory()
+                    && s.hoverName()!=null && !com.goofy.goofyaddons.utils.Chat.strip(s.hoverName()).isBlank());
+            if(!controlsLoaded)return Result.WAITING;
             reset();return Result.READY;
         }
         if(now-started>=15_000)return Result.EXHAUSTED;

@@ -6,6 +6,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.goofy.goofyaddons.menu.NavigationRetry.Result.*;
 
 class NavigationRetryTest {
+    @Test void fastNavigationWaitsForDestinationContentsWithoutReplayingSourceClick(){
+        flow.sent(source,16,0);
+        var empty=new ArrayList<SlotView>();
+        for(int i=0;i<72;i++)empty.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        var opening=new MenuSnapshot(2,"Next screen",true,empty);
+        for(long now:new long[]{10,20,50,100,3000,5000})
+            assertEquals(WAITING,flow.observe(opening,false,actions,now));
+        assertTrue(actions.serverEffects().isEmpty());
+        assertTrue(flow.pending());
+        assertEquals(READY,flow.observe(menu(2,"Next screen","Loaded control",true),false,actions,5010));
+        assertFalse(flow.pending());
+    }
+    @Test void destinationLoadingTimeoutNeverReplaysTheOldControl(){
+        flow.sent(source,16,0);
+        var opening=new MenuSnapshot(2,"Next screen",true,List.of());
+        assertEquals(WAITING,flow.observe(opening,false,actions,20));
+        assertEquals(EXHAUSTED,flow.observe(opening,false,actions,15000));
+        assertTrue(actions.serverEffects().isEmpty());
+    }
     MenuSnapshot control(String action,int price){
         var m=menu(1,"Cod ➜ Enchanted Raw Cod",action,true);var slots=new ArrayList<>(m.slots());
         slots.set(16,SlotView.named(16,action,List.of("Enchanted Raw Cod","Price: "+price)));

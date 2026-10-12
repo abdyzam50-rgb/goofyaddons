@@ -1,3 +1,18 @@
+### 0.2.87 Fast menu timing
+
+The GUI and config now allow a 10–20 ms randomized action range. Navigation keeps
+ownership while a destination window is empty, waits
+for named controls to load, and never retries a source click against the new
+window. Destination loading remains bounded by the existing 15-second timeout.
+Crafting retains its minimum 50 ms acknowledgement settle and adaptive lag backoff;
+a timing setting does not override server receipt verification or client tick rate.
+
+Full Java regression suite: 1340 tests passed. Release build succeeded.
+Live 10–20 ms Minecraft navigation has not been tested here.
+
+Regression coverage includes delayed window contents, no duplicate navigation,
+loading timeout, and validation of the 10–20 ms range.
+
 # Testing the combined client
 
 ### 0.2.86 Shared action timing
@@ -49,7 +64,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.86 JAR](dist/astar-client-0.2.86-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.87 JAR](dist/astar-client-0.2.87-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

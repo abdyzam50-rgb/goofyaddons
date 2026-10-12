@@ -188,8 +188,8 @@ public class GoofyConfig {
         marketAnalysis.validate();
         if (!Double.isFinite(profitHudScale) || profitHudScale<0.75 || profitHudScale>3.0) throw new IllegalArgumentException("HUD scale must be between 0.75 and 3.0");
         if (!"LEFT".equals(profitHudSide) && !"RIGHT".equals(profitHudSide)) throw new IllegalArgumentException("HUD side must be LEFT or RIGHT");
-        if (minActionDelay < 51 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
-            throw new IllegalArgumentException("Require 51 <= minActionDelay < maxActionDelay <= 60000");
+        if (minActionDelay < 10 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
+            throw new IllegalArgumentException("Require 10 <= minActionDelay < maxActionDelay <= 60000");
         }
         if (!Double.isFinite(bazaarTaxPercentage) || bazaarTaxPercentage < 0 || bazaarTaxPercentage >= 100
                 || !Double.isFinite(minNetProfit) || minNetProfit < 0 || maxBookHoldingSeconds < 60

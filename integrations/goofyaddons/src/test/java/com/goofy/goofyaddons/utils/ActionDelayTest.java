@@ -5,6 +5,15 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ActionDelayTest {
+    @Test void tenToTwentyMillisecondRangeValidatesAndVaries(){
+        var old=GoofyConfig.INSTANCE;
+        try {
+            var cfg=new GoofyConfig();cfg.minActionDelay=10;cfg.maxActionDelay=20;
+            assertDoesNotThrow(cfg::validate);GoofyConfig.INSTANCE=cfg;
+            for(int i=0;i<100;i++){int delay=ActionDelay.next();assertTrue(delay>=10&&delay<20);}
+            cfg.minActionDelay=9;assertThrows(IllegalArgumentException.class,cfg::validate);
+        }finally{GoofyConfig.INSTANCE=old;}
+    }
     @Test void sharedVariationStaysWithinConfiguredBoundsAndHasStartupDefaults() {
         var old=GoofyConfig.INSTANCE;
         try {

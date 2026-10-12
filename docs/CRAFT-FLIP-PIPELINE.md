@@ -1615,3 +1615,12 @@ availability, cancellation claim state, sold units, claimed proceeds and reopene
 cancel options. Recovery status takes precedence over old review text in the HUD.
 These checks are covered by simulated menu and durable-journal regressions;
 live Minecraft execution still requires the next user run.
+
+### Fast navigation timing (0.2.87)
+
+Menu action timing accepts a minimum of 10 ms, including a 10–20 ms range.
+These are minimum inter-action delays, not a promise of 50–100 server actions
+per second. The client tick and observed server acknowledgements determine when
+the next action is possible. New window headers do not acknowledge navigation
+until named controls have arrived. Crafting keeps its
+50 ms minimum settle and adaptive rejection backoff.
