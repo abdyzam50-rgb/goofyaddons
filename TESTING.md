@@ -1,3 +1,22 @@
+### 0.2.93 Crafted-output space and sale lots
+
+The export stalled after 29/40 Dwarven Compactors because storage space-making
+excluded crafted outputs. Verified outputs belonging to the Bazaar craft run
+can now be deposited to make room for the next inputs. Their storage ownership
+remains retained after crafting until withdrawal and sale are verified.
+
+Bazaar output selling handles inventory-sized lots, withdrawing stored output
+as space permits. When storage has no output room, the process sells a verified
+partial lot then continues crafting. Each lot has its own acquisition/sale
+receipt ID and receives its proportional input cost; submitted sales are never
+replayed and unsold units must match verified inventory plus owned storage.
+AH listing behavior remains unchanged.
+
+Regression simulations cover forty unstackable outputs with storage, full-storage
+partial-sale fallback, all forty units crafted and sold, distinct receipts, and
+no remaining owned output. Existing one-lot receipt/cost tests remain covered. 1353 Java tests passed;
+release build succeeded. Live verification remains needed.
+
 ### 0.2.92 Inventory-sized instant purchases
 
 Hypixel rejected the exported Enchanted Mithril instant purchase because its
@@ -151,7 +170,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.92 JAR](dist/astar-client-0.2.92-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.93 JAR](dist/astar-client-0.2.93-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

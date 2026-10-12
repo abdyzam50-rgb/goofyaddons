@@ -120,7 +120,9 @@ public final class ProductionRun implements ProductionLoop.Ports {
     static final long STORAGE_RETRY_MS=60_000;static final int STORAGE_ATTEMPTS=5;
     private long storageRetryAt;private int storageFailures;private String storageFailure;
     private Set<String> storingForOrder=Set.of();
-    private int craftedBatches,roundBatches;
+    private int craftedBatches,roundBatches,soldOutputUnits,saleLot;
+    private String saleReceiptId;
+    private boolean sellingForSpace;
     private final CompactorClearance compactorClearance=new CompactorClearance();
     /** Which halves of a Bazaar trade test this run does; null for every production run. */
     public enum TradePart { BUY, SELL, BOTH; public boolean buys(){return this!=SELL;} public boolean sells(){return this!=BUY;} }
@@ -297,7 +299,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         state.put("instantBuyItem",buying==null?null:buying.productId());state.put("instantBuySubmitted",buying!=null&&buying.submitted());
         state.put("held",held());state.put("lockedProducts",lockedProducts());
         var storage=env.storage();state.put("stored",storage==null?Map.of():storage.stored(jobId));
-        state.put("storing",storing==null?null:storing.describe());state.put("craftedBatches",craftedBatches);state.put("roundBatches",roundBatches);
+        state.put("storing",storing==null?null:storing.describe());state.put("sellingForSpace",sellingForSpace);state.put("soldOutputUnits",soldOutputUnits);state.put("saleReceiptId",saleReceiptId);state.put("craftedBatches",craftedBatches);state.put("roundBatches",roundBatches);
         state.put("storageFailures",storageFailures);state.put("storageRetryAt",storageRetryAt);
         if(trade!=null){state.put("tradeTest",trade.name());state.put("tradeUnits",tradeUnits);state.put("tradeHeldAtStart",tradeHeldAtStart);}
         try {
@@ -618,10 +620,28 @@ public final class ProductionRun implements ProductionLoop.Ports {
     }
 
     private Outcome sellOnBazaar(long now) {
+        if(storing!=null)return storageStep(now);
+        if(trade==null && !orderActive && selling==null) {
+            if(soldOutputUnits==outputUnits())return finishRounds();
+            var menu=env.menu();if(menu==null)return Outcome.pending("Waiting for crafted output inventory");
+            int stored=env.storage()==null?0:env.storage().stored(jobId,output);
+            int inventory=ProductionStorage.Move.inventoryCount(menu,output);
+            int produced=sellingForSpace?craftedBatches*(recipe==null?1:recipe.outputCount()):outputUnits();
+            if(inventory+stored!=produced-soldOutputUnits)return Outcome.uncertain("Crafted output ownership differs from verified unsold units; inspect inventory and storage");
+            int capacity=ProductionInventorySpace.capacity(catalog,menu,output);
+            if(stored>0 && capacity>0 && ownsMenu && saleReceiptId==null) {
+                storing=ProductionStorage.Move.withdraw(jobId,env.storage(),env.storagePages(),Map.of(output,Math.min(stored,capacity)));
+                return storageStep(now);
+            }
+            if(inventory==0)return Outcome.blocked("Free inventory room to withdraw crafted outputs for sale");
+            if(saleReceiptId==null) {
+                beginSaleLot(inventory);
+            }
+        }
         if(!strategy.instantSell) {
             if(!orderActive) {
-                int units=held().getOrDefault(output,0);Double value=env.offerSellValue(output,units);
-                if(units!=outputUnits())return Outcome.uncertain((trade!=null?"Held "+env.name(output)+" changed ("+units+" held, "+outputUnits()+" expected)":"Craft output quantity differs")+" before sell-offer handoff");
+                int units=env.menu()==null?0:ProductionStorage.Move.inventoryCount(env.menu(),output);Double value=env.offerSellValue(output,units);
+                if(units!=expectedSaleUnits())return Outcome.uncertain((trade!=null?"Held "+env.name(output)+" changed ("+units+" held, "+outputUnits()+" expected)":"Craft output quantity differs")+" before sell-offer handoff");
                 if(value==null)return Outcome.blocked("Waiting for a fresh sell-offer quote");
                 try{env.jobs().put(parent().withState(ProductionJobs.State.LISTING,trade!=null?"Trade test sell-offer intent":"Craft sell-offer intent"));}
                 catch(Exception failure){return Outcome.blocked("Sell-offer intent could not be saved");}
@@ -633,14 +653,14 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if(!result.done())return Outcome.pending(result.reason()==null||result.reason().isBlank()?"Waiting for crafted output sell offer and coin claim":result.reason());
             if(result.proceeds()==null)return Outcome.uncertain("Sell-offer proceeds are unconfirmed");
             if(trade!=null)tradeSold("offer",result.units(),result.proceeds());
-            else env.saleConfirmed(jobId,output,result.units(),result.proceeds());
+            else env.saleConfirmed(saleReceiptId,output,result.units(),result.proceeds());
             if(!env.acknowledgeOrder())return Outcome.uncertain("Sale handoff could not be saved");
-            orderActive=false;return Outcome.DONE;
+            orderActive=false;return soldLot(result.units());
         }
         if (!ownsMenu) return Outcome.pending("Waiting to sell " + env.name(output));
         if(now<sellRetryAfter)return Outcome.pending("Waiting to retry selling "+env.name(output));
         if (selling == null) {
-            int units = held().getOrDefault(output, 0);
+            int units = env.menu()==null?0:ProductionStorage.Move.inventoryCount(env.menu(),output);
             if (units == 0) return Outcome.uncertain("The crafted " + env.name(output) + " is not in the inventory");
             if (trade != null && units != outputUnits()) return Outcome.uncertain("Held " + env.name(output) + " changed (" + units + " held, " + outputUnits() + " expected) before the instant sale");
             Double value = env.instantSellValue(output, units);
@@ -653,14 +673,31 @@ public final class ProductionRun implements ProductionLoop.Ports {
             case SOLD -> {
                 env.event("INFO","production.instant_sale_verified",Map.of("job",jobId,"product",output,"units",selling.amount(),"proceeds",selling.proceeds(),"spent",spent));
                 if(trade!=null)tradeSold("instant",selling.amount(),selling.proceeds());
-                else if(kind==ProductionRecipe.Kind.CRAFT)env.saleConfirmed(jobId,output,selling.amount(),selling.proceeds());
-                env.actions().closeMenu();yield Outcome.DONE; }
+                else if(kind==ProductionRecipe.Kind.CRAFT)env.saleConfirmed(saleReceiptId,output,selling.amount(),selling.proceeds());
+                int units=selling.amount();selling=null;env.actions().closeMenu();yield soldLot(units); }
             case UNCERTAIN -> Outcome.uncertain(selling.failure());
             case BLOCKED -> { String why = selling.failure(); selling = null; sellRetryAfter=now+30_000; env.actions().closeMenu(); yield Outcome.blocked(why); }
             default -> Outcome.pending(env.menu()!=null && env.menu().loadingContents()?"Waiting for live sell price for "+env.name(output):"Selling " + env.name(output));
         };
     }
 
+    private void beginSaleLot(int units){
+        if(saleReceiptId!=null)return;
+        saleReceiptId=jobId+":output-lot:"+(++saleLot);
+        env.outputConfirmed(saleReceiptId,output,units,basisUnknown||spent<=0?null:spent*units/outputUnits());
+    }
+    private int expectedSaleUnits(){
+        if(trade!=null)return outputUnits();
+        int stored=env.storage()==null?0:env.storage().stored(jobId,output);
+        int produced=sellingForSpace?craftedBatches*(recipe==null?1:recipe.outputCount()):outputUnits();
+        return produced-soldOutputUnits-stored;
+    }
+    private Outcome soldLot(int units){
+        if(trade!=null)return Outcome.DONE;
+        soldOutputUnits+=units;saleReceiptId=null;
+        if(sellingForSpace){sellingForSpace=false;storageFailures=0;storageRetryAt=0;storageFailure=null;return Outcome.pending("Sold a verified output lot to make room; continuing remaining crafts");}
+        return soldOutputUnits==outputUnits()?finishRounds():Outcome.pending("Sold "+soldOutputUnits+"/"+outputUnits()+" crafted outputs; taking the next lot from storage");
+    }
     @Override public void failed(String what,Stage stage,Exception failure) {
         var out=new java.io.StringWriter();failure.printStackTrace(new java.io.PrintWriter(out));
         env.event("ERROR","production.stage_exception",Map.of("job",jobId,"output",output,"what",what,"stage",stage.name(),"exception",out.toString()));
@@ -683,7 +720,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
         if(stage==Stage.SELL)captureSellInputLocks();
         if(stage==Stage.SELL&&trade==null&&kind==ProductionRecipe.Kind.CRAFT&&binPrice==SELL_ON_BAZAAR) {
             var menu=env.menu();int units=menu==null?0:menu.countInInventory(output);
-            if(units>0)env.outputConfirmed(jobId,output,units,basisUnknown||spent<=0?null:spent);
+            if(units>0)beginSaleLot(units);
         }
     }
 
@@ -793,6 +830,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
         }
         ids.removeIf(id->ProductionStorage.Move.inventoryCount(menu,id)==0);
         ids.removeAll(protectedIds);
+        if(binPrice==SELL_ON_BAZAAR && craftedBatches>0 && !env.orderTracked().contains(output) && !env.occupied().contains(output)) {
+            int stored=env.storage()==null?0:env.storage().stored(jobId,output);
+            int current=ProductionStorage.Move.inventoryCount(menu,output);
+            if(current>0 && current+stored==craftedBatches*(recipe==null?1:recipe.outputCount())-soldOutputUnits)ids.add(output);
+        }
         ids.remove("SKYBLOCK_MENU");ids.removeIf(id->id.startsWith("PERSONAL_COMPACTOR_"));
         return ids;
     }
@@ -826,6 +868,11 @@ public final class ProductionRun implements ProductionLoop.Ports {
             if(units==0 && result==ProductionStorage.Move.Result.DONE)
                 return storageFailed("No inventory room to claim "+env.name(product)+"; free some inventory slots",now);
         }
+        if(result==ProductionStorage.Move.Result.NO_SPACE && move.kind()==ProductionStorage.Move.Kind.DEPOSIT
+                && binPrice==SELL_ON_BAZAAR && craftedBatches>0 && env.menu()!=null
+                && ProductionStorage.Move.inventoryCount(env.menu(),output)>0) {
+            sellingForSpace=true;return Outcome.pending("Storage has no output room; selling a verified crafted lot before continuing");
+        }
         if(result==ProductionStorage.Move.Result.NO_SPACE)
             return storageFailed(move.kind()==ProductionStorage.Move.Kind.WITHDRAW?"Not enough free inventory to take inputs back from storage"
                 : "Storage is full; free space in your ender chest pages or backpacks to keep buying",now);
@@ -844,6 +891,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private record Round(int batches,Map<String,Integer> withdraw) {}
 
     private Outcome craftRound(long now) {
+        if(sellingForSpace)return sellOnBazaar(now);
         if(craftJob!=null) {
             if(env.craftQueued())return Outcome.pending(env.craftActivity());
             var finished=childFinished(craftJob,Set.of(ProductionJobs.State.OUTPUT_READY,ProductionJobs.State.DONE),"Craft");
@@ -919,7 +967,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     private Outcome finishRounds() {
         var storage=env.storage();
-        if(storage!=null && !storage.stored(jobId).isEmpty()) {
+        if(storage!=null && storage.stored(jobId,output)==0 && !storage.stored(jobId).isEmpty()) {
             try {
                 var left=storage.release(jobId);
                 env.actions().message("Craft finished; left in storage: "+String.join(", ",left));

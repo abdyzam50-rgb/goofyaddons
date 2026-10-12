@@ -13,6 +13,40 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Runs that buy more than the inventory holds park inputs in storage and craft in rounds. */
 class ProductionRunStorageTest {
     @TempDir Path dir;
+    @Test void fortyUnstackableOutputsAreStoredThenSoldInVerifiedInventorySizedLots()throws Exception{outputSpaceRun(false);}
+    @Test void fullOutputStorageSellsAVerifiedPartialLotThenContinuesCrafting()throws Exception{outputSpaceRun(true);}
+    void outputSpaceRun(boolean full)throws Exception {
+        var root=new com.google.gson.JsonObject();root.addProperty("schema",1);
+        var names=new com.google.gson.JsonObject();names.addProperty("INPUT","Input");names.addProperty("OUTPUT","Output");root.add("names",names);
+        root.add("recipes",new com.google.gson.GsonBuilder().serializeNulls().create().toJsonTree(catalog().recipes()));
+        var singles=new com.google.gson.JsonArray();singles.add("OUTPUT");root.add("unstackable",singles);
+        var catalog=RecipeCatalog.parse(root);
+        class OutputEnv extends Env {
+            final List<Integer> sold=new ArrayList<>();final Set<String> receipts=new HashSet<>();
+            OutputEnv()throws Exception{world.single.add("OUTPUT");}
+            void give(String id,int units){
+                if(!id.equals("OUTPUT")){super.give(id,units);return;}
+                for(int i=0;i<36&&units>0;i++)if(world.invIds[i]==null){world.hold(i,id,1);units--;}
+                assertEquals(0,units,"Output overflow");
+            }
+            public boolean queueOrder(String id,int units,double price,boolean buy,double limit){
+                assertFalse(buy);assertTrue(units<=36);take(id,units);sold.add(units);
+                orderResult=new ProductionBazaarOrders.Result(true,false,units,0,units*100.0,"Sold and claimed");return true;
+            }
+            public void saleConfirmed(String id,String output,int units,double proceeds){assertTrue(receipts.add(id),"Duplicate sale receipt");assertEquals(units*100.0,proceeds);}
+        }
+        var env=new OutputEnv();env.world.put("ec 1",0,"INPUT",64);env.world.put("ec 1",1,"INPUT",16);
+        if(full)for(int i=2;i<45;i++)env.world.put("ec 1",i,"COBBLE",64);
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),40,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
+        env.storage.move(run.jobId(),"ec 1","INPUT",80);long now=1000;
+        for(int i=0;i<1500&&!run.finished();i++) {
+            var result=run.tick(true,now+=500);assertNotEquals(Step.UNCERTAIN,result,run.reason());assertNotEquals(Step.BLOCKED,result,run.reason());
+            if(env.craftQueued)env.finishCraft();
+        }
+        assertEquals(Stage.DONE,run.stage(),run.reason());assertEquals(40,env.crafts.stream().mapToInt(Integer::intValue).sum());
+        assertEquals(40,env.sold.stream().mapToInt(Integer::intValue).sum());assertTrue(env.sold.size()>1);
+        assertEquals(env.sold.size(),env.receipts.size());assertEquals(0,env.world.inventory("OUTPUT"));assertEquals(0,env.storage.stored(run.jobId(),"OUTPUT"));
+    }
 
     static RecipeCatalog catalog() {
         var craft=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",2),

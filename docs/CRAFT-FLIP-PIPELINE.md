@@ -1650,3 +1650,13 @@ requirement; otherwise submit the exact capped quantity. After receipt and
 storage, replan the outstanding quantity from owned inventory plus storage.
 Existing submitted purchases must finish receipt/stash recovery before any
 replacement lot can be queued. Buy-order placement is unaffected.
+
+### Crafted output space (0.2.93)
+
+Verified Bazaar craft outputs may be stored between craft rounds when their
+inventory and ledger total matches the produced unsold quantity. Output
+ownership stays in the storage ledger until it is withdrawn and sold. Bazaar
+selling withdraws and settles inventory-sized lots. A full storage page set
+triggers a verified partial sale before crafting resumes. Each sale lot has a
+separate receipt and proportional acquisition basis; unsold listings remain
+tracked until proceeds are verified.

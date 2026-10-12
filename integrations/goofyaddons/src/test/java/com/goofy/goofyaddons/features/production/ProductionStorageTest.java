@@ -29,6 +29,7 @@ class ProductionStorageTest {
         final Map<String,String[]> pageIds=new LinkedHashMap<>();
         final Map<String,int[]> pageCounts=new LinkedHashMap<>();
         final Set<String> locked=new HashSet<>();
+        final Set<String> single=new HashSet<>();
         final String[] invIds=new String[36];
         final int[] invCounts=new int[36];
         String open;
@@ -51,8 +52,8 @@ class ProductionStorageTest {
             String title=open==null?null:open.startsWith("ec")?"Ender Chest ("+open.substring(3)+"/3)":"Jumbo Backpack (Slot #"+open.substring(9)+")";
             return new MenuSnapshot(containerId,title,true,slots);
         }
-        private static SlotView slot(int index,boolean inventory,int containerSlot,String id,int n) {
-            return id==null?SlotView.empty(index,inventory,containerSlot):new SlotView(index,inventory,containerSlot,false,id,id,List.of(),id,null,n,64);
+        private SlotView slot(int index,boolean inventory,int containerSlot,String id,int n) {
+            return id==null?SlotView.empty(index,inventory,containerSlot):new SlotView(index,inventory,containerSlot,false,id,id,List.of(),id,null,n,single.contains(id)?1:64);
         }
         public void click(int slot,boolean shift) {
             clicks++;if(dropClicks || open==null)return;
@@ -65,10 +66,11 @@ class ProductionStorageTest {
                 int moved=insert(ids,counts,invIds[i],invCounts[i]);invCounts[i]-=moved;if(invCounts[i]==0)invIds[i]=null;
             }
         }
-        private static int insert(String[] ids,int[] counts,String id,int n) {
+        private int insert(String[] ids,int[] counts,String id,int n) {
             int left=n;
-            for(int i=0;i<ids.length && left>0;i++)if(id.equals(ids[i])){int add=Math.min(64-counts[i],left);counts[i]+=add;left-=add;}
-            for(int i=0;i<ids.length && left>0;i++)if(ids[i]==null){ids[i]=id;counts[i]=Math.min(64,left);left-=counts[i];}
+            int cap=single.contains(id)?1:64;
+            for(int i=0;i<ids.length && left>0;i++)if(id.equals(ids[i])){int add=Math.min(cap-counts[i],left);counts[i]+=add;left-=add;}
+            for(int i=0;i<ids.length && left>0;i++)if(ids[i]==null){ids[i]=id;counts[i]=Math.min(cap,left);left-=counts[i];}
             return n-left;
         }
         public void closeMenu(){open=null;}
