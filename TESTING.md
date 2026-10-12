@@ -1,5 +1,20 @@
 # Testing the combined client
 
+### 0.2.86 Shared action timing
+
+Crafting and storage now use the existing shared randomized action delay, with
+Fastest delay and Slowest delay controls in Macros → Limits. Tests verify a
+one-second configured delay prevents a second click even after the server has
+acknowledged the first, and permits it once that delay expires. Sampling tests
+check configured bounds, actual variation and pre-configuration defaults.
+Existing craft simulations explicitly inject their 50 ms test clock; runtime
+construction uses the shared configured range. Storage page loading, inventory
+proof, retry bounds and adaptive crafting slowdowns remain covered.
+
+Validation: 1,337 Java tests passed with zero failures, errors or skips (1,210
+client and 127 shared trading tests). The focused suites passed 87 tests. The
+0.2.86-BETA release build succeeded; live Minecraft timing remains to be checked.
+
 ### 0.2.85 Full-inventory crafting handoff
 
 The storage-backed round planner now makes room before crafting when no batch
@@ -34,7 +49,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.85 JAR](dist/astar-client-0.2.85-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.86 JAR](dist/astar-client-0.2.86-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

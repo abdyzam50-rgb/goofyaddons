@@ -142,6 +142,20 @@ Full storage or unavailable movable items use the existing bounded retry/review
 path. This resolves the 0.2.84 Dwarven run that acquired all twenty batches but
 could not begin crafting with zero empty inventory slots.
 
+### Shared menu action timing (0.2.86)
+
+G → Macros → Limits → Menu action timing exposes the existing shared minimum
+and maximum action delays as Fastest delay and Slowest delay, in milliseconds.
+Each action samples within that range. The GUI permits 51–2,000 ms, keeping the
+minimum below the maximum when either field changes. Defaults remain 100–500 ms
+and saved values remain in the existing configuration fields.
+
+Storage deposits/withdrawals and crafting now use the same range as Bazaar
+navigation. A storage transfer no longer adds a separate 400 ms settle after
+each verified move. Initial page loading, actual inventory acknowledgements,
+bounded retries and crafting slowdown backoff still apply; a configured fast
+delay never substitutes for server confirmation.
+
 ## Remaining AH pipeline work
 
 AH crafts appear in the plan with an explicit settlement blocker. The existing

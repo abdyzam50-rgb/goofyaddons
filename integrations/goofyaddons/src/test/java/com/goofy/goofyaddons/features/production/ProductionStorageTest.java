@@ -10,6 +10,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionStorageTest {
     @TempDir Path dir;
+    @Test void acknowledgedStorageClicksUseSharedDelayWithoutAnotherFixedSettle()throws Exception {
+        var old=com.goofy.goofyaddons.config.GoofyConfig.INSTANCE;
+        try {
+            var cfg=new com.goofy.goofyaddons.config.GoofyConfig();cfg.minActionDelay=1000;cfg.maxActionDelay=1001;
+            com.goofy.goofyaddons.config.GoofyConfig.INSTANCE=cfg;
+            var world=new World().page("ec 1",4);world.hold(0,"INPUT",64);world.hold(1,"INPUT",64);
+            var move=Move.deposit("timing",new ProductionStorage(null),ProductionStorage.pages("ec 1"),Set.of("INPUT"));
+            move.tick(world.menu(),world,1000);move.tick(world.menu(),world,1100);move.tick(world.menu(),world,1500);
+            assertEquals(1,world.clicks);
+            move.tick(world.menu(),world,1501);move.tick(world.menu(),world,2499);assertEquals(1,world.clicks);
+            move.tick(world.menu(),world,2500);assertEquals(2,world.clicks);
+        }finally{com.goofy.goofyaddons.config.GoofyConfig.INSTANCE=old;}
+    }
 
     /** A tiny Hypixel: storage pages open by command and shift-clicks move whole stacks. */
     static final class World implements GameActions {

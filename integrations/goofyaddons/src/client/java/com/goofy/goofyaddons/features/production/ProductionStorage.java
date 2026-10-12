@@ -172,6 +172,7 @@ public final class ProductionStorage {
         private String pendingProduct;
         private int beforeInventory,beforeStorage,pendingSlot,clickRetries;
         private long clickedAt;
+        private long nextMoveAt;
         private String failure;
         private int moved;
         private int freeSlotsTarget;
@@ -231,6 +232,7 @@ public final class ProductionStorage {
             }
             if(container==Integer.MIN_VALUE || container!=menu.containerId()){container=menu.containerId();seenSince=now;}
             if(now-seenSince<SETTLE_MS || !menu.cursorEmpty())return Result.WAITING;
+            if(now<nextMoveAt)return Result.WAITING;
             if(!verified) {
                 for(String product:ledger.productsOn(page.command())) {
                     int owned=ledger.owned(page.command(),product),found=storageCount(menu,product);
@@ -291,6 +293,7 @@ public final class ProductionStorage {
 
         private Result click(MenuSnapshot menu,GameActions actions,SlotView slot,String id,long now) {
             pendingProduct=id;pendingSlot=slot.index();clickRetries=0;clickedAt=now;
+            nextMoveAt=now+com.goofy.goofyaddons.utils.ActionDelay.next();
             beforeInventory=inventoryCount(menu,id);beforeStorage=storageCount(menu,id);
             actions.click(slot.index(),true);
             return Result.WAITING;
@@ -308,15 +311,16 @@ public final class ProductionStorage {
                 ledger.observe(page.command(),menu.emptyContainerSlots(),now);
                 moved+=out;movedByProduct.merge(pendingProduct,out,Integer::sum);
                 if(kind==Kind.WITHDRAW)remaining.merge(pendingProduct,-out,Integer::sum);
-                pendingProduct=null;seenSince=now;return Result.WAITING;
+                pendingProduct=null;
+                return tick(menu,actions,now);
             }
             if(out<0 || in<0 || out!=in && (out>0 || in>0)) {
                 return now-clickedAt>CLICK_RETRY_MS?block("Storage move counts disagree for "+pendingProduct+"; the ledger was not changed"):Result.WAITING;
             }
             if(now-clickedAt>CLICK_TIMEOUT_MS)return block("Storage move of "+pendingProduct+" was not acknowledged");
-            if(now-clickedAt>CLICK_RETRY_MS*(clickRetries+1) && clickRetries<2) {
+            if(now>=nextMoveAt && now-clickedAt>CLICK_RETRY_MS*(clickRetries+1) && clickRetries<2) {
                 var slot=menu.slot(pendingSlot);
-                if(slot!=null && !slot.empty() && pendingProduct.equals(ProductionMenus.productId(slot))){clickRetries++;actions.click(pendingSlot,true);}
+                if(slot!=null && !slot.empty() && pendingProduct.equals(ProductionMenus.productId(slot))){clickRetries++;nextMoveAt=now+com.goofy.goofyaddons.utils.ActionDelay.next();actions.click(pendingSlot,true);}
             }
             return Result.WAITING;
         }

@@ -41,7 +41,7 @@ class WorkstationTest {
             Arrays.asList(new ProductionRecipe.Ingredient("INPUT",2),null,null,null,null,null,null,null,null),0,0,"",null);
         var source=menu(1,"Craft Item",item(54,"INPUT",2,List.of()));
         var confirmed=new MenuSnapshot(1,source.title(),true,source.slots(),source.carried(),7);
-        var execute=new CraftingExecutor();var actions=new RecordingActions();execute.tick(r,confirmed,actions,Map.of(),1000);
+        var execute=new CraftingExecutor(()->50);var actions=new RecordingActions();execute.tick(r,confirmed,actions,Map.of(),1000);
         execute.tick(r,confirmed,actions,Map.of(),4000);execute.tick(r,confirmed,actions,Map.of(),7000);
         assertEquals(1,actions.serverEffects().size());
         assertEquals(CraftingExecutor.Result.BLOCKED,execute.tick(r,confirmed,actions,Map.of(),9500));

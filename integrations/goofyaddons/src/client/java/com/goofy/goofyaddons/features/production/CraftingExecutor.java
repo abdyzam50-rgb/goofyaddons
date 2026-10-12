@@ -14,6 +14,9 @@ public final class CraftingExecutor {
     private static final int[] GRID={10,11,12,19,20,21,28,29,30};
     private static final int RESULT=23;
     private static final long FAST_SETTLE_MS=50;
+    private final java.util.function.IntSupplier actionDelay;
+    public CraftingExecutor(){this(com.goofy.goofyaddons.utils.ActionDelay::next);}
+    CraftingExecutor(java.util.function.IntSupplier actionDelay){this.actionDelay=Objects.requireNonNull(actionDelay);}
     private ProductionRecipe recipe,capacityWaitRecipe;
     private int capacityWaitContainer;
     private long capacityWaitSince;
@@ -24,7 +27,7 @@ public final class CraftingExecutor {
     private Map<String,Integer> before;
     private MenuSnapshot sent;
     private long sentAt,started,next,inconsistentSince,resultSince;
-    private long settleMs=FAST_SETTLE_MS,cooldownUntil;
+    private long settleMs=FAST_SETTLE_MS,cooldownUntil,actionDelayMs;
     private int retries;
     private boolean submitted,quick;
     private String failure;
@@ -119,9 +122,9 @@ public final class CraftingExecutor {
         inconsistentSince=0;
         if(now<cooldownUntil)return Result.WAITING;
         int verifiedBatches=quick?convertedBatches(menu):batchCount;
-        if(submitted && verifiedBatches>0 && completed(menu,verifiedBatches) && now-sentAt>=settleMs){lastCompletedBatches=verifiedBatches;reset();return Result.CRAFTED;}
+        if(submitted && verifiedBatches>0 && completed(menu,verifiedBatches) && now-sentAt>=Math.max(settleMs,actionDelayMs)){lastCompletedBatches=verifiedBatches;reset();return Result.CRAFTED;}
         if(sent!=null) {
-            if(!sameContents(sent,menu)) {sent=null;retries=0;next=sentAt+settleMs;}
+            if(!sameContents(sent,menu)) {sent=null;retries=0;next=sentAt+Math.max(settleMs,actionDelayMs);}
             else if(now-sentAt>=2000) {
                 if(retries>=2)return block("Crafting input was not acknowledged; grid and cursor retained");
                 // A duplicate is permitted only against the exact same cursor/grid/inventory.
@@ -300,6 +303,7 @@ public final class CraftingExecutor {
             return block("Crafting made no progress after three attempts at slot "+actionSlot+" ("+describe(sent.slot(actionSlot))
                 +"); grid and cursor retained");
         }
+        actionDelayMs=Math.max(FAST_SETTLE_MS,actionDelay.getAsInt());
         if(actionRight)actions.rightClick(actionSlot);else actions.click(actionSlot,actionShift);
         return Result.WAITING;
     }
