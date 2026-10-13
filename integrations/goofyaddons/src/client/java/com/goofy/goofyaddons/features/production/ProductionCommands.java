@@ -13,7 +13,7 @@ public final class ProductionCommands {
             dispatcher.register(ClientCommands.literal("craft")
                 .then(ClientCommands.argument("output",StringArgumentType.string())
                     .executes(c->queue(StringArgumentType.getString(c,"output"),1))
-                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,64))
+                    .then(ClientCommands.argument("batches",IntegerArgumentType.integer(1,1024))
                         .executes(c->queue(StringArgumentType.getString(c,"output"),IntegerArgumentType.getInteger(c,"batches"))))));
             dispatcher.register(testCommands());
             dispatcher.register(ClientCommands.literal("production")

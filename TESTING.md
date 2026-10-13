@@ -1,3 +1,5 @@
+Intermediate preparation jobs retain up to 1024 requested batches, allowing an exact larger Quick Craft control (e.g. Blaze Powder) to execute early. Grid placement still obeys cell stack limits. The executor rechecks late Quick Craft controls only at acknowledged empty-grid/cursor boundaries and requires the offered amount to fit the remaining request and output slots.
+
 Compactor filter installation now acknowledges the observed filter and closes its GUI before reconciling converted inventory counts. Allows up to eight seconds for staggered input/output updates; no further purchase occurs until the original raw-equivalent baseline and unrelated items reconcile. Persistent mismatch records expected/observed counts and remains REVIEW.
 
 Compactor production now waits for the delegated seed craft while that child owns the cursor/grid. The parent checks cursor safety only after the craft finishes; it cannot open the compactor or issue clicks during the child. Regression reproduces an occupied Gold cursor across multiple child ticks. Fixes diagnostics-1791836767363.
@@ -12,7 +14,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.106 Storage destination planning
+### 0.2.107 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -286,7 +288,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.106 JAR](dist/astar-client-0.2.106-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.107 JAR](dist/astar-client-0.2.107-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

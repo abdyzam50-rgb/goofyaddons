@@ -37,7 +37,7 @@ public final class CraftingFeature implements Feature {
     public boolean queue(String output,int batches,String recipeKey) {return queue(output,batches,recipeKey,false);}
     public boolean queueForProduction(String output,int batches,String recipeKey) {return queue(output,batches,recipeKey,true);}
     private boolean queue(String output,int batches,String recipeKey,boolean keepOpen) {
-        if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>64){new LiveActions().message("Finish the queued craft first; batch count must be 1–64.");return false;}
+        if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>1024){new LiveActions().message("Finish the queued craft first; batch count must be 1–1024.");return false;}
         var menu=new LiveWorld().menu();
         if(menu==null || !menu.cursorEmpty()){new LiveActions().message("Clear the cursor before queueing crafting.");return false;}
         var counts=new HashMap<String,Integer>();
@@ -63,7 +63,7 @@ public final class CraftingFeature implements Feature {
         new LiveActions().message("Queued "+batches+" craft batches of "+RecipeCatalog.instance().name(output)+". Use the trading toggle to run; existing ingredients only.");return true;
     }
     static Optional<ProductionRecipe> selectRecipe(RecipeCatalog catalog,String output,int batches,Map<String,Integer> inventory,Set<String> occupied){
-        if(batches<1 || batches>64)return Optional.empty();
+        if(batches<1 || batches>1024)return Optional.empty();
         return catalog.forOutput(output).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT)
             .filter(r->!occupied.contains(r.outputId()) && r.ingredients().keySet().stream().noneMatch(occupied::contains))
             .filter(r->r.ingredients().entrySet().stream().allMatch(e->inventory.getOrDefault(e.getKey(),0)>=(long)e.getValue()*batches)).findFirst();

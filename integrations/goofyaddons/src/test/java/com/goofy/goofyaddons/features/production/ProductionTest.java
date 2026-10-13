@@ -135,6 +135,37 @@ class ProductionTest {
         for(int i=56;i<61;i++)server.slots[i]=stack(i,"OTHER_"+i,1);
         return server;
     }
+    @Test void largePowderPreparationUsesOneQuickCraftInsteadOfSixtyFourBatchChildren() {
+        var r=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();var server=new Server(r,0);
+        server.slots[54]=stack(54,"BLAZE_ROD",64);server.slots[55]=stack(55,"BLAZE_ROD",64);server.quickAvailable=128;
+        var executor=new CraftingExecutor(()->50);
+        assertEquals(CraftingExecutor.Result.WAITING,executor.tick(r,128,server.menu(),server,Map.of(),Map.of(),1000));
+        assertEquals(List.of("shift:16"),server.inputs);
+        assertEquals(CraftingExecutor.Result.CRAFTED,executor.tick(r,128,server.menu(),server,Map.of(),Map.of(),1200),executor.failure());
+        assertEquals(128,executor.completedBatches());assertEquals(256,server.menu().countInInventory("BLAZE_POWDER"));
+    }
+    @Test void lateQuickControlReplacesGridPathAfterFreshInventoryReconciliation() {
+        var r=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();var server=new Server(r,0);
+        server.slots[54]=stack(54,"BLAZE_ROD",64);server.discard=true;
+        var executor=new CraftingExecutor(()->50);executor.tick(r,64,server.menu(),server,Map.of(),Map.of(),1000);
+        // A fresh inventory layout acknowledges that the source pickup was reverted.
+        server.slots[54]=stack(54,"",0);server.slots[56]=stack(56,"BLAZE_ROD",64);server.discard=false;server.quickAvailable=64;
+        executor.tick(r,64,server.menu(),server,Map.of(),Map.of(),1200);
+        assertEquals(List.of("left:54","shift:16"),server.inputs);
+        assertEquals(CraftingExecutor.Result.CRAFTED,executor.tick(r,64,server.menu(),server,Map.of(),Map.of(),1400),executor.failure());
+        assertEquals(64,executor.completedBatches());
+    }
+
+    @Test void lateQuickControlIsAdoptedOnlyAtAnAcknowledgedEmptyGridBoundary() {
+        var r=RecipeCatalog.instance().forOutput("BLAZE_POWDER").getFirst();var server=new Server(r,0);
+        server.slots[54]=stack(54,"BLAZE_ROD",64);server.discard=true;
+        var executor=new CraftingExecutor(()->50);
+        executor.tick(r,64,server.menu(),server,Map.of(),Map.of(),1000);assertEquals(List.of("left:54"),server.inputs);
+        server.quickAvailable=64;
+        executor.tick(r,64,server.menu(),server,Map.of(),Map.of(),1200);
+        assertFalse(server.inputs.contains("shift:16"),"An unacknowledged pickup must not become a quick craft");
+    }
+
     @Test void loadingBaitQuickSlotWaitsWithoutClickingThenVerifiesAllSixteenBatches() {
         var server=baitServer(16);var r=server.r;var executor=new CraftingExecutor(()->50);
         assertEquals(29,server.menu().emptyInventorySlots());

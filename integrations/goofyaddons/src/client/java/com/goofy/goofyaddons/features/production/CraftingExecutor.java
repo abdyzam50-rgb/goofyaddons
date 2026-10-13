@@ -73,7 +73,7 @@ public final class CraftingExecutor {
             if(!menu.cursorEmpty())return block("Crafting cannot adopt an occupied cursor");
             for(int slot:GRID)if(!empty(menu.slot(slot)))return block("Crafting grid already contains items; ownership must be reconciled");
             before=inventory(menu);
-            batchCount=Math.min(64,requestedBatches);
+            batchCount=Math.min(1024,requestedBatches);
             cellLimits=new int[9];Arrays.fill(cellLimits,64);
             for(int i=0;i<9;i++)if(wanted.grid().get(i)!=null){
                 var cell=wanted.grid().get(i);
@@ -167,6 +167,21 @@ public final class CraftingExecutor {
                 submitted=false;sent=null;splitTargets.clear();
             } else if(made>0 && made<batchCount && remainingGrid(menu,batchCount-made))return takeOutput(menu,actions,skills,unlocks,now);
             if(submitted)return Result.WAITING;
+        }
+        // Dynamic quick controls can arrive after the first empty-grid observation.
+        // Recheck only before moving inputs, never while a cursor/grid action is pending.
+        if(!quick && !submitted && convertedBatches(menu)==0 && reusableMenu(menu)) {
+            var option=quickSlot(recipe,menu,inventory(menu));
+            int offered=option==null?0:craftable(option);
+            Integer stack=outputStack(recipe,menu);
+            int capacity=stack==null?0:menu.emptyInventorySlots()*stack/recipe.outputCount();
+            if(offered>0 && offered<=Math.min(1024,requestedBatches) && offered<=capacity) {
+                String reason=ActionRequirements.blocked(option.lore(),skills,unlocks,ActionRequirements.Action.CRAFT);
+                if(reason!=null)return block("Crafting requirement: "+reason);
+                batchCount=offered;quick=true;submitted=true;
+                com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.quick_craft",Map.of("recipe",recipe.key(),"output",recipe.outputId(),"batches",batchCount,"slot",option.index(),"container",container,"late",true));
+                return send(menu,actions,option.index(),true,false,now);
+            }
         }
         int target=-1,donor=-1;
         for(int i=0;i<9;i++) {
