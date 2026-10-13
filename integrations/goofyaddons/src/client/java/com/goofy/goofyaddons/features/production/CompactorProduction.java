@@ -6,7 +6,7 @@ import java.util.*;
 /** Seed an enchanted filter, buy bounded raw lots, and prove their conversions before selling. */
 final class CompactorProduction {
     @FunctionalInterface interface Journal {void record(String reason,double cost)throws Exception;}
-    private enum Phase {SEED, CRAFT, OPEN, INSTALL, ENABLE, CLOSE, BUY, CLEAN, DONE}
+    private enum Phase {SEED, CRAFT, OPEN, DISABLE, INSTALL, ENABLE, CLOSE, REFRESH, LEAVE_REFRESH, BUY, CLEAN, DONE}
     private final ProductionRun.Environment env;
     private final ProductionRecipe recipe;
     private final int batches,ratio,initialInput;
@@ -18,6 +18,8 @@ final class CompactorProduction {
     private BazaarInstantBuy purchase;
     private String seedJob;
     private long deadline,next,settled;
+    private int configuredContainer=-1;
+    private MenuSnapshot refreshStable;
     private boolean clicked;
     private double spent;
     private Map<String,Integer> installedInventory;
@@ -106,15 +108,26 @@ final class CompactorProduction {
             var current=currentDevice();if(current==null)return uncertain("Selected Personal Compactor disappeared");
             installedInventory=inventory();intent("Opening Personal Compactor to install "+recipe.outputId());
             if(!env.openCompactor(current))return uncertain("Personal Compactor could not be opened from its hotbar slot");
-            phase=Phase.INSTALL;deadline=now+8000;clicked=false;return pending();
+            phase=Phase.DISABLE;deadline=now+8000;clicked=false;return pending();
         }
-        if(phase==Phase.INSTALL||phase==Phase.ENABLE) {
+        if(phase==Phase.DISABLE||phase==Phase.INSTALL||phase==Phase.ENABLE) {
             if(!owns)return pending();
             if(phase==Phase.INSTALL&&!clicked&&!installationConserved())
                 return now>deadline?uncertain("Inventory changed before compactor filter installation"):pending();
             var controls=CompactorClearance.controls(env.menu());
             if(controls==null)return now>deadline?uncertain("Personal Compactor controls did not load"):pending();
             if(controls.tier()!=device.metadata().compactor().tier())return uncertain("Wrong Personal Compactor menu opened");
+            configuredContainer=env.menu().containerId();
+            if(phase==Phase.DISABLE) {
+                if(!controls.recipes().isEmpty())return uncertain("Unexpected filters before compactor setup");
+                if(!controls.active()) {
+                    if(now<settled)return pending();phase=Phase.INSTALL;clicked=false;deadline=now+8000;return pending();
+                }
+                if(clicked)return now>deadline?uncertain("Compactor disable was not acknowledged; no click repeated"):pending();
+                var toggle=env.menu().slots().stream().filter(s->!s.inPlayerInventory()&&"Compactor Currently ON!".equals(com.goofy.goofyaddons.utils.Chat.strip(s.hoverName()))&&s.hasLoreLine("Click to toggle!")).findFirst().orElse(null);
+                if(toggle==null)return uncertain("Compactor disable control is unreadable");
+                intent("Disabling Personal Compactor before filter installation");env.actions().click(toggle.index(),false);clicked=true;settled=now+150;return pending();
+            }
             if(phase==Phase.INSTALL) {
                 if(controls.recipes().equals(Map.of(0,recipe.outputId()))) {
                     if(now<settled)return pending();phase=Phase.ENABLE;clicked=false;deadline=now+8000;return pending();
@@ -137,12 +150,28 @@ final class CompactorProduction {
         }
         if(phase==Phase.CLOSE) {
             if(env.menu().title()!=null)return now>deadline?uncertain("Personal Compactor menu did not close"):pending();
+            if(!owns||now<settled)return pending();
+            intent("Refreshing server inventory after compactor setup");env.actions().command("craft");
+            phase=Phase.REFRESH;deadline=now+8000;refreshStable=null;return pending();
+        }
+        if(phase==Phase.REFRESH) {
+            if(env.menu().title()==null)return now>deadline?uncertain("Fresh inventory menu did not open after compactor setup"):pending();
+            if(!"Craft Item".equals(com.goofy.goofyaddons.utils.Chat.strip(env.menu().title()))||env.menu().containerId()==configuredContainer)
+                return uncertain("Unexpected inventory menu during compactor reconciliation");
+            if(refreshStable==null||!CraftingExecutor.sameOwnedState(refreshStable,env.menu())) {
+                refreshStable=env.menu();settled=now+300;return pending();
+            }
             if(now<settled)return pending();
             if(!installationConserved()) {
                 if(now<=deadline)return pending();
                 env.event("ERROR","production.compactor_install_counts",Map.of("expected",installedInventory,"observed",inventory(),"output",recipe.outputId()));
                 return uncertain("Compactor setup counts did not reconcile after closing; expected "+(installedInventory.getOrDefault(input,0)+ratio*installedInventory.getOrDefault(recipe.outputId(),0))+" raw-equivalent units, observed "+equivalent());
             }
+            if(!owns)return pending();
+            env.actions().closeMenu();phase=Phase.LEAVE_REFRESH;deadline=now+8000;return pending();
+        }
+        if(phase==Phase.LEAVE_REFRESH) {
+            if(env.menu().title()!=null)return now>deadline?uncertain("Fresh inventory menu did not close before buying"):pending();
             phase=Phase.BUY;deadline=now+8000;return pending();
         }
         if(phase==Phase.BUY) {

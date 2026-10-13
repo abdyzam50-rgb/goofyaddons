@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CompactorProductionTest {
     @TempDir Path dir;
     class Env implements ProductionRun.Environment,GameActions {
-        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall,cursorWhenQueued,laggedOutputs;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
+        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall,cursorWhenQueued,laggedOutputs,refreshed;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
         final List<String> effects=new ArrayList<>();
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
@@ -32,20 +32,20 @@ class CompactorProductionTest {
         public String queueListing(String output,long price,double fee){return null;}
         public boolean listingQueued(){return false;}
         public MenuSnapshot menu(){
-            var m=CompactorClearanceTest.menu(open?"Personal Compactor 7000":null,active,filters,filters);
+            var m=CompactorClearanceTest.menu(open?"Personal Compactor 7000":refreshed?"Craft Item":null,active,filters,filters);
             var slots=new ArrayList<>(m.slots());
             if(raw>0)slots.set(36,new SlotView(36,true,9,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,raw,64));
             if(outputs>0)slots.set(37,new SlotView(37,true,10,false,"Enchanted Gold","Enchanted Gold",List.of(),"ENCHANTED_GOLD",null,laggedOutputs?Math.max(1,outputs-1):outputs,64));
             if(cursorWhenQueued&&queued)return new MenuSnapshot(0,"Craft Item",false,slots,
                 new SlotView(-1,false,-1,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,1,64));
-            return new MenuSnapshot(open?1:0,m.title(),true,slots);
+            return new MenuSnapshot(open?1:refreshed?2:0,m.title(),true,slots);
         }
-        public boolean openCompactor(SlotView device){opens++;open=true;return true;}
+        public boolean openCompactor(SlotView device){opens++;open=true;refreshed=false;return true;}
         public void click(int slot,boolean shift){effects.add("click:"+slot);if(ignored)return;
-            if(slot==37){filters=Map.of(0,"ENCHANTED_GOLD");if(convertOnInstall&&active){outputs+=raw/160;raw%=160;}}else if(slot==31)active=true;else if(slot==10)filters=Map.of();
+            if(slot==37){assertFalse(active,"Disable conversion while installing the seed filter");filters=Map.of(0,"ENCHANTED_GOLD");if(convertOnInstall&&active){outputs+=raw/160;raw%=160;}}else if(slot==31){active=!active;if(active&&convertOnInstall){outputs+=raw/160;raw%=160;}}else if(slot==10)filters=Map.of();
         }
-        public void closeMenu(){open=false;}
-        public void command(String command){effects.add(command);}
+        public void closeMenu(){open=false;refreshed=false;}
+        public void command(String command){effects.add(command);if(command.equals("craft"))refreshed=true;}
         public void message(String message){}
         public boolean writeSign(String text){return false;}
         void finishSeed()throws Exception{raw-=160;outputs++;queued=false;jobs.put(jobs.find("seed").orElseThrow().completedBatch().withState(ProductionJobs.State.OUTPUT_READY,null));}
@@ -63,7 +63,7 @@ class CompactorProductionTest {
         }
         assertEquals(ProductionLoop.Step.DONE,result.step(),result.reason());assertEquals(2,env.outputs);assertEquals(0,env.raw);
         assertTrue(env.filters.isEmpty());assertEquals(1,env.seedCrafts);assertEquals(2,env.opens);
-        assertEquals(List.of("click:37","click:31","click:10"),env.effects);
+        assertEquals(List.of("click:37","click:31","craft","click:10"),env.effects);
         assertTrue(journal.stream().anyMatch(r->r.startsWith("Installing")));
     }
     @Test void conversionDuringFilterInstallationPreservesSeedAndRemainingBudget()throws Exception {
@@ -108,12 +108,13 @@ class CompactorProductionTest {
         for(long now=7000;now<20000&&result.step()==ProductionLoop.Step.PENDING;now+=500)result=bulk.tick(true,now);
         assertEquals(resolves?ProductionLoop.Step.DONE:ProductionLoop.Step.UNCERTAIN,result.step(),result.reason());
         assertEquals(resolves,env.filters.isEmpty());assertEquals(2,env.outputs);
+        assertTrue(env.effects.contains("craft"),"Request a fresh server inventory container rather than trust local close state");
         assertTrue(env.effects.stream().noneMatch(e->e.startsWith("bz")),"Never buy while setup counts are short");
         if(!resolves)assertTrue(result.reason().contains("raw-equivalent"));
     }
 
     @Test void unacknowledgedInstallationIsNotClickedTwiceAndKeepsSeed()throws Exception {
-        var env=new Env();env.ignored=true;env.active=true;
+        var env=new Env();env.ignored=true;env.active=false;
         var r=RecipeCatalog.instance().forOutput("ENCHANTED_GOLD").getFirst();
         var bulk=new CompactorProduction(env,r,2,CompactorProduction.available(env.menu()),(reason,cost)->{});
         var result=ProductionLoop.Outcome.PENDING;
