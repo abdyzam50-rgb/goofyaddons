@@ -1,3 +1,5 @@
+Compactor production records an exact starting sack balance from the read-only Bazaar Sell Sacks Now tooltip or enchanted sack GUI. Paid conversions count only when the inventory plus verified sack increase reconciles against raw purchases. Outputs stay in sacks until crafting finishes, then /gfs retrieves only the owned increase and verifies the original sack balance remains. The sell-all-sacks control is never clicked; rounded/hidden counts are rejected and missing withdrawal receipts are not replayed.
+
 Own compactor toggle/filter clicks now wait for transient vanilla-predicted cursor pickup to clear instead of immediately entering REVIEW. No additional click occurs while waiting; the existing eight-second acknowledgement deadline stops a persistent cursor. Foreign/unowned cursor states still stop immediately.
 
 Compactor setup disables automatic conversion while installing the seed filter. After enabling, it closes configuration and opens a fresh Craft Item server container, waits for stable inventory, then reconciles the original raw-equivalent baseline before buying. A local menu close alone cannot refresh stale counts. Persistent shortages still retain the run for review with exact counts.
@@ -18,7 +20,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.109 Storage destination planning
+### 0.2.110 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -292,7 +294,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.109 JAR](dist/astar-client-0.2.109-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.110 JAR](dist/astar-client-0.2.110-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

@@ -67,6 +67,15 @@ public final class BazaarInstantBuy {
         conversionOutput=output;conversionRatio=inputPerOutput;return this;
     }
 
+    /** Exact output shortage after a paid lot has had time to settle; caller must prove its sack delta. */
+    int missingConvertedOutputs(MenuSnapshot menu,double purse,long now,int ownedRawInSacks) {
+        if(conversionOutput==null||(step!=Step.VERIFY&&step!=Step.CONFIRM)||menu==null||now-stepAt<STASH_AFTER_MS)return 0;
+        storedUnits=ownedRawInSacks;
+        if(!paidButShort(menu,purse))return 0;
+        int missing=before+amount-count(menu);
+        return missing>0&&missing%conversionRatio==0?missing/conversionRatio:0;
+    }
+
     /** Once submitted, verify its outcome before permitting any new market decision. */
     public boolean submitted(){return step==Step.CONFIRM||step==Step.VERIFY||step==Step.DONE;}
     public String failure() { return failure; }

@@ -6,7 +6,7 @@ import java.util.*;
 /** Seed an enchanted filter, buy bounded raw lots, and prove their conversions before selling. */
 final class CompactorProduction {
     @FunctionalInterface interface Journal {void record(String reason,double cost)throws Exception;}
-    private enum Phase {SEED, CRAFT, OPEN, DISABLE, INSTALL, ENABLE, CLOSE, REFRESH, LEAVE_REFRESH, BUY, CLEAN, DONE}
+    private enum Phase {BASELINE, SEED, CRAFT, OPEN, DISABLE, INSTALL, ENABLE, CLOSE, REFRESH, LEAVE_REFRESH, BUY, WITHDRAW_SACK, VERIFY_WITHDRAWAL, CLEAN, DONE}
     private final ProductionRun.Environment env;
     private final ProductionRecipe recipe;
     private final int batches,ratio,initialInput;
@@ -14,7 +14,13 @@ final class CompactorProduction {
     private final Journal journal;
     private final SlotView device;
     private final CompactorClearance cleanup=new CompactorClearance();
-    private Phase phase=Phase.SEED;
+    private Phase phase=Phase.BASELINE;
+    private enum SackPurpose {BASELINE, SETUP, PURCHASE, FINAL}
+    private SackPurpose sackPurpose;
+    private CompactorSacks sacks;
+    private boolean sackReadClosed,sackBaselineKnown;
+    private int sackBaseline,ownedSack,boughtUnits,withdrawUnits,withdrawBefore;
+    private double withdrawalPurse;
     private BazaarInstantBuy purchase;
     private String seedJob;
     private long deadline,next,settled;
@@ -36,18 +42,27 @@ final class CompactorProduction {
     CompactorProduction(ProductionRun.Environment env,ProductionRecipe recipe,int batches,SlotView device,Journal journal) {
         this.env=env;this.recipe=recipe;this.batches=batches;this.device=device;this.journal=journal;
         input=recipe.ingredients().keySet().iterator().next();ratio=recipe.ingredients().get(input);
+        sacks=new CompactorSacks(recipe.outputId(),env.name(recipe.outputId()));sackPurpose=SackPurpose.BASELINE;
         initialInput=count(input); // Preserve pre-existing input basis; never purchase it twice.
     }
     static final String LOCK="GOOFY_PERSONAL_COMPACTOR_SESSION";
     boolean active(){return phase!=Phase.DONE;}
     Map<String,Integer> remainingInputs(){int missing=ratio*batches-equivalent();return missing>0?Map.of(input,missing):Map.of();}
     boolean wantsMenu(){return !env.craftQueued();}
-    boolean needsRequirements(){return purchase==null&&(phase==Phase.SEED||phase==Phase.BUY);}
+    boolean needsRequirements(){return purchase==null&&(phase==Phase.BASELINE||phase==Phase.SEED||phase==Phase.BUY);}
     boolean submitted(){return purchase!=null&&purchase.submitted();}
-    String status(){return "Personal Compactor · "+phase.name().toLowerCase(Locale.ROOT)+" · "+count(recipe.outputId())+"/"+batches+" outputs";}
-    Map<String,Object> diagnostics(){return Map.of("phase",phase.name(),"output",recipe.outputId(),"input",input,"ratio",ratio,"initialInput",initialInput,"spent",spent,"purchaseSubmitted",submitted());}
+    String status(){
+        String action=sacks!=null?"checking sacks":phase==Phase.WITHDRAW_SACK||phase==Phase.VERIFY_WITHDRAWAL?"collecting owned sack outputs":phase.name().toLowerCase(Locale.ROOT);
+        return "Personal Compactor · "+action+" · "+Math.min(batches,count(recipe.outputId())+ownedSack)+"/"+batches+" outputs";
+    }
+    Map<String,Object> diagnostics(){return Map.ofEntries(
+        Map.entry("phase",phase.name()),Map.entry("output",recipe.outputId()),Map.entry("input",input),Map.entry("ratio",ratio),
+        Map.entry("initialInput",initialInput),Map.entry("spent",spent),Map.entry("purchaseSubmitted",submitted()),
+        Map.entry("sackBaseline",sackBaseline),Map.entry("sackBaselineVerified",sackBaselineKnown),Map.entry("ownedSackOutputs",ownedSack),
+        Map.entry("sackReadPurpose",sacks==null?"none":sackPurpose.name()));}
     private int count(String id){return env.menu()==null?0:ProductionStorage.Move.inventoryCount(env.menu(),id);}
-    private int equivalent(){return count(input)+ratio*count(recipe.outputId());}
+    private int equivalent(){return count(input)+ratio*(count(recipe.outputId())+ownedSack);}
+    private int physicalEquivalent(){return count(input)+ratio*count(recipe.outputId());}
     private ProductionLoop.Outcome pending(){return ProductionLoop.Outcome.pending(status());}
     private ProductionLoop.Outcome uncertain(String reason){return ProductionLoop.Outcome.uncertain(reason+"; inspect compactor filter, inventory and purchases");}
     private void intent(String reason)throws Exception{journal.record(reason,spent);}
@@ -58,7 +73,7 @@ final class CompactorProduction {
     }
     private boolean installationConserved(){
         var current=inventory();
-        if(current.getOrDefault(input,0)+ratio*current.getOrDefault(recipe.outputId(),0)!=installedInventory.getOrDefault(input,0)+ratio*installedInventory.getOrDefault(recipe.outputId(),0))return false;
+        if(current.getOrDefault(input,0)+ratio*(current.getOrDefault(recipe.outputId(),0)+ownedSack)!=installedInventory.getOrDefault(input,0)+ratio*installedInventory.getOrDefault(recipe.outputId(),0))return false;
         var before=new TreeMap<>(installedInventory);before.remove(input);before.remove(recipe.outputId());
         current.remove(input);current.remove(recipe.outputId());return before.equals(current);
     }
@@ -68,12 +83,17 @@ final class CompactorProduction {
         try{return advance(owns,now);}catch(Exception failed){return uncertain("Compactor operation or journal failed");}
     }
     private ProductionLoop.Outcome advance(boolean owns,long now)throws Exception {
+        if(sacks!=null)return readSacks(owns,now);
         if(purchase!=null) {
+            if(purchase.missingConvertedOutputs(env.menu(),env.purse(),now,ownedSack*ratio)>0) {
+                if(!sackBaselineKnown)return uncertain("Compacted outputs are missing and no starting sack balance was verified");
+                startSacks(SackPurpose.PURCHASE);return pending();
+            }
             if(!owns)return pending();
-            var result=purchase.tick(env.menu(),env.signOpen(),env.actions(),env.purse(),now);
+            var result=purchase.tick(env.menu(),env.signOpen(),env.actions(),env.purse(),now,ownedSack*ratio);
             if(result==BazaarInstantBuy.Result.BLOCKED||result==BazaarInstantBuy.Result.UNCERTAIN)return uncertain(purchase.failure());
             if(result!=BazaarInstantBuy.Result.BOUGHT)return pending();
-            spent+=purchase.spent();journal.record("Compactor input lot paid and equivalent units verified",spent);purchase=null;
+            boughtUnits+=purchase.amount();spent+=purchase.spent();journal.record("Compactor input lot paid and equivalent units verified",spent);purchase=null;
             deadline=now+8000;return pending();
         }
         // The child owns its grid and cursor until its durable completion receipt.
@@ -169,6 +189,8 @@ final class CompactorProduction {
             }
             if(now<settled)return pending();
             if(!installationConserved()) {
+                int shortfall=(installedInventory.getOrDefault(input,0)+ratio*installedInventory.getOrDefault(recipe.outputId(),0))-equivalent();
+                if(sackBaselineKnown&&shortfall>0&&shortfall%ratio==0){startSacks(SackPurpose.SETUP);return pending();}
                 if(now<=deadline)return pending();
                 env.event("ERROR","production.compactor_install_counts",Map.of("expected",installedInventory,"observed",inventory(),"output",recipe.outputId()));
                 return uncertain("Compactor setup counts did not reconcile after closing; expected "+(installedInventory.getOrDefault(input,0)+ratio*installedInventory.getOrDefault(recipe.outputId(),0))+" raw-equivalent units, observed "+equivalent());
@@ -186,12 +208,29 @@ final class CompactorProduction {
                 return now>deadline?uncertain("Saved compactor configuration changed"):pending();
             for(var other:PersonalCompactors.detect(env.menu()))if(other.containerSlot()!=device.containerSlot()&&!(other.metadata().compactor()!=null&&other.metadata().compactor().recipes().isEmpty()))return uncertain("Another Personal Compactor gained filters");
             int remaining=ratio*batches-equivalent();
-            if(remaining<0||count(recipe.outputId())>batches)return uncertain("Compactor produced more units than planned");
+            if(remaining<0||count(recipe.outputId())+ownedSack>batches)return uncertain("Compactor produced more units than planned");
             if(remaining==0) {
-                if(count(recipe.outputId())!=batches)return now>deadline?uncertain("Paid inputs did not finish converting"):pending();
-                phase=Phase.CLEAN;return pending();
+                if(count(recipe.outputId())+ownedSack!=batches)return now>deadline?uncertain("Paid inputs did not finish converting"):pending();
+                phase=ownedSack>0?Phase.WITHDRAW_SACK:Phase.CLEAN;return pending();
             }
             return buy(owns,now,true);
+        }
+        if(phase==Phase.WITHDRAW_SACK) {
+            if(!owns)return pending();
+            if(env.menu().title()!=null){env.actions().closeMenu();next=now+150;return pending();}
+            if(ProductionInventorySpace.capacity(RecipeCatalog.instance(),env.menu(),recipe.outputId())<ownedSack)
+                return ProductionLoop.Outcome.blocked("Free inventory space for this run's compacted sack outputs");
+            if(!Double.isFinite(env.purse())||env.purse()<0)return pending();
+            withdrawUnits=ownedSack;withdrawBefore=count(recipe.outputId());withdrawalPurse=env.purse();
+            intent("Withdrawing only owned sack outputs: "+withdrawUnits+" "+recipe.outputId()+"; starting sack balance "+sackBaseline);
+            env.actions().command("gfs "+recipe.outputId()+" "+withdrawUnits);phase=Phase.VERIFY_WITHDRAWAL;deadline=now+8000;return pending();
+        }
+        if(phase==Phase.VERIFY_WITHDRAWAL) {
+            int gain=count(recipe.outputId())-withdrawBefore;
+            if(!Double.isFinite(env.purse())||env.purse()<0)return now>deadline?uncertain("Sack withdrawal purse observation is unavailable"):pending();
+            if(gain>withdrawUnits||Math.abs(env.purse()-withdrawalPurse)>.51)return uncertain("Sack withdrawal changed inventory or purse unexpectedly");
+            if(gain!=withdrawUnits)return now>deadline?uncertain("Owned sack withdrawal was not acknowledged; command not repeated"):pending();
+            startSacks(SackPurpose.FINAL);return pending();
         }
         if(phase==Phase.CLEAN) {
             var result=cleanup.tick(env.menu(),env.actions(),new CompactorClearance.Ports(){
@@ -203,6 +242,40 @@ final class CompactorProduction {
         }
         return ProductionLoop.Outcome.DONE;
     }
+    private void startSacks(SackPurpose purpose){
+        sacks=new CompactorSacks(recipe.outputId(),env.name(recipe.outputId()));sackPurpose=purpose;sackReadClosed=false;
+    }
+    private ProductionLoop.Outcome readSacks(boolean owns,long now)throws Exception {
+        var result=sacks.tick(env.menu(),env.actions(),owns,now);
+        if(result==ProductionLoop.Step.UNCERTAIN)return uncertain(sacks.failure());
+        if(result!=ProductionLoop.Step.DONE)return pending();
+        int balance=sacks.balance();
+        if(!sackReadClosed) {
+            if(sackPurpose==SackPurpose.BASELINE) {
+                sackBaseline=balance;sackBaselineKnown=sacks.found();ownedSack=0;
+                intent("Starting sack balance verified: "+sackBaseline+" "+recipe.outputId()+"; item observed "+sackBaselineKnown);
+            } else {
+                if(!sacks.found()||!sackBaselineKnown||balance<sackBaseline)return uncertain("Compactor sack balance changed outside this run");
+                int owned=balance-sackBaseline;
+                int expected=sackPurpose==SackPurpose.SETUP?installedInventory.getOrDefault(input,0)+ratio*installedInventory.getOrDefault(recipe.outputId(),0)
+                    :initialInput+boughtUnits+(sackPurpose==SackPurpose.PURCHASE?purchase.amount():0);
+                if(physicalEquivalent()+owned*ratio!=expected)return uncertain("Sack increase does not reconcile with this run's paid inputs; nothing withdrawn");
+                if(sackPurpose==SackPurpose.FINAL&&(owned!=0||count(recipe.outputId())!=batches))return uncertain("Sack withdrawal did not preserve the starting sack balance");
+                ownedSack=owned;intent("Verified owned sack outputs: "+ownedSack+" "+recipe.outputId()+"; preserved starting balance "+sackBaseline);
+            }
+            if(!owns)return pending();env.actions().closeMenu();sackReadClosed=true;deadline=now+8000;return pending();
+        }
+        if(env.menu().title()!=null)return now>deadline?uncertain("Sack receipt menu did not close"):pending();
+        sacks=null;
+        switch(sackPurpose) {
+            case BASELINE -> phase=Phase.SEED;
+            case SETUP -> {if(!installationConserved())return uncertain("Sack and inventory setup counts disagree");phase=Phase.BUY;deadline=now+8000;}
+            case PURCHASE -> {} // The existing instant-buy receipt now sees verified owned sack units.
+            case FINAL -> phase=Phase.CLEAN;
+        }
+        return pending();
+    }
+
     private ProductionLoop.Outcome buy(boolean owns,long now,boolean converted)throws Exception {
         if(!env.buyingAllowed())return ProductionLoop.Outcome.blocked("Enable ingredient buying for compactor production");
         var block=env.procurementBlock();if(block!=null)return ProductionLoop.Outcome.blocked(block);
@@ -211,9 +284,9 @@ final class CompactorProduction {
         if(quote==null||!Double.isFinite(quote)||quote<=0)return ProductionLoop.Outcome.blocked("Waiting for fresh full compactor input quote");
         if(quote*1.03>env.spendable())return ProductionLoop.Outcome.blocked("Remaining compactor inputs exceed spendable capital");
         if(!owns)return pending();
-        int outputSlots=(batches+63)/64;
-        int heldOutputSlots=(count(recipe.outputId())+63)/64;
-        int capacity=ProductionInventorySpace.capacity(RecipeCatalog.instance(),env.menu(),input)-64*Math.max(1,outputSlots-heldOutputSlots);
+        // A full main inventory yields fewer than 64 outputs at 160:1. Reserve
+        // one additional output stack per lot; accumulated inventory reduces later lots.
+        int capacity=ProductionInventorySpace.capacity(RecipeCatalog.instance(),env.menu(),input)-64;
         if(capacity<Math.min(ratio,remaining))return ProductionLoop.Outcome.blocked("Keep enough inventory room for a compactor input lot and enchanted output");
         int lot=Math.min(remaining,Math.min(71680,capacity));
         Double lotQuote=env.instantBuyCost(input,lot);if(lotQuote==null)return ProductionLoop.Outcome.blocked("Waiting for compactor input lot quote");

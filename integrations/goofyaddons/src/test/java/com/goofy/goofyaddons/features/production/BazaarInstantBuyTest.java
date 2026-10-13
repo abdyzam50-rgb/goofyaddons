@@ -20,6 +20,19 @@ class BazaarInstantBuyTest {
     final List<String> intents=new ArrayList<>();
     BazaarInstantBuy buy(double limit){return new BazaarInstantBuy("ENCHANTED_COAL","Enchanted Coal",10,limit,intents::add);}
 
+    @Test void convertedPurchaseReceiptIncludesOnlyPreviouslyVerifiedSackUnits() {
+        var buy=new BazaarInstantBuy("GOLD_INGOT","Gold Ingot",390,410,r->intents.add(r)).withConversion("ENCHANTED_GOLD",160);
+        var actions=new RecordingActions();var seed=item(54,"ENCHANTED_GOLD",1);
+        buy.tick(menu(1,"Gold Ingot",item(13,"GOLD_INGOT",1),seed,
+            SlotView.named(10,"Buy Instantly",List.of("Gold Ingot","Price per unit: 1 coins"))),false,actions,5000,1000,960);
+        buy.tick(menu(2,"How many do you want?",seed,SlotView.named(16,"Custom Amount",List.of())),false,actions,5000,1100,960);
+        buy.tick(null,true,actions,5000,1200,960);
+        var delivered=menu(3,null,seed,item(55,"GOLD_INGOT",70));
+        assertEquals(2,buy.missingConvertedOutputs(delivered,4610,3000,960));
+        assertEquals(BazaarInstantBuy.Result.BOUGHT,buy.tick(delivered,false,actions,4610,3100,1280));
+        assertEquals(390,buy.spent());assertEquals(1,intents.size());
+    }
+
     @Test void compactorReceiptCountsRawRemainderAndConvertedOutputsWithoutRepeatingPayment() {
         var buy=new BazaarInstantBuy("GOLD_INGOT","Gold Ingot",390,410,r->intents.add(r)).withConversion("ENCHANTED_GOLD",160);
         var actions=new RecordingActions();
