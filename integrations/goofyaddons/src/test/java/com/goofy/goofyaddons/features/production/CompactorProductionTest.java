@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CompactorProductionTest {
     @TempDir Path dir;
     class Env implements ProductionRun.Environment,GameActions {
-        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall,cursorWhenQueued,laggedOutputs,refreshed;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
+        final ProductionJobs jobs;int raw=320,outputs;boolean open,active,queued,ignored,convertOnInstall,cursorWhenQueued,laggedOutputs,refreshed,controlCursor;int opens,seedCrafts;Map<Integer,String> filters=Map.of();
         final List<String> effects=new ArrayList<>();
         Env()throws Exception{jobs=new ProductionJobs(dir.resolve("jobs.json"));}
         public ProductionJobs jobs(){return jobs;}
@@ -36,6 +36,8 @@ class CompactorProductionTest {
             var slots=new ArrayList<>(m.slots());
             if(raw>0)slots.set(36,new SlotView(36,true,9,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,raw,64));
             if(outputs>0)slots.set(37,new SlotView(37,true,10,false,"Enchanted Gold","Enchanted Gold",List.of(),"ENCHANTED_GOLD",null,laggedOutputs?Math.max(1,outputs-1):outputs,64));
+            if(controlCursor)return new MenuSnapshot(1,m.title(),false,slots,
+                new SlotView(-1,false,-1,false,"Compactor Currently ON!","Compactor Currently ON!",List.of(),null,null,1,64));
             if(cursorWhenQueued&&queued)return new MenuSnapshot(0,"Craft Item",false,slots,
                 new SlotView(-1,false,-1,false,"Gold Ingot","Gold Ingot",List.of(),"GOLD_INGOT",null,1,64));
             return new MenuSnapshot(open?1:refreshed?2:0,m.title(),true,slots);
@@ -111,6 +113,29 @@ class CompactorProductionTest {
         assertTrue(env.effects.contains("craft"),"Request a fresh server inventory container rather than trust local close state");
         assertTrue(env.effects.stream().noneMatch(e->e.startsWith("bz")),"Never buy while setup counts are short");
         if(!resolves)assertTrue(result.reason().contains("raw-equivalent"));
+    }
+
+    @Test void ownToggleCursorWaitsForAcknowledgementWithoutRepeatingTheClick()throws Exception {
+        var env=new Env();env.active=true;
+        var r=RecipeCatalog.instance().forOutput("ENCHANTED_GOLD").getFirst();
+        var bulk=new CompactorProduction(env,r,2,CompactorProduction.available(env.menu()),(reason,cost)->{});
+        long now=1000;
+        while(env.effects.isEmpty()&&now<5000){assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,now).step());if(env.queued)env.finishSeed();now+=500;}
+        assertEquals(List.of("click:31"),env.effects);env.controlCursor=true;
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,now).step());
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,now+500).step());assertEquals(List.of("click:31"),env.effects);
+        env.controlCursor=false;
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,now+1000).step());
+        assertEquals(ProductionLoop.Step.PENDING,bulk.tick(true,now+1500).step());assertEquals(List.of("click:31","click:37"),env.effects);
+    }
+    @Test void persistentOwnControlCursorStopsAfterItsDeadlineWithoutRepeating()throws Exception {
+        var env=new Env();env.active=true;
+        var r=RecipeCatalog.instance().forOutput("ENCHANTED_GOLD").getFirst();
+        var bulk=new CompactorProduction(env,r,2,CompactorProduction.available(env.menu()),(reason,cost)->{});
+        for(long now=1000;now<5000&&env.effects.isEmpty();now+=500){bulk.tick(true,now);if(env.queued)env.finishSeed();}
+        env.controlCursor=true;
+        var result=bulk.tick(true,15000);
+        assertEquals(ProductionLoop.Step.UNCERTAIN,result.step());assertTrue(result.reason().contains("cursor"));assertEquals(List.of("click:31"),env.effects);
     }
 
     @Test void unacknowledgedInstallationIsNotClickedTwiceAndKeepsSeed()throws Exception {

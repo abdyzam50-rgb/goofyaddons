@@ -79,7 +79,13 @@ final class CompactorProduction {
         // The child owns its grid and cursor until its durable completion receipt.
         if((phase==Phase.CRAFT||phase==Phase.SEED) && env.craftQueued())return pending();
         if(env.menu()==null || now<next)return pending();
-        if(!env.menu().cursorEmpty())return uncertain("Compactor production cursor is occupied");
+        if(!env.menu().cursorEmpty()) {
+            // Custom Hypixel controls briefly look like vanilla PICKUP clicks locally.
+            // Wait for the same submitted control to be acknowledged; never click it again.
+            if(clicked&&(phase==Phase.DISABLE||phase==Phase.INSTALL||phase==Phase.ENABLE))
+                return now>deadline?uncertain("Compactor control cursor was not acknowledged; no click repeated"):pending();
+            return uncertain("Compactor production cursor is occupied");
+        }
         if(phase==Phase.SEED) {
             if(count(input)<ratio)return buy(owns,now,false);
             if(env.craftQueued())return pending();
