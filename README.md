@@ -54,7 +54,8 @@ for everything around it. Its sidebar has:
 
 - **Search**, a box at the top: type and its page lists every setting whose
   name or description matches, in a card for each page it's on.
-- **Pathfinder settings**, a group that folds away:
+- **Pathfinder**: one page with a row of small tabs along the top, the same
+  way Macros shows its sections:
   - **Drawing**: whether the route is drawn, its look (ribbon, painted floor,
     comet, breadcrumbs, light tube, lines, key nodes only or none) and its colour.
   - **Path**, **Teleport**, **Camera** and **Mouse**: every setting from

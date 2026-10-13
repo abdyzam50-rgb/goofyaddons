@@ -32,9 +32,10 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 
 /**
- * The mod's window, opened with a key (G unless changed in Controls): a sidebar of pages (where
- * to go, how the route is drawn, a page per {@link Tuning} section, and colour themes), each a
- * set of cards of settings. Everything here can also be done with {@code .A*}.
+ * The mod's window, opened with a key (G unless changed in Controls): a sidebar of pages
+ * (Pathfinder, Macros and colour themes), each a set of cards of settings. Pathfinder and Macros
+ * split into small tabs along the top: how the route is drawn and a tab per {@link Tuning}
+ * section. Everything here can also be done with {@code .A*}.
  *
  * <p>Drawn entirely by the mod: rounded shapes from the {@code panel} shader ({@link Panels})
  * and pixel fonts for the text, at its own scale of whole screen pixels ({@link #px}), whatever the GUI
@@ -199,19 +200,21 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         buildPage();
     }
 
-    /** Whether the pathfinder group is open: folded each time the window opens. */
-    private boolean pathfinderOpen;
+    /** The pathfinder page last open, so its sidebar entry returns to it. */
+    private static String lastPathfinderPage = DRAWING;
 
-    /** The pages that fold into "Pathfinder settings". */
+    /** The pages shown as tabs under "Pathfinder", the same way Macros shows its sections. */
     private static boolean pathfinderPage(String name) {
-        return !name.equals(MACROS) && !name.equals(THEMES);
+        return !name.equals(MACROS) && !name.equals(THEMES) && !name.equals(SEARCH);
     }
 
-    /** Lays out the sidebar: the other pages, then the pathfinder group (folded or not). */
+    /** Lays out the sidebar: Pathfinder, then the other pages. */
     private void side() {
-        fixed.removeIf(e -> e instanceof SideItem || e instanceof SideGroup);
+        fixed.removeIf(e -> e instanceof SideItem);
         List<El> items = new ArrayList<>();
         int sy = winY + HEAD_H + 40;
+        items.add(new SideItem(null, "Pathfinder", winX + 10, sy, SIDE_W - 20, 22));
+        sy += 26;
         for (var e : pages().entrySet()) {
             if (!pathfinderPage(e.getKey())) {
                 items.add(new SideItem(e.getKey(), e.getValue(), winX + 10, sy, SIDE_W - 20,
@@ -219,19 +222,52 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 sy += 26;
             }
         }
-        sy += 6;
-        items.add(new SideGroup(winX + 10, sy, SIDE_W - 20, 22));
-        sy += 28;
-        if (pathfinderOpen) {
-            for (var e : pages().entrySet()) {
-                if (pathfinderPage(e.getKey())) {
-                    items.add(new SideItem(e.getKey(), e.getValue(), winX + 18, sy,
-                            SIDE_W - 28, 20));
-                    sy += 23;
-                }
-            }
-        }
         fixed.addAll(0, items);
+    }
+
+    /** The pathfinder's pages as a row of small tabs above the page. */
+    private void pathfinderTabs() {
+        int x = areaX, y = winY + HEAD_H + 8;
+        for (var e : pages().entrySet()) {
+            if (!pathfinderPage(e.getKey())) {
+                continue;
+            }
+            int w = width(e.getValue(), body) + 16;
+            if (x > areaX && x + w > areaX + areaW) {
+                x = areaX;
+                y += 24;
+            }
+            fixed.add(new PageTab(e.getKey(), e.getValue()).at(x, y, w, 18));
+            x += w + 4;
+        }
+        areaY = y + 30;
+        areaH = winY + winH - 4 - areaY;
+    }
+
+    /** One of the pathfinder's pages, as a small tab. */
+    private final class PageTab extends El {
+        final String name;
+        final String label;
+
+        PageTab(String name, String label) {
+            this.name = name;
+            this.label = label;
+        }
+
+        @Override
+        void draw(GuiGraphicsExtractor g, boolean hot) {
+            boolean open = name.equals(page);
+            Pixel.button(g, ex, ey, ew, eh, open ? Pixel.State.ACTIVE
+                    : hot ? Pixel.State.HOVER : Pixel.State.NORMAL, t());
+            text(g, label, body, ex + (ew - width(label, body)) / 2, ey + 6,
+                    open ? t().highlight : t().textDim);
+        }
+
+        @Override
+        void click(double mx, double my, int button) {
+            focus(null);
+            open(name);
+        }
     }
 
     /** Types {@code words} into the search box, as the {@code search} test step does. */
@@ -258,6 +294,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private void open(String name) {
         page = name;
         lastPage = name;
+        if (pathfinderPage(name)) {
+            lastPathfinderPage = name;
+        }
         problem = null;
         search.text = "";
         focus(null);
@@ -268,10 +307,11 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
     private void buildPage() {
         dropped = null;
-        fixed.removeIf(e->e instanceof TradingTab);
+        fixed.removeIf(e->e instanceof TradingTab || e instanceof PageTab);
         areaY=winY+HEAD_H+16;
         areaH=winH-HEAD_H-20;
         if(page.equals(MACROS))tradingTabs();
+        else if(pathfinderPage(page))pathfinderTabs();
         cards.clear();
         tiles.clear();
         if (page.equals(SEARCH)) {
@@ -1010,7 +1050,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 strong, winX + 36, fy + 8, t().text);
         text(g, fit(stateWord(), small, SIDE_W - 52), small, winX + 36, fy + 21, t().textDim);
         // The page's title.
-        String heading = page.equals(SEARCH) ? "Search" : pages().get(page);
+        String heading = page.equals(SEARCH) ? "Search"
+                : pathfinderPage(page) ? "Pathfinder" : pages().get(page);
         text(g, heading, title, winX + SIDE_W + PAD + 4, winY + (HEAD_H - 12) / 2 + 1, t().text);
         String feedback=page.equals(MACROS)?tradingFeedback():null;
         if(feedback!=null)text(g,fit(feedback,small,areaW-8),small,areaX+4,winY+HEAD_H-11,Callout.WARN);
@@ -2049,7 +2090,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
     }
 
-    /** A page in the sidebar. */
+    /** A page in the sidebar; a null name is Pathfinder, which opens its last tab. */
     private final class SideItem extends El {
         final String name;
         final String label;
@@ -2063,7 +2104,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         @Override
         void draw(GuiGraphicsExtractor g, boolean hot) {
             Theme.Colours th = t();
-            boolean open = name.equals(page);
+            boolean open = name == null ? pathfinderPage(page) : name.equals(page);
             if (open) {
                 // The page that's open: an accent edge round a darker box.
                 Pixel.panel(g, ex, ey, ew, eh, th.accent, th.bg);
@@ -2085,36 +2126,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
         @Override
         void click(double mx, double my, int button) {
-            open(name);
-        }
-    }
-
-    /** "Pathfinder settings": folds the pathfinder's pages away and back. */
-    private final class SideGroup extends El {
-
-        SideGroup(int at, int top, int w, int h) {
-            at(at, top, w, h);
-        }
-
-        @Override
-        void draw(GuiGraphicsExtractor g, boolean hot) {
-            Theme.Colours th = t();
-            // Folded with one of its pages open, it shows that the page is in here.
-            boolean inside = !pathfinderOpen && pathfinderPage(page) && !page.equals(SEARCH);
-            if (inside) {
-                Pixel.panel(g, ex, ey, ew, eh, th.accent, th.bg);
-            }
-            // A section's header: quieter than the pages under it, as in a pixel game's menu.
-            int colour = inside ? th.highlight : hot ? th.text : th.textDim;
-            text(g, fit("Pathfinder", body, ew - 22), body, ex + 6, ey + eh / 2 - 3, colour);
-            arrow(g, ex + ew - 11, ey + eh / 2, pathfinderOpen ? 'v' : '>',
-                    hot ? th.text : th.slate);
-        }
-
-        @Override
-        void click(double mx, double my, int button) {
-            pathfinderOpen = !pathfinderOpen;
-            side();
+            open(name == null ? lastPathfinderPage : name);
         }
     }
 
