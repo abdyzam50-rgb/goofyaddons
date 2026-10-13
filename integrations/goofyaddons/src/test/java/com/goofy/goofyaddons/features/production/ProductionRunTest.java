@@ -388,6 +388,29 @@ class ProductionRunTest {
         assertEquals(1,env.actions.serverEffects().stream().filter(e->e.startsWith("sign:")).count());
     }
 
+    @Test void verifiedInstantPurchaseOpensNextIngredientWithoutAnIdleHandoff()throws Exception {
+        var env=new Env();env.buying=true;
+        var ingredients=new LinkedHashMap<String,Integer>();ingredients.put("INPUT_A",2);ingredients.put("INPUT_B",3);
+        var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,ingredients,
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT_A",2),new ProductionRecipe.Ingredient("INPUT_B",3),null,null,null,null,null,null,null),0,0,"",null);
+        var run=ProductionRun.startCraft(env,new RecipeCatalog(List.of(recipe),Map.of()),recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.INSTANT_OFFER);
+        run.tick(true,1000);run.tick(true,1001);
+        String first=env.actions.serverEffects().getFirst().substring("command:bz ".length());
+        int units=ingredients.get(first);String second=first.equals("INPUT_A")?"INPUT_B":"INPUT_A";
+        env.menu=menu(first,item(13,first,1),SlotView.named(10,"Buy Instantly",List.of(first,"Price per unit: 100 coins")));
+        run.tick(true,1002);
+        env.menu=menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of()));run.tick(true,1003);
+        env.sign=true;run.tick(true,1004);env.sign=false;
+        env.menu=menu(first,item(54,first,units));
+        run.tick(true,1005);
+        assertFalse(env.actions.serverEffects().contains("command:bz "+second),"Inventory alone cannot authorize another purchase");
+        env.purse-=units*100;run.tick(true,1006);
+        assertEquals("command:bz "+second,env.actions.serverEffects().getLast(),"Next GUI opens on the receipt tick");
+        assertFalse(env.actions.performed().contains("close"),"The next Bazaar command replaces the old GUI");
+        assertEquals(units*100,run.spent());
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.startsWith("sign:")).count());
+    }
+
     @Test void failedCraftSendsTheRunToReview()throws Exception {
         var env=new Env();env.menu=ProductionRunTest.menu(null,item(54,"INPUT",2));
         var run=ProductionRun.start(env,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,5000,0);
@@ -815,7 +838,8 @@ class ProductionRunTest {
         assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state(),"intent saved before the preset click");
         env.menu=menu(null,item(54,COMPACTOR,1));env.purse=9900;run.tick(true,1400);
         assertEquals(100,run.spent(),0.001);
-        run.tick(true,1500);assertEquals(Stage.PROCESS,run.stage());
+        assertEquals(Stage.PROCESS,run.stage(),"Receipt advances procurement immediately");
+        run.tick(true,1500);assertEquals(Stage.SELL,run.stage());
         run.tick(false,1600);assertEquals(Stage.SELL,run.stage());
         assertTrue(env.crafts.isEmpty(),"A trade test never crafts");assertTrue(env.orders.isEmpty());
         assertTrue(env.actions.performed().stream().anyMatch(m->m.startsWith("message:Trade test: bought 1 ")),env.actions.performed().toString());

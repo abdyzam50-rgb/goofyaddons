@@ -444,7 +444,14 @@ public final class ProductionRun implements ProductionLoop.Ports {
                     evidence.put("requested",buying.requested());evidence.put("bought",buying.amount());evidence.put("spent",buying.spent());
                     evidence.put("limit",buying.maximumCost());evidence.put("usedStash",buying.usedStash());evidence.put("purseAfter",env.purse());
                     env.event("INFO","production.instant_buy_verified",evidence);
-                    addCost(buying); buying = null; env.actions().closeMenu(); return Outcome.pending("Bought inputs; checking the rest"); }
+                    addCost(buying); buying = null;
+                    // Receipt inspection issued no click. Replan now instead of spending two
+                    // navigation intervals closing the menu and scheduling the next buyer.
+                    // A new /bz command replaces the old menu itself. Space, price and
+                    // ownership gates still run before any new purchase is submitted.
+                    if(preparation().purchases().isEmpty())env.actions().closeMenu();
+                    var next=procure(now);
+                    return buying!=null && next.step()==ProductionLoop.Step.PENDING ? procure(now) : next; }
                 case UNCERTAIN -> { return Outcome.uncertain(buying.failure()); }
                 case BLOCKED -> {
                     String why=buying.failure();
