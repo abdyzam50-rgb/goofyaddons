@@ -54,7 +54,7 @@ class ProductionTest {
         public void dragSplit(int[] targets){
             clicks++;inputs.add("drag:"+Arrays.toString(targets));if(discard)return;
             int each=cursor.count()/targets.length;
-            for(int slot:targets){assertTrue(slots[slot].empty());slots[slot]=reindex(cursor,slot,each);}
+            for(int slot:targets){assertTrue(slots[slot].empty() || cursor.canStackWith(slots[slot]));slots[slot]=reindex(cursor,slot,slots[slot].count()+each);}
             cursor=reindex(cursor,-1,cursor.count()-each*targets.length);
         }
         final List<String> inputs=new ArrayList<>();
@@ -405,6 +405,19 @@ class ProductionTest {
         assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
         assertEquals(1,server.inputs.stream().filter(v->v.startsWith("drag:")).count());assertTrue(server.cursor.empty());
         assertEquals(5,server.clicks);
+    }
+    @Test void successiveDragsTopUpTheSameRecipeCellsWithoutSingleItemPlacements(){
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,new ProductionRecipe.Ingredient("INPUT",16)));
+        grid.set(4,new ProductionRecipe.Ingredient("SECOND",1));
+        var r=new ProductionRecipe("craft:drag_topup",ProductionRecipe.Kind.CRAFT,"BLAZE_POWDER",1,Map.of("INPUT",128,"SECOND",1),grid,0,0,"Collection II",null);
+        var server=new Server(r,64);server.slots[56]=stack(56,"INPUT",64);server.drag=true;
+        var executor=new CraftingExecutor(()->50);var result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<20000&&result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
+        assertEquals(2,server.inputs.stream().filter(v->v.startsWith("drag:")).count());
+        assertFalse(server.inputs.stream().anyMatch(v->v.startsWith("right:")));
+        assertTrue(server.cursor.empty());
     }
     @Test void arbitraryAndOddStackSplitsCraftExactAmountsAndPreserveEveryRemainder(){
         for(int stack:new int[]{17,31,47,63,64})for(int wanted=1;wanted<=stack;wanted++) {

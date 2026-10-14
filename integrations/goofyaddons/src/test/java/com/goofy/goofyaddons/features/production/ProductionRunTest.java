@@ -667,6 +667,29 @@ class ProductionRunTest {
         assertEquals(List.of("click:11"),actions.serverEffects());
     }
 
+    @Test void exactInstantSaleWarningWaitsForCountdownAndConfirmsOnlyOnce() {
+        var actions=new RecordingActions();var sale=new BazaarInstantSell("OUTPUT","Output",10,970,1030,r->{});
+        sale.tick(menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 100 coins")),item(54,"OUTPUT",10)),actions,5000,1000);
+        var lore=List.of("Output","for much lower than the average","insta-selling price!","Matched Amount: 10x","Per unit: 100 coins","Can sell in 5s");
+        var countdown=menu("Confirm",SlotView.named(13,"WARNING",lore),item(54,"OUTPUT",10));
+        assertEquals(BazaarInstantSell.Result.WAITING,sale.tick(countdown,actions,5000,1100));
+        assertEquals(List.of("click:11"),actions.serverEffects());
+        var ready=new ArrayList<>(lore);ready.set(ready.size()-1,"Click to sell!");
+        var confirmation=menu("Confirm",SlotView.named(13,"WARNING",ready),item(54,"OUTPUT",10));
+        sale.tick(confirmation,actions,5000,6100);sale.tick(confirmation,actions,5000,6200);
+        assertEquals(List.of("click:11","click:13"),actions.serverEffects());
+        assertEquals(0,sale.proceeds());
+        assertEquals(BazaarInstantSell.Result.SOLD,sale.tick(menu("Confirm"),actions,6000,6300));
+        assertEquals(1000,sale.proceeds());
+    }
+
+    @Test void instantSaleWarningOutsideTheAuthorizedFloorIsNeverClicked() {
+        var actions=new RecordingActions();var sale=new BazaarInstantSell("OUTPUT","Output",10,970,1030,r->{});
+        sale.tick(menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 100 coins")),item(54,"OUTPUT",10)),actions,5000,1000);
+        assertEquals(BazaarInstantSell.Result.UNCERTAIN,sale.tick(menu("Confirm",SlotView.named(13,"WARNING",List.of("Output","for much lower than the average","insta-selling price!","Matched Amount: 10x","Per unit: 50 coins","Click to sell!")),item(54,"OUTPUT",10)),actions,5000,1100));
+        assertEquals(List.of("click:11"),actions.serverEffects());
+    }
+
     @Test void buyOrdersHandOffVerifiedInputsToCraftThenOfferSettlementRecordsProfitOnlyAfterClaim()throws Exception {
         var env=new Env();env.buying=true;var catalog=catalog();var recipe=catalog.forOutput("OUTPUT").getFirst();
         var run=ProductionRun.startCraft(env,catalog,recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);

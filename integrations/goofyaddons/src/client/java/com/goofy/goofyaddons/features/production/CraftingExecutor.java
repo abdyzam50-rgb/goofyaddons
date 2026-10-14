@@ -206,12 +206,17 @@ public final class CraftingExecutor {
             if(actions.supportsDrag()) {
                 var cells=new ArrayList<Integer>();int perCell=-1;
                 for(int i=0;i<9;i++)if(recipe.grid().get(i)!=null
-                        && recipe.grid().get(i).id().equals(cursor.bazaarProductId()) && empty(menu.slot(GRID[i]))) {
-                    int amount=cellAmount(i,menu);
+                        && recipe.grid().get(i).id().equals(cursor.bazaarProductId())
+                        && (empty(menu.slot(GRID[i])) || cursor.canStackWith(menu.slot(GRID[i])))) {
+                    int amount=cellAmount(i,menu)-count(menu.slot(GRID[i]));
+                    if(amount<=0)continue;
                     if(perCell<0)perCell=amount;
                     if(amount==perCell)cells.add(GRID[i]);
                 }
-                if(cells.size()>1 && cursor.count()/cells.size()==perCell && perCell<=cursor.maxStackSize()) {
+                int share=cells.isEmpty()?0:cursor.count()/cells.size();
+                if(cells.size()>1 && share>0 && share<=perCell && perCell<=cursor.maxStackSize()) {
+                    com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.craft_drag",Map.of(
+                        "recipe",recipe.key(),"slots",cells,"share",share,"deficit",perCell,"cursorUnits",cursor.count(),"container",container));
                     sent=menu;sentAt=now;retries=0;actionDrag=cells.stream().mapToInt(Integer::intValue).toArray();
                     actionSlot=actionDrag[0];actionShift=false;actionRight=false;return replay(actions);
                 }

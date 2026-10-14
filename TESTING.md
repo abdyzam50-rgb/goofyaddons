@@ -1,3 +1,5 @@
+Drag splitting now distributes acknowledged cursor stacks across compatible partial recipe cells as well as empty cells, topping up equal deficits over multiple drags without exceeding the cell plan. Diagnostic events record drag targets, shares and remaining deficits. Instant sale price warnings are confirmed once only after an exact product/quantity/authorized-price match and the server countdown ends; unknown or below-floor warnings retain review. Purchase/sale receipts still require inventory and purse proof.
+
 Verified instant-buy receipts immediately replan procurement and open the next ingredient GUI on the same tick. No intermediate menu close or extra scheduling intervals are required; inventory, purse, journal, price, space and ownership checks remain in place. Regression tests cover immediate handoff and staggered inventory/purse delivery.
 
 Compactor production records an exact starting sack balance from the read-only Bazaar Sell Sacks Now tooltip or enchanted sack GUI. Paid conversions count only when the inventory plus verified sack increase reconciles against raw purchases. Outputs stay in sacks until crafting finishes, then /gfs retrieves only the owned increase and verifies the original sack balance remains. The sell-all-sacks control is never clicked; rounded/hidden counts are rejected and missing withdrawal receipts are not replayed.
@@ -22,7 +24,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.111 Storage destination planning
+### 0.2.112 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -296,7 +298,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.111 JAR](dist/astar-client-0.2.111-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.112 JAR](dist/astar-client-0.2.112-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
