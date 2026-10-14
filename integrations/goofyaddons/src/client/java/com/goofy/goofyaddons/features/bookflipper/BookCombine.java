@@ -45,6 +45,10 @@ final class BookCombine {
             case MERGED -> {
                 inputsAbsent = 0;
                 ctx.debug("[BazaarFlipper] COMBINE: verified input consumption and output arrival for " + task.getBook());
+                if(task.getAmountToOrder()==0 && task.bookList.size()==1
+                    && task.bookList.getFirst().location==0 && task.bookList.getFirst().level==task.getBook().sellLevel()) {
+                    task.finishCombining();ctx.actions().closeMenu();ctx.clock().stop();ctx.state(State.IDLE);
+                }
             }
             case NO_PAIR -> {
                 inputsAbsent = 0;

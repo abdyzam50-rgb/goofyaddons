@@ -17,12 +17,18 @@ public final class BookCombiner {
     private Phase phase;
     private int container, beforeInput, beforeOutput;
     private long started;
+    private long learnedClaimDelay,claimNotBefore;
     private String failure;
     private java.util.Map<String,Integer> skillLevels=java.util.Map.of();
     public void observedSkills(java.util.Map<String,Integer> levels){skillLevels=java.util.Map.copyOf(levels);}
     private final ActionRetry retry = new ActionRetry();
 
-    public void slowdown(long now) { if (pending()) retry.slowdown(now); }
+    public void slowdown(long now) {
+        if(pending()) {
+            if(phase==Phase.COLLECTING)learnedClaimDelay=1_000;
+            retry.slowdown(now);
+        }
+    }
 
     public String failure() { return failure; }
     public String progress() { return phase == null ? "idle" : phase.name(); }
@@ -38,7 +44,7 @@ public final class BookCombiner {
     public java.util.Map<String,Object> diagnosticState() {
         return java.util.Map.of("phase",progress(),"container",container,"inputLevel",first==null?0:first.level,
                 "beforeInputs",beforeInput,"beforeOutputs",beforeOutput,"failure",failure==null?"none":failure,
-                "actionRetries",retry.retries());
+                "actionRetries",retry.retries(),"learnedClaimDelayMs",learnedClaimDelay,"claimNotBefore",claimNotBefore);
     }
     public void reset() { owner=null;first=null;second=null;phase=null;failure=null;retry.reset(); }
 
@@ -131,13 +137,14 @@ public final class BookCombiner {
                     || !"Combine Items".equals(Chat.strip(button.customName()))
                     || !button.hasLoreLine("Click to combine!")) return Result.WAITING;
             phase=Phase.SUBMITTED;
+            claimNotBefore=now+learnedClaimDelay;
             retry.sent(22,false,now);
             actions.click(22,false);
             return Result.WAITING;
         }
         // The second click only collects a verified output after the inputs have been consumed.
         // A stale preview with both inputs still present never authorizes repeat submission.
-        if (phase==Phase.SUBMITTED && !occupied(menu.slot(29)) && !occupied(menu.slot(33))
+        if (phase==Phase.SUBMITTED && now>=claimNotBefore && !occupied(menu.slot(29)) && !occupied(menu.slot(33))
                 && matches(menu.slot(13),book,level+1) && input==beforeInput-2 && output==beforeOutput
                 && claimReady(menu.slot(22))) {
             phase=Phase.COLLECTING;

@@ -36,9 +36,9 @@ public final class BookOutbidFlow {
         if (TradingSafety.ordersTitle(title) || title.contains("Order") && !title.contains("➜")) return null;
         if (menu.containerId() == clickedContainer) return null;
         String item = book.getRomanLevel(book.level());
-        if (title.startsWith("Bazaar") && menu.loaded(53)) {
-            var levels = menu.namedInContainer(item);
-            if (levels.size() == 1) return click(menu, levels.getFirst());
+        if (title.startsWith("Bazaar")) {
+            int target=com.goofy.goofyaddons.features.transaction.ProductIdentity.searchResult(menu,book.getLevel(book.level()),item);
+            if(target>=0 && !menu.loading(target))return click(menu,target);
         }
         if ((title.endsWith("➜ " + item) || title.endsWith("→ " + item)) && menu.loaded(35)) {
             // Use only explicit management controls. A Create Buy Order button must never

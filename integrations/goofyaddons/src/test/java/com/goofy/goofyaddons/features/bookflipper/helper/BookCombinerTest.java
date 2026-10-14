@@ -92,6 +92,7 @@ class BookCombinerTest {
         assertEquals(BookCombiner.Result.MERGED,combine.tick(task,menu(true,book(54,2,true)),actions,3500));
         assertEquals(1,task.bookList.size());
         assertEquals(2,task.bookList.getFirst().level);
+
     }
 
     @Test void returnedInputsWithAStaleResultDisplayCannotAuthorizeCollection() {
@@ -151,6 +152,15 @@ class BookCombinerTest {
         assertEquals(BookCombiner.Result.MERGED,combine.tick(task,menu(true,book(54,2,true)),actions,6500));
         assertTrue(actions.serverEffects().isEmpty());assertEquals(1,task.bookList.size());
         assertEquals(2,task.bookList.getFirst().level);
+        var next=task(2);
+        combine.tick(next,menu(true,book(54,1,true),book(55,1,true)),actions,7000);
+        combine.tick(next,menu(true,book(29,1,false),book(55,1,true)),actions,7100);
+        combine.tick(next,menu(true,book(29,1,false),book(33,1,false),book(13,2,false)),actions,7200);
+        actions.clear();combine.tick(next,unclaimed,actions,7300);
+        assertTrue(actions.serverEffects().isEmpty(),"A rejected claim teaches later merges to avoid the server cooldown");
+        combine.tick(next,unclaimed,actions,8200);
+        assertEquals(List.of("click:22"),actions.serverEffects());
+        assertEquals(2,next.bookList.size(),"Claim submission is not a receipt");
     }
 
     @Test void successDuringSlowdownWaitAcknowledgesWithoutAnyRetry() {

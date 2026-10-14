@@ -1,3 +1,5 @@
+Outbid search navigation now checks its exact readable book result rather than waiting for unrelated price rows, including the engine loading gate. Anvil collection learns a 1000ms submission-to-claim interval after a real collection slowdown response, avoiding the repeated immediate rejection/three-second retry pattern without delaying receipts already observed. The final verified combine closes and hands off immediately instead of waiting for a NO_PAIR tick. Diagnostics include learned claim timing. Fixes diagnostics-1791974789367.
+
 Book buy-order search proceeds when its exact product/level result is readable, even if unrelated result rows are still Loading. Both the engine-wide loading gate and the buy navigator use the same target check; a loading or missing target still waits. Regression includes the full engine path and Flash I with a loading Flash II sibling. Shared slowdown detection now recognizes the exact Hypixel Whoa! Slow down there! notice, enabling existing bounded anvil retry cooldowns. Fixes diagnostics-1791950057735.
 
 Submitted instant book buys route Confirm Instant Buy to their existing exact-quantity/price/receipt executor while BAZAAR_NAVIGATION owns it. Generic buy-order title and expired-live-quote gates no longer interrupt this submitted operation; unowned confirmation types remain rejected. Production sales wait for an occupied cursor to return before checking inventory ownership, and retain the precise price-floor rejection throughout the retry countdown. Regression tests cover book confirmation followed by exact debit/books, foreign confirmation rejection, cursor ownership wait and retained sale-floor reasons. Fixes diagnostics-1791948661599.
@@ -32,7 +34,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.116 Storage destination planning
+### 0.2.117 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -306,7 +308,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.116 JAR](dist/astar-client-0.2.116-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.117 JAR](dist/astar-client-0.2.117-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

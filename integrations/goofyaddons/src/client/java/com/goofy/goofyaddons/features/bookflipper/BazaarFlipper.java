@@ -448,8 +448,8 @@ public class BazaarFlipper implements Feature {
         if (watchdog.stalled(progress, canYield(), world.now())) {
             safetyHalt("Book transaction stopped making progress; positions preserved."); return;
         }
-        boolean readyBookSearch=state==State.BAZAAR_NAVIGATION && activeTask!=null
-            && !activeTask.instaBuy && BookBuy.searchTarget(observedMenu,activeTask)>=0;
+        Task searchTask=state==State.OUTBID?taskInState(Task.BookState.OUTBID):state==State.BAZAAR_NAVIGATION?activeTask:null;
+        boolean readyBookSearch=searchTask!=null && !searchTask.instaBuy && BookBuy.searchTarget(observedMenu,searchTask)>=0;
         if(observedMenu!=null && observedMenu.loadingContents() && !readyBookSearch && !world.signEditorOpen())return;
         if (!claim.verifyBuy(session)) return;
         if (isStartUpCheckCompleted && !bookCombiner.pending() && !bookTransfer.pending()
