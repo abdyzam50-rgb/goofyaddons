@@ -21,7 +21,7 @@ public final class Executor {
     public enum Status {
         /** Still going. */
         RUNNING,
-        /** Within {@link Follower#GOAL_RADIUS} of the end and all but stopped. */
+        /** Within the goal radius of the end and all but stopped, or sliding to a stop in it. */
         ARRIVED,
         /** Stopped at the start of a move this executor can't do yet. */
         UNSUPPORTED,
@@ -67,6 +67,12 @@ public final class Executor {
         /** The same, with the camera turned by {@code aim}. */
         public Settings withAim(AimController.Settings aim) {
             return new Settings(follower, aim, framesPerTick, pitch, lookAhead, hand);
+        }
+
+        /** The same, counting as there within {@code radius} of the end. */
+        public Settings withGoalRadius(double radius) {
+            return new Settings(follower.withGoalRadius(radius), aim, framesPerTick, pitch,
+                    lookAhead, hand);
         }
 
         /** A fixed pitch, no drift. */
@@ -332,9 +338,14 @@ public final class Executor {
         if (follower.offset() > room + 1.0) {
             return status = Status.OFF_COURSE;
         }
-        // Slow enough to be sure of stopping within a few hundredths of a block.
-        if (follower.toEnd(p) <= Follower.GOAL_RADIUS && p.groundSpeed() < 0.02
-                && follower.length() - follower.progress() <= 1) {
+        // Slow enough to be sure of stopping within a few hundredths of a block; or, with a
+        // looser goal, on the ground and slow enough that letting go of the keys slides to a
+        // stop inside it, the way a player walks up to a spot instead of edging onto it.
+        double goal = settings.follower().goalRadius();
+        double toEnd = follower.toEnd(p);
+        boolean settled = p.groundSpeed() < 0.02 || (goal > Follower.GOAL_RADIUS
+                && p.onGround() && toEnd + p.groundSpeed() / (1 - Follower.SLIDE) <= goal);
+        if (toEnd <= goal && settled && follower.length() - follower.progress() <= 1) {
             return status = done();
         }
         // On the ground with no jump or drop close ahead, the camera needn't point where the

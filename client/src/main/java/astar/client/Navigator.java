@@ -9,6 +9,7 @@ import astar.movement.exec.Follower;
 import astar.movement.exec.Journey;
 import astar.movement.exec.PlayerController;
 import astar.movement.plan.ExecutionPlan;
+import astar.pathing.Tuning;
 import astar.pathing.WorldPathfinder;
 import java.util.EnumMap;
 import java.util.List;
@@ -824,7 +825,7 @@ final class Navigator {
             return;
         }
         journey = new Journey(router, controller, path.get(path.size() - 1).pos(),
-                p.prepared(), walkSettings());
+                p.prepared(), walkSettings().withGoalRadius(Tuning.GOAL_REACH.get()));
         int end = journey.executor().end();
         String upTo = journey.executor().blockedBy() == null ? ""
                 : ", up to " + blocker() + " at step " + end;
@@ -855,8 +856,12 @@ final class Navigator {
             return;
         }
         List<PathStep> path = l.path();
+        // Onto a hop's spot it must stop where the hop was worked out from; the last walk
+        // only has to get near the goal.
+        Journey.Settings settings = walkSettings();
         journey = new Journey(router, controller, path.get(path.size() - 1).pos(), l,
-                walkSettings());
+                leg < hops.size() ? settings
+                        : settings.withGoalRadius(Tuning.GOAL_REACH.get()));
     }
 
     /** How near a transmission's spot, in blocks, the cast takes over from the walk. */

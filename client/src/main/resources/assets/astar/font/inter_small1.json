@@ -1,0 +1,19 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "astar:inter.ttf",
+      "size": 8,
+      "oversample": 1,
+      "shift": [
+        0,
+        0.5
+      ],
+      "skip": ""
+    },
+    {
+      "type": "reference",
+      "id": "minecraft:default"
+    }
+  ]
+}

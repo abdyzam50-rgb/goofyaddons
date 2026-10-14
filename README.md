@@ -50,22 +50,21 @@ way of the planned ones.
 
 Press **G** in game (the key is in Options, Controls, under *A\* pathfinding*)
 for the mod's window. Going somewhere stays a command (`.A*`); the window is
-for everything around it. Its sidebar has:
+for everything around it. It fills the screen, with a sidebar of pages and a
+top bar showing the page's name, what it's for, a search box and an
+**Edit HUD** button for moving the on-screen widgets. The pages:
 
-- **Search**, a box at the top: type and its page lists every setting whose
-  name or description matches, in a card for each page it's on.
-- **Pathfinder**: one page with a row of small tabs along the top, the same
-  way Macros shows its sections:
-  - **Drawing**: whether the route is drawn, its look (ribbon, painted floor,
-    comet, breadcrumbs, light tube, lines, key nodes only or none) and its colour.
-  - **Path**, **Teleport**, **Camera** and **Mouse**: every setting from
-    `.A* config`, with a slider or a switch each, what it does under its
-    name and a reset once it's changed.
-  - **Caches**: the maps saved for this server (use, rename or forget each)
-    and the cache settings.
-- **Macros**: integrated SkyBlock trading controls, limits, account checks, market selection and regional rests. See [Trading inside A*](docs/GOOFYADDONS.md).
-- **Themes**: the window's colours. Each theme goes with one of the route
-  colours and draws the route in it too.
+- **Macros**: integrated SkyBlock trading controls, limits, account checks,
+  market selection and regional rests, in a row of small tabs along the top.
+  See [Trading inside A*](docs/GOOFYADDONS.md).
+- **Route**: whether the route is drawn, its look and its colour.
+- **Pathfinder** and **Movement**: a few quick choices at the top, and an
+  **Advanced** switch for every setting from `.A* config`, in folding cards.
+- **Maps**: the maps saved for this server and the cache settings.
+- **Widgets**: the HUD widgets shown while you play.
+- **Themes**: the window's colours and its lettering (font).
+
+Search finds any setting by its name or what it does, trader settings too.
 
 ## Commands
 

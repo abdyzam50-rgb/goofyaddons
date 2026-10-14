@@ -121,6 +121,12 @@ public final class Journey {
                     .withHand(hand == null ? AimController.Hand.RIGHT : hand);
         }
 
+        /** The same, counting as there within {@code radius} of the goal. */
+        public Settings withGoalRadius(double radius) {
+            return new Settings(executor.withGoalRadius(radius), rejoinAhead, rejoinBudget,
+                    watchAhead, watchEvery, maxRecoveries, disturbance, teleport, straightLines);
+        }
+
         /** The same, walking the grid steps as found instead of the smoothed lines, or not. */
         public Settings withStraightLines(boolean on) {
             return new Settings(executor, rejoinAhead, rejoinBudget, watchAhead, watchEvery,

@@ -31,7 +31,11 @@ import java.util.List;
  */
 public final class Follower {
 
-    /** How close to the end counts as there, across the ground, in blocks. */
+    /**
+     * How close to the end counts as there, across the ground, in blocks, when it must be
+     * exact (the simulator's checks, a teleport's spot); a trip's goal may be looser
+     * ({@link Settings#goalRadius}).
+     */
     public static final double GOAL_RADIUS = 0.3;
     /**
      * Ground friction times air drag: how much of a tick's move is carried into the next. The
@@ -116,11 +120,23 @@ public final class Follower {
      * @param sprintError the most the camera may point off the target yaw while sprinting,
      *     in degrees
      * @param walkError beyond this it stops pressing forward and turns in place
+     * @param goalRadius how close to the end counts as there, across the ground, in blocks
      */
     public record Settings(double lookahead, double lookaheadPerSpeed, double sprintError,
-            double walkError) {
+            double walkError, double goalRadius) {
 
         public static final Settings DEFAULT = new Settings(0.6, 2.2, 20, 35);
+
+        /** With the exact {@link #GOAL_RADIUS}. */
+        public Settings(double lookahead, double lookaheadPerSpeed, double sprintError,
+                double walkError) {
+            this(lookahead, lookaheadPerSpeed, sprintError, walkError, GOAL_RADIUS);
+        }
+
+        /** The same, counting as there within {@code radius} of the end. */
+        public Settings withGoalRadius(double radius) {
+            return new Settings(lookahead, lookaheadPerSpeed, sprintError, walkError, radius);
+        }
     }
 
     private final Settings settings;
@@ -696,7 +712,8 @@ public final class Follower {
         Gait gait = Gait.COAST;
         // Aim to stop on the end itself; anywhere within the goal radius will do once stopped,
         // so an end already passed inside it isn't turned back for.
-        if (remaining <= GOAL_RADIUS / 3 || (remaining <= GOAL_RADIUS && error > 90)) {
+        double near = settings.goalRadius();
+        if (remaining <= near / 3 || (remaining <= near && error > 90)) {
             yaw = p.yaw();
         } else {
             // How far the next tick will move in each gait: what's left of the velocity plus
@@ -730,7 +747,7 @@ public final class Follower {
                 // the fall still lands inside the room, and it keeps moving.
                 boolean slowAtDrop = dropping && g == Gait.WALK && speed < DROP_CREEP * limit;
                 if ((next <= limit + 1e-4 || slowAtDrop)
-                        && next / (1 - SLIDE) <= remaining + GOAL_RADIUS / 3) {
+                        && next / (1 - SLIDE) <= remaining + near / 3) {
                     gait = g;
                     break;
                 }
@@ -741,7 +758,7 @@ public final class Follower {
                 gait = Gait.BRAKE;
             }
         }
-        if (gait == Gait.COAST && remaining > GOAL_RADIUS / 3 && speed < 0.005
+        if (gait == Gait.COAST && remaining > near / 3 && speed < 0.005
                 && error <= 2 * settings.walkError()) {
             // Stopped short, with every gait too fast for the limits here: creep on anyway.
             gait = Gait.WALK;
