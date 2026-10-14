@@ -21,7 +21,8 @@ class ProductionCommandsTest {
     }
     @Test void craftModeKeepsItsSavedIdentifierAndHasADiscoverableLabel() {
         assertEquals("CRAFT",TradingMode.CRAFT.name());assertEquals("Craft flips",TradingMode.CRAFT.label());
-        assertEquals(TradingMode.CRAFT,TradingMode.BOTH.next());assertEquals(TradingMode.BOOKS,TradingMode.CRAFT.next());
+        assertEquals(TradingMode.CRAFT,TradingMode.BOTH.next());assertEquals(TradingMode.ALL,TradingMode.CRAFT.next());
+        assertEquals(TradingMode.BOOKS,TradingMode.ALL.next());
     }
     @Test void buyingAndSellingEachTakeTheirOwnMode() {
         assertEquals(BazaarStrategy.ORDER_INSTANT,ProductionCommands.strategy("order instant"));

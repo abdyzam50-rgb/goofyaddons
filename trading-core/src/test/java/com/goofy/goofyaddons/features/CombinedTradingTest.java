@@ -54,7 +54,8 @@ class CombinedTradingTest {
         assertEquals(TradingMode.GENERAL, TradingMode.BOOKS.next());
         assertEquals(TradingMode.BOTH, TradingMode.GENERAL.next());
         assertEquals(TradingMode.CRAFT, TradingMode.BOTH.next());
-        assertEquals(TradingMode.BOOKS, TradingMode.CRAFT.next());
+        assertEquals(TradingMode.ALL, TradingMode.CRAFT.next());
+        assertEquals(TradingMode.BOOKS, TradingMode.ALL.next());
     }
 
     @Test void EnginesShareTheSamePurseReservationsAndCapitalCap() {

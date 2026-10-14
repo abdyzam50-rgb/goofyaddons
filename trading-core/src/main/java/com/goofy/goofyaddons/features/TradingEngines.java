@@ -35,11 +35,11 @@ public final class TradingEngines {
     public List<Feature> enabled(TradingMode mode, boolean productionQueued, boolean craftingQueued, boolean auctionQueued) {
         Objects.requireNonNull(mode);
         var result = new ArrayList<Feature>();
-        if ((productionQueued || mode==TradingMode.CRAFT) && production != null) result.add(production);
+        if ((productionQueued || mode==TradingMode.CRAFT || mode==TradingMode.ALL) && production != null) result.add(production);
         if (auctionQueued) result.add(auction);
         if (craftingQueued) result.add(crafting);
-        if (mode == TradingMode.BOOKS || mode == TradingMode.BOTH) result.add(books);
-        if (mode == TradingMode.GENERAL || mode == TradingMode.BOTH) result.add(general);
+        if (mode == TradingMode.BOOKS || mode == TradingMode.BOTH || mode==TradingMode.ALL) result.add(books);
+        if (mode == TradingMode.GENERAL || mode == TradingMode.BOTH || mode==TradingMode.ALL) result.add(general);
         return List.copyOf(result);
     }
 }

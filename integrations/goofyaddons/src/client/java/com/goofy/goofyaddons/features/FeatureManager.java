@@ -68,10 +68,31 @@ public class FeatureManager {
     public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());excluded.addAll(auction.lockedProducts());excluded.addAll(production.lockedProducts());return java.util.Set.copyOf(excluded);}
     public void invalidateMarketReport() { marketAnalysis.stop(); }
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
-        return marketAnalysis.automaticHeadReport();
+        var report=marketAnalysis.automaticHeadReport();
+        if("ALL".equals(modeLabel())) {
+            boolean craft=allModeCraftSelected(production.automaticCoinsPerHour(),production.automaticCapital());
+            if(report!=null && craft)return report.withRows(List.of());
+        }
+        return report;
+    }
+    private String allModeDecision;
+    public boolean allModeCraftSelected(double coinsPerHour,double capital) {
+        if(!"ALL".equals(modeLabel()))return true;
+        var report=marketAnalysis.automaticHeadReport();
+        boolean fresh=marketAnalysis.latestReport()!=null;
+        boolean craft=fresh && com.goofy.goofyaddons.features.marketanalysis.AllModeSelection.craftWins(coinsPerHour,capital,report);
+        String reason=!fresh?"All flips: waiting for fresh market comparisons":craft?"All flips: craft · estimated "+Math.round(coinsPerHour)+" coins/hour":
+            report==null || report.rows().isEmpty()?"All flips: no feasible new entry":
+                "All flips: "+report.rows().getFirst().kind().toLowerCase(java.util.Locale.ROOT)+" · estimated "+Math.round(report.rows().getFirst().coinsPerHour())+" coins/hour";
+        if(!reason.equals(allModeDecision)) {
+            allModeDecision=reason;
+            Diagnostics.event("INFO","market.all_mode_decision",java.util.Map.of("reason",reason,"craftCoinsPerHour",coinsPerHour,"craftCapital",capital));
+        }
+        return craft;
     }
     /** Why automatic selection last chose its route, in one line; null before any decision. */
     public String lastRouteDecision() {
+        if("ALL".equals(modeLabel()))return allModeDecision;
         var decision=marketAnalysis.lastDecision();return decision==null?null:decision.summary();
     }
     public GeneralFlipper general(){return general;}
@@ -201,6 +222,11 @@ public class FeatureManager {
     }
 
     private void applyMode(TradingMode next) {
+        if(next==TradingMode.ALL) {
+            GoofyConfig.INSTANCE.marketAnalysis.enabled=true;
+            GoofyConfig.INSTANCE.marketAnalysis.automaticSelection=true;
+            invalidateMarketReport();
+        }
         if (previousOwner != null) previousOwner.yieldMenu();
         List<Feature> old = engines();
         mode = next;
@@ -427,7 +453,8 @@ public class FeatureManager {
         if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.taskItem();
         if (previousOwner == general) return general.taskItem();
-        return mode==TradingMode.CRAFT?production.activity():"Monitoring both configured engines";
+        return mode==TradingMode.ALL?java.util.Objects.toString(allModeDecision,"Comparing books, general and craft routes"):
+            mode==TradingMode.CRAFT?production.activity():"Monitoring both configured engines";
     }
     public String activity() {
         if (lifecycle.blocked()) return lifecycle.reason();
@@ -441,6 +468,7 @@ public class FeatureManager {
         if(previousOwner==auction)return auction.activity();
         if (previousOwner == books) return books.activity();
         if (previousOwner == general) return general.activity();
-        return mode==TradingMode.CRAFT?production.activity():"Waiting for orders or eligible flips";
+        return mode==TradingMode.ALL?java.util.Objects.toString(allModeDecision,"Comparing books, general and craft routes"):
+            mode==TradingMode.CRAFT?production.activity():"Waiting for orders or eligible flips";
     }
 }

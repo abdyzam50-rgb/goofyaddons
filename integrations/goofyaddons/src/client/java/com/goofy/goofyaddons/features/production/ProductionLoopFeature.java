@@ -106,7 +106,8 @@ public final class ProductionLoopFeature implements Feature {
         return CraftPortfolioBudget.available(capital.limit()-capital.committed(),purse-capital.reserve()-capital.pending(),allocations,owner);
     }
     double selectionBudget(double purse){return availableFor(null,purse)/Math.max(1,GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts-work.size());}
-    int reservedInventorySlots(MenuSnapshot menu) {
+    public double availableForOtherPipelines(double purse){return availableFor(null,purse);}
+    public int reservedInventorySlots(MenuSnapshot menu) {
         return CraftPortfolioInventory.reserved(menu,work.stream().map(w->new CraftPortfolioInventory.Allocation(
             w.run.stage()==ProductionLoop.Stage.SELL?CraftFlipPlanner.inventorySlotsForProduct(RecipeCatalog.instance(),w.run.output(),w.run.outputUnits()):w.inventorySlots,w.run.lockedProducts())).toList());
     }
@@ -199,8 +200,26 @@ public final class ProductionLoopFeature implements Feature {
         if(rows.isEmpty())return selection.emptyReason();
         return rows.stream().filter(CraftFlipPlanner.Route::eligible).findAny().isPresent()?"Ready to select a craft":rows.getFirst().reason();
     }
+    private boolean automaticMode(){return Set.of("CRAFT","ALL").contains(FeatureManager.INSTANCE.modeLabel());}
+    private CraftFlipPlanner.Route bestAutomaticCandidate() {
+        if(recoveringOrders || reconcilingExternalOrder || work.size()>=GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts
+            || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()
+            || FeatureManager.INSTANCE.accountRequirementsPending() || hasOrphanOrders())return null;
+        long now=System.currentTimeMillis();
+        if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null)return null;
+        var occupied=new HashSet<>(CapitalManager.INSTANCE.occupiedProducts());occupied.addAll(lockedProducts());
+        double budget=selectionBudget(new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse());
+        // Entry arbitration reads the cached ranking; full recipe planning belongs to
+        // refreshSelection and the actual five-second procurement selection boundary.
+        return selection.routes().stream().filter(CraftFlipPlanner.Route::eligible)
+            .filter(r->r.capital()<=budget && !occupied.contains(r.recipe().outputId())
+                && r.recipe().ingredients().keySet().stream().noneMatch(occupied::contains))
+            .filter(r->!blockCooldown.coolingDown(r.recipe().outputId(),now)).findFirst().orElse(null);
+    }
+    public double automaticCoinsPerHour(){var route=bestAutomaticCandidate();return route==null?0:route.score()*3600;}
+    public double automaticCapital(){var route=bestAutomaticCandidate();return route==null?0:route.capital();}
     private void selectAutomatic() {
-        if(!"CRAFT".equals(FeatureManager.INSTANCE.modeLabel())||System.currentTimeMillis()<nextSelection || recoveringOrders || reconcilingExternalOrder
+        if(!automaticMode()||System.currentTimeMillis()<nextSelection || recoveringOrders || reconcilingExternalOrder
                 ||work.size()>=GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts
                 ||FeatureManager.INSTANCE.crafting().queued()||FeatureManager.INSTANCE.auction().queued())return;
         nextSelection=System.currentTimeMillis()+5000;
@@ -214,6 +233,7 @@ public final class ProductionLoopFeature implements Feature {
             if(!eligible.isEmpty())Diagnostics.event("INFO","production.selection_skipped",Map.of("reason","Every eligible craft is cooling down after a block","eligible",eligible.size(),"cooldowns",blockCooldown.diagnosticState(now)));
             return;
         }
+        if(!manager.allModeCraftSelected(candidate.score()*3600,candidate.capital()))return;
         try {
             var current=new Work();current.estimatedCapital=candidate.capital();current.inventorySlots=candidate.inventorySlots();
             current.budget=CraftPortfolioBudget.allocated(candidate.capital(),candidate.profit(),GoofyConfig.INSTANCE.craftFlips.minimumProfit,
@@ -252,7 +272,7 @@ public final class ProductionLoopFeature implements Feature {
     public String activity() {
         if(reconcilingExternalOrder)return "Reconciling manually handled craft order · fresh orders and inventory checks";
         if(recoveringOrders)return "Recovering craft positions · "+orders.diagnosticState().get("step");
-        if(work.isEmpty())return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?discoveryStatus():"No production run queued";
+        if(work.isEmpty())return automaticMode()?discoveryStatus():"No production run queued";
         var current=foreground!=null && work.contains(foreground)?foreground:work.getFirst();
         return "Craft queue "+work.size()+"/"+GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts+" · "+current.run.output()+" · "+current.run.stage().name().toLowerCase(Locale.ROOT)+(current.run.reason()==null?"":" · "+current.run.reason());
     }
@@ -492,7 +512,7 @@ public final class ProductionLoopFeature implements Feature {
     }
     private void restoreSavedSales(){
         long now=System.currentTimeMillis();
-        if(!work.isEmpty() || recoveringOrders || reconcilingExternalOrder || now<nextSaleRestore || !"CRAFT".equals(FeatureManager.INSTANCE.modeLabel()))return;
+        if(!work.isEmpty() || recoveringOrders || reconcilingExternalOrder || now<nextSaleRestore || !automaticMode())return;
         nextSaleRestore=now+5000;
         var sales=orders.savedSales();if(sales.isEmpty() || sales.size()>4)return;
         try {

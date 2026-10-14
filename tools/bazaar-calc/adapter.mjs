@@ -27,7 +27,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const skills=c.accountSkills??{};
   if(!object(skills)||Object.values(skills).some(v=>!Number.isInteger(v)||v<0||v>60))throw new Error('Invalid account skills');
   const marketAt = finite(root.lastUpdated, now - 60000, now + 5000, 'market timestamp');
-  if (!['BOOKS', 'GENERAL', 'BOTH'].includes(c.mode)) throw new Error('Invalid trading mode');
+  if (!['BOOKS', 'GENERAL', 'BOTH', 'ALL'].includes(c.mode)) throw new Error('Invalid trading mode');
   const coins = finite(c.availableCapital, 0, 1e13, 'capital');
   const capacity = integer(c.inventoryCapacity, 0, 4096, 'inventory capacity');
   const limit = integer(c.maxRecommendations, 1, 50, 'recommendation limit');

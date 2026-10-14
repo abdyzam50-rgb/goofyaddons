@@ -199,3 +199,11 @@ test('strategy-aware book ranking selects executable instant legs while legacy r
  for(const row of r.rows){assert.ok(['order','instant'].includes(row.buyMode));assert.ok(['offer','instant'].includes(row.sellMode));assert.equal(row.costPerOutput,row.buyPrice*row.inputsPerOutput);assert.ok(row.capitalUsed<=body.constraints.availableCapital);}
  delete body.constraints.bazaarStrategies;assert.ok(run(body).rows.every(row=>row.buyMode==='order'&&row.sellMode==='offer'));
 });
+
+test('ALL mode ranks both books and general routes using the same live account constraints',()=>{
+ const b=packet();b.constraints.mode='ALL';
+ const all=run(b);const both=run(packet());
+ assert.deepEqual(all.rows,both.rows);
+ assert.ok(all.rows.some(r=>r.kind==='BOOK'));
+ assert.ok(all.rows.some(r=>r.kind==='GENERAL'));
+});

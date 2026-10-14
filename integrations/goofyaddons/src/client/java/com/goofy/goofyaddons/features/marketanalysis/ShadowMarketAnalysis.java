@@ -21,6 +21,8 @@ public final class ShadowMarketAnalysis {
         default Map<String,Integer> unlocks(){return Map.of();}
         default Set<String> excludedProducts() { return Set.of(); }
         default Set<String> rankingExclusions() { return excludedProducts(); }
+        default double productionSpendable(){return Double.POSITIVE_INFINITY;}
+        default int productionSlots(){return 0;}
     }
     private final Environment env;
     private final MarketAnalysisClient.Transport transport;
@@ -59,6 +61,8 @@ public final class ShadowMarketAnalysis {
             @Override public MenuSnapshot inventory() { return world.menu(); }
             @Override public double purse() { return new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse(); }
             @Override public CapitalManager capital() { return CapitalManager.INSTANCE; }
+            @Override public double productionSpendable(){return FeatureManager.INSTANCE.production().availableForOtherPipelines(purse());}
+            @Override public int productionSlots(){return FeatureManager.INSTANCE.production().reservedInventorySlots(world.menu());}
             @Override public void onClientThread(Runnable work) { world.onClientThread(work); }
         }, new MarketAnalysisClient()::request, (type,data)->Diagnostics.event(type.endsWith("unavailable")?"WARN":"INFO",type,data));
     }
@@ -74,6 +78,7 @@ public final class ShadowMarketAnalysis {
     private void pollObserved(TradingMode currentMode) {
         if(currentMode==TradingMode.CRAFT){stop();status="CRAFT_ANALYSIS";return;}
         GoofyConfig cfg=env.config();
+        if(cfg!=null && currentMode==TradingMode.ALL){cfg.marketAnalysis.enabled=true;cfg.marketAnalysis.automaticSelection=true;}
         if(cfg==null || !cfg.marketAnalysis.enabled) {
             if(!status.equals("DISABLED")) stop(); status="DISABLED"; return;
         }
@@ -132,6 +137,7 @@ public final class ShadowMarketAnalysis {
     private void refreshPipeline() {
         var cfg=env.config();
         var account=PipelineAccount.capture(env.now(),mode,env.capital(),env.purse(),env.inventory(),cfg.maxActiveBooks,cfg.general.maxActiveItems,env.excludedProducts());
+        account=account.withProductionReservations(env.productionSpendable(),env.productionSlots());
         pipeline=PipelinePlanner.build(account,executionReport,env.now());
     }
     private void unavailable(RuntimeException failure) {

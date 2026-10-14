@@ -10,6 +10,16 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShadowMarketAnalysisTest {
+    @Test void allModeEnablesAutomaticComparisonAndKeepsExecutionBehindEngineChecks() {
+        var env=new Env();env.cfg.marketAnalysis.enabled=false;env.cfg.marketAnalysis.automaticSelection=false;
+        var bridge=new Bridge();var observer=new ShadowMarketAnalysis(env,bridge,(type,data)->{});
+        observer.poll(TradingMode.ALL);
+        assertTrue(env.cfg.marketAnalysis.enabled);assertTrue(env.cfg.marketAnalysis.automaticSelection);
+        assertEquals("ALL",bridge.packet.getAsJsonObject("constraints").get("mode").getAsString());
+        bridge.complete(env.clock);assertNotNull(observer.automaticHeadReport());
+        assertEquals(false,observer.diagnosticState().get("executionAuthority"));
+        assertEquals(0,env.capital.committed());
+    }
     @Test void rankingsExcludeUnboughtInputsWhileExecutionRetainsFullReservation() {
         var env=new Env();env.balance=9400;
         env.capital.restore("books","GREEN_THUMB",6000,false);

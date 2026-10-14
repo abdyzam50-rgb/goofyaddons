@@ -454,7 +454,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStart();
             },Button.ACCENT).when(()->!draft.dirty() && !manager.isMacroRunning() && client.canStartTrading()),
             new Button("Stop",()->com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStop(),Button.PLAIN));
-        status.row("Mode",()->"Change trading mode while stopped.",new Mode<>(List.of(com.goofy.goofyaddons.features.TradingMode.values()),
+        status.row("Mode",()->"All flips compares books, general and crafts by estimated net coins/hour. Change while stopped.",new Mode<>(List.of(com.goofy.goofyaddons.features.TradingMode.values()),
             ()->draft.view().tradingMode,com.goofy.goofyaddons.features.TradingMode::label,v->editTrading("Mode",cfg->cfg.tradingMode=v)));
         Card keys=card("Keybinds","Click Change, then press a key. Escape cancels. Bindings also appear in Minecraft Controls.");
         keys.row("Trading on / off",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey.getTranslatedKeyMessage().getString(),

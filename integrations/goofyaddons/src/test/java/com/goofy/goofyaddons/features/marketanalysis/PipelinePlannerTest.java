@@ -7,6 +7,16 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PipelinePlannerTest {
+    @Test void productionReservationsReduceOtherEntriesWithoutMutatingTheAccount() {
+        var original=account(1000,24,2,2,Set.of());
+        var shared=original.withProductionReservations(250,20);
+        assertEquals(250,shared.available());assertEquals(4,shared.inventoryCapacity());
+        assertEquals(1000,original.available());assertEquals(24,original.inventoryCapacity());
+        var plan=PipelinePlanner.build(shared,report(route("GENERAL","COAL","COAL",500,100,8,true)),now);
+        assertTrue(plan.next().isEmpty());
+        assertEquals(0,original.withProductionReservations(-10,99).available());
+        assertEquals(0,original.withProductionReservations(1000,99).inventoryCapacity());
+    }
     private final long now=1_000_000;
     private PipelineAccount account(double budget,int capacity,int books,int general,Set<String> occupied) {
         return new PipelineAccount(now,TradingMode.BOTH,budget,0,0,budget,capacity,books,general,occupied,true,null);
