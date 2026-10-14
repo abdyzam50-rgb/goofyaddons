@@ -56,10 +56,9 @@ final class BookBuy {
         }
 
         if (ctx.containerNameCheck("Bazaar")) ctx.clock().start(ctx.delay());
-        if (ctx.containerNameCheck("Bazaar") && ctx.scanner().isMenuLoaded(53) && ctx.clock().shouldFire()) {
-            List<Integer> slots = ctx.scanner().findContainer(task.getBook().getRomanLevel(task.getBook().level()));
-            if (slots.isEmpty()) return;
-            ctx.navigationClick(slots.getFirst()); return;
+        if (ctx.containerNameCheck("Bazaar") && ctx.clock().shouldFire()) {
+            int target=searchTarget(ctx.menu(),task);
+            if(target>=0){ctx.navigationClick(target);return;}
         }
 
         boolean productPage = productPage(ctx, task);
@@ -134,6 +133,12 @@ final class BookBuy {
             }
             ctx.state(State.VERIFY_PLACEMENT);
         }
+    }
+
+    static int searchTarget(com.goofy.goofyaddons.menu.MenuSnapshot menu,Task task) {
+        var book=task.getBook();
+        int target=ProductIdentity.searchResult(menu,book.getLevel(book.level()),book.getRomanLevel(book.level()));
+        return target>=0 && !menu.loading(target)?target:-1;
     }
 
     private void instant(BookContext ctx,Task task){

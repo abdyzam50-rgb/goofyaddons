@@ -10,6 +10,15 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BookInstantRoutesTest {
+    @Test void loadedFlashResultDoesNotWaitForOtherLevelsToLoad(){
+        var task=new Task(new Book("ENCHANTMENT_FLASH",1,5,"Flash",0,0),false,false);
+        var ready=menu("Bazaar ➜ \"Flash\"",SlotView.named(11,"Flash I",List.of("Buy price: 3,876,567 coins","Click to view details!")),
+            SlotView.named(12,"Flash II",List.of("Loading...")));
+        assertTrue(ready.loadingContents());
+        assertEquals(11,BookBuy.searchTarget(ready,task));
+        assertEquals(-1,BookBuy.searchTarget(menu("Bazaar ➜ \"Flash\"",SlotView.named(11,"Flash I",List.of("Loading..."))),task));
+        assertEquals(-1,BookBuy.searchTarget(menu("Bazaar ➜ \"Flash\"",SlotView.named(12,"Flash II",List.of("Click to view details!"))),task));
+    }
     @SuppressWarnings("unchecked") static <T>T proxy(Class<T> type,java.lang.reflect.InvocationHandler handler){return (T)Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},handler);}
     static MenuSnapshot menu(String title,SlotView... actual){
         var slots=new ArrayList<SlotView>();for(int i=0;i<90;i++)slots.add(SlotView.empty(i,i>=54,i>=54?i-54:i));
