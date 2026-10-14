@@ -7,6 +7,27 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TradeHistoryTest {
+    @Test void clearedHistoryDoesNotReturnAfterReloadOrReplayAndActiveExecutionSurvives()throws Exception {
+        var history=new TradeHistory(dir.resolve("transactions.jsonl"));var ledger=new ProfitLedger();
+        ledger.acquire("open","general","Coal","buy",5,500.0);
+        ledger.sell("open","general","Coal","partial",2,240.0);
+        history.append(TradeHistory.Entry.acquire(NOW-20,"buy","open","general","Coal",5,500.0));
+        history.append(TradeHistory.Entry.sell(NOW-10,"partial","open","general","Coal",2,240.0));
+        var execution=new ExecutionLedger();execution.begin("done","general","COAL","COAL",1,1,NOW-1000);
+        var sample=execution.complete("done","sample",1,120.0,20.0,NOW-5,false);
+        history.append(TradeHistory.Entry.sample(NOW-5,sample));
+        execution.begin("live","general","COAL","COAL",2,2,NOW-1000);
+        assertNull(execution.complete("live","part-1",1,120.0,20.0,NOW-1,false));
+        var path=dir.resolve("profit.json");ledger.withoutCompletedHistory(NOW).write(path);
+        var cleared=ProfitLedger.read(path);history.replay(cleared,execution,NOW+1);
+        assertTrue(execution.samples().isEmpty());assertEquals(1,execution.active(NOW+1).size());
+        assertTrue(cleared.history().isEmpty());assertEquals(300.0,cleared.openCost("open"));
+        var completed=execution.complete("live","part-2",1,120.0,20.0,NOW+2,false);
+        assertNotNull(completed);assertEquals(240.0,completed.proceeds());
+        history.append(TradeHistory.Entry.sample(NOW+2,completed));
+        history.replay(cleared,execution,NOW+3);assertEquals(1,execution.samples().size());
+        assertEquals("part-2",execution.samples().getFirst().eventId());
+    }
     @TempDir Path dir;
 
     private static final long NOW = 1_700_000_000_000L;

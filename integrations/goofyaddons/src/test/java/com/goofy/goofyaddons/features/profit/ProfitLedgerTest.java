@@ -7,6 +7,23 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProfitLedgerTest {
+    @Test void clearingCompletedHistoryPreservesOpenCostsAndDuplicateReceiptProtection()throws Exception {
+        var original=new ProfitLedger();
+        original.acquire("open","general","Coal","buy-open",5,500.0);
+        original.sell("open","general","Coal","partial-sale",2,240.0);
+        original.acquire("done","books","Wisdom","buy-done",1,100.0);
+        original.sell("done","books","Wisdom","sale-done",1,120.0);
+        original.activeTime(60000);
+        var cleared=original.withoutCompletedHistory(10000);
+        assertEquals(2,original.history().size());assertTrue(cleared.history().isEmpty());
+        assertEquals(0,cleared.summary().profit());assertEquals(0,cleared.summary().activeMillis());
+        assertEquals(300.0,cleared.openCost("open"));assertEquals(300.0,cleared.knownCost("open",3));
+        assertFalse(cleared.sell("open","general","Coal","partial-sale",2,240.0));
+        var path=dir.resolve("cleared.json");cleared.write(path);var loaded=ProfitLedger.read(path);
+        assertEquals(10000,loaded.historyClearedAt());assertEquals(300.0,loaded.openCost("open"));
+        loaded.sell("open","general","Coal","next-sale",3,360.0);
+        assertEquals(60.0,loaded.summary().profit());assertEquals(1,loaded.summary().settlements());
+    }
     @Test void fundedHoldingsUseRemainingAcquisitionsAndNeverInventRecoveredCost() {
         var l=new ProfitLedger();assertEquals(0.0,l.openCost("t"));
         l.acquire("t","books","Wisdom","buy",10,1000.0);

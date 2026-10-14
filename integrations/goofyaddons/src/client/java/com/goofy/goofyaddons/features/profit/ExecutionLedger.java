@@ -86,6 +86,9 @@ public final class ExecutionLedger {
         }).sorted(Comparator.comparing(Active::tradeId)).toList();
     }
     public List<Sample> samples() {return List.copyOf(samples);}
+    public int clearCompletedThrough(long cutoff) {
+        int before=samples.size();samples.removeIf(s->s.completedAt()<=cutoff);return before-samples.size();
+    }
     public static ExecutionLedger read(Path path) throws Exception {
         var ledger=new ExecutionLedger();if(!Files.exists(path))return ledger;
         if(Files.size(path)>2*1024*1024)throw new IllegalStateException("Execution history too large");

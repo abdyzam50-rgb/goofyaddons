@@ -93,13 +93,14 @@ public final class TradeHistory {
 
     /** Applies entries the snapshots lack. Ledger entries are skipped when the ledger is unusable. */
     public Replay replay(ProfitLedger ledger, ExecutionLedger execution, long now) throws IOException {
-        int ledgerEntries = 0, samples = 0;
+        long cutoff=ledger==null?0:ledger.historyClearedAt();
+        int ledgerEntries = 0, samples = execution==null?0:execution.clearCompletedThrough(cutoff);
         for (Entry entry : read()) {
             switch (entry.kind()) {
                 case ACQUIRE -> { if (ledger != null && ledger.acquire(entry.trade(), entry.engine(), entry.item(), entry.event(), entry.units(), entry.money())) ledgerEntries++; }
                 case SELL -> { if (ledger != null && ledger.sell(entry.trade(), entry.engine(), entry.item(), entry.event(), entry.units(), entry.money())) ledgerEntries++; }
                 case WRITE_OFF -> { if (ledger != null && ledger.writeOff(entry.trade(), entry.engine(), entry.item(), entry.event(), entry.units())) ledgerEntries++; }
-                case SAMPLE -> { if (execution != null && execution.restore(entry.sample(), now)) samples++; }
+                case SAMPLE -> { if (execution != null && entry.sample()!=null && entry.sample().completedAt()>cutoff && execution.restore(entry.sample(), now)) samples++; }
             }
         }
         return new Replay(ledgerEntries, samples);

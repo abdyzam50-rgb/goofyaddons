@@ -139,6 +139,18 @@ public final class ProfitTracker {
         load(); if (error!=null) return false;
         ledger.resetSession(); save(); return error==null;
     }
+    public boolean clearCompletedHistory() {
+        load();if(error!=null || executionError!=null || path==null)return false;
+        long cutoff=System.currentTimeMillis();
+        var cleared=ledger.withoutCompletedHistory(cutoff);
+        try {cleared.write(path);} // Commit the replay cutoff before changing either live snapshot.
+        catch(Exception bad){Diagnostics.failure("profit.history_clear_failed",bad);return false;}
+        ledger=cleared;execution.clearCompletedThrough(cutoff);writeExecution();
+        lastTick=0;previouslyActive=false;
+        Diagnostics.event("INFO","profit.history_cleared",java.util.Map.of("cutoff",cutoff,"activeRecordsPreserved",true));
+        com.goofy.goofyaddons.features.FeatureManager.INSTANCE.invalidateMarketReport();
+        return true;
+    }
     private void save() {
         if (error!=null || path==null) return;
         try { ledger.write(path); lastSave=System.nanoTime()/1000000; }

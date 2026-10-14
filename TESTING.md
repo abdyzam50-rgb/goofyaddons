@@ -1,3 +1,5 @@
+profit clearhistory clears completed sales/session statistics and execution samples for the current profile while stopped. It commits a durable history cutoff atomically before clearing live execution samples, retains active lots/partial executions and duplicate receipt identities, and filters pre-reset samples during transaction replay. Active engine/order/production journals and settings are unchanged. Regression tests cover remaining lot cost, late settlement profit, duplicate receipts, reload/replay and active partial execution completion.
+
 ALL trading mode enables craft, book and general pipelines together. Fresh feasible forecasts compare conservative craft cycle coins/hour against the calculator-selected book/general head; equal hourly returns prefer less capital, with stable ties. Losing entry paths wait while existing positions continue management. All mode enables automatic analysis, uses cached craft rankings between entry boundaries, respects account/market/position checks, and removes craft budget/inventory reservations from other pipeline forecasts. Mode choice, selected family and decision events are visible in GUI/HUD/debug. Tests cover engine composition, mode cycle, cross-family scoring/ties, account reservations, ALL protocol analysis and adapter equivalence.
 
 Outbid search navigation now checks its exact readable book result rather than waiting for unrelated price rows, including the engine loading gate. Anvil collection learns a 1000ms submission-to-claim interval after a real collection slowdown response, avoiding the repeated immediate rejection/three-second retry pattern without delaying receipts already observed. The final verified combine closes and hands off immediately instead of waiting for a NO_PAIR tick. Diagnostics include learned claim timing. Fixes diagnostics-1791974789367.
@@ -36,7 +38,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.118 Storage destination planning
+### 0.2.119 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -310,7 +312,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.118 JAR](dist/astar-client-0.2.118-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.119 JAR](dist/astar-client-0.2.119-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

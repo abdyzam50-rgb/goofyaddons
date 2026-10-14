@@ -27,6 +27,16 @@ public final class ProfitLedger {
     private List<Sale> sales = new ArrayList<>();
     private int sessionFirstSale;
     private long activeMillis;
+    private long historyClearedAt;
+    public long historyClearedAt(){return historyClearedAt;}
+    /** Keep receipt identities and open cost lots so old receipts cannot be counted again. */
+    public ProfitLedger withoutCompletedHistory(long now) {
+        if(now<=0)throw new IllegalArgumentException("Invalid history reset time");
+        var copy=new Gson().fromJson(new Gson().toJson(this),ProfitLedger.class);
+        copy.sales.clear();copy.trades.entrySet().removeIf(e->e.getValue().lots.isEmpty());
+        copy.sessionFirstSale=0;copy.activeMillis=0;copy.historyClearedAt=Math.max(historyClearedAt,now);
+        return copy;
+    }
 
     public boolean acquire(String id, String engine, String item, String event, int units, Double cost) {
         validateIdentity(id, engine, item, event, units);
@@ -134,7 +144,7 @@ public final class ProfitLedger {
                 List.of("version","trades","eventIds","sales","sessionFirstSale","activeMillis"))) throw new IllegalStateException("Incomplete profit ledger");
         ProfitLedger ledger=new Gson().fromJson(text,ProfitLedger.class);
         if (ledger==null || ledger.version!=1 || ledger.trades==null || ledger.sales==null || ledger.eventIds==null
-                || ledger.sessionFirstSale<0 || ledger.sessionFirstSale>ledger.sales.size() || ledger.activeMillis<0) throw new IllegalStateException("Invalid profit ledger");
+                || ledger.sessionFirstSale<0 || ledger.sessionFirstSale>ledger.sales.size() || ledger.activeMillis<0 || ledger.historyClearedAt<0) throw new IllegalStateException("Invalid profit ledger");
         for (var entry : ledger.trades.entrySet()) {
             Trade trade=entry.getValue();
             if (trade==null || trade.lots==null) throw new IllegalStateException("Invalid trade lots");
