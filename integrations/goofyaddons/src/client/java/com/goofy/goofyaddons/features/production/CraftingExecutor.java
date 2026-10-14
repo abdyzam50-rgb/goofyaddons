@@ -214,10 +214,18 @@ public final class CraftingExecutor {
                     if(amount==perCell)cells.add(GRID[i]);
                 }
                 int share=cells.isEmpty()?0:cursor.count()/cells.size();
+                if(cells.size()>1 && share==0 && stock(menu,cursor.bazaarProductId()).stream()
+                    .anyMatch(v->cursor.canStackWith(v) && v.count()>=cells.size())) {
+                    var origin=menu.slot(source);
+                    if(origin!=null && origin.inPlayerInventory() && (origin.empty() || cursor.canStackWith(origin))
+                        && count(origin)+cursor.count()<=origin.maxStackSize())return send(menu,actions,source,false,false,now);
+                }
+                boolean rightDrag=share>perCell && actions.supportsRightDrag();
+                if(rightDrag)share=1;
                 if(cells.size()>1 && share>0 && share<=perCell && perCell<=cursor.maxStackSize()) {
                     com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.craft_drag",Map.of(
                         "recipe",recipe.key(),"slots",cells,"share",share,"deficit",perCell,"cursorUnits",cursor.count(),"container",container));
-                    sent=menu;sentAt=now;retries=0;actionDrag=cells.stream().mapToInt(Integer::intValue).toArray();
+                    sent=menu;sentAt=now;retries=0;actionDragRight=rightDrag;actionDrag=cells.stream().mapToInt(Integer::intValue).toArray();
                     actionSlot=actionDrag[0];actionShift=false;actionRight=false;return replay(actions);
                 }
             }
@@ -254,7 +262,11 @@ public final class CraftingExecutor {
             if(available.isEmpty())return block("No compatible ingredient stack can fill the owned recipe cell for "+need.id()+"; grid and cursor retained");
             // Preserve component groups selected by the grid capacity plan, then take
             // the largest fragment within the smallest group that fills this cell.
-            var stack=available.stream().min(Comparator.comparingInt((SlotView v)->compatibleUnits(v,menu))
+            int dragCells=(int)java.util.stream.IntStream.range(0,9).filter(i->recipe.grid().get(i)!=null
+                && need.id().equals(recipe.grid().get(i).id()) && cellAmount(i,menu)-count(menu.slot(GRID[i]))==remaining).count();
+            boolean fullDrag=actions.supportsDrag() && dragCells>1 && available.stream().anyMatch(v->v.count()>=dragCells);
+            var stack=available.stream().min(Comparator.comparingInt((SlotView v)->fullDrag && v.count()<dragCells?1:0)
+                .thenComparingInt(v->compatibleUnits(v,menu))
                 .thenComparingInt(v->v.count()<=remaining?1:canPark(v.count(),remaining)?splitClicks(v.count(),remaining):remaining+1)
                 .thenComparing(Comparator.comparingInt(SlotView::count).reversed())).orElseThrow();
             source=stack.index();return send(menu,actions,source,false,false,now);
@@ -358,6 +370,7 @@ public final class CraftingExecutor {
     }
     private int actionSlot;private boolean actionShift,actionRight;
     private int[] actionDrag;
+    private boolean actionDragRight;
     private Result send(MenuSnapshot menu,GameActions actions,int slot,boolean shift,boolean right,long now){
         actionDrag=null;
         sent=menu;sentAt=now;retries=0;actionSlot=slot;actionShift=shift;actionRight=right;return replay(actions);
@@ -375,7 +388,7 @@ public final class CraftingExecutor {
                 +"); grid and cursor retained");
         }
         actionDelayMs=Math.max(FAST_SETTLE_MS,actionDelay.getAsInt());
-        if(actionDrag!=null)actions.dragSplit(actionDrag);
+        if(actionDrag!=null){if(actionDragRight)actions.rightDragSplit(actionDrag);else actions.dragSplit(actionDrag);}
         else if(actionRight)actions.rightClick(actionSlot);else actions.click(actionSlot,actionShift);
         return Result.WAITING;
     }

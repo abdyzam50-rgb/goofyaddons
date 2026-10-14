@@ -51,6 +51,13 @@ class ProductionTest {
         int quickAvailable;boolean wrongQuickRecipe;Map<String,Integer> resultEnchantments;
         int clicks,swaps;boolean discard,preview,quickCraft,ignoreSplitOnce,oneAtATime,drag;String title="Craft Item",forceSwapProduct,quickPreviewProduct="OUTPUT";
         public boolean supportsDrag(){return drag;}
+        public boolean supportsRightDrag(){return drag;}
+        public void rightDragSplit(int[] targets){
+            clicks++;inputs.add("rightdrag:"+Arrays.toString(targets));if(discard)return;
+            assertTrue(cursor.count()>=targets.length);
+            for(int slot:targets){assertTrue(slots[slot].empty() || cursor.canStackWith(slots[slot]));slots[slot]=reindex(cursor,slot,slots[slot].count()+1);}
+            cursor=reindex(cursor,-1,cursor.count()-targets.length);
+        }
         public void dragSplit(int[] targets){
             clicks++;inputs.add("drag:"+Arrays.toString(targets));if(discard)return;
             int each=cursor.count()/targets.length;
@@ -405,6 +412,22 @@ class ProductionTest {
         assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
         assertEquals(1,server.inputs.stream().filter(v->v.startsWith("drag:")).count());assertTrue(server.cursor.empty());
         assertEquals(5,server.clicks);
+    }
+    @Test void sevenMithrilCellsStayEvenAcrossRemaindersAndFinalRightDragTopUps(){
+        var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,new ProductionRecipe.Ingredient("INPUT",40)));
+        grid.set(4,new ProductionRecipe.Ingredient("SECOND",1));grid.set(8,null);
+        var r=new ProductionRecipe("craft:mithril_drag",ProductionRecipe.Kind.CRAFT,"BLAZE_POWDER",1,Map.of("INPUT",280,"SECOND",1),grid,0,0,"Collection II",null);
+        var server=new Server(r,64);server.drag=true;
+        for(int i=56;i<59;i++)server.slots[i]=stack(i,"INPUT",64);
+        server.slots[59]=stack(59,"INPUT",64);
+        var executor=new CraftingExecutor(()->50);var result=CraftingExecutor.Result.WAITING;
+        for(long now=1000;now<30000&&result==CraftingExecutor.Result.WAITING;now+=50)
+            result=executor.tick(r,server.menu(),server,Map.of(),Map.of("collection",2),now);
+        assertEquals(CraftingExecutor.Result.CRAFTED,result,executor.failure());
+        assertTrue(server.inputs.stream().filter(v->v.startsWith("drag:")).count()>=4);
+        assertTrue(server.inputs.stream().anyMatch(v->v.startsWith("rightdrag:")));
+        assertFalse(server.inputs.stream().anyMatch(v->v.startsWith("right:")),server.inputs.toString());
+        assertTrue(server.cursor.empty());
     }
     @Test void successiveDragsTopUpTheSameRecipeCellsWithoutSingleItemPlacements(){
         var grid=new ArrayList<ProductionRecipe.Ingredient>(Collections.nCopies(9,new ProductionRecipe.Ingredient("INPUT",16)));
