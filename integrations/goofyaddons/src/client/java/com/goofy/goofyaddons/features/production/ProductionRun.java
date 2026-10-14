@@ -104,6 +104,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
     private boolean orderActive,orderCostRecorded;
     private long orderRetryAfter;
     private long sellRetryAfter;
+    private String sellRetryReason;
     private boolean waitingForOrderRetry;
     private boolean waitingForProcurement;
     private boolean verifiedEmptyOrderHandoff;
@@ -657,6 +658,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
 
     private Outcome sellOnBazaar(long now) {
         if(storing!=null)return storageStep(now);
+        if(!orderActive && selling==null && env.menu()!=null && !env.menu().cursorEmpty())
+            return Outcome.pending("Return the cursor item to inventory before selling "+env.name(output));
         if(trade==null && !orderActive && selling==null) {
             if(soldOutputUnits==outputUnits())return finishRounds();
             var menu=env.menu();if(menu==null)return Outcome.pending("Waiting for crafted output inventory");
@@ -694,7 +697,8 @@ public final class ProductionRun implements ProductionLoop.Ports {
             orderActive=false;return soldLot(result.units());
         }
         if (!ownsMenu) return Outcome.pending("Waiting to sell " + env.name(output));
-        if(now<sellRetryAfter)return Outcome.pending("Waiting to retry selling "+env.name(output));
+        if(now<sellRetryAfter)return Outcome.pending((sellRetryReason==null?"Waiting to retry selling "+env.name(output):sellRetryReason)
+            +"; rechecking in "+Math.max(1,(sellRetryAfter-now+999)/1000)+" seconds");
         if (selling == null) {
             int units = env.menu()==null?0:ProductionStorage.Move.inventoryCount(env.menu(),output);
             if (units == 0) return Outcome.uncertain("The crafted " + env.name(output) + " is not in the inventory");
@@ -712,7 +716,7 @@ public final class ProductionRun implements ProductionLoop.Ports {
                 else if(kind==ProductionRecipe.Kind.CRAFT)env.saleConfirmed(saleReceiptId,output,selling.amount(),selling.proceeds());
                 int units=selling.amount();selling=null;env.actions().closeMenu();yield soldLot(units); }
             case UNCERTAIN -> Outcome.uncertain(selling.failure());
-            case BLOCKED -> { String why = selling.failure(); selling = null; sellRetryAfter=now+30_000; env.actions().closeMenu(); yield Outcome.blocked(why); }
+            case BLOCKED -> { String why = selling.failure(); selling = null; sellRetryReason=why;sellRetryAfter=now+30_000; env.actions().closeMenu(); yield Outcome.blocked(why); }
             default -> Outcome.pending(env.menu()!=null && env.menu().loadingContents()?"Waiting for live sell price for "+env.name(output):"Selling " + env.name(output));
         };
     }

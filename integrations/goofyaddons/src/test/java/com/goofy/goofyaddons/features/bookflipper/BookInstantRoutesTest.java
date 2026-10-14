@@ -54,4 +54,20 @@ class BookInstantRoutesTest {
         h.advance(menu(null));h.purse=-1;sell.sell(h.ctx);assertTrue(h.sales.isEmpty());
         h.now+=100;h.purse=5296.25;sell.sell(h.ctx);assertNull(h.failure);assertEquals(List.of(296.25),h.sales);assertTrue(h.tasks.isEmpty());
     }
+    @Test void submittedInstantBookPurchaseOwnsItsConfirmationAndVerifiesTheReceipt(){
+        var h=new Harness();var buy=new BookBuy();
+        assertFalse(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        h.menu=menu("Overload IV",book(13,4),SlotView.named(10,"Buy Instantly",List.of("Overload IV","Price per unit: 100 coins")));
+        buy.tick(h.ctx);assertFalse(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        h.advance(menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of())));buy.tick(h.ctx);
+        h.advance(menu(null));h.sign=true;buy.tick(h.ctx);h.sign=false;
+        assertTrue(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        assertFalse(buy.handlesInstantConfirmation("Confirm Sell Offer"));
+        h.advance(menu("Confirm Instant Buy",SlotView.named(11,"Confirm",List.of("Overload IV","Amount: 2x","Price: 200 coins"))));
+        buy.tick(h.ctx);assertNull(h.failure);assertTrue(h.costs.isEmpty());
+        h.advance(menu(null,book(54,4),book(55,4)));h.purse=4800;buy.tick(h.ctx);
+        assertNull(h.failure);assertEquals(List.of(200.0),h.costs);
+        assertFalse(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        assertEquals(1,h.actions.serverEffects().stream().filter(v->v.equals("click:11")).count());
+    }
 }

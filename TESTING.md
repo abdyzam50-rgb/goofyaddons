@@ -1,3 +1,5 @@
+Submitted instant book buys route Confirm Instant Buy to their existing exact-quantity/price/receipt executor while BAZAAR_NAVIGATION owns it. Generic buy-order title and expired-live-quote gates no longer interrupt this submitted operation; unowned confirmation types remain rejected. Production sales wait for an occupied cursor to return before checking inventory ownership, and retain the precise price-floor rejection throughout the retry countdown. Regression tests cover book confirmation followed by exact debit/books, foreign confirmation rejection, cursor ownership wait and retained sale-floor reasons. Fixes diagnostics-1791948661599.
+
 Repeated grid drags preserve equal cell deficits: cursor remainders smaller than the shared target group return to inventory while a larger compatible source is available, and the source picker avoids immediately retrieving that same tiny remainder. Native right-drag adds one item per selected cell when left-drag would exceed the remaining plan. All drag targets still validate before packets, and inventory conservation/reopen recovery remains mandatory. Regression reproduces seven 40-unit Mithril cells using successive full stacks and final right-drag passes.
 
 The live QUICK_CRAFT adapter now accepts compatible partial stacks, matching the planner top-up behavior. It validates all target indices, duplicate slots, item components, placement permission and space for the exact distributed share before sending any packet. Regression tests cover partial/full stacks, incompatible components and zero-share input. Fixes diagnostics-1791937541779, where the second drag was rejected by the old empty-only live guard.
@@ -28,7 +30,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.114 Storage destination planning
+### 0.2.115 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -302,7 +304,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.114 JAR](dist/astar-client-0.2.114-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.115 JAR](dist/astar-client-0.2.115-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

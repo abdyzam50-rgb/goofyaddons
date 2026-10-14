@@ -452,10 +452,11 @@ public class BazaarFlipper implements Feature {
         if (!claim.verifyBuy(session)) return;
         if (isStartUpCheckCompleted && !bookCombiner.pending() && !bookTransfer.pending()
                 && claim.pendingSale() == null && placement.submittedTask() == null && !reconcileBookLocations(visiblePage)) return;
-        if (containerNameCheck("Confirm") && !TradingSafety.confirmationTitle(menuTitle(),state==State.SELL || state==State.REPLACE_SELL)) {
+        boolean instantConfirmation=state==State.BAZAAR_NAVIGATION && buy.handlesInstantConfirmation(menuTitle());
+        if (containerNameCheck("Confirm") && !instantConfirmation && !TradingSafety.confirmationTitle(menuTitle(),state==State.SELL || state==State.REPLACE_SELL)) {
             safetyHalt("Unexpected book confirmation type; position retained without another click.");return;
         }
-        if (containerNameCheck("Confirm") && services.latestQuotes() == null) {
+        if (containerNameCheck("Confirm") && !instantConfirmation && services.latestQuotes() == null) {
             safetyHalt("Book confirmation blocked because Bazaar quotes expired."); return;
         }
         if (screenOpen() && TradingSafety.ordersTitle(menuTitle())) {

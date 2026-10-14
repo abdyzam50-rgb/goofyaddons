@@ -614,6 +614,20 @@ class ProductionRunTest {
         assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state());
     }
 
+    @Test void cursorItemWaitsBeforeSaleAndPriceFloorReasonSurvivesRetryCooldown()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"OUTPUT",2));
+        var run=ProductionRun.startTrade(env,catalog(),"OUTPUT",2,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_INSTANT);
+        run.tick(true,1000);assertEquals(Stage.SELL,run.stage());
+        var held=menu("Bazaar",item(54,"OUTPUT",1));
+        env.menu=new MenuSnapshot(held.containerId(),held.title(),false,held.slots(),item(-1,"OUTPUT",1));
+        assertEquals(Step.PENDING,run.tick(true,1100));assertTrue(run.reason().contains("cursor"));
+        assertTrue(env.actions.performed().isEmpty());assertEquals(Stage.SELL,run.stage());
+        env.menu=menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 400 coins")),item(54,"OUTPUT",2));
+        assertEquals(Step.BLOCKED,run.tick(true,1200));assertTrue(run.reason().contains("below"));
+        run.tick(true,1300);assertTrue(run.reason().contains("below"));assertTrue(run.reason().contains("rechecking"));
+        assertTrue(env.confirmedSales.isEmpty());
+    }
+
     @Test void automaticBazaarRunBuysCraftsAndSellsWithActualReceiptBasisExactlyOnce()throws Exception {
         var env=new Env();env.buying=true;var recipe=catalog().forOutput("OUTPUT").getFirst();
         var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);

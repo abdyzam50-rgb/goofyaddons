@@ -18,6 +18,10 @@ final class BookBuy {
     private int signRestarts;
 
     void reset() { instant=null;instantTask=null;signSubmittedAt = 0; signRestarts = 0; }
+    boolean handlesInstantConfirmation(String title) {
+        return instant!=null && instant.submitted() && title!=null
+            && com.goofy.goofyaddons.utils.Chat.strip(title).startsWith("Confirm Instant Buy");
+    }
 
     /** Forgets a written amount whose menu is being reopened. */
     void menuReopened() { signSubmittedAt = 0; }
