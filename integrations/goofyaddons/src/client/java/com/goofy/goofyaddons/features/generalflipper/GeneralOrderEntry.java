@@ -45,6 +45,11 @@ final class GeneralOrderEntry {
         int create = ctx.find(createLabel(ctx), false);
         if (ctx.menu("Bazaar") || productMenuMatches(ctx, create)) ctx.transition(Step.PRODUCT);
     }
+    int searchNavigationTarget(GeneralContext ctx) {
+        // Search quotes are advisory. Opening one exact result does not buy anything;
+        // product controls and transaction quotes are still checked on the next page.
+        return ctx.active()!=null && ctx.find(createLabel(ctx),false)<0?searchResult(ctx):-1;
+    }
 
     void product(GeneralContext ctx) {
         var active = ctx.active();

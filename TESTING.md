@@ -1,3 +1,5 @@
+General product navigation may open one exact identified search result while its advisory price remains Loading. The whole-menu loading gate permits only that navigation target; transactional pages still require loaded contents and verified prices. The regression drives the real General engine on the captured L.A.S.R.'s Eye search shape and verifies a single acknowledged-navigation intent without submitting a purchase. Fixes diagnostics-1792023694705.
+
 profit clearhistory clears completed sales/session statistics and execution samples for the current profile while stopped. It commits a durable history cutoff atomically before clearing live execution samples, retains active lots/partial executions and duplicate receipt identities, and filters pre-reset samples during transaction replay. Active engine/order/production journals and settings are unchanged. Regression tests cover remaining lot cost, late settlement profit, duplicate receipts, reload/replay and active partial execution completion.
 
 ALL trading mode enables craft, book and general pipelines together. Fresh feasible forecasts compare conservative craft cycle coins/hour against the calculator-selected book/general head; equal hourly returns prefer less capital, with stable ties. Losing entry paths wait while existing positions continue management. All mode enables automatic analysis, uses cached craft rankings between entry boundaries, respects account/market/position checks, and removes craft budget/inventory reservations from other pipeline forecasts. Mode choice, selected family and decision events are visible in GUI/HUD/debug. Tests cover engine composition, mode cycle, cross-family scoring/ties, account reservations, ALL protocol analysis and adapter equivalence.
@@ -38,7 +40,7 @@ Storage scans now exclude GUI controls without a product ID from partial-stack d
 
 Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
 
-### 0.2.119 Storage destination planning
+### 0.2.120 Storage destination planning
 
 Deposits prefer a known page that fits the whole lot instead of scattering it
 over the first small gaps. An already open suitable page is preferred. Fresh
@@ -312,7 +314,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.119 JAR](dist/astar-client-0.2.119-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.120 JAR](dist/astar-client-0.2.120-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client
