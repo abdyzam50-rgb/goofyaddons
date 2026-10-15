@@ -69,6 +69,16 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
     if(name)tiers[name]=Math.max(tiers[name]??0,Number(m[2]));
    }
   }else unknown.push('collections');
+  // Live resource tiers name the unlocks; no hand-maintained collection threshold guesses.
+  const recipeUnlocks={};
+  if(Array.isArray(unlocked))for(const category of Object.values(resources?.collections??{}))for(const [id,item] of Object.entries(category.items??{})) {
+   for(const tier of item.tiers??[])for(const raw of tier.unlocks??[]) {
+    const match=typeof raw==='string'&&/^(.*?) Recipe$/i.exec(clean(raw));
+    if(!match || !Number.isInteger(tier.tier) || tier.tier<1)continue;
+    const key=match[1].toLowerCase().replace(/[^a-z0-9]/g,'');
+    recipeUnlocks[key]=Math.max(recipeUnlocks[key]??0,(collectionIds[id]??0)>=tier.tier?1:0);
+   }
+  }
   const slayerBosses=member.slayer?.slayer_bosses??member.slayer_bosses;
   if(slayerBosses&&typeof slayerBosses==='object'&&!Array.isArray(slayerBosses))for(const [id,table] of Object.entries(LEVELS.slayer_xp)) {
    const raw=slayerBosses[id];
@@ -91,7 +101,7 @@ export function summarizeProfiles(data,uuid,resources,now=Date.now()) {
   const purse=member.currencies?.coin_purse??member.coin_purse;
   return [{id:clean(p.profile_id),name:clean(p.cute_name)||'Profile',selected:p.selected===true,gameMode:clean(p.game_mode)||'normal',
    purse:present(purse)&&purse<=1e13?purse:null,fetchedAt:now,unknown,
-   stats:{catacombsLevel,dungeonCompletions,inspectedMutations,cropAnalyzerMilestone,hotmTier:hotm??0,quickForgeLevel:Number.isInteger(quickLevel)&&quickLevel>=0&&quickLevel<=20?quickLevel:0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,collectionIds,slayers,reputation,
+   stats:{catacombsLevel,dungeonCompletions,inspectedMutations,cropAnalyzerMilestone,hotmTier:hotm??0,quickForgeLevel:Number.isInteger(quickLevel)&&quickLevel>=0&&quickLevel<=20?quickLevel:0,enchantingLevel:skills.Enchanting??0,skills,collections:tiers,collectionIds,recipeUnlocks,slayers,reputation,
     xpLevels:0,ignoreRequirements:false,coleMoltenForge:false,quadTaxes:false,npcShoppingSpree:false}}];
  });
 }

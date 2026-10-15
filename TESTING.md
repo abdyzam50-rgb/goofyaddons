@@ -1,3 +1,5 @@
+Profile preferences now use account/profile folders alongside the existing scoped journals. First use copies only global preferences, never another profile’s settings or access denials. Invalid profile files block trading instead of keeping a different profile’s valid settings. Skills/API evidence/forecasts clear on observed profile identity changes; late API generations remain discarded. Active/pinned profile changes require restart, including standalone tests. GUI drafts cannot save across preference-file changes. Tests cover independent Pear/Papaya preferences, return to prior profile, invalid-file isolation, file path boundaries, recipe-lock states and per-profile Worker collection metadata. Enchanted Red Sand requires verified current-profile recipe unlock before planning/procurement; the Worker must be redeployed to publish this field.
+
 Unsubmitted ordinary entries that encounter pre-existing orders or inventory now skip that product for 60 seconds, without adopting/cancelling the foreign position or pausing other pipelines. The temporary exclusions feed All-mode forecasts so an alternative route can win. Submitted and craft conflicts retain their reconciliation barrier. Regression verifies no foreign-order click, no acquisition/sale, released unspent reservation, retained-running state and cooldown expiry. Diagnostics-1792067157875 also shows a separate Enchanted Red Sand result barrier, still under investigation; this change does not bypass that crafting verification.
 
 Hypixel's explicit Bazaar order cooldown rejection now defers a recent book/general/craft submission for 61 seconds instead of treating it as an unexplained missing order. The shared capital ledger publishes the cooldown to all order placement paths. Rejected buys retain unspent reservations; rejected sales retain inventory ownership. New confirmations wait and re-enter with fresh prices; unrelated/late notices do not clear uncertain submissions. HUD/debug expose the remaining cooldown and rejection events. Regression reproduces diagnostics-1792065633025 (Stealth I confirmation rejected, three futile absence rechecks, global pause).
@@ -320,7 +322,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.123 JAR](dist/astar-client-0.2.123-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.124 JAR](dist/astar-client-0.2.124-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

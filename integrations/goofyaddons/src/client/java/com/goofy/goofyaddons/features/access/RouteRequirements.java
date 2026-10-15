@@ -63,6 +63,12 @@ public final class RouteRequirements {
         if(text==null || text.isBlank())return null;
         String clean=com.goofy.goofyaddons.utils.Chat.strip(text).replaceFirst("(?i)^requires?:?\\s*","").trim();
         for(String part:clean.split("\\s*(?:&|,|(?i: and ))\\s*")) {
+            var recipeUnlock=Pattern.compile("(?i)^Recipe (.+) unlocked$").matcher(part.trim());
+            if(recipeUnlock.matches()) {
+                String name=recipeUnlock.group(1);
+                if(!Integer.valueOf(1).equals(unlocks.get(normalize(name+" recipe unlocked"))))return "Requires unlocked recipe "+name+"; account recipe is locked or unverified";
+                continue;
+            }
             var mutation=Pattern.compile("(?i)^Mutation ([A-Z0-9_]+) (?:inspected|analyzed)$").matcher(part.trim());
             if(mutation.matches()) {
                 String id=mutation.group(1).toUpperCase(Locale.ROOT);

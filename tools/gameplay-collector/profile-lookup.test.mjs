@@ -195,3 +195,15 @@ test('published zero Slayer counters and empty Garden analysis are known, malfor
  assert.ok(bad.unknown.includes('Blaze Slayer'));assert.ok(bad.unknown.includes('Vampire Slayer'));assert.equal(bad.stats.inspectedMutations,null);
  const [absent]=summarizeProfiles(data({}),uuid,null);assert.ok(absent.unknown.includes('slayers'));assert.equal(absent.stats.inspectedMutations,null);
 });
+
+test('collection recipe unlocks are computed separately for each profile from published tier metadata',()=>{
+ const recipeResources={collections:{MINING:{items:{'SAND:1':{name:'Red Sand',tiers:[{tier:2,unlocks:['Enchanted Red Sand Recipe']}]}}}}};
+ const rows={success:true,profiles:[
+  {profile_id:'1'.repeat(32),cute_name:'Pear',members:{[uuid]:{unlocked_coll_tiers:[]}}},
+  {profile_id:'2'.repeat(32),cute_name:'Papaya',members:{[uuid]:{unlocked_coll_tiers:['SAND:1_2']}}}
+ ]};
+ const [pear,papaya]=summarizeProfiles(rows,uuid,recipeResources,1234);
+ assert.equal(pear.stats.recipeUnlocks.enchantedredsand,0);
+ assert.equal(papaya.stats.recipeUnlocks.enchantedredsand,1);
+ assert.deepEqual(summarizeProfiles(data({}),uuid,recipeResources,1234)[0].stats.recipeUnlocks,{});
+});

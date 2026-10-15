@@ -111,7 +111,21 @@ public class FeatureManager {
         com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.player(requirementWorld.playerId(),requirementWorld.username());
         var accounts=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
         if(accounts.current()==null && requirementWorld.now()-profileTabAt>=1000){profileTabAt=requirementWorld.now();accounts.tabList(requirementWorld.tabList());}
-        if(!java.util.Objects.equals(requirementAccount,requirementWorld.username())){clearAccountRequirements();requirementAccount=requirementWorld.username();if(started())skillPreflight.begin();}
+        var observedScope=accounts.current();
+        String requirementKey=requirementWorld.username()+":"+(observedScope==null?"unknown":observedScope.profile());
+        if(!java.util.Objects.equals(requirementAccount,requirementKey)) {
+            clearAccountRequirements();requirementAccount=requirementKey;
+            if(accounts.pinned()!=null && !accounts.pinned().equals(observedScope)) {
+                if(started() || productionTest || engineTest!=null)safetyPause("SkyBlock profile changed; restart Minecraft to load that profile's saved orders and settings");
+                return;
+            }
+            if(observedScope!=null && canReloadConfig() && !productionTest && engineTest==null)try {
+                GoofyConfig.selectProfile(accounts.preferencesPath("goofyaddons.json"));
+                Diagnostics.event("INFO","account.profile_preferences",java.util.Map.of("profile",observedScope.profile(),"settings",GoofyConfig.location()));
+            }catch(java.io.IOException failure){Diagnostics.failure("account.profile_preferences_failed",failure);return;}
+            if(started())skillPreflight.begin();
+        }
+        if(accounts.pinned()!=null && !accounts.pinned().equals(observedScope))return;
         if(skillPreflight.observe(requirementWorld.menu())){accountUnlocks.clear();invalidateMarketReport();}
         var scope=accounts.current();
         accountUnlocks.poll(requirementWorld.username(),scope==null?null:scope.profile(),skillPreflight.skills(),requirementWorld.now());
@@ -210,7 +224,12 @@ public class FeatureManager {
         String reason=storage.prepare();
         String adopted=storage.takeEvent();
         if(adopted!=null){Diagnostics.event("INFO","account.legacy_adopted",java.util.Map.of("detail",adopted));ChatUtils.clientMessage(adopted+". The originals in config/ are unchanged.");}
-        if(reason==null)return true;
+        if(reason==null) {
+            try {GoofyConfig.selectProfile(storage.preferencesPath("goofyaddons.json"));}
+            catch(java.io.IOException failure){reason="Profile settings unavailable: "+failure.getMessage();}
+            if(reason==null && GoofyConfig.loadError()!=null)reason=GoofyConfig.loadError();
+            if(reason==null){CapitalManager.INSTANCE.configure(GoofyConfig.INSTANCE.maxTradingCapital,GoofyConfig.INSTANCE.purseReserve);return true;}
+        }
         lifecycle.refuse(source, reason, now());
         ChatUtils.clientMessage("Cannot start: " + reason);
         return false;

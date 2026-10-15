@@ -75,6 +75,16 @@ class AccountUnlocksTest {
         stats.addProperty("hotmTier",6);stats.getAsJsonObject("slayers").addProperty("Vampire",6);
         assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000));
     }
+    @Test void recipeUnlockGateRejectsLockedAndUnpublishedThenAcceptsVerifiedCurrentProfile() {
+        var root=profile(1000000);var stats=root.getAsJsonArray("profiles").get(0).getAsJsonObject().getAsJsonObject("stats");
+        String requirement="Recipe Enchanted Red Sand unlocked";
+        assertNotNull(RouteRequirements.craft(requirement,Map.of(),AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000).unlocks()));
+        var recipes=new JsonObject();recipes.addProperty("enchantedredsand",0);stats.add("recipeUnlocks",recipes);
+        assertNotNull(RouteRequirements.craft(requirement,Map.of(),AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000).unlocks()));
+        recipes.addProperty("enchantedredsand",1);
+        assertNull(RouteRequirements.craft(requirement,Map.of(),AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000).unlocks()));
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Pear",Map.of(),1000000));
+    }
     JsonObject profile(long at) {
         var root=JsonParser.parseString("""
           {"protocol":"goofy-profile/1","username":"Tester","profiles":[

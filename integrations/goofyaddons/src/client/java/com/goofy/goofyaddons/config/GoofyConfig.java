@@ -32,7 +32,10 @@ public class GoofyConfig {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    private static Path profileConfigPath;
+    private static GoofyConfig globalTemplate;
     private static Path configPath() {
+        if(profileConfigPath!=null)return profileConfigPath;
         return FabricLoader.getInstance().getConfigDir().resolve("goofyaddons.json");
     }
 
@@ -104,6 +107,18 @@ public class GoofyConfig {
 
     public static void load() {
         load(configPath());
+        if(profileConfigPath==null && loadError==null)globalTemplate=GSON.fromJson(GSON.toJson(INSTANCE),GoofyConfig.class);
+    }
+    /** Activate only while engines are stopped; a rejected profile file cannot inherit another profile's limits. */
+    public static void selectProfile(Path path)throws java.io.IOException {
+        if(path==null || path.equals(profileConfigPath))return;
+        if(profileConfigPath==null && loadError!=null)throw new java.io.IOException(loadError);
+        if(globalTemplate==null)globalTemplate=GSON.fromJson(GSON.toJson(INSTANCE),GoofyConfig.class);
+        profileConfigPath=path;
+        try {
+            if(!Files.exists(path))commitSettings(GSON.fromJson(GSON.toJson(globalTemplate),GoofyConfig.class),path);
+            else {INSTANCE=null;load(path);}
+        }catch(java.io.IOException failure){loadError="Profile settings unavailable: "+failure.getMessage();lastLoadProblem=loadError;throw failure;}
     }
 
     static void load(Path path) {
@@ -231,12 +246,19 @@ public class GoofyConfig {
         return Double.isFinite(value) && value >= 0 && value <= 100;
     }
 
+    private static void checkProfileOwner() {
+        if(profileConfigPath==null)return;
+        var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        if(storage.current()!=null && storage.pinned()!=null && !storage.current().equals(storage.pinned()))
+            throw new IllegalStateException("Profile changed; restart Minecraft before editing trading settings");
+    }
     public static void save() {
-        save(configPath());
+        checkProfileOwner();save(configPath());
     }
 
     /** GUI changes commit atomically before replacing the last working in-memory settings. */
     public static void commitSettings(GoofyConfig candidate)throws java.io.IOException {
+        checkProfileOwner();
         if(!com.goofy.goofyaddons.features.FeatureManager.INSTANCE.canReloadConfig())throw new IllegalStateException("Stop trading before editing settings");
         commitSettings(candidate,configPath());
     }

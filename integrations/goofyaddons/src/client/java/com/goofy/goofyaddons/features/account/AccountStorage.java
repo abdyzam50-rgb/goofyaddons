@@ -89,6 +89,14 @@ public final class AccountStorage {
     }
 
     public synchronized AccountScope pinned() { return pinned; }
+    /** Profile preferences are separate from legacy position adoption. */
+    public synchronized Path preferencesPath(String file) {
+        if(!java.util.Set.of("goofyaddons.json","goofyaddons-bazaar-access.json").contains(file))throw new IllegalArgumentException("Unknown profile preferences");
+        var scope=current();if(scope==null)return null;
+        if(pinned!=null && !pinned.equals(scope))throw new IllegalStateException("Restart Minecraft before loading a different trading profile");
+        return storage().directory(scope).resolve(file);
+    }
+
 
     /**
      * Prepares the current profile for trading and pins it. Returns null when trading may

@@ -16,6 +16,14 @@ class AccountStorageTest {
         return storage;
     }
 
+    @Test void preferencesAreSeparatedWithoutAdoptingGlobalSettingsOrAccessFailures()throws Exception {
+        var pear=joined("Pear");var papaya=joined("Papaya");
+        assertNotEquals(pear.preferencesPath("goofyaddons.json"),papaya.preferencesPath("goofyaddons.json"));
+        assertTrue(pear.preferencesPath("goofyaddons-bazaar-access.json").toString().contains("pear"));
+        assertThrows(IllegalArgumentException.class,()->pear.preferencesPath("../outside.json"));
+        assertNull(pear.prepare());pear.chat("You are playing on profile: Papaya");
+        assertThrows(IllegalStateException.class,()->pear.preferencesPath("goofyaddons.json"));
+    }
     @Test void tradingWaitsForTheProfileAnnouncement() {
         var storage = new AccountStorage(() -> config);
         storage.player("0f1e2d3c-0000-4000-8000-000000000001", "Steve");

@@ -69,7 +69,7 @@ public final class AccountUnlocks {
         return failure!=null?failure:"Account prerequisite data expired; refreshing";
     }
     public Map<String,Object> diagnosticState(long now) {
-        return Map.ofEntries(Map.entry("status",status(now)),Map.entry("failureCode",failureCode),Map.entry("pending",pending()),
+        return Map.ofEntries(Map.entry("profile",Objects.toString(profile,"unknown")),Map.entry("status",status(now)),Map.entry("failureCode",failureCode),Map.entry("pending",pending()),
             Map.entry("skills",skills(now).size()),Map.entry("unlocks",current(now).size()),Map.entry("collectionsAvailable",now<expires && collectionsAvailable),
             Map.entry("source","PUBLIC_WEBSITE"),Map.entry("expiresInMs",Math.max(0,expires-now)),Map.entry("retryInMs",Math.max(0,next-now)),
             Map.entry("serviceHttpStatus",serviceHttpStatus),Map.entry("upstreamService",upstreamService),Map.entry("upstreamHttpStatus",upstreamHttpStatus));
@@ -181,6 +181,7 @@ public final class AccountUnlocks {
             copy(stats.getAsJsonObject("collections"),"",result);
             if(stats.has("collectionIds"))copy(stats.getAsJsonObject("collectionIds"),"",result);
         }
+        if(!unknown.contains("collections") && stats.has("recipeUnlocks"))copy(stats.getAsJsonObject("recipeUnlocks")," recipe unlocked",result);
         if(!unknown.contains("slayers")) {
             var slayers=stats.getAsJsonObject("slayers");
             for(var e:slayers.entrySet()) {

@@ -6,7 +6,7 @@ trader source and guides live under `integrations/goofyaddons/`; existing save
 files retain their formats and paths. See [installation and migration](docs/GOOFYADDONS.md)
 and [completed architecture work](trading-core/README.md).
 
-Download the latest combined mod: [astar-client-0.2.123-BETA.jar](dist/astar-client-0.2.123-BETA.jar).
+Download the latest combined mod: [astar-client-0.2.124-BETA.jar](dist/astar-client-0.2.124-BETA.jar).
 
 Choose **All flips** in Macros → Mode while stopped to compare craft, book and general entries by estimated net coins/hour. Existing orders and sales keep being managed; new entries share capital and inventory limits. With automatic selection off, book and general entries use your configured presets; craft entries use the local craft ranking. With it on, they use calculator recommendations.
 
@@ -42,7 +42,7 @@ downloads Java 25 for the build if it isn't installed):
 .\gradlew.bat -p client build
 ```
 
-Put `client\build\libs\astar-client-0.2.123-BETA.jar` (with the trader and Mines map inside)
+Put `client\build\libs\astar-client-0.2.124-BETA.jar` (with the trader and Mines map inside)
 in your `.minecraft\mods` folder, next to Fabric API. On Linux or macOS use
 `./gradlew -p client build`. To try it without installing,
 `.\gradlew.bat -p client runClient` starts a development game with the mod.
@@ -412,3 +412,7 @@ The integration branch builds A* with GoofyAddons as one JAR for Minecraft 26.3.
 See [Trading inside A*](docs/GOOFYADDONS.md) for installation, preserved data and scope.
 
 The optional [Discord companion](docs/DISCORD.md) posts profit status and contact alerts and accepts owner-only manual player controls. Server transfers restart saved-position verification before trading resumes.
+
+Trading settings and remembered Bazaar access restrictions live beside each profile’s journals under `config/goofyaddons/accounts/<player>/<profile>/`. The global `config/goofyaddons.json` seeds a new profile’s preferences; existing profile settings load automatically. Skills, unlocks and forecasts clear on profile changes. After trading files have opened, changing profiles requires restarting Minecraft before trading on the new profile. Global access-denial files are not copied between profiles.
+
+The Worker profile lookup now publishes collection recipe unlocks from Hypixel’s collection resource metadata. Redeploy `tools/gameplay-collector` for this field. Enchanted Red Sand crafting stays excluded while its current-profile recipe unlock is locked or unverified.

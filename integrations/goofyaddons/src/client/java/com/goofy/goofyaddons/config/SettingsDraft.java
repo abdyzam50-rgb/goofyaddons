@@ -38,7 +38,11 @@ public final class SettingsDraft {
 
     /** The draft over the live settings, committed through {@link GoofyConfig#commitSettings}. */
     public static SettingsDraft live() {
-        return new SettingsDraft(() -> GoofyConfig.INSTANCE, GoofyConfig::commitSettings);
+        String owner=GoofyConfig.location();
+        return new SettingsDraft(() -> GoofyConfig.INSTANCE,candidate->{
+            if(!owner.equals(GoofyConfig.location()))throw new IllegalStateException("Profile settings changed; reopen settings before saving these edits");
+            GoofyConfig.commitSettings(candidate);
+        });
     }
 
     /** The settings as they would be after Apply. Read-only for callers. */
