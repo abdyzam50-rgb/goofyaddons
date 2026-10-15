@@ -205,4 +205,34 @@ class BookEngineIsolationTest {
         assertNull(services.pauseReason);assertEquals(List.of("click:13"),recorded.serverEffects());
         assertEquals(0,services.accounting.effects);assertTrue(engine.hasRetainedTasks());
     }
+    @Test void serverCooldownRejectsOnlyRecentSubmissionAndRetainsRetryableTask() throws Exception {
+        var world=new FakeWorld().showing(menu(0));var store=new Store();var services=new Services(world);
+        var actions=new RecordingActions();var engine=new BazaarFlipper(world,actions,store,services);
+        engine.start();setupConfirmation(engine,world,services);
+        for(int i=0;i<30&&actions.serverEffects().isEmpty()&&services.pauseReason==null;i++){engine.onTick();world.advance(100);}
+        assertEquals("VERIFY_PLACEMENT",engine.diagnosticState().get("state"));
+        engine.slowdownNotice("[Bazaar] Placing orders is on cooldown for up to 1 minute!");
+        assertNull(services.pauseReason);assertEquals("IDLE",engine.diagnosticState().get("state"));
+        assertEquals("none",engine.diagnosticState().get("submittedTrade"));
+        assertTrue(services.capital.orderCooldownRemaining(world.now())>=60000);
+        assertEquals(1600,services.capital.committed());assertEquals(1600,services.capital.pending());
+        assertTrue(engine.hasRetainedTasks());assertEquals(0,services.accounting.effects);
+        var task=((List<Task>)readField(engine,"taskList")).getFirst();
+        var mayOpen=BazaarFlipper.class.getDeclaredMethod("mayOpenBookOrder",Task.class);mayOpen.setAccessible(true);
+        assertFalse((boolean)mayOpen.invoke(engine,task));
+        world.advance(61001);assertEquals(0,services.capital.orderCooldownRemaining(world.now()));
+        var retries=(Map<String,Long>)readField(engine,"bookBuyRetryAt");
+        assertTrue(retries.get(task.getProfitTradeId())<world.now());assertEquals(Task.BookState.SELECTED,task.getBookState());
+    }
+    @Test void unrelatedOrLateNoticeCannotClearAnUncertainBookSubmission() throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var actions=new RecordingActions();
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();setupConfirmation(engine,world,services);
+        for(int i=0;i<30&&actions.serverEffects().isEmpty();i++){engine.onTick();world.advance(100);}
+        engine.slowdownNotice("Placing orders is on cooldown for up to 1 minute!");
+        assertEquals("VERIFY_PLACEMENT",engine.diagnosticState().get("state"));
+        world.advance(11000);engine.slowdownNotice("[Bazaar] Placing orders is on cooldown for up to 1 minute!");
+        assertEquals("VERIFY_PLACEMENT",engine.diagnosticState().get("state"));
+        assertEquals("confirmed-trade",engine.diagnosticState().get("submittedTrade"));
+    }
+
 }

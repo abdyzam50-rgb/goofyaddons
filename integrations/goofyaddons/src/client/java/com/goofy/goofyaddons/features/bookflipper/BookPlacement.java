@@ -34,6 +34,15 @@ final class BookPlacement {
     double submittedPrice() { return submittedPrice; }
     boolean submittedSelling() { return submittedSelling; }
 
+    /** Only a rejection tied to this recent submission makes retrying safe. Silence never does. */
+    boolean cooldownRejected(BookContext ctx,String message) {
+        if(!ctx.capital().orderCooldownNotice(message,ctx.now()) || submittedTask==null
+                || ctx.state()!=State.VERIFY_PLACEMENT || ctx.now()<submittedAt || ctx.now()-submittedAt>10_000)return false;
+        var task=submittedTask;
+        ctx.services().event("WARN","order.placement_rejected",java.util.Map.of("engine","books","trade",task.getProfitTradeId(),
+            "reason","server-order-cooldown","retryAfterMs",ctx.capital().orderCooldownRemaining(ctx.now())));
+        reset();ctx.deferBookPurchase(task,"server-order-cooldown");return true;
+    }
     void reset() {
         submittedTask = null; submittedNextState = null; submittedSelling = false;
         submittedUnits = 0; submittedPrice = 0; submittedAt = 0;
@@ -55,6 +64,7 @@ final class BookPlacement {
      * False when any check or the checkpoint failed and nothing was clicked.
      */
     boolean submit(BookContext ctx, Task task, boolean sale, Task.BookState nextState) {
+        if(ctx.capital().orderCooldownRemaining(ctx.now())>0) {ctx.deferBookPurchase(task,"server-order-cooldown");return false;}
         if (!verifyConfirmation(ctx)) return false;
         if (!recordSubmission(ctx, task, sale)) return false;
         ctx.actions().click(13, false);

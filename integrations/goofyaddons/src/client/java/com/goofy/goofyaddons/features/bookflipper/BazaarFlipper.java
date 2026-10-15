@@ -148,7 +148,9 @@ public class BazaarFlipper implements Feature {
 
     void soldNotice(String message) {if(running&&!paused&&retiringTask!=null)retirement.receipt(retiringTask,message);}
     void slowdownNotice(String message) {
-        if (!running || paused || !ActionRetry.slowdownMessage(message)) return;
+        if (!running || paused) return;
+        if(placement.cooldownRejected(session,message))return;
+        if(!ActionRetry.slowdownMessage(message))return;
         long now=world.now();navigationRetry.slowdown(now);
         if(bookCombiner.pending()) {bookCombiner.slowdown(now);services.event("WARN","books.anvil_slowdown",java.util.Map.of("phase",bookCombiner.progress()));}
         if(bookTransfer.pending()) {bookTransfer.slowdown(now);services.event("WARN","books.transfer_slowdown",java.util.Map.of("state",state.name()));}
@@ -175,6 +177,7 @@ public class BazaarFlipper implements Feature {
         state.put("combine",bookCombiner.diagnosticState());state.put("transferPending",bookTransfer.pending());
         state.put("slotMemory",inventoryMemory.diagnosticState());state.put("reconciliationPage",reconciliationPage);
         state.put("extraBookStacks",bookLists.size());
+        state.put("orderCooldownRemainingMs",capital.orderCooldownRemaining(world.now()));
         state.put("submittedTrade",placement.submittedTask()==null?"none":placement.submittedTask().getProfitTradeId());
         state.put("submittedUnits",placement.submittedUnits());state.put("submittedPrice",placement.submittedPrice());
         state.put("submittedSelling",placement.submittedSelling());state.put("menuRechecks",menuRecheck.attempts());
@@ -204,6 +207,7 @@ public class BazaarFlipper implements Feature {
                 +" -> "+task.getBook().getRomanLevel(task.getBook().sellLevel());
     }
     public String activity() {
+        if(capital.orderCooldownRemaining(world.now())>0)return "Bazaar order cooldown: "+((capital.orderCooldownRemaining(world.now())+999)/1000)+"s";
         if(retiringTask!=null)return "Selling stalled books: "+retiringTask.getBook().name();
         if (claim.pendingBuy() != null) return "Verifying book claim";
         if(recoveryAwaitQuotes)return "Waiting for fresh quotes to resume saved books";
@@ -1454,7 +1458,7 @@ public class BazaarFlipper implements Feature {
 
     private boolean mayOpenBookOrder(Task task) {
         long now=world.now();
-        if(task.retiring())return false;
+        if(task.retiring() || capital.orderCooldownRemaining(now)>0)return false;
         if(com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded().contains(task.getBook().getLevel(task.getBook().level())))return false;
         if(now<bookBuyRetryAt.getOrDefault(task.getProfitTradeId(),0L)) return false;
         double cost=task.getReservedUnitCost()*task.getAmountToOrder();
@@ -1478,7 +1482,7 @@ public class BazaarFlipper implements Feature {
 
     private void deferBookPurchase(Task task,String reason) {
         long now=world.now();
-        bookBuyRetryAt.put(task.getProfitTradeId(),now+20_000);
+        bookBuyRetryAt.put(task.getProfitTradeId(),now+Math.max(20_000,capital.orderCooldownRemaining(now)));
         parkBook(task,reason,now);
         placement.abandonConfirmation();
         if(screenOpen())actions.closeMenu();

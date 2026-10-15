@@ -101,6 +101,7 @@ final class GeneralOrderEntry {
     }
 
     void confirm(GeneralContext ctx, Side side) {
+        if(ctx.capital().orderCooldownRemaining(ctx.now())>0){ctx.finishWork();return;}
         var view = ctx.view();
         var active = ctx.active();
         if (!ctx.menu("Confirm")) return;

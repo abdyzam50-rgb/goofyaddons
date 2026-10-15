@@ -137,6 +137,7 @@ public class GeneralFlipper implements Feature {
     public boolean hasStateError() { return blocked; }
     public java.util.Map<String,Object> diagnosticState() {
         var state=new java.util.LinkedHashMap<String,Object>();
+        state.put("orderCooldownRemainingMs",capital.orderCooldownRemaining(world.now()));
         state.put("selectionMode",services.automaticSelection()?"ranked":"configured presets");
         state.put("selectionStatus",activity());state.put("candidateCount",snapshotCandidates.size());
         state.put("spendable",capital.available(snapshotPurse));
@@ -200,6 +201,7 @@ public class GeneralFlipper implements Feature {
     public String activity() {
         if(lastFailure!=null && (paused||blocked))return lastFailure;
         if (active != null) return (services.productionOnly()?"Craft orders: ":"General: ") + (step==null?"preparing order":step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' '));
+        if(capital.orderCooldownRemaining(world.now())>0)return "Bazaar order cooldown: "+((capital.orderCooldownRemaining(world.now())+999)/1000)+"s";
         if (!snapshotFresh) return "Waiting for price data";
         if (!positions.isEmpty()) return services.productionOnly()?(productionWait==null?"Waiting for craft orders":productionWait):"Waiting for general orders";
         if (capital.available(snapshotPurse) <= 0) return "Capital limit / purse reserve reached";
@@ -305,7 +307,7 @@ public class GeneralFlipper implements Feature {
         if (active != null) return true;
         long now = world.now();
         if (workPositions().stream().anyMatch(position -> workDue(position, now))) return true;
-        return testTradeId == null && snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
+        return capital.orderCooldownRemaining(now)==0 && testTradeId == null && snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
                 && !snapshotCandidates.isEmpty();
     }
 
@@ -398,6 +400,7 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean workDue(GeneralPosition position, long now) {
+        if(capital.orderCooldownRemaining(now)>0 && (position.stage==Stage.PLANNED || position.stage==Stage.INVENTORY))return false;
         if(position.completed || services.productionOnly() && position.productionBuy && (position.stage==Stage.INVENTORY || position.productionAwaitingStorage))return false;
         long interval = position.stage == Stage.INVENTORY ? 2000 : settings().refreshSeconds * 1000L;
         return position.stage == Stage.RECONCILE || now - position.checkedAt >= interval;
@@ -424,7 +427,7 @@ public class GeneralFlipper implements Feature {
                 return;
             }
         }
-        if (testTradeId != null || services.productionOnly() || !snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
+        if (capital.orderCooldownRemaining(now)>0 || testTradeId != null || services.productionOnly() || !snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
         // Reserving capital stays on a live purse read; only ranking uses the snapshot.
         double purse = services.purse();
         for (GeneralCalculator.Candidate candidate : snapshotCandidates) {
@@ -684,7 +687,14 @@ public class GeneralFlipper implements Feature {
 
     void onNotice(String message) {
         rememberSaleClaim(message);
-        if (!running || paused || active == null) return;
+        if (!running || paused) return;
+        boolean cooldown=capital.orderCooldownNotice(message,world.now());
+        if(active==null)return;
+        if(cooldown && step==Step.VERIFY_ORDER && active.submitted && world.now()>=active.placedAt && world.now()-active.placedAt<=10_000) {
+            services.event("WARN","order.placement_rejected",java.util.Map.of("engine",services.productionOnly()?"craft":"general","trade",active.tradeId,"reason","server-order-cooldown","retryAfterMs",capital.orderCooldownRemaining(world.now())));
+            active.submitted=false;active.stage=trade.selling?Stage.INVENTORY:Stage.PLANNED;
+            finishWork();return;
+        }
         if (cancellation.serverNotice(session, message)) return;
         if(!message.contains(active.item.name()))return;
         sellSide.receipt(session, message);
