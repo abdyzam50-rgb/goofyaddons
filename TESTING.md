@@ -1,3 +1,5 @@
+Nearby pipeline audit: book product navigation now shares an exact level/layout/identity check across buy and sell paths, rejecting same-enchantment wrong-level pages before any navigation click. Server placement cooldowns park rejected replacement sales as unlisted outputs and defer new offers while allowing claims and combines. Ordinary record release now rejects ambiguous non-all ID prefixes atomically. Tests cover both live engine buy/sell paths, contradictory enchantment metadata, search-sized lookalikes, cooldown scheduling and rejection transition, prefix ambiguity and preserved capital, explicit all-release behavior. This is regression coverage of identified gaps, not a live Hypixel end-to-end certification.
+
 Outbid book navigation recognises truncated product breadcrumbs only on the product-sized menu when both the icon and buy control name the exact input level. It clicks only an explicit management control; wrong levels and search-sized lookalikes cannot authorise navigation. Helper and full-engine regressions reproduce diagnostics-1792098060745 (Turbo-Sunflower ➜ Turbo-Sunflow), assert a single Manage Orders click and no accounting effects.
 
 Profile preferences now use account/profile folders alongside the existing scoped journals. First use copies only global preferences, never another profile’s settings or access denials. Invalid profile files block trading instead of keeping a different profile’s valid settings. Skills/API evidence/forecasts clear on observed profile identity changes; late API generations remain discarded. Active/pinned profile changes require restart, including standalone tests. GUI drafts cannot save across preference-file changes. Tests cover independent Pear/Papaya preferences, return to prior profile, invalid-file isolation, file path boundaries, recipe-lock states and per-profile Worker collection metadata. Enchanted Red Sand requires verified current-profile recipe unlock before planning/procurement; the Worker must be redeployed to publish this field.
@@ -324,7 +326,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.125 JAR](dist/astar-client-0.2.125-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.126 JAR](dist/astar-client-0.2.126-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

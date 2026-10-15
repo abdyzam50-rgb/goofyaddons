@@ -74,12 +74,18 @@ public final class BookSchedule {
      */
     public static Task next(List<Task> tasks, boolean startupComplete, boolean inventoryFull,
                             java.util.function.Predicate<Task> mayOpenOrder) {
+        return next(tasks,startupComplete,inventoryFull,mayOpenOrder,task->true);
+    }
+    /** A server placement cooldown blocks new offers, while claims and reconciliation remain eligible. */
+    public static Task next(List<Task> tasks, boolean startupComplete, boolean inventoryFull,
+                            java.util.function.Predicate<Task> mayOpenOrder,java.util.function.Predicate<Task> mayList) {
         Task chosen = null;
         int best = Integer.MIN_VALUE;
         for (Task task : tasks) {
             Task.BookState state = task.getBookState();
             if (state == Task.BookState.OUTBID && (!startupComplete || inventoryFull)) continue;
             if (state == Task.BookState.SELECTED && !mayOpenOrder.test(task)) continue;
+            if (state == Task.BookState.SELL && !mayList.test(task))continue;
             Integer rank = PRIORITY.get(state);
             if (rank == null || rank <= best) continue;
             chosen = task;

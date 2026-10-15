@@ -31,6 +31,46 @@ class BookEngineIsolationTest {
         assertNull(services.pauseReason);assertEquals(List.of("click:32"),actions.serverEffects());
         assertEquals(Task.BookState.OUTBID,task.getBookState());assertEquals(0,services.accounting.effects);
     }
+    @Test void buyNavigationIgnoresWrongLevelAndUsesOnlyTheInputLevel()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var actions=new RecordingActions();
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(BOOK,false,false);task.setBookState(Task.BookState.SELECTED);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"activeTask",task);field(engine,"state",BazaarFlipper.State.BAZAAR_NAVIGATION);
+        var slots=new ArrayList<SlotView>();for(int i=0;i<72;i++)slots.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        slots.set(13,SlotView.named(13,"Wisdom V",List.of()));slots.set(15,SlotView.named(15,"Create Buy Order",List.of("Wisdom V")));
+        slots.set(35,SlotView.named(35,"Loaded",List.of()));world.showing(new MenuSnapshot(7,"Wisdom ➜ Wisdom V",true,slots));
+        for(int i=0;i<8;i++){engine.onTick();world.advance(100);}
+        assertNull(services.pauseReason);assertTrue(actions.serverEffects().isEmpty());
+        slots.set(13,SlotView.named(13,"Wisdom I",List.of()));slots.set(15,SlotView.named(15,"Create Buy Order",List.of("Wisdom I")));
+        world.showing(new MenuSnapshot(8,"Wisdom ➜ Wisdom I",true,slots));
+        for(int i=0;i<8&&actions.serverEffects().isEmpty();i++){engine.onTick();world.advance(100);}
+        assertEquals(List.of("click:15"),actions.serverEffects());assertEquals(0,services.accounting.effects);
+    }
+    @Test void sellNavigationIgnoresWrongLevelAndOpensOfferOnlyForTheOutput()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var actions=new RecordingActions();
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(BOOK,false,false);task.assignBook(BOOK,5,0,1);task.setBookState(Task.BookState.SELL);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"state",BazaarFlipper.State.SELL);
+        var slots=new ArrayList<SlotView>();for(int i=0;i<72;i++)slots.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        slots.set(13,SlotView.named(13,"Wisdom I",List.of()));slots.set(16,SlotView.named(16,"Create Sell Offer",List.of("Wisdom I")));
+        slots.set(35,SlotView.named(35,"Loaded",List.of()));
+        world.showing(new MenuSnapshot(7,"Wisdom ➜ Wisdom I",true,slots));
+        for(int i=0;i<8;i++){engine.onTick();world.advance(100);}
+        assertNull(services.pauseReason);assertTrue(actions.serverEffects().isEmpty());
+        slots.set(13,SlotView.named(13,"Wisdom V",List.of()));slots.set(16,SlotView.named(16,"Create Sell Offer",List.of("Wisdom V")));
+        world.showing(new MenuSnapshot(8,"Wisdom ➜ Wisdom V",true,slots));
+        for(int i=0;i<8&&actions.serverEffects().isEmpty();i++){engine.onTick();world.advance(100);}
+        assertEquals(List.of("click:16"),actions.serverEffects());assertEquals(0,services.accounting.effects);
+    }
+    @Test void cooldownRejectedReplacementParksAsAnUnlistedOutputUntilCooldownEnds()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var engine=new BazaarFlipper(world,new RecordingActions(),new Store(),services);
+        engine.start();var task=new Task(BOOK,false,false);task.assignBook(BOOK,5,0,1);task.setBookState(Task.BookState.REPLACE_SELL);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"nextFetchMs",world.now()+120000);
+        services.capital.orderCooldownNotice("[Bazaar] Placing orders is on cooldown for up to 1 minute!",world.now());
+        var defer=BazaarFlipper.class.getDeclaredMethod("deferBookPurchase",Task.class,String.class);defer.setAccessible(true);defer.invoke(engine,task,"server-order-cooldown");
+        assertEquals(Task.BookState.SELL,task.getBookState());assertFalse(engine.needsMenu());
+        world.advance(61001);assertTrue(engine.needsMenu());assertEquals(0,services.accounting.effects);
+    }
     @Test void readySearchResultPassesEngineLoadingGateWhenAnotherLevelIsStillLoading()throws Exception {
         var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
         var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();

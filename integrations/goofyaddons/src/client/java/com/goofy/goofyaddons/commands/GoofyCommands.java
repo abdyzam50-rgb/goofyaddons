@@ -51,7 +51,7 @@ public final class GoofyCommands {
             .then(literal("release").then(net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument("id",com.mojang.brigadier.arguments.StringArgumentType.word()).executes(c->{
                 if(!FeatureManager.INSTANCE.canReloadConfig()){c.getSource().sendError(Component.literal("Stop trading before releasing orders."));return 0;}
                 var released=FeatureManager.INSTANCE.general().releaseGeneral(com.mojang.brigadier.arguments.StringArgumentType.getString(c,"id"));
-                if(released==null){c.getSource().sendError(Component.literal("Nothing released: stop trading, use at least 4 characters of the id, and check the order file is readable."));return 0;}
+                if(released==null){c.getSource().sendError(Component.literal("Nothing released: stop trading, use a unique id prefix of at least 4 characters, and check the order file is readable."));return 0;}
                 if(released.isEmpty()){c.getSource().sendError(Component.literal("No ordinary flip order matches that id."));return 0;}
                 c.getSource().sendFeedback(Component.literal("Released "+released.size()+" ordinary flip records. No sale, refund or profit is recorded for them."));return 1;
             }))));

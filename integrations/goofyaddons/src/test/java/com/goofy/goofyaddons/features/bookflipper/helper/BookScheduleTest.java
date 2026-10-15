@@ -26,6 +26,14 @@ class BookScheduleTest {
         return BookSchedule.next(tasks, true, false);
     }
 
+    @Test void placementCooldownDefersNewOffersButDoesNotBlockProceedsOrCombining() {
+        var listing=task(WISE,Task.BookState.SELL);var claim=task(JERRY,Task.BookState.REPLACE_SELL);
+        assertNull(BookSchedule.next(List.of(listing),true,false,t->true,t->false));
+        assertSame(claim,BookSchedule.next(List.of(listing,claim),true,false,t->true,t->false));
+        var combine=task(JERRY,Task.BookState.COMBINE);
+        assertSame(combine,BookSchedule.next(List.of(listing,combine),true,false,t->true,t->false));
+        assertSame(listing,BookSchedule.next(List.of(listing),true,false,t->true,t->true));
+    }
     @Test void collectingASettledSaleComesBeforeCommittingCoinsToANewOrder() {
         Task sale = task(WISE, Task.BookState.REPLACE_SELL);
         Task newOrder = task(JERRY, Task.BookState.SELECTED);

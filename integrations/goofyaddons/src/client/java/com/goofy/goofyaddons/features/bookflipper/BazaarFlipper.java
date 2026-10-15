@@ -380,7 +380,8 @@ public class BazaarFlipper implements Feature {
         if (state == State.IDLE) return taskList.stream().anyMatch(Task::retiring) || needToStoreExcessBook || world.now() >= nextFetchMs
                 || taskList.stream().anyMatch(task -> com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule
                         .actionable(task.getBookState())
-                        && (task.getBookState()!=Task.BookState.SELECTED || mayOpenBookOrder(task)));
+                        && (task.getBookState()!=Task.BookState.SELECTED || mayOpenBookOrder(task))
+                        && (task.getBookState()!=Task.BookState.SELL || mayListBook(task)));
         return true;
     }
 
@@ -618,7 +619,7 @@ public class BazaarFlipper implements Feature {
                 }
 
                 Task taskToHandle = com.goofy.goofyaddons.features.bookflipper.helper.BookSchedule
-                        .next(taskList, isStartUpCheckCompleted, inventoryIsFull, this::mayOpenBookOrder);
+                        .next(taskList, isStartUpCheckCompleted, inventoryIsFull, this::mayOpenBookOrder, this::mayListBook);
 
                 if (taskToHandle == null) {
                     if (world.now() >= nextFetchMs) state = State.FETCHING;
@@ -1456,6 +1457,7 @@ public class BazaarFlipper implements Feature {
         services.event("INFO","books.requirement_skipped",java.util.Map.of("item",task.getBook().getLevel(task.getBook().level()),"reason",reason));
     }
 
+    private boolean mayListBook(Task task) {return task.instaSell || capital.orderCooldownRemaining(world.now())==0;}
     private boolean mayOpenBookOrder(Task task) {
         long now=world.now();
         if(task.retiring() || capital.orderCooldownRemaining(now)>0)return false;
@@ -1482,6 +1484,7 @@ public class BazaarFlipper implements Feature {
 
     private void deferBookPurchase(Task task,String reason) {
         long now=world.now();
+        if(task.getBookState()==Task.BookState.REPLACE_SELL)task.setBookState(Task.BookState.SELL);
         bookBuyRetryAt.put(task.getProfitTradeId(),now+Math.max(20_000,capital.orderCooldownRemaining(now)));
         parkBook(task,reason,now);
         placement.abandonConfirmation();

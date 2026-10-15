@@ -1070,6 +1070,7 @@ public class GeneralFlipper implements Feature {
         if(!all && reference.length()<4) return null;
         var selected=positions.stream().filter(p->p.productionParent==null && (all || p.tradeId!=null && p.tradeId.regionMatches(true,0,reference,0,reference.length()))).toList();
         if(selected.isEmpty()) return List.of();
+        if(!all && selected.size()!=1)return null; // A prefix is never authority to forget multiple trades.
         var before=List.copyOf(positions);positions.removeAll(selected);
         if(!save()){positions.clear();positions.addAll(before);return null;}
         selected.forEach(p->capital.release(OWNER,p.item.id()));

@@ -177,10 +177,7 @@ final class BookBuy {
      * and only on a product-sized page, never the larger search results.
      */
     private static boolean productPage(BookContext ctx, Task task) {
-        if (ctx.containerNameCheck(task.getBook().name())) return true;
-        var menu = ctx.menu();
-        return ctx.screenOpen() && menu != null && menu.containerEnd() == 36
-                && ProductIdentity.truncatedProductPage(menu, task.getBook().getRomanLevel(task.getBook().level()), 15);
+        return ctx.screenOpen() && com.goofy.goofyaddons.features.bookflipper.helper.BookProductPage.matches(ctx.menu(),task.getBook(),false);
     }
 
     private void writeAmount(BookContext ctx, Task task) {
