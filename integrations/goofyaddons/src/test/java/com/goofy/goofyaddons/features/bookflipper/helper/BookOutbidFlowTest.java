@@ -13,6 +13,22 @@ class BookOutbidFlowTest {
         assertTrue(search.loadingContents());assertEquals(10,flow.navigate(book,search).slot());
         assertNull(flow.navigate(book,search));
     }
+    @Test void truncatedTurboSunflowerTitleUsesExactIconAndControlThenOnlyManagement() {
+        var turbo=new Book("ENCHANTMENT_TURBO_SUNFLOWER",1,5,"Turbo-Sunflower",0,0);
+        var flow=new BookOutbidFlow();
+        var page=menu(6,"Turbo-Sunflower ➜ Turbo-Sunflow",72,
+            SlotView.named(13,"Turbo-Sunflower I",List.of()),
+            SlotView.named(15,"Create Buy Order",List.of("Turbo-Sunflower I","Click to setup Buy Order!")),
+            SlotView.named(32,"Manage Orders",List.of("BUY 16x Turbo-Sunflower I")));
+        assertEquals(32,flow.navigate(turbo,page).slot());assertNull(flow.navigate(turbo,page));
+        flow.reset();
+        var wrong=menu(7,page.title(),72,SlotView.named(13,"Turbo-Sunflower II",List.of()),
+            SlotView.named(15,"Create Buy Order",List.of("Turbo-Sunflower I")),SlotView.named(32,"Manage Orders",List.of()));
+        assertNull(flow.navigate(turbo,wrong));
+        var search=menu(8,page.title(),90,SlotView.named(13,"Turbo-Sunflower I",List.of()),
+            SlotView.named(15,"Create Buy Order",List.of("Turbo-Sunflower I")),SlotView.named(32,"Manage Orders",List.of()));
+        assertNull(flow.navigate(turbo,search));
+    }
     private final Book book=new Book("ENCHANTMENT_OVERLOAD",1,5,"Overload",0,0);
     private MenuSnapshot menu(int id,String title,int size,SlotView... content) {
         var slots=new ArrayList<SlotView>();

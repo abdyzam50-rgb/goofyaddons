@@ -14,6 +14,23 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BookEngineIsolationTest {
+    @Test void outbidEngineNavigatesCapturedTruncatedProductPageWithoutTimingOut()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(new Book("ENCHANTMENT_TURBO_SUNFLOWER",1,5,"Turbo-Sunflower",0,0),false,false);
+        task.setBookState(Task.BookState.OUTBID);field(engine,"taskList",new ArrayList<>(List.of(task)));
+        field(engine,"state",BazaarFlipper.State.OUTBID);
+        var slots=new ArrayList<SlotView>();
+        for(int i=0;i<72;i++)slots.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        slots.set(13,SlotView.named(13,"Turbo-Sunflower I",List.of()));
+        slots.set(15,SlotView.named(15,"Create Buy Order",List.of("Turbo-Sunflower I")));
+        slots.set(32,SlotView.named(32,"Manage Orders",List.of("Your order:","BUY 16x Turbo-Sunflower I")));
+        slots.set(35,SlotView.named(35,"Loaded",List.of()));
+        world.showing(new MenuSnapshot(6,"Turbo-Sunflower ➜ Turbo-Sunflow",true,slots));
+        for(int i=0;i<15&&actions.serverEffects().isEmpty()&&services.pauseReason==null;i++){engine.onTick();world.advance(100);}
+        assertNull(services.pauseReason);assertEquals(List.of("click:32"),actions.serverEffects());
+        assertEquals(Task.BookState.OUTBID,task.getBookState());assertEquals(0,services.accounting.effects);
+    }
     @Test void readySearchResultPassesEngineLoadingGateWhenAnotherLevelIsStillLoading()throws Exception {
         var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
         var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();

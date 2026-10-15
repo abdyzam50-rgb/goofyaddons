@@ -40,7 +40,9 @@ public final class BookOutbidFlow {
             int target=com.goofy.goofyaddons.features.transaction.ProductIdentity.searchResult(menu,book.getLevel(book.level()),item);
             if(target>=0 && !menu.loading(target))return click(menu,target);
         }
-        if ((title.endsWith("➜ " + item) || title.endsWith("→ " + item)) && menu.loaded(35)) {
+        boolean exactProduct=menu.containerEnd()==36
+                && com.goofy.goofyaddons.features.transaction.ProductIdentity.truncatedProductPage(menu,item,15);
+        if ((title.endsWith("➜ " + item) || title.endsWith("→ " + item) || exactProduct) && menu.loaded(35)) {
             // Use only explicit management controls. A Create Buy Order button must never
             // authorize a replacement while the old order is still live.
             var controls = menu.slots().stream().filter(slot -> !slot.inPlayerInventory()
