@@ -1,15 +1,17 @@
-# Books, General, and Both (1.3.21-BETA)
+# Book, general, craft and combined modes
 
-J starts the configured mode. K stops both engines. M cycles Books → General →
-Both → Books. These keys can be changed in Minecraft Controls. Mode changes are
-queued until the current menu transaction reaches a safe boundary and are saved
-to `config/goofyaddons.json`.
+Current command syntax and resets: [command reference](../COMMANDS.md).
+**F6** toggles trading; **F7** exports diagnostics; **F8** reloads settings.
+Select the mode in **G → Macros** while stopped, or use
+`.a* goofyaddon mode <books|general|both|craft|all>`.
+`both` selects book + general entries; `all` compares those with craft entries.
+Calculator-off book/general selection uses configured presets. Calculator-on
+selection uses supported proposals and repeats execution checks. Enabling All
+mode does not change the calculator switches.
 
-Both mode monitors both engines' market tasks concurrently. A round-robin menu
-scheduler allows only one engine to issue clicks and commands at a time. An
-in-progress transaction retains ownership until it finishes; waiting orders do
-not monopolize the menus. World changes pause both engines. J resumes and checks
-existing inventory and orders. Disconnects stop trading.
+One scheduler owns GUI actions at a time. Orders can wait concurrently, but
+submissions, claims and inventory changes still require server evidence.
+After a profile change, restart Minecraft if trading files were already pinned.
 
 ## Shared budget
 
@@ -70,17 +72,17 @@ observation. Slowdown notices delay actions. Inventory changes, changed order
 lore, a changed slot or a matching receipt prevent that claim from being replayed.
 Order-placement and cancellation confirmations are not automatically replayed.
 
-Intent and positions are saved in `config/goofyaddons-general-orders.json` before
+Intent and positions are saved in `config/goofyaddons/accounts/<player>/<profile>/goofyaddons-general-orders.json` before
 order confirmation. Mode switches and stops retain submitted positions. Restart
 checks server orders and inventory before placing a new order. Corrupt state files
-are preserved and block startup. Unrelated existing orders or inventory for a
-newly selected item pause the general engine instead of silently adopting them.
-Stop with K, resolve the conflict, then restart with J. Keep the state file until
+are preserved and block startup. Unrelated existing orders or inventory for an unsubmitted ordinary entry cause
+that product to be skipped for 60 seconds; the mod does not adopt them or pause
+unrelated pipelines. Submitted and craft ownership conflicts still need review. Keep the state file until
 all its tracked orders and inventory have been reconciled.
 
 ## Verification and limits
 
-The mod compiles for Minecraft 26.1.2 with Java 25. Automated tests cover the menu
+The mod compiles for Minecraft 26.3 with Java 25. Automated tests cover the menu
 scheduler, shared reservations, candidate margin/volume/capacity filtering, API
 recovery, and config preservation. Engine simulations also cover consecutive
 buy/claim/sell/settle cycles, partial fills, repricing, delayed receipts, bounded
@@ -91,14 +93,23 @@ This is a draft beta requiring live validation with small orders. Exact menu and
 lore labels, stacking behavior, and server confirmation timing need checking.
 Use ordinary items initially. Unknown stack limits deliberately restrict buy
 sizes until matching native item data is visible. The realized-profit dashboard
-uses confirmed receipts; it does not guarantee earnings. Automatic market-wide selection and recipe discovery remain separate work.
-The optional [Bazaar Calc companion](../../tools/bazaar-calc/README.md) now logs
-read-only market-wide recommendations while the existing allowlist still controls
-execution. Use order-based book transactions initially.
+uses confirmed receipts; it does not guarantee earnings.
 
-## Reloading settings (1.3.26+)
+Supported automatic selection and craft discovery are available in the combined
+mod. Unavailable requirements, prices or execution support still exclude routes.
 
-Stop with K and use `/goofyreload`, or the rebindable **Reload configuration** key
-(default backslash). Chat shows the file read and current dashboard/analysis
-settings. Invalid files produce a rejection message while retaining the working
-config; running/paused/recovering trading must be stopped before reloading.
+## Reloading settings
+
+Stop trading with F6 or `.a* goofyaddon stop`, then use F8 or
+`.a* goofyaddon reload`. Chat identifies the active file and load result. Profile
+settings live beside the profile journals. A rejected reload preserves the last
+working config; an invalid newly selected profile file blocks entry rather than
+borrowing another profile's capital settings.
+
+## Manual cleanup
+
+Use `.a* goofyaddon orders` to inspect ordinary records. After manually handling
+all affected server orders/items, `orders release <unique-id>` forgets one record,
+and `orders release all` forgets all ordinary records on that profile. Neither
+records a sale/refund/profit. `profit clearhistory` retains these active records.
+See the command reference before choosing between cleanup operations.

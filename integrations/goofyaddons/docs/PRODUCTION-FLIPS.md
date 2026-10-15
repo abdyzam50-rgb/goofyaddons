@@ -1,3 +1,6 @@
+> Historical standalone documentation. For the current combined mod, use the
+> [command reference](../../../docs/COMMANDS.md). Older slash commands, keybinds and storage paths below may differ.
+
 # Production flipping: first implementation stage
 
 This stage adds **inventory-backed auto-crafting** and the transaction foundations

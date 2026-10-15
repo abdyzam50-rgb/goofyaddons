@@ -3,12 +3,14 @@
 This repository now contains the combined Minecraft 26.3 client, the shared
 trading foundation, and the calculator/collector tools. The original standalone
 trader source and guides live under `integrations/goofyaddons/`; existing save
-files retain their formats and paths. See [installation and migration](docs/GOOFYADDONS.md)
+files retain their formats; active trading files now use per-profile folders. See [installation and migration](docs/GOOFYADDONS.md)
 and [completed architecture work](trading-core/README.md).
 
 Download the latest combined mod: [astar-client-0.2.126-BETA.jar](dist/astar-client-0.2.126-BETA.jar).
 
 Choose **All flips** in Macros → Mode while stopped to compare craft, book and general entries by estimated net coins/hour. Existing orders and sales keep being managed; new entries share capital and inventory limits. With automatic selection off, book and general entries use your configured presets; craft entries use the local craft ranking. With it on, they use calculator recommendations.
+
+See the [current command reference](docs/COMMANDS.md) for exact syntax, live test commands, profile folders and the differences between reporting resets, order release and production recovery. Worker owners should use the [deployment update guide](tools/gameplay-collector/README.md#update-an-existing-deployment).
 
 To clear completed profit and execution history for the current profile, stop trading and run `.a* goofyaddon profit clearhistory`. Active orders, owned lots, cost basis and settings remain. `.a* goofyaddon profit reset` only starts a new reporting session.
 

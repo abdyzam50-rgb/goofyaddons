@@ -1,3 +1,6 @@
+> Historical standalone documentation. For the current combined mod, use the
+> [command reference](../../../../docs/COMMANDS.md). Older slash commands, keybinds and storage paths below may differ.
+
 # Profit HUD and ledger (1.2.2-BETA)
 
 A solid panel with rounded corners appears at the top right while in game. It shows confirmed trade profit, profit per active hour, book/general subtotals, active time, claim/incomplete counts, tracked positions, committed and spendable capital, price freshness, and trading activity. It follows GUI scaling and F1 hiding.

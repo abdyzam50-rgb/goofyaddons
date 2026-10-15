@@ -1,53 +1,65 @@
-# Fixing profile prerequisite lookup
+# Profile identity, unlocks and Worker access
 
-Hypixel HTTP 403 means the Worker could not access SkyBlock profiles with its
-current API key. It is separate from Bazaar market collection: a ready local
-calculator does not prove that profile access works.
+The combined mod uses the **observed SkyBlock profile**, not whichever profile is
+selected on a third-party website. Settings and access restrictions are stored
+beside its journals under `config/goofyaddons/accounts/<player>/<profile>/`.
+Skills, API evidence and forecasts clear when the observed profile changes.
+If journals are already pinned, restart Minecraft before trading on a different
+profile. `.a* goofyaddon profiles` shows observed/pinned identity; its `adopt`
+and `setaside` subcommands are only for legacy file migration.
 
-In Cloudflare, open `goofy-gameplay-collector` → Settings → Variables and Secrets.
-Edit the existing `HYPIXEL_API_KEY` secret, enter a current Hypixel key authorized
-for SkyBlock profile access, and deploy the change. Keep the key private; never
-put it in `wrangler.jsonc`, GitHub, a mod config, or a chat message. If a current
-key still gets HTTP 403, check its application's Hypixel permissions.
+No end user needs a personal Hypixel key. Profile requests go directly to the
+public Worker; the local calculator is not proof that profile access works.
+The Worker owner maintains `HYPIXEL_API_KEY` using Cloudflare's secret storage.
+Contributor uploads and their enrollment keys are separate from profile lookup.
 
-From the existing `tools/gameplay-collector` folder, the equivalent command is:
+## Diagnose a blocked requirement
+
+Use `.a* goofyaddon production requirements` and export diagnostics with F7 or
+`.a* goofyaddon debug export`. The export identifies the current lookup profile,
+failure category, freshness and counts; secret values and raw upstream bodies
+are excluded. It can contain gameplay/profile context and should be treated as
+a support bundle, not a public market dataset.
+
+- HTTP 401/403: the owner must renew the Worker key/check SkyBlock permissions.
+- Rate limit/connection failure: the mod retries with bounded backoff; it does
+  not grant unlocks during the outage.
+- Collection data unpublished: enable the appropriate SkyBlock API visibility;
+  unknown tiers are not inferred from item prices or another profile.
+- Profile/skill mismatch: confirm the actual in-game profile and allow a fresh
+  observation. Do not copy another profile's files or disable ownership checks.
+- Recipe locked/unverified: inspect the server recipe book. Enchanted Red Sand
+  specifically requires verified current-profile recipe-unlock metadata before
+  purchasing ingredients. Older Worker responses or missing metadata keep it
+  excluded even if a different profile can craft it.
+
+## Owner update
+
+Use the [collector deployment guide](../tools/gameplay-collector/README.md#update-an-existing-deployment).
+Run Wrangler from the cloned repository's `tools/gameplay-collector` directory,
+with your existing Worker/D1 configuration. A relative `tools/` path from your
+Windows home folder does not point into the repository.
+
+To replace a rejected key, from that collector directory:
 
 ```powershell
-npx wrangler@4.147.0 secret put HYPIXEL_API_KEY
+npx wrangler@4.147.0 secret put HYPIXEL_API_KEY --config ".\wrangler.local.jsonc"
 ```
 
-Enter the key at the private prompt. Test your username on the public calculator.
-Once profile lookup succeeds, the mod retries automatically within a minute; the
-queued production run can continue when the requirement is verified.
-
-## Mod 0.2.19
-
-The companion forwards fixed error categories instead of hiding them behind a
-generic profile-unavailable message. The mod shows the cause in Account
-prerequisites and blocked production messages. Diagnostic snapshots and state
-change events include the safe failure category, freshness and observation
-counts. They exclude usernames, profile names, keys and raw response bodies.
-Missing and unpublished progression remains unknown; failed lookups never grant
-Gold IV or any other unlock.
-
-## Optional Worker collection update
-
-Published collection tiers now also travel by their stable IDs (`GOLD_INGOT`),
-independently of the separate collection-name resources request. If the name
-service is unavailable, published tiers are still usable. The mod accepts both
-the prior named format and this new ID format. This does not bypass API access
-or invent tiers when collections are unpublished.
-
-The small `goofyaddons-profile-service-0.2.19.zip` contains the updated
-`tools/gameplay-collector/profile-lookup.mjs`. Extract it over your existing
-repository folder, preserving your current Wrangler database configuration,
-then run from the existing collector folder:
+Use your actual config filename if different. Enter the key only at the private
+prompt. Never put it in Git, chat, a mod config or a command-line argument.
+Check a response after updating:
 
 ```powershell
-npx wrangler@4.147.0 deploy
+Invoke-RestMethod "https://goofy-gameplay-collector.abdyzam50.workers.dev/v1/profiles?username=curedmc"
 ```
 
-Validation: 977 Java tests and 102 Node tests passed, including HTTP 403
-classification, private response redaction, retry after fixing access,
-profile-switch cancellation and collection import without resource names.
-Live Minecraft and your replacement Hypixel key still require verification.
+Replace the URL/username for your deployment. A successful response uses
+`goofy-profile/1` and includes profile progression; published collection recipe
+metadata appears in `profiles[].stats.recipeUnlocks`. An empty or missing map
+is not permission to craft. HTTP 200/Worker deployment success alone does not
+prove that every recipe/unlock was published or imported.
+
+The old `goofyaddons-profile-service-0.2.19.zip` is a historical artifact; use
+current branch sources for current behaviour. JAR updates do not deploy the
+Worker. The existing owner database/secrets do not need recreating for an update.

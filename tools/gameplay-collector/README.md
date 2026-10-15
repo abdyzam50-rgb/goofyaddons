@@ -38,43 +38,61 @@ Verified sources:
 
 ## Owner: deploy once
 
-Run these from `tools/gameplay-collector` with Node 22+ and a free Cloudflare
-account. Wrangler 4.147.0 is the validated tooling version. Credentials must be
-entered into Wrangler's secret prompts, never committed to the repository.
+This section is for a **new deployment**. Existing owners should use
+[Update an existing deployment](#update-an-existing-deployment), preserving the
+Worker name, D1 binding/ID and secrets. End users installing the mod do not need
+Cloudflare, a Hypixel key or a GitHub token.
 
-```sh
+From your clone's `tools/gameplay-collector` directory, use Node 22+ and Wrangler
+4.147.0. The tracked `wrangler.jsonc` is a template with a placeholder D1 ID;
+copy it to an ignored owner-local configuration, without overwriting an existing
+working file:
+
+```powershell
+if (!(Test-Path ".\wrangler.local.jsonc")) {
+    Copy-Item ".\wrangler.jsonc" ".\wrangler.local.jsonc"
+}
 npx wrangler@4.147.0 login
 npx wrangler@4.147.0 d1 create goofy-gameplay
 ```
 
-Copy the returned database ID into `wrangler.jsonc`'s `database_id` field. Keep
-the `DB` binding. Initialize the remote schema:
+Edit `wrangler.local.jsonc`: set the returned database ID/name and your repository;
+retain the `DB`, `ASSETS` and `PROFILE_RATE_LIMITER` bindings and the asset directory.
+The database name below must match the database you created. Do not deploy
+`REPLACE_WITH_CREATED_DATABASE_ID`. Initialize the remote schema:
 
-```sh
-npx wrangler@4.147.0 d1 execute goofy-gameplay --remote --file schema.sql
+```powershell
+npx wrangler@4.147.0 d1 execute goofy-gameplay --remote --file schema.sql --config ".\wrangler.local.jsonc"
 ```
 
-Create a GitHub fine-grained token limited to this repository with Contents
-read/write permission. Store it **only on the Worker**:
+Create a GitHub fine-grained token for the target repository with Contents
+read/write permission, then enter it at the secure Wrangler prompt:
 
-```sh
-npx wrangler@4.147.0 secret put GITHUB_TOKEN
+```powershell
+npx wrangler@4.147.0 secret put GITHUB_TOKEN --config ".\wrangler.local.jsonc"
 ```
 
-Create the first enrollment:
+For private profile lookup, put an authorized Hypixel key on the Worker too:
 
-```sh
+```powershell
+npx wrangler@4.147.0 secret put HYPIXEL_API_KEY --config ".\wrangler.local.jsonc"
+```
+
+Keys go in these prompts, not JSON, Git, chat or command arguments. Contributor
+enrollment uses a separate key. Create an enrollment:
+
+```powershell
 node enroll.mjs add tester-01
 ```
 
-The helper prints paths, never key values. Its registry and key files live in
-GoofyAddons' persistent data directory, outside the installation. Give the
-`.key` file privately to that tester. Set `CONTRIBUTOR_HASHES` by running the
-following and pasting the contents of `contributor-hashes.json` at the prompt:
+The helper prints paths, not key values. Its registry/key files are in the
+persistent data directory outside the installation. Give the `.key` file privately
+to its tester. Enter `contributor-hashes.json` contents at the following secret
+prompt, then deploy with the same local config:
 
-```sh
-npx wrangler@4.147.0 secret put CONTRIBUTOR_HASHES
-npx wrangler@4.147.0 deploy
+```powershell
+npx wrangler@4.147.0 secret put CONTRIBUTOR_HASHES --config ".\wrangler.local.jsonc"
+npx wrangler@4.147.0 deploy --config ".\wrangler.local.jsonc"
 ```
 
 The resulting `https://goofy-gameplay-collector.<account>.workers.dev` URL is the
@@ -199,19 +217,111 @@ does not by itself identify a network outage. The response and mod debug export
 retain bounded upstream service/status facts without returning API keys or raw
 upstream bodies. Failed lookups do not grant unverified account unlocks.
 
-After pulling the updated branch, deploy with your existing local configuration.
-Update an invalid key through Wrangler's secure prompt, using a valid key from
-the Hypixel developer dashboard with SkyBlock profile access:
+Use the update steps below to deploy the current profile lookup code. A successful
+profile response uses `goofy-profile/1`; deployment success alone does not verify
+Hypixel authorization. Invalid keys need replacement through Wrangler's private
+`secret put HYPIXEL_API_KEY` prompt, using the same config file as deployment.
+
+## Update an existing deployment
+
+First enter the **cloned repository**, not your home directory. For the owner's
+existing Windows clone:
 
 ```powershell
-git pull --ff-only
+Set-Location "C:\Users\abdy2\goofyaddons" -ErrorAction Stop
+$repoRemote = git remote get-url origin
+if ($LASTEXITCODE -ne 0 -or $repoRemote -notmatch 'abdyzam50-rgb/goofyaddons(?:\.git)?$') {
+    throw "Check the repository folder and remote before updating."
+}
+git fetch origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch failed; stop here." }
+git switch claude/project-thread-wmox9w
+if ($LASTEXITCODE -ne 0) { throw "Branch switch failed; review local changes." }
+git pull --ff-only origin claude/project-thread-wmox9w
+if ($LASTEXITCODE -ne 0) { throw "Git update failed; do not deploy stale sources." }
+Set-Location ".\tools\gameplay-collector" -ErrorAction Stop
+Get-Location
+```
+
+Replace the initial path for another installation. The remote must be the
+`abdyzam50-rgb/goofyaddons` repository; use your corresponding remote name if it
+is not `origin`. This branch contains application changes; published datasets go
+to the separate `gameplay-data` branch. If Git reports local changes, conflicts
+or a different remote, stop and review them rather than resetting/discarding.
+For a first clone, run this from the desired parent folder, then enter the clone:
+
+```powershell
+git clone --branch claude/project-thread-wmox9w https://github.com/abdyzam50-rgb/goofyaddons.git
+```
+
+Use the **existing working owner configuration**. If it is already
+`wrangler.jsonc`, keep using that filename, or copy it to `wrangler.local.jsonc`
+first. Do not overwrite a real database ID with the tracked placeholder template.
+Owner-local `wrangler.local.jsonc` is ignored by Git.
+
+```powershell
+if (!(Test-Path ".\wrangler.local.jsonc")) { throw "Locate your existing Worker config first." }
+if ((Get-Content ".\wrangler.local.jsonc" -Raw) -match 'REPLACE_WITH_CREATED_DATABASE_ID') {
+    throw "Set the real D1 database ID before deploying."
+}
 npx wrangler@4.147.0 deploy --config ".\wrangler.local.jsonc"
+```
+
+Run the deployment only if the path exists and its Worker/D1 values are correct.
+If your working file is named `wrangler.jsonc`, replace the config argument in
+**every** command, including secret updates. A missing config (`ENOENT`) means
+wrong path/filename. "Could not detect a directory containing static files" can
+mean Wrangler ran from the wrong directory or without the intended config.
+Do not create a new database or enroll existing contributors again just to update.
+
+To replace an expired/rejected Hypixel key:
+
+```powershell
 npx wrangler@4.147.0 secret put HYPIXEL_API_KEY --config ".\wrangler.local.jsonc"
 Invoke-RestMethod "https://goofy-gameplay-collector.abdyzam50.workers.dev/v1/profiles?username=curedmc"
 ```
 
-Run these from `tools/gameplay-collector`. Use the configuration that already
-targets your Worker and D1 database; do not deploy the placeholder database ID.
-Keep the API key out of chat, tracked files and command arguments. A successful
-profile response uses `goofy-profile/1` and contains the requested profiles;
-deployment success alone does not verify Hypixel authorization.
+Use your own Worker URL/username when different. Check `goofy-profile/1`, the
+returned profile names, unknown fields and `stats.recipeUnlocks`. Missing/empty
+recipe metadata does not verify an unlock; the mod conservatively excludes
+recipes that need it. No player should enter the Worker's key into their mod.
+
+A JAR update changes the client; this deployment changes the public Worker and
+uploads its configured static assets. Git data publication does not rebuild the
+website's bundled historical charts. See [website deployment](../../docs/PUBLIC-WEBSITE.md)
+for that separate build/deployment workflow.
+
+## Trigger publication without waiting for cron
+
+The owner-only `POST /v1/admin/publish` publishes existing D1 evidence now; it
+**does not** perform a fresh market collection, start player trading or rebuild
+the website. It shares a lease with scheduled publication. Configure a separate
+`ADMIN_TOKEN` Worker secret if not already configured (32–128 URL-safe letters,
+digits, `_` or `-`); it is not the contributor key or GitHub token:
+
+```powershell
+npx wrangler@4.147.0 secret put ADMIN_TOKEN --config ".\wrangler.local.jsonc"
+```
+
+Test using that existing admin token without placing its value in command history:
+
+```powershell
+$adminSecret = Read-Host "Worker admin token" -AsSecureString
+$adminPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminSecret)
+try {
+    $adminToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($adminPointer)
+    Invoke-RestMethod -Method Post `
+      -Uri "https://goofy-gameplay-collector.abdyzam50.workers.dev/v1/admin/publish" `
+      -Headers @{Authorization="Bearer $adminToken"} | ConvertTo-Json -Depth 8
+} finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($adminPointer)
+    Remove-Variable adminToken, adminSecret, adminPointer -ErrorAction SilentlyContinue
+}
+```
+
+`COMMITTED` means a dataset commit was written; `UNCHANGED` is a successful no-op
+and can have a null commit SHA. `busy: true` / HTTP 409 means another publication
+holds the lease. HTTP 401 here means the supplied **admin** credential was not
+accepted. A publisher's GitHub HTTP 401 instead concerns the Worker's
+`GITHUB_TOKEN`; check which operation failed. `/health` readiness checks bindings
+and secret presence, not successful GitHub/Hypixel authorization.
