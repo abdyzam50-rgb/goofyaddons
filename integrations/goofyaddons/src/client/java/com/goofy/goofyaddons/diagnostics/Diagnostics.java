@@ -243,7 +243,13 @@ public final class Diagnostics {
             if(GoofyConfig.INSTANCE!=null)extras.put("config",GoofyConfig.INSTANCE);
             try {
                 var production=FeatureManager.INSTANCE.production();
-                extras.put("market",com.goofy.goofyaddons.features.market.MarketSnapshot.of(BazaarApi.latestFresh(),production.referencedProducts(),System.currentTimeMillis()));
+                var watched=new java.util.HashSet<>(production.referencedProducts());
+                var cfg=GoofyConfig.INSTANCE;
+                if(cfg!=null) {
+                    for(var item:cfg.general.items)watched.add(item.id());
+                    for(var book:cfg.books){watched.add(book.getLevel(book.level()));watched.add(book.getLevel(book.sellLevel()));}
+                }
+                extras.put("market",com.goofy.goofyaddons.features.market.MarketSnapshot.of(BazaarApi.latestFresh(),watched,System.currentTimeMillis()));
                 extras.put("rankings",production.recentRankings());
                 extras.put("catalog",com.goofy.goofyaddons.features.production.RecipeCatalog.instance().diagnosticState());
             }catch(RuntimeException unavailable){extras.put("captureErrors",Map.of("production",unavailable.getClass().getSimpleName()));}

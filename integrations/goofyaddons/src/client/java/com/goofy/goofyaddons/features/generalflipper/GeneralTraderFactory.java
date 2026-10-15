@@ -29,7 +29,7 @@ public final class GeneralTraderFactory {
             @Override public CapitalManager capital() {return CapitalManager.INSTANCE;}
             @Override public GeneralSettings settings() {return GoofyConfig.INSTANCE.general;}
             @Override public double taxPercentage() {return GoofyConfig.INSTANCE.bazaarTaxPercentage;}
-            @Override public boolean automaticSelection() {return GoofyConfig.INSTANCE.marketAnalysis.automaticSelection;}
+            @Override public boolean automaticSelection() {return GoofyConfig.INSTANCE.marketAnalysis.usesAutomaticSelection() || GoofyConfig.INSTANCE.tradingMode==com.goofy.goofyaddons.features.TradingMode.ALL;}
             @Override public long actionDelay() {return ActionDelay.next();}
             @Override public double purse() {return new ScoreboardUtils().getPurse();}
             @Override public JsonObject latestQuotes() {return BazaarApi.latestFresh();}

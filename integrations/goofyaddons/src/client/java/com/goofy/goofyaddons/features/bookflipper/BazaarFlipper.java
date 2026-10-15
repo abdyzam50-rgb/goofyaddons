@@ -209,7 +209,7 @@ public class BazaarFlipper implements Feature {
         if(recoveryAwaitQuotes)return "Waiting for fresh quotes to resume saved books";
         if(state==State.RECOVERY_CHECK && recoveryCheck!=null)return recoveryCheck.progress();
         if(state==State.FETCHING) {
-            if(settings().automaticSelection())return services.automaticReport()==null?"Books: waiting for calculator selection":"Books: no feasible profitable route";
+            if(settings().automaticSelection())return services.automaticReport()==null?"Books: waiting for ranked selection":"Books: no feasible profitable route";
             if(flipCalculator.isRunning())return "Books: fetching Bazaar quotes";
             if(settings().books().isEmpty())return "Books: no routes configured";
             if(flipCalculator.lastProblem()!=null)return "Books: "+flipCalculator.lastProblem();
@@ -1028,7 +1028,7 @@ public class BazaarFlipper implements Feature {
         var market=services.latestQuotes();
         return market==null?List.of():com.goofy.goofyaddons.features.marketanalysis.AutomaticSelection.books(
                 services.automaticReport(),world.now(),
-                market.getAsJsonObject("products"),settings().bazaarTaxPercentage(),settings().minNetProfit(),services.observedSkills());
+                market.getAsJsonObject("products"),settings().bazaarTaxPercentage(),settings().minNetProfit(),services.observedSkills(),settings().books());
     }
 
     private int randomizer() {

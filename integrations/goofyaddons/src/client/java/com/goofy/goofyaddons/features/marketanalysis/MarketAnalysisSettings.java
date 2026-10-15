@@ -15,6 +15,8 @@ public final class MarketAnalysisSettings {
     public int maxHistoryAgeHours = 48;
     public int maxRecommendations = 10;
 
+    public boolean usesAutomaticSelection() { return enabled && automaticSelection; }
+
     public void validate() {
         if(automaticSelection && !enabled)throw new IllegalArgumentException("Automatic selection requires market analysis enabled");
         if (endpoint == null) throw new IllegalArgumentException("Calculator endpoint is missing");

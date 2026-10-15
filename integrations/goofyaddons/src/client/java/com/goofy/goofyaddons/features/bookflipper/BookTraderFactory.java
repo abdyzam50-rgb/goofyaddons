@@ -57,7 +57,7 @@ public final class BookTraderFactory {
             public BookSettings settings() {
                 var c=GoofyConfig.INSTANCE;
                 return new BookSettings(c.books,c.bazaarTaxPercentage,c.minNetProfit,c.maxTradingCapital,c.maxActiveBooks,
-                        c.firstPage,c.secondPage,c.marketAnalysis.automaticSelection,c.liquidateStaleBooks,c.bookStaleSeconds,
+                        c.firstPage,c.secondPage,(c.marketAnalysis.usesAutomaticSelection() || c.tradingMode==com.goofy.goofyaddons.features.TradingMode.ALL),c.liquidateStaleBooks,c.bookStaleSeconds,
                         c.bookOrderRecheckSeconds,c.maxBookHoldingSeconds,c.maxBookDrawdownPercentage,c.maxBookReprices,c.bookRepriceCooldownSeconds);
             }
             public int observationDelay(){return Math.max(50,Math.min(150,Math.min(craftDelay(),storageDelay())));}

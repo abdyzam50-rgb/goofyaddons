@@ -78,7 +78,6 @@ public final class ShadowMarketAnalysis {
     private void pollObserved(TradingMode currentMode) {
         if(currentMode==TradingMode.CRAFT){stop();status="CRAFT_ANALYSIS";return;}
         GoofyConfig cfg=env.config();
-        if(cfg!=null && currentMode==TradingMode.ALL){cfg.marketAnalysis.enabled=true;cfg.marketAnalysis.automaticSelection=true;}
         if(cfg==null || !cfg.marketAnalysis.enabled) {
             if(!status.equals("DISABLED")) stop(); status="DISABLED"; return;
         }
@@ -161,6 +160,16 @@ public final class ShadowMarketAnalysis {
         if(latestReport()==null)return null;
         var forecast=MarketAnalysisProtocol.forecast(executionReport,input,output,batch,env.now());
         return forecast!=null?forecast:MarketAnalysisProtocol.forecast(report,input,output,batch,env.now());
+    }
+    /** Uses only configured presets, without contacting or starting the calculator. */
+    public MarketAnalysisProtocol.Report presetHeadReport() {
+        var cfg=env.config();
+        var account=PipelineAccount.capture(env.now(),TradingMode.ALL,env.capital(),env.purse(),env.inventory(),cfg.maxActiveBooks,cfg.general.maxActiveItems,env.excludedProducts())
+            .withProductionReservations(env.productionSpendable(),env.productionSlots());
+        var local=PresetMarketReport.build(cfg,env.quotes(),account.available(),account.inventoryCapacity(),env.skills(),env.now());
+        if(local==null){env.refreshQuotes();return null;}
+        var plan=PipelinePlanner.build(account,local,env.now());
+        return local.withRows(plan.next().isEmpty()?List.of():List.of(plan.next().getFirst().route()));
     }
     public MarketAnalysisProtocol.Report automaticHeadReport() {
         if(!env.config().marketAnalysis.automaticSelection)return null;

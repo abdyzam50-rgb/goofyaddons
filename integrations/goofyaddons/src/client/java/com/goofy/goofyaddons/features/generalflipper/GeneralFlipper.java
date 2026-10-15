@@ -137,6 +137,9 @@ public class GeneralFlipper implements Feature {
     public boolean hasStateError() { return blocked; }
     public java.util.Map<String,Object> diagnosticState() {
         var state=new java.util.LinkedHashMap<String,Object>();
+        state.put("selectionMode",services.automaticSelection()?"ranked":"configured presets");
+        state.put("selectionStatus",activity());state.put("candidateCount",snapshotCandidates.size());
+        state.put("spendable",capital.available(snapshotPurse));
         state.put("navigationPending",navigationRetry.pending());
         state.put("navigation",navigationRetry.diagnosticState(view));
         state.put("activeTrade",active==null?"none":active.tradeId);state.put("activeItem",active==null?"none":active.item.id());
@@ -196,11 +199,11 @@ public class GeneralFlipper implements Feature {
     /** Pure reader: the HUD calls this every frame, so it must not recompute or mutate. */
     public String activity() {
         if(lastFailure!=null && (paused||blocked))return lastFailure;
-        if (active != null) return (services.productionOnly()?"Craft orders: ":"General: ") + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        if (active != null) return (services.productionOnly()?"Craft orders: ":"General: ") + (step==null?"preparing order":step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' '));
         if (!snapshotFresh) return "Waiting for price data";
         if (!positions.isEmpty()) return services.productionOnly()?(productionWait==null?"Waiting for craft orders":productionWait):"Waiting for general orders";
         if (capital.available(snapshotPurse) <= 0) return "Capital limit / purse reserve reached";
-        return snapshotCandidates.isEmpty() ? "No flips meet the configured filters" : "Selecting eligible flips";
+        return snapshotCandidates.isEmpty() ? (services.automaticSelection()?"No feasible ranked route":"No preset meets profit, margin, volume and inventory limits") : "Selecting eligible flips";
     }
 
     private void restoreFunding(GeneralPosition position) {

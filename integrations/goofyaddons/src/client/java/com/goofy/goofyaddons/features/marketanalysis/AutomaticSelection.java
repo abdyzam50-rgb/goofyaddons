@@ -42,6 +42,8 @@ public final class AutomaticSelection {
         List<GeneralCalculator.Candidate> result=new ArrayList<>();
         for(var r:report.rows()) {
             var item=generalItem(r.inputId());
+            if("local-presets".equals(report.upstreamCommit()))
+                item=limits.items.stream().filter(i->i.id().equals(r.inputId())).findFirst().orElse(null);
             if(!r.kind().equals("GENERAL") || !r.configured() || item==null || excluded.contains(item.id()))continue;
             // A narrow settings copy keeps every entry check; the report's chosen batch is an upper bound.
             var scoped=new Gson().fromJson(new Gson().toJson(limits),GeneralSettings.class);
@@ -54,10 +56,15 @@ public final class AutomaticSelection {
         return books(report,now,products,tax,minProfit,Map.of());
     }
     public static List<FlipItem> books(MarketAnalysisProtocol.Report report,long now,JsonObject products,double tax,double minProfit,Map<String,Integer> skills) {
+        return books(report,now,products,tax,minProfit,skills,List.of());
+    }
+    public static List<FlipItem> books(MarketAnalysisProtocol.Report report,long now,JsonObject products,double tax,double minProfit,Map<String,Integer> skills,List<Book> presets) {
         if(report==null || !TradingSafety.fresh(report.marketAt(),now) || products==null)return List.of();
         List<FlipItem> result=new ArrayList<>();
         for(var r:report.rows()) {
             var book=book(r.inputId(),r.outputId());
+            if("local-presets".equals(report.upstreamCommit()))
+                book=presets.stream().filter(b->b.getLevel(b.level()).equals(r.inputId()) && b.getLevel(b.sellLevel()).equals(r.outputId())).findFirst().orElse(null);
             if(!r.kind().equals("BOOK") || !r.configured() || book==null || com.goofy.goofyaddons.features.access.RouteRequirements.book(book.id(),skills)!=null)continue;
             var item=FlipCalculator.evaluateStrategy(products,book,tax,minProfit,strategy(r));if(item!=null)result.add(item);
         }

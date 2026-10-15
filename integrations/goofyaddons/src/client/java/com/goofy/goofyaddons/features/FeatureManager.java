@@ -68,18 +68,22 @@ public class FeatureManager {
     public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());excluded.addAll(auction.lockedProducts());excluded.addAll(production.lockedProducts());return java.util.Set.copyOf(excluded);}
     public void invalidateMarketReport() { marketAnalysis.stop(); }
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
-        var report=marketAnalysis.automaticHeadReport();
+        var report=selectionHeadReport();
         if("ALL".equals(modeLabel())) {
             boolean craft=allModeCraftSelected(production.automaticCoinsPerHour(),production.automaticCapital());
             if(report!=null && craft)return report.withRows(List.of());
         }
         return report;
     }
+    private com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report selectionHeadReport() {
+        return "ALL".equals(modeLabel()) && !GoofyConfig.INSTANCE.marketAnalysis.usesAutomaticSelection()
+            ? marketAnalysis.presetHeadReport() : marketAnalysis.automaticHeadReport();
+    }
     private String allModeDecision;
     public boolean allModeCraftSelected(double coinsPerHour,double capital) {
         if(!"ALL".equals(modeLabel()))return true;
-        var report=marketAnalysis.automaticHeadReport();
-        boolean fresh=marketAnalysis.latestReport()!=null;
+        var report=selectionHeadReport();
+        boolean fresh=GoofyConfig.INSTANCE.marketAnalysis.usesAutomaticSelection()?marketAnalysis.latestReport()!=null:report!=null;
         boolean craft=fresh && com.goofy.goofyaddons.features.marketanalysis.AllModeSelection.craftWins(coinsPerHour,capital,report);
         String reason=!fresh?"All flips: waiting for fresh market comparisons":craft?"All flips: craft · estimated "+Math.round(coinsPerHour)+" coins/hour":
             report==null || report.rows().isEmpty()?"All flips: no feasible new entry":
@@ -222,11 +226,6 @@ public class FeatureManager {
     }
 
     private void applyMode(TradingMode next) {
-        if(next==TradingMode.ALL) {
-            GoofyConfig.INSTANCE.marketAnalysis.enabled=true;
-            GoofyConfig.INSTANCE.marketAnalysis.automaticSelection=true;
-            invalidateMarketReport();
-        }
         if (previousOwner != null) previousOwner.yieldMenu();
         List<Feature> old = engines();
         mode = next;

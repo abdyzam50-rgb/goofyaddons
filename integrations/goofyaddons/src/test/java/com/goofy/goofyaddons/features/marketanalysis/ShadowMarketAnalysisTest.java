@@ -10,13 +10,15 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShadowMarketAnalysisTest {
-    @Test void allModeEnablesAutomaticComparisonAndKeepsExecutionBehindEngineChecks() {
+    @Test void allModeRespectsDisabledCalculatorAndUsesLocalPresets() {
         var env=new Env();env.cfg.marketAnalysis.enabled=false;env.cfg.marketAnalysis.automaticSelection=false;
         var bridge=new Bridge();var observer=new ShadowMarketAnalysis(env,bridge,(type,data)->{});
         observer.poll(TradingMode.ALL);
-        assertTrue(env.cfg.marketAnalysis.enabled);assertTrue(env.cfg.marketAnalysis.automaticSelection);
-        assertEquals("ALL",bridge.packet.getAsJsonObject("constraints").get("mode").getAsString());
-        bridge.complete(env.clock);assertNotNull(observer.automaticHeadReport());
+        assertFalse(env.cfg.marketAnalysis.enabled);assertFalse(env.cfg.marketAnalysis.automaticSelection);
+        assertEquals(0,bridge.requests);assertNotNull(observer.presetHeadReport());
+        assertFalse(observer.presetHeadReport().rows().isEmpty());
+        env.capital.configure(10000,50000);
+        assertTrue(observer.presetHeadReport().rows().isEmpty());
         assertEquals(false,observer.diagnosticState().get("executionAuthority"));
         assertEquals(0,env.capital.committed());
     }
