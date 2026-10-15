@@ -138,7 +138,7 @@ final class BookBuy {
     static int searchTarget(com.goofy.goofyaddons.menu.MenuSnapshot menu,Task task) {
         var book=task.getBook();
         int target=ProductIdentity.searchResult(menu,book.getLevel(book.level()),book.getRomanLevel(book.level()));
-        return target>=0 && !menu.loading(target)?target:-1;
+        return target; // Exact identity is enough for reversible navigation; price lore may still be loading.
     }
 
     private void instant(BookContext ctx,Task task){

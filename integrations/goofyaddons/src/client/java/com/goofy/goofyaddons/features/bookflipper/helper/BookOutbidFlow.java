@@ -38,7 +38,7 @@ public final class BookOutbidFlow {
         String item = book.getRomanLevel(book.level());
         if (title.startsWith("Bazaar")) {
             int target=com.goofy.goofyaddons.features.transaction.ProductIdentity.searchResult(menu,book.getLevel(book.level()),item);
-            if(target>=0 && !menu.loading(target))return click(menu,target);
+            if(target>=0)return click(menu,target);
         }
         boolean exactProduct=menu.containerEnd()==36
                 && com.goofy.goofyaddons.features.transaction.ProductIdentity.truncatedProductPage(menu,item,15);

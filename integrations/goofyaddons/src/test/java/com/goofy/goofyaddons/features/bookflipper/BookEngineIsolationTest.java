@@ -71,19 +71,22 @@ class BookEngineIsolationTest {
         assertEquals(Task.BookState.SELL,task.getBookState());assertFalse(engine.needsMenu());
         world.advance(61001);assertTrue(engine.needsMenu());assertEquals(0,services.accounting.effects);
     }
-    @Test void readySearchResultPassesEngineLoadingGateWhenAnotherLevelIsStillLoading()throws Exception {
+    @Test void exactLoadingSearchResultPassesEngineGateAndReopensWhenIgnored()throws Exception {
         var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
         var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
         var task=new Task(BOOK,false,false);task.setBookState(Task.BookState.SELECTED);
         field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"activeTask",task);
         field(engine,"state",BazaarFlipper.State.BAZAAR_NAVIGATION);
         var slots=new ArrayList<>(menu(3).slots());
-        slots.set(11,SlotView.named(11,"Wisdom I",List.of("Buy price: 100 coins","Click to view details!")));
+        slots.set(11,SlotView.named(11,"Wisdom I",List.of("Loading...","Click to view details!")));
         slots.set(12,SlotView.named(12,"Wisdom II",List.of("Loading...")));
         var result=new MenuSnapshot(4,"Bazaar ➜ \"Wisdom\"",true,slots);assertTrue(result.loadingContents());
         world.showing(result);
         for(int i=0;i<10&&actions.serverEffects().isEmpty()&&services.pauseReason==null;i++){engine.onTick();world.advance(100);}
         assertNull(services.pauseReason);assertEquals(List.of("click:11"),actions.serverEffects());
+        world.advance(15001);engine.onTick();
+        assertNull(services.pauseReason);assertTrue(actions.performed().contains("close"));
+        assertFalse((Boolean)engine.diagnosticState().get("navigationPending"));
     }
     @Test void profitableInstantBuyProposalCreatesABookTaskInsteadOfReturningToEmptyIdle()throws Exception {
         var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);

@@ -16,7 +16,7 @@ class BookInstantRoutesTest {
             SlotView.named(12,"Flash II",List.of("Loading...")));
         assertTrue(ready.loadingContents());
         assertEquals(11,BookBuy.searchTarget(ready,task));
-        assertEquals(-1,BookBuy.searchTarget(menu("Bazaar ➜ \"Flash\"",SlotView.named(11,"Flash I",List.of("Loading..."))),task));
+        assertEquals(11,BookBuy.searchTarget(menu("Bazaar ➜ \"Flash\"",SlotView.named(11,"Flash I",List.of("Loading..."))),task));
         assertEquals(-1,BookBuy.searchTarget(menu("Bazaar ➜ \"Flash\"",SlotView.named(12,"Flash II",List.of("Click to view details!"))),task));
     }
     @SuppressWarnings("unchecked") static <T>T proxy(Class<T> type,java.lang.reflect.InvocationHandler handler){return (T)Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},handler);}

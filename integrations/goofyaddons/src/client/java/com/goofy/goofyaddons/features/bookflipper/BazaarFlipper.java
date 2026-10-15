@@ -438,6 +438,10 @@ public class BazaarFlipper implements Feature {
         }
         var navigationObservation=navigationRetry.observe(observedMenu,world.signEditorOpen(),
                 actions,world.now());
+        if(navigationObservation==com.goofy.goofyaddons.menu.NavigationRetry.Result.REOPEN) {
+            placement.abandonConfirmation();buy.menuReopened();actions.closeMenu();clock.stop();watchdog.reset();
+            services.event("WARN","books.search_menu_reopen",navigationRetry.diagnosticState(observedMenu));return;
+        }
         if(navigationObservation==com.goofy.goofyaddons.menu.NavigationRetry.Result.EXHAUSTED) {
             safetyHalt("Book menu navigation was not acknowledged after three retries; ownership retained.");return;
         }
@@ -454,7 +458,7 @@ public class BazaarFlipper implements Feature {
             safetyHalt("Book transaction stopped making progress; positions preserved."); return;
         }
         Task searchTask=state==State.OUTBID?taskInState(Task.BookState.OUTBID):state==State.BAZAAR_NAVIGATION?activeTask:null;
-        boolean readyBookSearch=searchTask!=null && !searchTask.instaBuy && BookBuy.searchTarget(observedMenu,searchTask)>=0;
+        boolean readyBookSearch=searchTask!=null && BookBuy.searchTarget(observedMenu,searchTask)>=0;
         if(observedMenu!=null && observedMenu.loadingContents() && !readyBookSearch && !world.signEditorOpen())return;
         if (!claim.verifyBuy(session)) return;
         if (isStartUpCheckCompleted && !bookCombiner.pending() && !bookTransfer.pending()

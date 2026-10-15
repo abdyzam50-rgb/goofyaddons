@@ -6,9 +6,9 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BookOutbidFlowTest {
-    @Test void loadedTargetNavigatesDespiteAnUnrelatedLoadingLevel() {
+    @Test void exactLoadingTargetNavigatesDespiteLoadingPriceLore() {
         var flow=new BookOutbidFlow();
-        var search=menu(2,"Bazaar ➜ \"Overload\"",90,SlotView.named(10,"Overload I",List.of("Click to view details!")),
+        var search=menu(2,"Bazaar ➜ \"Overload\"",90,SlotView.named(10,"Overload I",List.of("Loading...","Click to view details!")),
             SlotView.named(11,"Overload II",List.of("Loading...")));
         assertTrue(search.loadingContents());assertEquals(10,flow.navigate(book,search).slot());
         assertNull(flow.navigate(book,search));

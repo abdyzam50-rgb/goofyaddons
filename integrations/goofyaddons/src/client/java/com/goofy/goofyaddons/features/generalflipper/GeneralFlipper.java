@@ -330,6 +330,10 @@ public class GeneralFlipper implements Feature {
             if(recovery==com.goofy.goofyaddons.menu.BedrockMenuRecovery.Result.WAITING)return;
         }
         var navigation = navigationRetry.observe(view,world.signEditorOpen(),actions,now);
+        if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.REOPEN) {
+            actions.closeMenu();transition(Step.OPEN_PRODUCT);
+            services.event("WARN","general.search_menu_reopen",navigationRetry.diagnosticState(view));return;
+        }
         if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.EXHAUSTED) {
             services.event("ERROR","general.navigation_exhausted",java.util.Map.of("step",step.name(),"navigation",navigationRetry.diagnosticState(view)));
             fail("Menu navigation was not acknowledged ("+navigationRetry.diagnosticState(view).get("retries")+" retries); position retained.");return;
