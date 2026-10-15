@@ -555,6 +555,22 @@ public class GeneralFlipper implements Feature {
                 .stream().filter(c->!services.excludedProducts().contains(c.item().id())).toList(),services.recommendations(),world.now());
     }
 
+    /** Transient entry exclusions also feed the cross-family ranking so another route can win. */
+    public java.util.Set<String> entryExclusions() {
+        return cooldownUntil.entrySet().stream().filter(e->e.getValue()>world.now()).map(java.util.Map.Entry::getKey)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+    private void skipUnownedConflict(String reason) {
+        // Only an unsubmitted ordinary entry is disposable. Never adopt, cancel or sell the foreign stock.
+        if(active==null || services.productionOnly() || active.stage!=Stage.PLANNED || active.submitted) {
+            fail("Unowned-order conflict overlaps a submitted or craft position; evidence retained.");return;
+        }
+        String product=active.item.id();
+        cooldownUntil.put(product,world.now()+60_000);
+        services.event("INFO","general.unowned_entry_skipped",java.util.Map.of("item",product,"reason",reason,"retryAfterMs",60_000));
+        capital.release(OWNER,product);positions.remove(active);snapshotCandidates=List.of();
+        finishWork();
+    }
     private void skipUnavailable(String reason) {
         services.event("INFO","general.requirement_skipped",java.util.Map.of("item",active.item.id(),"reason",reason));
         actions.message("Skipping "+active.item.name()+": "+reason);
@@ -912,6 +928,7 @@ public class GeneralFlipper implements Feature {
         @Override public void restoreFunding(GeneralPosition position) { GeneralFlipper.this.restoreFunding(position); }
         @Override public boolean recordAcquisition() { return GeneralFlipper.this.recordAcquisition(); }
         @Override public boolean recordSale(int units, Double proceeds) { return GeneralFlipper.this.recordSale(units, proceeds); }
+        @Override public void skipUnownedConflict(String reason) { GeneralFlipper.this.skipUnownedConflict(reason); }
         @Override public void skipUnavailable(String reason) { GeneralFlipper.this.skipUnavailable(reason); }
         @Override public void finishWork() { GeneralFlipper.this.finishWork(); }
         @Override public void completePosition() { GeneralFlipper.this.completePosition(); }

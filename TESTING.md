@@ -1,3 +1,5 @@
+Unsubmitted ordinary entries that encounter pre-existing orders or inventory now skip that product for 60 seconds, without adopting/cancelling the foreign position or pausing other pipelines. The temporary exclusions feed All-mode forecasts so an alternative route can win. Submitted and craft conflicts retain their reconciliation barrier. Regression verifies no foreign-order click, no acquisition/sale, released unspent reservation, retained-running state and cooldown expiry. Diagnostics-1792067157875 also shows a separate Enchanted Red Sand result barrier, still under investigation; this change does not bypass that crafting verification.
+
 Hypixel's explicit Bazaar order cooldown rejection now defers a recent book/general/craft submission for 61 seconds instead of treating it as an unexplained missing order. The shared capital ledger publishes the cooldown to all order placement paths. Rejected buys retain unspent reservations; rejected sales retain inventory ownership. New confirmations wait and re-enter with fresh prices; unrelated/late notices do not clear uncertain submissions. HUD/debug expose the remaining cooldown and rejection events. Regression reproduces diagnostics-1792065633025 (Stealth I confirmation rejected, three futile absence rechecks, global pause).
 
 Calculator-off selection keeps the configured book/general presets. ALL no longer changes the calculator switches and compares local preset estimates with craft routes when automatic selection is off. Existing profit, margin, volume, capital, inventory and unlock checks remain in place. Debug exports retain configured preset products even while idle; general diagnostics include selection mode, candidate count, spendable funds and filter status. Regression coverage checks disabled calculator, local-only presets, reserve, profit/volume/inventory filters and stale quotes.
@@ -318,7 +320,7 @@ The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
 live Minecraft execution remains to be checked in the next user run.
 
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.122 JAR](dist/astar-client-0.2.122-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.123 JAR](dist/astar-client-0.2.123-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

@@ -65,7 +65,7 @@ public class FeatureManager {
     public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast executionForecast(String input,String output,int batch) {
         return marketAnalysis.executionForecast(input,output,batch);
     }
-    public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());excluded.addAll(auction.lockedProducts());excluded.addAll(production.lockedProducts());return java.util.Set.copyOf(excluded);}
+    public java.util.Set<String> retiredBookProducts(){var excluded=new java.util.HashSet<>(books.retirementExclusions());excluded.addAll(crafting.lockedProducts());excluded.addAll(auction.lockedProducts());excluded.addAll(production.lockedProducts());excluded.addAll(general.entryExclusions());return java.util.Set.copyOf(excluded);}
     public void invalidateMarketReport() { marketAnalysis.stop(); }
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisProtocol.Report automaticReport() {
         var report=selectionHeadReport();

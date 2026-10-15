@@ -59,9 +59,9 @@ final class GeneralOrderReview {
         }
         if (active.stage == Stage.PLANNED && !active.submitted) {
             if (buy >= 0 || sell >= 0 || inventory > 0) {
-                capital.release(OWNER, active.item.id());
-                ctx.positions().remove(active);
-                ctx.fail("Pre-existing order/inventory for " + active.item.name() + "; remove it or remove this item from the allowlist.");
+                String reason="Pre-existing order/inventory for " + active.item.name();
+                if(!services.productionOnly())ctx.skipUnownedConflict(reason);
+                else ctx.fail(reason+"; reconcile the retained craft position before retrying.");
                 return;
             }
             if (services.excludedProducts().contains(active.item.id())) {
