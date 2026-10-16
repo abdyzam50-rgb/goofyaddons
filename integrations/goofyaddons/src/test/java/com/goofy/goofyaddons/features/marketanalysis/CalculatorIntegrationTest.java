@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CalculatorIntegrationTest {
     @Test void realCompanionAndModAgreeOnAnUnconfiguredOrdinaryRoute() throws Exception {
         int port;try(var socket=new ServerSocket(0)){port=socket.getLocalPort();}
-        Process process=new ProcessBuilder("node","tools/bazaar-calc/server.mjs",Integer.toString(port),"--no-collect","--no-discord").redirectErrorStream(true).start();
+        Process process=new ProcessBuilder("node","tools/bazaar-calc/server.mjs",Integer.toString(port),"--no-collect","--no-community","--no-discord").redirectErrorStream(true).start();
         try {
             var reader=new BufferedReader(new InputStreamReader(process.getInputStream()));
             String ready=CompletableFuture.supplyAsync(()->{try{return reader.readLine();}catch(Exception e){throw new RuntimeException(e);}}).get(5,TimeUnit.SECONDS);
