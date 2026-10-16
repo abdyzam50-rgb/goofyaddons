@@ -56,7 +56,7 @@ export async function exportSamples(rows,salt,now=Date.now()) {
  if(typeof salt!=='string'||salt.length<32)throw new Error('Missing private sharing identity');
  const samples=[];
  for(const row of rows) {
-  if(!row.eligible||row.censored||row.profit==null||row.proceeds==null||!row.forecast||!row.eventId)continue;
+  if((row.buyMode??'order')!=='order'||(row.sellMode??'offer')!=='offer'||!row.eligible||row.censored||row.profit==null||row.proceeds==null||!row.forecast||!row.eventId)continue;
   const ratio=row.expectedProfit>0?Math.max(-10,Math.min(10,Math.round(row.profit/row.expectedProfit*1000)/1000)):null;
   const sample={id:await hash(`${salt}:${row.eventId}`),engine:row.engine,inputId:row.inputId,outputId:row.outputId,
    inputUnits:row.inputUnits,batch:row.batch,completedAt:Math.floor(row.completedAt/3600000)*3600000,

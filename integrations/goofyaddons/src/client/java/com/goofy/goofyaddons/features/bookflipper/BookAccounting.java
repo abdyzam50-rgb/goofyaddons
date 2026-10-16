@@ -8,6 +8,8 @@ public interface BookAccounting {
     void sell(String id,String engine,String item,String event,int units,Double proceeds);
     void recoverHoldings(String id,String engine,String item,int units);
     void retire(String id);
+    default void executionFailure(String id) {}
+    default void executionStrategy(String id,String buy,String sell) {}
     void writeOff(String id,String engine,String item,String event,int units);
     Double knownCost(String id,int units);
     Double openCost(String id);

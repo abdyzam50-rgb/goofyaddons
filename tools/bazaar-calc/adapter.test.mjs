@@ -207,3 +207,12 @@ test('ALL mode ranks both books and general routes using the same live account c
  assert.ok(all.rows.some(r=>r.kind==='BOOK'));
  assert.ok(all.rows.some(r=>r.kind==='GENERAL'));
 });
+
+test('temporary repeated-stall cooldown defers new entries and expires without suppressing other routes',()=>{
+ const delayed={calibrate(row){if(row.kind==='GENERAL')row.executionBlockedUntil=now+300000;}};
+ const result=recommend(packet(),history,{commit},now,delayed);
+ assert.ok(result.rows.length>0);assert.ok(result.rows.every(row=>row.kind!=='GENERAL'));
+ assert.ok(result.deferred.some(row=>row.reason==='recent-repeated-stalls'));
+ const expired={calibrate(row){row.executionBlockedUntil=now-1;}};
+ assert.ok(recommend(packet(),history,{commit},now,expired).rows.some(row=>row.kind==='GENERAL'));
+});

@@ -1,8 +1,8 @@
 # Trading inside A*
 
-Current combined release: **0.2.128-BETA**, Minecraft **26.3**, Java **25**,
+Current combined release: **0.2.129-BETA**, Minecraft **26.3**, Java **25**,
 Fabric Loader **0.19.5+** and Fabric API **0.161.0+26.3**.
-Download [the combined JAR](../dist/astar-client-0.2.128-BETA.jar).
+Download [the combined JAR](../dist/astar-client-0.2.129-BETA.jar).
 Install it with Fabric API; remove duplicate standalone A*/GoofyAddons JARs.
 
 The [command reference](COMMANDS.md) is the source for current user commands,
@@ -57,6 +57,28 @@ because of settings, profile unlocks, evidence age, execution support, reserved
 funds and inventory. Search the craft ranking/exclusion reason before changing
 limits. Missing prices, insufficient volume or unverified unlocks can leave no
 feasible route without indicating a frozen client.
+
+## Same-day execution feedback
+
+The local calculator's book/general rankings blend recent personal evidence with
+historical estimates: **30%** after 1–2 completed cycles, **50%** after 3–5 and
+**70%** after 6 or more. Evidence keeps full influence for two hours, then fades
+smoothly over 24 hours. This is a rolling window, not a midnight reset. Timing
+is matched by item/recipe and buy/sell method; upside needs six completed cycles.
+Live prices and order-book depth still determine current costs and proceeds.
+
+Unfinished trades lower estimated hourly returns as soon as their observed wait
+exceeds the forecast. Outbid/reprice time stays in the original cycle. Retired
+orders retain a duration lower bound; verified losses reduce profit realization.
+Three market stalls within 15 minutes defer new entries for that route for five
+minutes after the latest stall; existing positions still receive maintenance.
+GUI/verification failures reduce engine/strategy reliability separately from
+market timing. Pausing or disconnecting alone is not recorded as a market failure.
+No failure record invents a sale, refund or realized profit.
+
+These adjustments apply to automatic book/general calculator rankings, including
+their comparison in All mode. Manual preset selection, the separate craft ranker
+and the public website do not consume this local execution calibration.
 
 ## Budget and timing
 
@@ -170,7 +192,7 @@ from the cloned repository, with the existing D1/Worker configuration.
 
 Build from the repository root with `./gradlew -p client test build` (Windows:
 `.\gradlew.bat -p client test build`). Output:
-`client/build/libs/astar-client-0.2.128-BETA.jar`. Automated checks cover simulated
+`client/build/libs/astar-client-0.2.129-BETA.jar`. Automated checks cover simulated
 transactions and regression cases; [in-game validation](guides/IN_GAME_VALIDATION.md)
 still needs the actual server's menus, latency and account state.
 

@@ -38,6 +38,7 @@ class BookInstantRoutesTest {
             var accounting=proxy(BookAccounting.class,(p,m,a)->{if(m.getName().equals("acquire"))costs.add((Double)a[5]);if(m.getName().equals("sell"))sales.add((Double)a[5]);return null;});
             ctx=proxy(BookContext.class,(p,m,a)->switch(m.getName()){
                 case "activeTask","taskInState"->task;case "now"->now;case "services"->services;case "accounting"->accounting;
+                case "settings"->new BookSettings(List.of(),1.25,0,10000,4,"ec 1","ec 2",false,false,3600,30,3600,20,3,30);
                 case "capital"->capital;case "menu"->menu;case "signOpen"->sign;case "actions"->actions;case "tasks"->tasks;
                 case "checkpoint"->{checkpoints++;yield true;}case "bookPriceAllowed"->true;
                 case "safetyHalt"->{failure=(String)a[0];yield null;}default->null;

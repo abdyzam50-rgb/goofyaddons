@@ -45,10 +45,12 @@ public final class GeneralTraderFactory {
             @Override public void placed(GeneralPosition position) {
                 ProfitTracker.INSTANCE.beginExecution(position.tradeId,GeneralFlipper.OWNER,position.item.id(),position.item.id(),position.quantity,position.quantity,position.placedAt,
                         position.sellPrice*position.quantity*(1-taxPercentage()/100)-position.cost(),position.forecast);
+                ProfitTracker.INSTANCE.executionStrategy(position.tradeId,position.instantBuy?"instant":"order",position.instantSell?"instant":"offer");
             }
             @Override public com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {
                 return manager.get().executionForecast(item,item,batch);
             }
+            @Override public void executionFailure(GeneralPosition position) {ProfitTracker.INSTANCE.executionFailure(position.tradeId);}
             @Override public void finished(GeneralPosition position) {ProfitTracker.INSTANCE.retire(position.tradeId);}
             @Override public void acquire(GeneralPosition position) {
                 ProfitTracker.INSTANCE.acquire(position.tradeId,GeneralFlipper.OWNER,position.item.name(),position.tradeId+":buy",

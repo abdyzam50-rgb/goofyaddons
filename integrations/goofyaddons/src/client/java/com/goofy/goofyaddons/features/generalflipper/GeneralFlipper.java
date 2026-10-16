@@ -42,6 +42,7 @@ public class GeneralFlipper implements Feature {
         default double productionMinimumSellPrice(GeneralPosition position){return position.minimumSellPrice;}
         default void placed(GeneralPosition position) {}
         default com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {return null;}
+        default void executionFailure(GeneralPosition position) {}
         default void finished(GeneralPosition position) {}
         default java.util.Set<String> excludedProducts() { return java.util.Set.of(); }
         default void excludeProduct(String id,String reason) {}
@@ -790,6 +791,7 @@ public class GeneralFlipper implements Feature {
         finishWork();
     }
     private void fail(String message) {
+        if(active!=null)services.executionFailure(active);
         lastFailure=message;lastFailureParent=active==null?null:active.productionParent;
         services.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",orderDiagnosticContext()));
         actions.message(message);

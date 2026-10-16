@@ -1277,6 +1277,7 @@ public class BazaarFlipper implements Feature {
     }
 
     private void safetyHalt(String reason) {
+        if(activeTask!=null)accounting.executionFailure(activeTask.getProfitTradeId());
         paused=true; // Latch this engine before fallible evidence capture/cleanup.
         services.event("ERROR","books.transaction_blocked",java.util.Map.of("reason",reason,"context",services.diagnosticContext()));
         rememberObservedBooks();

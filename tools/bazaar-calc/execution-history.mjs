@@ -5,6 +5,10 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {validateDataset,COMMUNITY_PROTOCOL} from './community-protocol.mjs';
 const DAY=86400000;
+// Hold full influence for two hours, then fade smoothly to the baseline by 24 hours.
+const dayFreshness=(at,now)=>Math.max(0,Math.min(1,(DAY-(now-at))/(DAY-2*3600000)));
+const dayWeight=n=>n>=6?0.7:n>=3?0.5:n>0?0.3:0;
+const strategyMatches=(a,b)=>(a.buyMode??'order')===(b.buyMode??'order')&&(a.sellMode??'offer')===(b.sellMode??'offer');
 const validForecast=f=>f && Number.isFinite(f.cycleSeconds)&&f.cycleSeconds>0&&f.cycleSeconds<=30*86400
   &&[f.inputPerDay,f.outputPerDay].every(v=>Number.isFinite(v)&&v>0&&v<=1e15);
 const clamp=(v,lo=0.1,hi=1.5)=>Math.max(lo,Math.min(hi,v));
@@ -28,13 +32,15 @@ export class ExecutionHistory {
         ||![s.inputUnits,s.batch].every(x=>Number.isInteger(x)&&x>=1&&x<=4096)
         ||!Number.isFinite(s.completedAt)||s.completedAt>this.now()+5000||s.completedAt<=0
         ||s.censored!==undefined&&typeof s.censored!=='boolean'
-        ||s.censored===true&&(s.eligible||s.proceeds!=null||s.profit!=null||s.observedMillis<180000||s.observedMillis>DAY)
+        ||s.censored===true&&(s.eligible||s.proceeds!=null||s.profit!=null||s.observedMillis<1000||s.observedMillis>DAY)
         ||!Number.isFinite(s.observedMillis)||s.observedMillis<0||typeof s.eligible!=='boolean'
+        ||s.buyMode!=null&&!['order','instant'].includes(s.buyMode)||s.sellMode!=null&&!['offer','instant'].includes(s.sellMode)
+        ||s.outcome!=null&&!['COMPLETED','RETIRED','LOSS','UNKNOWN','PIPELINE_FAILURE'].includes(s.outcome)
         ||s.forecast!=null&&!validForecast(s.forecast)
         ||s.expectedProfit!=null&&(!Number.isFinite(s.expectedProfit)||s.expectedProfit<=0)
         ||s.proceeds!=null&&(!Number.isFinite(s.proceeds)||s.proceeds<0)||s.profit!=null&&!Number.isFinite(s.profit))throw new Error('Invalid execution sample');
       return {eventId:s.eventId,engine:s.engine,inputId:s.inputId,outputId:s.outputId,inputUnits:s.inputUnits,batch:s.batch,
-        completedAt:s.completedAt,observedMillis:s.observedMillis,proceeds:s.proceeds??null,profit:s.profit??null,eligible:s.eligible,censored:s.censored===true,expectedProfit:s.expectedProfit??null,forecast:s.forecast?{cycleSeconds:s.forecast.cycleSeconds,inputPerDay:s.forecast.inputPerDay,outputPerDay:s.forecast.outputPerDay}:null};
+        buyMode:s.buyMode??'order',sellMode:s.sellMode??'offer',outcome:s.outcome??(s.eligible?'COMPLETED':s.censored?'RETIRED':'UNKNOWN'),completedAt:s.completedAt,observedMillis:s.observedMillis,proceeds:s.proceeds??null,profit:s.profit??null,eligible:s.eligible,censored:s.censored===true,expectedProfit:s.expectedProfit??null,forecast:s.forecast?{cycleSeconds:s.forecast.cycleSeconds,inputPerDay:s.forecast.inputPerDay,outputPerDay:s.forecast.outputPerDay}:null};
     });
     if(this.error)return;
     let changed=false;
@@ -52,6 +58,7 @@ export class ExecutionHistory {
         ||![s.inputUnits,s.batch].every(x=>Number.isInteger(x)&&x>=1&&x<=4096)
         ||!Number.isFinite(s.startedAt)||s.startedAt<=0||!Number.isFinite(s.observedAt)
         ||s.observedAt>this.now()+5000||s.observedAt<this.now()-15000
+        ||s.buyMode!=null&&!['order','instant'].includes(s.buyMode)||s.sellMode!=null&&!['offer','instant'].includes(s.sellMode)
         ||s.observedMillis!==s.observedAt-s.startedAt||s.observedMillis<0||s.observedMillis>DAY)
         throw new Error('Invalid active execution');
       return {...s};
@@ -62,25 +69,28 @@ export class ExecutionHistory {
   setCommunity(samples) {
     validateDataset({protocol:COMMUNITY_PROTOCOL,generatedAt:this.now(),samples},this.now());
     this.community=samples.map(s=>({eventId:s.id,contributor:s.contributor,community:true,engine:s.engine,inputId:s.inputId,outputId:s.outputId,
-      inputUnits:s.inputUnits,batch:s.batch,completedAt:s.completedAt,observedMillis:s.observedMillis,forecast:s.forecast,
+      inputUnits:s.inputUnits,batch:s.batch,buyMode:s.buyMode??'order',sellMode:s.sellMode??'offer',outcome:s.outcome??(s.eligible?'COMPLETED':s.censored?'RETIRED':'UNKNOWN'),completedAt:s.completedAt,observedMillis:s.observedMillis,forecast:s.forecast,
       eligible:true,proceeds:1,profit:s.profitRatio??0,expectedProfit:s.profitRatio===null?null:1}));
   }
   calibrate(row) {
     if(this.error)return;
     const matching=s=>s.engine===(row.kind==='BOOK'?'books':'general')&&s.inputId===row.inputId&&s.outputId===row.outputId
-      &&s.inputUnits/s.batch===row.inputUnits/row.batch;
+      &&s.inputUnits/s.batch===row.inputUnits/row.batch&&strategyMatches(s,row);
     const recent=[...this.rows.values()].filter(s=>s.eligible&&s.proceeds!=null&&s.profit!=null&&s.observedMillis>0&&s.observedMillis<=DAY
       &&s.completedAt>=this.now()-DAY&&matching(s));
-    const censored=[...this.rows.values()].filter(s=>s.censored&&!s.eligible&&s.observedMillis>=180000&&s.observedMillis<=DAY
+    const censored=[...this.rows.values()].filter(s=>s.censored&&!s.eligible&&s.observedMillis>=1000&&s.observedMillis<=DAY
       &&s.completedAt>=this.now()-DAY&&matching(s));
-    const pending=this.active.filter(s=>s.observedAt>=this.now()-15000&&s.observedMillis>=180000&&matching(s));
+    const pending=this.active.filter(s=>s.observedAt>=this.now()-15000&&s.observedMillis>0&&matching(s));
+    const failures=[...this.rows.values()].filter(s=>s.outcome==='PIPELINE_FAILURE'&&s.engine===(row.kind==='BOOK'?'books':'general')
+      &&strategyMatches(s,row)&&s.completedAt>=this.now()-DAY);
+    const losses=[...this.rows.values()].filter(s=>s.outcome==='LOSS'&&s.profit!=null&&s.expectedProfit>0&&s.completedAt>=this.now()-DAY&&matching(s));
     const normalized=s=>s.observedMillis/1000/s.batch*row.batch;
     const lower=[...censored,...pending].map(normalized).filter(t=>t>row.cycleSeconds);
     // Transfer ratios, never raw durations, from the same engine and similar two-sided volumes.
     // Volume is expressed per output unit so 16-input book recipes can be compared fairly.
     const v=row.volumeEvidence,recipe=row.inputUnits/row.batch;
     const peers=v&&v.inputEffectivePerDay>0&&v.outputEffectivePerDay>0?[...this.rows.values(),...this.community].filter(s=>
-      s.engine===(row.kind==='BOOK'?'books':'general')&&(!matching(s)||s.community)&&s.eligible&&s.profit!=null&&s.proceeds!=null
+      s.engine===(row.kind==='BOOK'?'books':'general')&&(!matching(s)||s.community)&&strategyMatches(s,row)&&s.eligible&&s.profit!=null&&s.proceeds!=null
       &&s.observedMillis>0&&s.observedMillis<=DAY&&s.completedAt>=this.now()-DAY&&validForecast(s.forecast)).map(s=>{
         const distance=Math.max(Math.abs(Math.log2((s.forecast.inputPerDay/(s.inputUnits/s.batch))/(v.inputEffectivePerDay/recipe))),
           Math.abs(Math.log2(s.forecast.outputPerDay/v.outputEffectivePerDay)));
@@ -102,37 +112,51 @@ export class ExecutionHistory {
     const sharedExpected=shared.filter(s=>s.expectedProfit>0);
     const sharedRealization=sharedExpected.length>=3?clamp(sharedExpected.reduce((sum,s)=>sum+s.profit*s.weight,0)/sharedExpected.reduce((sum,s)=>sum+s.expectedProfit*s.weight,0),0.1,1):1;
     const profitPrior=1+(sharedRealization-1)*Math.min(1,sharedExpected.reduce((sum,s)=>sum+s.weight,0)/10);
-    if(recent.length<3&&!lower.length&&shared.length<3)return;
+    if(!recent.length&&!lower.length&&shared.length<3&&!failures.length&&!losses.length)return;
     const observedTimes=recent.map(normalized).sort((a,b)=>a-b);
     const times=recent.map(s=>validForecast(s.forecast)?row.cycleSeconds*(s.observedMillis/1000)/s.forecast.cycleSeconds:normalized(s)).sort((a,b)=>a-b);
-    const observed=times.length?times[Math.ceil(times.length*0.75)-1]:row.cycleSeconds;
+    const weightedTimes=recent.map((s,i)=>({seconds:validForecast(s.forecast)?row.cycleSeconds*(s.observedMillis/1000)/s.forecast.cycleSeconds:normalized(s),weight:dayFreshness(s.completedAt,this.now())}));
+    const observed=times.length?weightedQuantile(weightedTimes,'seconds',0.75):row.cycleSeconds;
     row.marketCycleSeconds=row.cycleSeconds;
     const rawFactor=Math.max(0.1,Math.min(1.5,row.marketCycleSeconds/observed));
     // Downward evidence starts after three cycles; an improvement needs ten.
-    const strength=times.length>=3?timingStrength(rawFactor,times.length):0;
-    let factor=prior+(rawFactor-prior)*strength;
+    const freshness=recent.length?recent.reduce((n,s)=>n+dayFreshness(s.completedAt,this.now()),0)/recent.length:0;
+    const strength=dayWeight(recent.length)*freshness;
+    // Upside needs six confirmed cycles; downside responds from the first observation.
+    const personalFactor=rawFactor>1&&recent.length<6?1:rawFactor;
+    let factor=1/((1-strength)/prior+strength/personalFactor);
     const overdue=lower.length?Math.max(...lower):0;
     if(overdue) {
       const lowerFactor=Math.max(0.1,row.marketCycleSeconds/overdue);
       // Unfinished, continuously observed cycles supply duration lower bounds.
       factor=Math.min(factor,lowerFactor);
     }
+    // GUI failures affect engine/strategy reliability, never the market fill model.
+    const failureWeight=failures.reduce((n,s)=>n+dayFreshness(s.completedAt,this.now()),0);
+    const successes=[...this.rows.values()].filter(s=>s.eligible&&s.engine===(row.kind==='BOOK'?'books':'general')&&strategyMatches(s,row)&&s.completedAt>=this.now()-DAY);
+    const successWeight=successes.reduce((n,s)=>n+dayFreshness(s.completedAt,this.now()),0);
+    const reliability=1-0.7*failureWeight/Math.max(1,failureWeight+successWeight);
+    const marketTimingFactor=factor;
+    factor*=reliability;
     factor=Math.max(0.1,Math.min(1.5,factor));
     if(Number.isFinite(row.maxOutputsPerHour))factor=Math.min(factor,row.maxOutputsPerHour/(row.batch/row.marketCycleSeconds*3600));
     row.cycleSeconds=row.marketCycleSeconds/factor;
     row.outputsPerHour=row.batch/row.cycleSeconds*3600;
-    const expected=recent.filter(s=>s.expectedProfit>0);
-    const realizationRatio=expected.length>=3?Math.max(0.1,Math.min(1,expected.reduce((sum,s)=>sum+s.profit,0)/expected.reduce((sum,s)=>sum+s.expectedProfit,0))):1;
-    const realizationFactor=clamp(profitPrior+(realizationRatio-profitPrior)*(expected.length>=3?Math.min(1,expected.length/10):0),0.1,1);
+    const expected=[...recent,...losses].filter(s=>s.expectedProfit>0);
+    const realizationRatio=expected.length?clamp(expected.reduce((sum,s)=>sum+s.profit*dayFreshness(s.completedAt,this.now()),0)/expected.reduce((sum,s)=>sum+s.expectedProfit*dayFreshness(s.completedAt,this.now()),0),0.1,1):1;
+    const realizationFactor=clamp(profitPrior+(realizationRatio-profitPrior)*(dayWeight(expected.length)*(expected.length?expected.reduce((n,s)=>n+dayFreshness(s.completedAt,this.now()),0)/expected.length:0)),0.1,1);
     row.coinsPerHour=row.outputsPerHour*row.profitPerOutput*realizationFactor;
-    row.executionEvidence={samples:times.length,pendingSamples:pending.length,censoredSamples:censored.length,
+    const stalls=[...censored,...pending].filter(s=>normalized(s)>Math.max(row.marketCycleSeconds*2,120)&& (s.completedAt??s.observedAt)>=this.now()-15*60000);
+    if(stalls.length>=3)row.executionBlockedUntil=Math.max(...stalls.map(s=>(s.completedAt??s.observedAt)+5*60000));
+    row.executionEvidence={sameDayWeight:strength,lossSamples:losses.length,pipelineFailureSamples:failures.length,pipelineReliabilityFactor:reliability,marketTimingFactor,
+      strategy:`${row.buyMode??'order'}→${row.sellMode??'offer'}`,samples:times.length,pendingSamples:pending.length,censoredSamples:censored.length,
       p75ObservedSeconds:times.length?observedTimes[Math.ceil(observedTimes.length*0.75)-1]:Math.max(row.marketCycleSeconds,overdue),sharedSamples:shared.length>=3?shared.length:0,sharedProfitSamples:sharedExpected.length>=3?sharedExpected.length:0,
       sharedThroughputFactor:prior,sharedProfitRealizationFactor:profitPrior,
-      latestAt:Math.max(...shared.map(s=>s.completedAt),...recent.map(s=>s.completedAt),...censored.map(s=>s.completedAt),...pending.map(s=>s.observedAt)),
+      latestAt:Math.max(...failures.map(s=>s.completedAt),...losses.map(s=>s.completedAt),...shared.map(s=>s.completedAt),...recent.map(s=>s.completedAt),...censored.map(s=>s.completedAt),...pending.map(s=>s.observedAt)),
       throughputFactor:factor,profitRealizationFactor:realizationFactor,expectedProfitSamples:expected.length,marketCycleSeconds:row.marketCycleSeconds,
       marketCoinsPerHour:row.batch/row.marketCycleSeconds*3600*row.profitPerOutput,
       observedCoinsPerHour:recent.length?recent.reduce((sum,s)=>sum+s.profit,0)/recent.reduce((sum,s)=>sum+s.observedMillis,0)*3600000:0};
-    row.assumptions.push('shared forecast corrections from same-engine routes within 4× input and output daily volumes; per-route evidence gradually replaces the prior; overdue routes supply lower bounds only');
+    row.assumptions.push('same-day personal evidence weighs 30% for 1–2, 50% for 3–5 and 70% for 6+ cycles; full influence for 2h, fading by 24h; exact buy/sell strategy; unfinished and retired cycles bound duration; pipeline reliability is separate from market timing');
   }
   status(){return {forecastBacked:[...this.rows.values()].filter(s=>s.eligible&&validForecast(s.forecast)).length,censored:[...this.rows.values()].filter(s=>s.censored).length,pending:this.active.filter(s=>s.observedAt>=this.now()-15000).length,samples:this.rows.size,eligible:[...this.rows.values()].filter(s=>s.eligible).length,error:this.error};}
 }

@@ -187,7 +187,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const calibrated=rows.filter(row=>row.executionEvidence);
   rows.sort((a, b) => b.coinsPerHour - a.coinsPerHour || a.capitalUsed - b.capitalUsed || a.routeKey.localeCompare(b.routeKey));
   // Expose one winning strategy per product/combining route to avoid duplicate ownership.
-  const seen=new Set();const selected=rows.filter(row=>{const key=row.kind+':'+row.routeKey;if(seen.has(key))return false;seen.add(key);return true;});
+  const seen=new Set();const selected=rows.filter(row=>{if(row.executionBlockedUntil>now){skip('unsupported','recent-repeated-stalls',row.kind,row.routeKey,row.configured);return false;}const key=row.kind+':'+row.routeKey;if(seen.has(key))return false;seen.add(key);return true;});
   const report={ protocol: PROTOCOL, requestId: body.requestId, marketAt, dataAt, generatedAt: now,
     historyUsed, historyStatus, upstreamCommit: provenance.commit, counts, total: selected.length, rows: selected.slice(0, limit),
     filterReasons, deferred,

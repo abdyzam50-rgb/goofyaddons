@@ -6,7 +6,7 @@ trader source and guides live under `integrations/goofyaddons/`; existing save
 files retain their formats; active trading files now use per-profile folders. See [installation and migration](docs/GOOFYADDONS.md)
 and [completed architecture work](trading-core/README.md).
 
-Download the latest combined mod: [astar-client-0.2.128-BETA.jar](dist/astar-client-0.2.128-BETA.jar).
+Download the latest combined mod: [astar-client-0.2.129-BETA.jar](dist/astar-client-0.2.129-BETA.jar).
 
 Choose **All flips** in Macros → Mode while stopped to compare craft, book and general entries by estimated net coins/hour. Existing orders and sales keep being managed; new entries share capital and inventory limits. With automatic selection off, book and general entries use your configured presets; craft entries use the local craft ranking. With it on, they use calculator recommendations.
 
@@ -44,7 +44,7 @@ downloads Java 25 for the build if it isn't installed):
 .\gradlew.bat -p client build
 ```
 
-Put `client\build\libs\astar-client-0.2.128-BETA.jar` (with the trader and Mines map inside)
+Put `client\build\libs\astar-client-0.2.129-BETA.jar` (with the trader and Mines map inside)
 in your `.minecraft\mods` folder, next to Fabric API. On Linux or macOS use
 `./gradlew -p client build`. To try it without installing,
 `.\gradlew.bat -p client runClient` starts a development game with the mod.

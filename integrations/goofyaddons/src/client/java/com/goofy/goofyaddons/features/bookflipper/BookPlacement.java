@@ -189,13 +189,14 @@ final class BookPlacement {
                     book.getLevel(book.level()), book.getLevel(book.sellLevel()), submittedUnits, 1, submittedAt,
                     expectedProfit(ctx, book, submittedUnits, submittedPrice),
                     task.forecast());
+            ctx.accounting().executionStrategy(task.getProfitTradeId(),task.instaBuy?"instant":"order",task.instaSell?"instant":"offer");
         }
         task.setBookState(submittedNextState);
         submittedTask = null; submittedNextState = null;
         ctx.state(State.IDLE); ctx.clock().stop();
     }
 
-    private static Double expectedProfit(BookContext ctx, Book book, int units, double price) {
+    static Double expectedProfit(BookContext ctx, Book book, int units, double price) {
         var latest = ctx.services().latestQuotes(); var products = latest == null ? null : latest.getAsJsonObject("products");
         var output = products == null ? null : products.getAsJsonObject(book.getLevel(book.sellLevel()));
         double ask = output == null ? -1 : com.goofy.goofyaddons.features.market.BazaarQuotes.bestAsk(output);

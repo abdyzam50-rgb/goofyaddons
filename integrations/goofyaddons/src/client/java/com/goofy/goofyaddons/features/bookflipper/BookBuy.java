@@ -14,7 +14,7 @@ import java.util.List;
 final class BookBuy {
     private com.goofy.goofyaddons.features.production.BazaarInstantBuy instant;
     private Task instantTask;
-    private long signSubmittedAt;
+    private long signSubmittedAt,instantStartedAt;
     private int signRestarts;
 
     void reset() { instant=null;instantTask=null;signSubmittedAt = 0; signRestarts = 0; }
@@ -152,6 +152,7 @@ final class BookBuy {
             if(quote==null || !ctx.bookPriceAllowed(task,quote*1.03/units,false)){ctx.deferBookPurchase(task,"instant-buy-price-or-depth");return;}
             double limit=quote*1.03;
             if(!ctx.capital().resize("books",book.id(),Math.max(ctx.capital().cost("books",book.id()),limit),limit,ctx.services().purse())){ctx.deferBookPurchase(task,"insufficient-spendable-capital");return;}
+            instantStartedAt=ctx.now();
             instant=new com.goofy.goofyaddons.features.production.BazaarInstantBuy(book.getLevel(book.level()),book.getRomanLevel(book.level()),units,limit,reason->{
                 ctx.expose(book.id());task.recordPlacement(ctx.now());if(!ctx.checkpoint())throw new IllegalStateException("Book intent not saved");
             });
@@ -160,6 +161,9 @@ final class BookBuy {
         switch(result){
             case BOUGHT -> {
                 int bought=instant.amount();double cost=instant.spent();
+                ctx.accounting().beginExecution(task.getProfitTradeId(),"books",book.getLevel(book.level()),book.getLevel(book.sellLevel()),bought,1,instantStartedAt,
+                        BookPlacement.expectedProfit(ctx,book,bought,cost/bought),task.forecast());
+                ctx.accounting().executionStrategy(task.getProfitTradeId(),"instant",task.instaSell?"instant":"offer");
                 ctx.accounting().acquire(task.getProfitTradeId(),"books",book.name(),task.getProfitTradeId()+":instant-buy:"+ctx.now(),bought,cost);
                 if(task.assignBook(book,book.level(),0,bought)<0){ctx.safetyHalt("Instant book input assignment failed; inventory retained");return;}
                 task.setReservedUnitCost(Math.max(task.getReservedUnitCost(),cost/bought));ctx.capital().purchased("books",book.id());ctx.fundedHoldings(task);
