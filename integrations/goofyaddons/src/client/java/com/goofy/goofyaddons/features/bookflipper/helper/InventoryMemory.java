@@ -19,7 +19,10 @@ public final class InventoryMemory {
     public record Layout(Map<Integer,Item> previous, Map<Integer,Item> current, long observedAt, long changedAt) {
         public Layout { previous = Collections.unmodifiableMap(new TreeMap<>(previous)); current = Collections.unmodifiableMap(new TreeMap<>(current)); }
     }
-    private record Candidate(Map<Integer,Item> slots, int container, long since) {}
+    private record Candidate(Map<Integer,Item> slots, int container, long since,long settleMs) {}
+    private final java.util.function.IntSupplier settleDelay;
+    public InventoryMemory(){this(()->150);}
+    public InventoryMemory(java.util.function.IntSupplier settleDelay){this.settleDelay=java.util.Objects.requireNonNull(settleDelay);}
     private final Map<Integer,Layout> layouts = new TreeMap<>();
     private final Map<Integer,Candidate> candidates = new HashMap<>();
     private final Set<Integer> fresh = new HashSet<>();
@@ -74,10 +77,10 @@ public final class InventoryMemory {
     private void accept(int region, Map<Integer,Item> slots, int container, long now) {
         var candidate = candidates.get(region);
         if (candidate == null || candidate.container() != container || !candidate.slots().equals(slots)) {
-            candidates.put(region, new Candidate(Collections.unmodifiableMap(new TreeMap<>(slots)), container, now));
+            candidates.put(region, new Candidate(Collections.unmodifiableMap(new TreeMap<>(slots)), container, now,Math.max(50,settleDelay.getAsInt())));
             return;
         }
-        if (now - candidate.since() < 150) return;
+        if (now - candidate.since() < candidate.settleMs()) return;
         var last = layouts.get(region);
         boolean changed = last == null || !last.current().equals(slots);
         layouts.put(region, new Layout(last == null ? Map.of() : changed ? last.current() : last.previous(),

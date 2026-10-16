@@ -29,7 +29,8 @@ public final class AccountStorage {
     public static final String EXECUTION = "goofyaddons-execution.json";
     public static final String TRANSACTIONS = "goofyaddons-transactions.jsonl";
     public static final String PRODUCTION_JOBS = "goofyaddons-production-jobs.json";
-    public static final List<String> FILES = List.of(BOOK_ORDERS, GENERAL_ORDERS, CRAFT_ORDERS, PROFIT, EXECUTION, TRANSACTIONS, PRODUCTION_JOBS);
+    public static final String PRODUCTION_STORAGE = "goofyaddons-production-storage.json";
+    public static final List<String> FILES = List.of(BOOK_ORDERS, GENERAL_ORDERS, CRAFT_ORDERS, PROFIT, EXECUTION, TRANSACTIONS, PRODUCTION_JOBS, PRODUCTION_STORAGE);
 
     public static final AccountStorage INSTANCE = new AccountStorage(
             () -> net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir());
@@ -88,6 +89,14 @@ public final class AccountStorage {
     }
 
     public synchronized AccountScope pinned() { return pinned; }
+    /** Profile preferences are separate from legacy position adoption. */
+    public synchronized Path preferencesPath(String file) {
+        if(!java.util.Set.of("goofyaddons.json","goofyaddons-bazaar-access.json").contains(file))throw new IllegalArgumentException("Unknown profile preferences");
+        var scope=current();if(scope==null)return null;
+        if(pinned!=null && !pinned.equals(scope))throw new IllegalStateException("Restart Minecraft before loading a different trading profile");
+        return storage().directory(scope).resolve(file);
+    }
+
 
     /**
      * Prepares the current profile for trading and pins it. Returns null when trading may

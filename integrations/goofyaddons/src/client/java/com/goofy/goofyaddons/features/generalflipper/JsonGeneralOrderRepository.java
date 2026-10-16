@@ -26,8 +26,8 @@ final class JsonGeneralOrderRepository implements GeneralOrderRepository {
         var tree=GSON.toJsonTree(positions).getAsJsonArray();
         // Additive strategy fields do not rewrite legacy journals with meaningless defaults.
         for(var value:tree){var row=value.getAsJsonObject();
-            for(String field:List.of("instantBuy","instantSell","productionBuy","productionBasket","productionProceedsUnknown","completed"))if(row.has(field)&&!row.get(field).getAsBoolean())row.remove(field);
-            for(String field:List.of("maximumBuyPrice","minimumSellPrice","productionInventoryBefore","productionSoldUnits"))if(row.has(field)&&row.get(field).getAsDouble()==0)row.remove(field);
+            for(String field:List.of("instantBuy","instantSell","productionBuy","productionBasket","productionProceedsUnknown","completed","productionAwaitingStorage"))if(row.has(field)&&!row.get(field).getAsBoolean())row.remove(field);
+            for(String field:List.of("maximumBuyPrice","minimumSellPrice","productionInventoryBefore","productionSoldUnits","productionStoredUnits"))if(row.has(field)&&row.get(field).getAsDouble()==0)row.remove(field);
         }
         String json = GSON.toJson(tree);
         if (json.equals(persisted)) return;

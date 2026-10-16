@@ -59,9 +59,9 @@ final class GeneralOrderReview {
         }
         if (active.stage == Stage.PLANNED && !active.submitted) {
             if (buy >= 0 || sell >= 0 || inventory > 0) {
-                capital.release(OWNER, active.item.id());
-                ctx.positions().remove(active);
-                ctx.fail("Pre-existing order/inventory for " + active.item.name() + "; remove it or remove this item from the allowlist.");
+                String reason="Pre-existing order/inventory for " + active.item.name();
+                if(!services.productionOnly())ctx.skipUnownedConflict(reason);
+                else ctx.fail(reason+"; reconcile the retained craft position before retrying.");
                 return;
             }
             if (services.excludedProducts().contains(active.item.id())) {
@@ -89,6 +89,13 @@ final class GeneralOrderReview {
             trade.selling = true;
             ctx.actions().closeMenu();
             ctx.transition(Step.OPEN_PRODUCT);
+        } else if (active.stage == Stage.SELL_ORDER && ctx.claimedOutside() instanceof Double coins) {
+            // Claimed by hand while trading was stopped: the receipt names this offer's item,
+            // units and price, so record the sale rather than halting on its absence.
+            ctx.services().event("INFO", "order.sale_claimed_outside", java.util.Map.of("trade", active.tradeId == null ? "none" : active.tradeId,
+                    "item", active.item.id(), "units", active.quantity, "proceeds", coins));
+            if (!ctx.recordSale(active.quantity, coins)) return;
+            ctx.completePosition();
         } else if (active.stage == Stage.SELL_ORDER || active.cancelRequested) {
             ctx.fail("Tracked sell/cancel position is absent; ownership is uncertain. GeneralPosition retained for manual reconciliation.");
         } else if (ctx.now() - active.placedAt > 5000) {
@@ -111,7 +118,32 @@ final class GeneralOrderReview {
         trade.selling = false;
         trade.inventoryBefore = ctx.itemCount(active.item.id());
         trade.expectedClaim = claimable;
-        if (claimable > ctx.capacityFor(active.item.id())) {
+        int room = ctx.capacityFor(active.item.id());
+        if (claimable > room && active.productionBuy && ctx.services().productionStorage()) {
+            // A storage-backed craft claims what fits, stores it, then claims the rest of the
+            // same order. Less than a stack of room means storing comes first.
+            if (room < Math.min(claimable, 64)) {
+                active.productionAwaitingStorage = true;
+                if (!ctx.save()) return;
+                ctx.services().event("INFO", "order.claim_needs_storage", java.util.Map.of("trade", active.tradeId,
+                        "item", active.item.id(), "claimable", claimable, "room", room, "stored", active.productionStoredUnits));
+                ctx.actions().closeMenu();
+                ctx.finishWork();
+                return;
+            }
+            // The server fills the whole inventory, including the slots the engine keeps spare.
+            trade.expectedClaim = Math.min(claimable, ctx.roomFor(active.item.id()));
+            trade.partialClaim = true;
+            trade.partialCount = -1;
+            trade.receipt = false;
+            ctx.services().event("INFO", "order.partial_claim", java.util.Map.of("trade", active.tradeId,
+                    "item", active.item.id(), "claimable", claimable, "room", room, "stored", active.productionStoredUnits));
+            ctx.claim().arm(ctx, buy);
+            ctx.transition(Step.PARTIAL_CLAIM);
+            ctx.click(buy);
+            return;
+        }
+        if (claimable > room) {
             ctx.fail("Insufficient inventory space to claim the tracked buy order."); return;
         }
         trade.receipt = false;
@@ -144,7 +176,7 @@ final class GeneralOrderReview {
             ctx.actions().closeMenu();
             return;
         }
-        if (soldUnits >= 0 && ctx.shouldReprice(true) && (ctx.services().productionOnly() || active.reprices < settings.maxReprices) && ctx.freshQuotes()
+        if (soldUnits >= 0 && ctx.shouldReprice(true) && (ctx.services().productionOnly() || active.reprices < settings.maxReprices || active.holdingExpired(ctx.now(),settings.maxHoldingSeconds)) && ctx.freshQuotes()
                 && ctx.saleAllowed(ctx.currentAsk())) {
             ctx.services().event("INFO","order.sell_reprice",java.util.Map.of("trade",active.tradeId,"parent",active.productionParent==null?"none":active.productionParent,"oldPrice",active.sellPrice,"newPrice",ctx.currentAsk(),"remaining",active.quantity-soldUnits));
             trade.selling = true;

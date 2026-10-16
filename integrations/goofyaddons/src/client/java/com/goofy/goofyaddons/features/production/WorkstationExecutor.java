@@ -18,6 +18,7 @@ public final class WorkstationExecutor {
     private Double purseBefore;
     private double expectedCharge;
     private String failure;
+    private long loadingSince=-1;
     public String failure(){return failure;}
     public WorkstationExecutor(ProductionRecipe recipe,String jobId,ProductionJobs journal,ItemMetadata pet) {
         if(recipe.kind()==ProductionRecipe.Kind.CRAFT)throw new IllegalArgumentException("Crafting is not a timed workstation");
@@ -33,6 +34,11 @@ public final class WorkstationExecutor {
             var job=journal.find(jobId).orElseThrow();
             if(job.batches()!=1 || !job.account().equals(account) || !job.recipeKey().equals(recipe.key()))return block("Workstation job account/recipe changed");
             if(menu==null || !menu.cursorEmpty())return block("Workstation transaction requires a readable menu and empty cursor");
+            if(menu.loadingContents()) {
+                if(loadingSince<0)loadingSince=now;
+                return now-loadingSince>=15000?block("Workstation contents did not finish loading; transaction retained"):Result.WAITING;
+            }
+            loadingSince=-1;
             if(job.state()==ProductionJobs.State.PLANNED) {
                 String prerequisite=com.goofy.goofyaddons.features.access.RouteRequirements.craft(recipe.requirement(),skills,unlocks);
                 if(prerequisite!=null)return block(prerequisite);
@@ -89,7 +95,10 @@ public final class WorkstationExecutor {
                 return Result.WAITING;
             }
             return block("Workstation job is not in an executable state: "+job.state());
-        }catch(Exception failed){failure="Workstation journal/evidence failed; no replay authorized";return Result.BLOCKED;}
+        }catch(Exception failed){
+            com.goofy.goofyaddons.diagnostics.Diagnostics.failure("production.workstation_failed",failed);
+            failure="Workstation journal/evidence failed ("+failed.getClass().getSimpleName()+"); no replay authorized";return Result.BLOCKED;
+        }
     }
     private Result review(ProductionJobs.Job job,String reason)throws java.io.IOException {journal.put(job.withState(ProductionJobs.State.REVIEW,reason));return block(reason);}
     private Result block(String reason){failure=reason;return Result.BLOCKED;}

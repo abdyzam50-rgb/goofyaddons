@@ -1,3 +1,6 @@
+> Historical standalone documentation. For the current combined mod, use the
+> [command reference](../../../docs/COMMANDS.md). Older slash commands, keybinds and storage paths below may differ.
+
 # Auction House navigation and BIN listings
 
 Mod **1.3.57-BETA** adds an opt-in listing operation for a stack already in

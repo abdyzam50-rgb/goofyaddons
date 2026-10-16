@@ -66,6 +66,20 @@ class GeneralFlipperDrivingTest {
         assertSame(active,activeField.get(engine));assertFalse(active.submitted);
         assertEquals(GeneralFlipper.Step.OPEN_PRODUCT,stepField.get(engine));
     }
+    @Test void exactSearchIdentityCanOpenWhileItsAdvisoryPriceIsLoading()throws Exception {
+        var world=new FakeWorld().showing(menu("Bazaar ➜ \"L.A.S.R.'s Eye\"",54,List.of(
+            SlotView.named(11,"L.A.S.R.'s Eye",List.of("Epic commodity","Loading...","Click to view details!")))));
+        var actions=new RecordingActions();var engine=engine(world,actions);
+        var active=new GeneralPosition();active.item=new GeneralItem("GIANT_FRAGMENT_LASER","L.A.S.R.'s Eye");
+        active.quantity=19;active.tradeId="loading-eye";active.stage=GeneralPosition.Stage.PLANNED;
+        var owner=GeneralFlipper.class.getDeclaredField("active");owner.setAccessible(true);owner.set(engine,active);
+        var state=GeneralFlipper.class.getDeclaredField("step");state.setAccessible(true);state.set(engine,GeneralFlipper.Step.PRODUCT);
+        var since=GeneralFlipper.class.getDeclaredField("stepSince");since.setAccessible(true);since.setLong(engine,world.now());
+        actions.clear();engine.onTick();
+        assertEquals(List.of("click:11"),actions.serverEffects());assertFalse(active.submitted);
+        world.advance(100);engine.onTick();
+        assertEquals(1,actions.serverEffects().size(),"Do not repeat unacknowledged navigation");
+    }
 
     @Test void bedrockAfterSubmissionStaysInVerificationRatherThanRestartingPurchase()throws Exception {
         var icon=new SlotView(10,false,10,false,"Create Buy Order","Create Buy Order",List.of(),null,null,1,1,

@@ -10,13 +10,20 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProductionRunTest {
-    @Test void productionAcceptsFullSixtyFourBatchCraftPlanAndRejectsAboveTheExecutorLimit()throws Exception {
+    @Test void anotherCompactorOwnerPreventsFilterClearingOrCrafting()throws Exception {
+        var env=new Env();env.occupied=Set.of(CompactorProduction.LOCK);env.buying=true;
+        var catalog=catalog();var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),2,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.INSTANT_INSTANT);
+        assertEquals(Step.PENDING,run.tick(true,1000));assertTrue(run.reason().contains("Personal Compactor"));
+        assertTrue(env.actions.serverEffects().isEmpty());assertTrue(env.orders.isEmpty());assertTrue(env.crafts.isEmpty());
+    }
+
+    @Test void productionPreservesSixtyFourBatchPlanAndRejectsAboveTheRunLimit()throws Exception {
         var env=new Env();var catalog=catalog();var recipe=catalog.forOutput("OUTPUT").getFirst();
         var run=ProductionRun.startCraft(env,catalog,recipe,64,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
         assertEquals(64,run.outputUnits());assertEquals(64,env.jobs.find(run.jobId()).orElseThrow().batches());
         env.buying=true;assertEquals(Step.PENDING,run.tick(true,1000));assertEquals(List.of("BUY:INPUT:128"),env.orders);
         int jobs=env.jobs.all().size();
-        assertThrows(IllegalArgumentException.class,()->ProductionRun.startCraft(env,catalog,recipe,65,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startCraft(env,catalog,recipe,1025,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER));
         assertEquals(jobs,env.jobs.all().size(),"Rejected quantities must not create a parent or issue actions");
         assertTrue(env.actions.serverEffects().isEmpty());
     }
@@ -156,9 +163,12 @@ class ProductionRunTest {
         Set<String> occupied=Set.of(),unquoted=Set.of();
         com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result orderResult;
         final List<String> orders=new ArrayList<>();int orderAcknowledgements;
-        public Double orderBuyCost(String id,int units){return units*50.0;}
+        double orderUnit=50;final List<double[]> orderPrices=new ArrayList<>();
+        public Double orderBuyCost(String id,int units){return units*orderUnit;}
+        Set<String> unorderable=Set.of();
+        public boolean orderable(String id){return !unorderable.contains(id);}
         public Double offerSellValue(String id,int units){return units*2000.0;}
-        public boolean queueOrder(String id,int units,double price,boolean buy,double limit){orders.add((buy?"BUY":"SELL")+":"+id+":"+units);return true;}
+        public boolean queueOrder(String id,int units,double price,boolean buy,double limit){orders.add((buy?"BUY":"SELL")+":"+id+":"+units);orderPrices.add(new double[]{price,limit});return true;}
         public boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){
             basket.forEach(o->queueOrder(o.product(),o.units(),o.price(),true,o.limit()));return true;
         }
@@ -378,6 +388,29 @@ class ProductionRunTest {
         assertEquals(1,env.actions.serverEffects().stream().filter(e->e.startsWith("sign:")).count());
     }
 
+    @Test void verifiedInstantPurchaseOpensNextIngredientWithoutAnIdleHandoff()throws Exception {
+        var env=new Env();env.buying=true;
+        var ingredients=new LinkedHashMap<String,Integer>();ingredients.put("INPUT_A",2);ingredients.put("INPUT_B",3);
+        var recipe=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,ingredients,
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT_A",2),new ProductionRecipe.Ingredient("INPUT_B",3),null,null,null,null,null,null,null),0,0,"",null);
+        var run=ProductionRun.startCraft(env,new RecipeCatalog(List.of(recipe),Map.of()),recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.INSTANT_OFFER);
+        run.tick(true,1000);run.tick(true,1001);
+        String first=env.actions.serverEffects().getFirst().substring("command:bz ".length());
+        int units=ingredients.get(first);String second=first.equals("INPUT_A")?"INPUT_B":"INPUT_A";
+        env.menu=menu(first,item(13,first,1),SlotView.named(10,"Buy Instantly",List.of(first,"Price per unit: 100 coins")));
+        run.tick(true,1002);
+        env.menu=menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of()));run.tick(true,1003);
+        env.sign=true;run.tick(true,1004);env.sign=false;
+        env.menu=menu(first,item(54,first,units));
+        run.tick(true,1005);
+        assertFalse(env.actions.serverEffects().contains("command:bz "+second),"Inventory alone cannot authorize another purchase");
+        env.purse-=units*100;run.tick(true,1006);
+        assertEquals("command:bz "+second,env.actions.serverEffects().getLast(),"Next GUI opens on the receipt tick");
+        assertFalse(env.actions.performed().contains("close"),"The next Bazaar command replaces the old GUI");
+        assertEquals(units*100,run.spent());
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.startsWith("sign:")).count());
+    }
+
     @Test void failedCraftSendsTheRunToReview()throws Exception {
         var env=new Env();env.menu=ProductionRunTest.menu(null,item(54,"INPUT",2));
         var run=ProductionRun.start(env,catalog(),"OUTPUT",ProductionRecipe.Kind.CRAFT,1,-1,5000,0);
@@ -581,6 +614,20 @@ class ProductionRunTest {
         assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state());
     }
 
+    @Test void cursorItemWaitsBeforeSaleAndPriceFloorReasonSurvivesRetryCooldown()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"OUTPUT",2));
+        var run=ProductionRun.startTrade(env,catalog(),"OUTPUT",2,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_INSTANT);
+        run.tick(true,1000);assertEquals(Stage.SELL,run.stage());
+        var held=menu("Bazaar",item(54,"OUTPUT",1));
+        env.menu=new MenuSnapshot(held.containerId(),held.title(),false,held.slots(),item(-1,"OUTPUT",1));
+        assertEquals(Step.PENDING,run.tick(true,1100));assertTrue(run.reason().contains("cursor"));
+        assertTrue(env.actions.performed().isEmpty());assertEquals(Stage.SELL,run.stage());
+        env.menu=menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 400 coins")),item(54,"OUTPUT",2));
+        assertEquals(Step.BLOCKED,run.tick(true,1200));assertTrue(run.reason().contains("below"));
+        run.tick(true,1300);assertTrue(run.reason().contains("below"));assertTrue(run.reason().contains("rechecking"));
+        assertTrue(env.confirmedSales.isEmpty());
+    }
+
     @Test void automaticBazaarRunBuysCraftsAndSellsWithActualReceiptBasisExactlyOnce()throws Exception {
         var env=new Env();env.buying=true;var recipe=catalog().forOutput("OUTPUT").getFirst();
         var run=ProductionRun.startCraft(env,catalog(),recipe,1,ProductionRun.SELL_ON_BAZAAR,0);
@@ -634,6 +681,29 @@ class ProductionRunTest {
         assertEquals(List.of("click:11"),actions.serverEffects());
     }
 
+    @Test void exactInstantSaleWarningWaitsForCountdownAndConfirmsOnlyOnce() {
+        var actions=new RecordingActions();var sale=new BazaarInstantSell("OUTPUT","Output",10,970,1030,r->{});
+        sale.tick(menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 100 coins")),item(54,"OUTPUT",10)),actions,5000,1000);
+        var lore=List.of("Output","for much lower than the average","insta-selling price!","Matched Amount: 10x","Per unit: 100 coins","Can sell in 5s");
+        var countdown=menu("Confirm",SlotView.named(13,"WARNING",lore),item(54,"OUTPUT",10));
+        assertEquals(BazaarInstantSell.Result.WAITING,sale.tick(countdown,actions,5000,1100));
+        assertEquals(List.of("click:11"),actions.serverEffects());
+        var ready=new ArrayList<>(lore);ready.set(ready.size()-1,"Click to sell!");
+        var confirmation=menu("Confirm",SlotView.named(13,"WARNING",ready),item(54,"OUTPUT",10));
+        sale.tick(confirmation,actions,5000,6100);sale.tick(confirmation,actions,5000,6200);
+        assertEquals(List.of("click:11","click:13"),actions.serverEffects());
+        assertEquals(0,sale.proceeds());
+        assertEquals(BazaarInstantSell.Result.SOLD,sale.tick(menu("Confirm"),actions,6000,6300));
+        assertEquals(1000,sale.proceeds());
+    }
+
+    @Test void instantSaleWarningOutsideTheAuthorizedFloorIsNeverClicked() {
+        var actions=new RecordingActions();var sale=new BazaarInstantSell("OUTPUT","Output",10,970,1030,r->{});
+        sale.tick(menu("Output",item(13,"OUTPUT",1),SlotView.named(11,"Sell Instantly",List.of("Output","Price per unit: 100 coins")),item(54,"OUTPUT",10)),actions,5000,1000);
+        assertEquals(BazaarInstantSell.Result.UNCERTAIN,sale.tick(menu("Confirm",SlotView.named(13,"WARNING",List.of("Output","for much lower than the average","insta-selling price!","Matched Amount: 10x","Per unit: 50 coins","Click to sell!")),item(54,"OUTPUT",10)),actions,5000,1100));
+        assertEquals(List.of("click:11"),actions.serverEffects());
+    }
+
     @Test void buyOrdersHandOffVerifiedInputsToCraftThenOfferSettlementRecordsProfitOnlyAfterClaim()throws Exception {
         var env=new Env();env.buying=true;var catalog=catalog();var recipe=catalog.forOutput("OUTPUT").getFirst();
         var run=ProductionRun.startCraft(env,catalog,recipe,1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_OFFER);
@@ -670,6 +740,23 @@ class ProductionRunTest {
             assertEquals(List.of("BUY:INPUT:2","BUY:INPUT:"+(2-filled)),env.orders);
             assertEquals(filled*50,env.jobs.find(run.jobId()).orElseThrow().costBasis());
         }
+    }
+
+    @Test void aCheapIngredientOrderMayBidTheGuisTenthOfACoinAboveTheTopOrder()throws Exception {
+        var env=new Env();env.buying=true;env.orderUnit=1.0;var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);assertEquals(List.of("BUY:INPUT:2"),env.orders);
+        assertEquals(1.0,env.orderPrices.getFirst()[0],1e-9);
+        assertTrue(env.orderPrices.getFirst()[1]>=1.1,"Ceiling "+env.orderPrices.getFirst()[1]+" must allow the GUI's 1.1 bid");
+        assertTrue(env.orderPrices.getFirst()[1]<1.11);
+    }
+
+    @Test void anInputWithoutAFillableBidIsInstantBoughtInsteadOfOrdered()throws Exception {
+        var env=new Env();env.buying=true;env.unorderable=Set.of("INPUT");var catalog=catalog();
+        var run=ProductionRun.startCraft(env,catalog,catalog.forOutput("OUTPUT").getFirst(),1,ProductionRun.SELL_ON_BAZAAR,0,BazaarStrategy.ORDER_INSTANT);
+        assertEquals(Step.PENDING,run.tick(true,1000));
+        assertTrue(env.orders.isEmpty(),"No buy order for an input whose bid never fills: "+env.orders);
+        assertTrue(run.reason().contains("Buying"),run.reason());
     }
 
     @Test void verifiedEmptyCancellationCanRetireAStaleBudgetWithoutReview()throws Exception {
@@ -768,5 +855,83 @@ class ProductionRunTest {
         env.menu=menu(null,item(54,"INPUT",1));run.tick(true,1100);
         assertTrue(run.canExpandProcurementBudget());assertEquals(50,run.spent());
         run.tick(true,1200);assertFalse(run.canExpandProcurementBudget(),"A new queued order must retain its original ceiling");
+    }
+
+    // ---- Bazaar trade tests ---------------------------------------------------------------
+    static final String COMPACTOR="DWARVEN_COMPACTOR";
+    @Test void dwarvenCompactorTradeTestInstantBuysOneThenInstantSellsItWithoutCrafting()throws Exception {
+        var catalog=RecipeCatalog.instance();assertTrue(catalog.unstackable(COMPACTOR),"Dwarven Super Compactor takes a slot per unit");
+        var env=new Env();env.buying=true;
+        var run=ProductionRun.startTrade(env,catalog,COMPACTOR,1,ProductionRun.TradePart.BOTH,BazaarStrategy.INSTANT_INSTANT);
+        assertTrue(run.isTradeTest());assertEquals(Set.of(COMPACTOR),run.lockedProducts());
+        assertEquals("run:trade:"+COMPACTOR,env.jobs.find(run.jobId()).orElseThrow().recipeKey());
+        run.tick(true,1000);run.tick(true,1100);
+        assertTrue(env.actions.serverEffects().contains("command:bz "+COMPACTOR),env.actions.serverEffects().toString());
+        env.menu=menu(COMPACTOR,item(13,COMPACTOR,1),SlotView.named(10,"Buy Instantly",List.of(COMPACTOR,"Price per unit: 100 coins")));
+        run.tick(true,1200);assertTrue(env.actions.serverEffects().contains("click:10"));
+        env.menu=menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of()),
+            SlotView.named(10,"Buy only one!",List.of(COMPACTOR,"","Amount: 1x","","Price: 100 coins")));
+        run.tick(true,1300);
+        assertEquals(ProductionJobs.State.BUYING,env.jobs.find(run.jobId()).orElseThrow().state(),"intent saved before the preset click");
+        env.menu=menu(null,item(54,COMPACTOR,1));env.purse=9900;run.tick(true,1400);
+        assertEquals(100,run.spent(),0.001);
+        assertEquals(Stage.PROCESS,run.stage(),"Receipt advances procurement immediately");
+        run.tick(true,1500);assertEquals(Stage.SELL,run.stage());
+        run.tick(false,1600);assertEquals(Stage.SELL,run.stage());
+        assertTrue(env.crafts.isEmpty(),"A trade test never crafts");assertTrue(env.orders.isEmpty());
+        assertTrue(env.actions.performed().stream().anyMatch(m->m.startsWith("message:Trade test: bought 1 ")),env.actions.performed().toString());
+        assertTrue(run.wantsMenu());run.tick(true,1700);
+        env.menu=menu(COMPACTOR,item(13,COMPACTOR,1),SlotView.named(11,"Sell Instantly",List.of(COMPACTOR,"Price per unit: 990 coins")),item(54,COMPACTOR,1));
+        run.tick(true,1800);assertTrue(env.actions.serverEffects().contains("click:11"));
+        env.menu=menu(null);env.purse+=978;
+        assertEquals(Step.DONE,run.tick(true,1900));run.tick(true,2000);
+        assertEquals(ProductionJobs.State.DONE,env.jobs.find(run.jobId()).orElseThrow().state());
+        assertEquals(1,env.actions.serverEffects().stream().filter(e->e.equals("click:11")).count());
+        assertTrue(env.confirmedSales.isEmpty() && env.confirmedCosts.isEmpty(),"Test trades stay out of the craft profit ledger");
+        assertTrue(env.actions.performed().stream().anyMatch(m->m.startsWith("message:Trade test: sold 1 ")&&m.contains("bought for 100.0, result 878.0")),env.actions.performed().toString());
+    }
+    @Test void tradeTestBuyOnlyPlacesTheBuyOrderItWasToldToAndKeepsTheUnits()throws Exception {
+        var env=new Env();env.buying=true;env.unorderable=Set.of("INPUT");
+        var run=ProductionRun.startTrade(env,catalog(),"INPUT",5,ProductionRun.TradePart.BUY,BazaarStrategy.ORDER_INSTANT);
+        run.tick(true,1000);assertEquals(List.of("BUY:INPUT:5"),env.orders,"The player's buy-order choice is honoured even with a weak bid");
+        env.menu=menu(null,item(54,"INPUT",5));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,5,250,null,"claimed");
+        run.tick(true,1100);assertEquals(250,run.spent());
+        run.tick(true,1200);run.tick(false,1300);
+        assertEquals(Step.DONE,run.tick(false,1400));
+        assertEquals(List.of("BUY:INPUT:5"),env.orders,"Buy-only never sells");assertTrue(env.crafts.isEmpty());
+        assertEquals(ProductionJobs.State.DONE,env.jobs.find(run.jobId()).orElseThrow().state());
+    }
+    @Test void tradeTestSellOnlyOffersEveryHeldUnitAndReportsTheProceeds()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"OUTPUT",3));
+        var run=ProductionRun.startTrade(env,catalog(),"OUTPUT",0,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_OFFER);
+        assertEquals(3,run.outputUnits());assertEquals(Stage.PROCESS,run.stage());
+        run.tick(false,1000);assertEquals(Stage.SELL,run.stage());
+        run.tick(true,1100);assertEquals(List.of("SELL:OUTPUT:3"),env.orders);
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,3,0,5900.0,"claimed");
+        assertEquals(Step.DONE,run.tick(true,1200));
+        assertTrue(env.confirmedSales.isEmpty());
+        assertTrue(env.actions.performed().stream().anyMatch(m->m.startsWith("message:Trade test: sold 3 ")&&m.contains("sell offer")),env.actions.performed().toString());
+    }
+    @Test void tradeTestRefusesHeldUnitsForABuyAndSellNothingToSellOrMoreThanFits()throws Exception {
+        var held=new Env();held.menu=menu(null,item(54,"OUTPUT",1));
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(held,catalog(),"OUTPUT",1,ProductionRun.TradePart.BOTH,BazaarStrategy.INSTANT_INSTANT));
+        var empty=new Env();
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(empty,catalog(),"OUTPUT",0,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_INSTANT));
+        var tooMany=assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(empty,RecipeCatalog.instance(),COMPACTOR,37,ProductionRun.TradePart.BUY,BazaarStrategy.INSTANT_INSTANT));
+        assertTrue(tooMany.getMessage().contains("37 free inventory slots"),tooMany.getMessage());
+        var occupied=new Env();occupied.occupied=Set.of("OUTPUT");
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.startTrade(occupied,catalog(),"OUTPUT",1,ProductionRun.TradePart.BUY,BazaarStrategy.INSTANT_INSTANT));
+        assertTrue(empty.jobs.all().isEmpty(),"A refused test journals nothing");
+    }
+    @Test void stoppedTradeTestSellOfferResumesWithoutBuyingAgain()throws Exception {
+        var env=new Env();env.menu=menu(null,item(54,"OUTPUT",2));
+        var original=ProductionRun.startTrade(env,catalog(),"OUTPUT",0,ProductionRun.TradePart.SELL,BazaarStrategy.INSTANT_OFFER);
+        var job=env.jobs.find(original.jobId()).orElseThrow().withState(ProductionJobs.State.REVIEW,"Production stopped; inspect inventory");env.jobs.put(job);
+        var resumed=ProductionRun.resumeSale(env,catalog(),job,"OUTPUT",2);
+        assertEquals(Stage.SELL,resumed.stage());assertTrue(resumed.isTradeTest());
+        assertThrows(IllegalArgumentException.class,()->ProductionRun.resumeSale(env,catalog(),job,"OUTPUT",3));
+        env.orderResult=new com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.Result(true,false,2,0,3900.0,"Verified sale proceeds");
+        assertEquals(Step.DONE,resumed.tick(true,1000));assertTrue(env.orders.isEmpty());assertTrue(env.confirmedSales.isEmpty());
     }
 }

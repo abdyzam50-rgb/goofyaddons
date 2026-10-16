@@ -28,6 +28,41 @@ class BookCombinerTest {
         task.setBookState(Task.BookState.COMBINE);
         return task;
     }
+    @Test void inputSlotArrivingBeforeInventoryRemovalWaitsWithoutRepeatingEitherMove() {
+        var task=task(2);var combine=new BookCombiner();var actions=new RecordingActions();
+        combine.tick(task,menu(true,book(81,1,true),book(82,1,true)),actions,1000);
+        var overlap=menu(true,book(29,1,false),book(81,1,true),book(82,1,true));
+        actions.clear();
+        assertEquals(BookCombiner.Result.WAITING,combine.tick(task,overlap,actions,1100));
+        assertEquals(BookCombiner.Result.WAITING,combine.tick(task,overlap,actions,1500));
+        assertTrue(actions.serverEffects().isEmpty());assertNull(combine.failure());
+        combine.tick(task,menu(true,book(29,1,false),book(82,1,true)),actions,1600);
+        assertEquals(List.of("shiftclick:82"),actions.serverEffects());assertEquals("SECOND_INPUT",combine.progress());
+    }
+    @Test void secondInputPacketOverlapWithExistingHigherBookDoesNotInventAnExtraInput() {
+        var task=task(2);task.bookList.add(new BookList(route,2,0));
+        var combine=new BookCombiner();var actions=new RecordingActions();
+        combine.tick(task,menu(true,book(81,1,true),book(82,1,true),book(83,2,true)),actions,1000);
+        combine.tick(task,menu(true,book(29,1,false),book(82,1,true),book(83,2,true)),actions,1100);
+        var overlap=menu(true,book(29,1,false),book(33,1,false),book(82,1,true),book(83,2,true));
+        actions.clear();
+        assertEquals(BookCombiner.Result.WAITING,combine.tick(task,overlap,actions,1200));
+        assertTrue(actions.serverEffects().isEmpty());assertEquals(3,task.bookList.size());
+        var ready=menu(true,book(29,1,false),book(33,1,false),book(13,2,false),book(83,2,true));
+        combine.tick(task,ready,actions,1400);assertEquals(List.of("click:22"),actions.serverEffects());
+        assertEquals(BookCombiner.Result.MERGED,combine.tick(task,menu(true,book(81,2,true),book(83,2,true)),actions,1600));
+        assertEquals(List.of(2,2),task.bookList.stream().map(b->b.level).toList());assertNull(combine.failure());
+    }
+    @Test void persistentExtraBooksStillBlockWithoutChangingOwnershipOrSubmittingACombine() {
+        var task=task(2);var combine=new BookCombiner();var actions=new RecordingActions();
+        combine.tick(task,menu(true,book(81,1,true),book(82,1,true)),actions,1000);
+        var extra=menu(true,book(29,1,false),book(81,1,true),book(82,1,true));actions.clear();
+        assertEquals(BookCombiner.Result.WAITING,combine.tick(task,extra,actions,1100));
+        assertEquals(BookCombiner.Result.BLOCKED,combine.tick(task,extra,actions,3100));
+        assertEquals(2,task.bookList.size());assertTrue(actions.serverEffects().isEmpty());
+        assertTrue(combine.failure().contains("updates settled"));
+    }
+
     @Test void combineSkillControlBlocksSubmissionWithoutLosingInputsAndAllowsKnownLevel() {
         for(int skill:new int[]{20,30}) {
             var task=task(2);var combine=new BookCombiner();var actions=new RecordingActions();
@@ -92,6 +127,7 @@ class BookCombinerTest {
         assertEquals(BookCombiner.Result.MERGED,combine.tick(task,menu(true,book(54,2,true)),actions,3500));
         assertEquals(1,task.bookList.size());
         assertEquals(2,task.bookList.getFirst().level);
+
     }
 
     @Test void returnedInputsWithAStaleResultDisplayCannotAuthorizeCollection() {
@@ -151,6 +187,15 @@ class BookCombinerTest {
         assertEquals(BookCombiner.Result.MERGED,combine.tick(task,menu(true,book(54,2,true)),actions,6500));
         assertTrue(actions.serverEffects().isEmpty());assertEquals(1,task.bookList.size());
         assertEquals(2,task.bookList.getFirst().level);
+        var next=task(2);
+        combine.tick(next,menu(true,book(54,1,true),book(55,1,true)),actions,7000);
+        combine.tick(next,menu(true,book(29,1,false),book(55,1,true)),actions,7100);
+        combine.tick(next,menu(true,book(29,1,false),book(33,1,false),book(13,2,false)),actions,7200);
+        actions.clear();combine.tick(next,unclaimed,actions,7300);
+        assertTrue(actions.serverEffects().isEmpty(),"A rejected claim teaches later merges to avoid the server cooldown");
+        combine.tick(next,unclaimed,actions,8200);
+        assertEquals(List.of("click:22"),actions.serverEffects());
+        assertEquals(2,next.bookList.size(),"Claim submission is not a receipt");
     }
 
     @Test void successDuringSlowdownWaitAcknowledgesWithoutAnyRetry() {

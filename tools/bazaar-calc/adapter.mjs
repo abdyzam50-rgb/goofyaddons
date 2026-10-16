@@ -27,7 +27,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const skills=c.accountSkills??{};
   if(!object(skills)||Object.values(skills).some(v=>!Number.isInteger(v)||v<0||v>60))throw new Error('Invalid account skills');
   const marketAt = finite(root.lastUpdated, now - 60000, now + 5000, 'market timestamp');
-  if (!['BOOKS', 'GENERAL', 'BOTH'].includes(c.mode)) throw new Error('Invalid trading mode');
+  if (!['BOOKS', 'GENERAL', 'BOTH', 'ALL'].includes(c.mode)) throw new Error('Invalid trading mode');
   const coins = finite(c.availableCapital, 0, 1e13, 'capital');
   const capacity = integer(c.inventoryCapacity, 0, 4096, 'inventory capacity');
   const limit = integer(c.maxRecommendations, 1, 50, 'recommendation limit');
@@ -187,7 +187,7 @@ export function recommend(body, history, provenance, now = Date.now(), execution
   const calibrated=rows.filter(row=>row.executionEvidence);
   rows.sort((a, b) => b.coinsPerHour - a.coinsPerHour || a.capitalUsed - b.capitalUsed || a.routeKey.localeCompare(b.routeKey));
   // Expose one winning strategy per product/combining route to avoid duplicate ownership.
-  const seen=new Set();const selected=rows.filter(row=>{const key=row.kind+':'+row.routeKey;if(seen.has(key))return false;seen.add(key);return true;});
+  const seen=new Set();const selected=rows.filter(row=>{if(row.executionBlockedUntil>now){skip('unsupported','recent-repeated-stalls',row.kind,row.routeKey,row.configured);return false;}const key=row.kind+':'+row.routeKey;if(seen.has(key))return false;seen.add(key);return true;});
   const report={ protocol: PROTOCOL, requestId: body.requestId, marketAt, dataAt, generatedAt: now,
     historyUsed, historyStatus, upstreamCommit: provenance.commit, counts, total: selected.length, rows: selected.slice(0, limit),
     filterReasons, deferred,

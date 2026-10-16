@@ -31,6 +31,20 @@ class DiagnosticLogTest {
             assertDoesNotThrow(()->JsonParser.parseString(snapshot));
         }
     }
+    @Test void exportIncludesAccountJournalsRedacted() throws Exception {
+        var log=new DiagnosticLog(directory,1000,1);
+        var orders=directory.resolve("craft-orders.json");
+        Files.writeString(orders,"[{\"item\":{\"id\":\"PRECURSOR_APPARATUS\"},\"quantity\":6,\"note\":\"api_key=abc123\"}]");
+        var broken=directory.resolve("jobs.json");Files.writeString(broken,"{not json");
+        try(var zip=new ZipFile(log.export(Map.of(),Map.of("goofyaddons-craft-orders.json",orders,
+                "goofyaddons-production-jobs.json",broken,"goofyaddons-book-orders.json",directory.resolve("missing.json"))).toFile())) {
+            String craft=new String(zip.getInputStream(zip.getEntry("account/goofyaddons-craft-orders.json")).readAllBytes());
+            assertTrue(craft.contains("PRECURSOR_APPARATUS"));assertFalse(craft.contains("abc123"));
+            String jobs=new String(zip.getInputStream(zip.getEntry("account/goofyaddons-production-jobs.json")).readAllBytes());
+            assertTrue(jobs.contains("unreadable"));
+            assertNull(zip.getEntry("account/goofyaddons-book-orders.json"));
+        }
+    }
     @Test void rawTooltipEvidenceRedactsPlayerAndVendorLines() {
         String text=DiagnosticLog.redact("Order amount: 32x\nBy: [MVP+] privateplayer\n- 2x [VIP+] vendorname 3m ago");
         assertFalse(text.contains("privateplayer"));assertFalse(text.contains("vendorname"));
@@ -61,6 +75,24 @@ class DiagnosticLogTest {
             String text=new String(zip.getInputStream(entry).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
             assertTrue(text.contains("Personal Compactor"));assertFalse(text.contains("private-value"));
             assertNotNull(zip.getEntry("snapshot.json"));
+        }
+    }
+
+    @Test void exportWritesExtrasOnceAndKeepsTheNewestLogsWithinItsBudget() throws Exception {
+        var log=new DiagnosticLog(directory,DiagnosticLog.EXPORT_LOG_BUDGET/2+1000,4);
+        String big="x".repeat(64*1024);
+        for(int i=0;i<200;i++)log.append("INFO","heartbeat",Map.of("index",i,"padding",big));
+        var menu=Map.of("title","Craft Item");
+        try(var zip=new ZipFile(log.export(Map.of("currentMenu",menu,"status","RUNNING"),Map.of(),Map.of("chat",List.of("Your inventory is full!"),"config",Map.of("apiKey","secret-value","minActionDelay",80))).toFile())) {
+            String snapshot=new String(zip.getInputStream(zip.getEntry("snapshot.json")).readAllBytes());
+            assertFalse(snapshot.contains("Craft Item"),"The menu is only in current-menu.json");
+            assertNotNull(zip.getEntry("chat.json"));
+            assertFalse(new String(zip.getInputStream(zip.getEntry("config.json")).readAllBytes()).contains("secret-value"));
+            assertNotNull(zip.getEntry("events.jsonl"));
+            String bundle=new String(zip.getInputStream(zip.getEntry("bundle.json")).readAllBytes());
+            assertTrue(bundle.contains("omittedForSize"));
+            long logBytes=zip.stream().filter(e->e.getName().startsWith("events")).mapToLong(java.util.zip.ZipEntry::getSize).sum();
+            assertTrue(logBytes<=DiagnosticLog.EXPORT_LOG_BUDGET,"Logs "+logBytes);
         }
     }
 

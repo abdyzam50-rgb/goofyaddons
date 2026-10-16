@@ -96,9 +96,10 @@ public final class ProfitTracker {
     /** Zero recovery value consumes the old cost basis permanently, even if an item appears later. */
     public void writeOff(String id,String engine,String item,String event,int units) {
         load(); if (error!=null) return;
+        Double lostCost=ledger.knownCost(id,units);
         try { if (ledger.writeOff(id,engine,item,event,units)) {
             if(!record(TradeHistory.Entry.writeOff(System.currentTimeMillis(),event,id,engine,item,units)))return;
-            completeExecution(id,event,units,0.0,null,true);
+            completeExecution(id,event,units,0.0,lostCost==null?null:-lostCost,true);
             Diagnostics.event("WARN","trade.written_off",java.util.Map.of("trade",id,"engine",engine,"item",item,"units",units));
             save();
         } }
@@ -114,6 +115,12 @@ public final class ProfitTracker {
     public void beginExecution(String id,String engine,String input,String output,int units,int batch,long startedAt,Double expectedProfit,ExecutionLedger.Forecast forecast) {
         load();if(executionError!=null)return;
         execution.begin(id,engine,input,output,units,batch,startedAt,expectedProfit,forecast);
+    }
+    public void executionStrategy(String id,String buy,String sell) {load();execution.strategy(id,buy,sell);}
+    public void executionFailure(String id) {
+        load();if(executionError!=null || executionPath==null || id==null)return;
+        try {var sample=execution.failure(id,System.currentTimeMillis());recordSample(sample);execution.write(executionPath);}
+        catch(Exception bad){executionError="Execution history save failed; reporting only";Diagnostics.failure("execution.save_failed",bad);}
     }
     public java.util.List<ExecutionLedger.Sample> executionSamples() {load();return execution.samples();}
     public java.util.List<ExecutionLedger.Active> activeExecutions() {load();return execution.active(System.currentTimeMillis());}
@@ -138,6 +145,18 @@ public final class ProfitTracker {
     public boolean resetSession() {
         load(); if (error!=null) return false;
         ledger.resetSession(); save(); return error==null;
+    }
+    public boolean clearCompletedHistory() {
+        load();if(error!=null || executionError!=null || path==null)return false;
+        long cutoff=System.currentTimeMillis();
+        var cleared=ledger.withoutCompletedHistory(cutoff);
+        try {cleared.write(path);} // Commit the replay cutoff before changing either live snapshot.
+        catch(Exception bad){Diagnostics.failure("profit.history_clear_failed",bad);return false;}
+        ledger=cleared;execution.clearCompletedThrough(cutoff);writeExecution();
+        lastTick=0;previouslyActive=false;
+        Diagnostics.event("INFO","profit.history_cleared",java.util.Map.of("cutoff",cutoff,"activeRecordsPreserved",true));
+        com.goofy.goofyaddons.features.FeatureManager.INSTANCE.invalidateMarketReport();
+        return true;
     }
     private void save() {
         if (error!=null || path==null) return;

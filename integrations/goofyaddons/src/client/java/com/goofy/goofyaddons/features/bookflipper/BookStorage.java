@@ -31,13 +31,13 @@ final class BookStorage {
             return;
         }
 
-        if (!ctx.screenOpen()) ctx.clock().start(ctx.delay());
+        if (!ctx.screenOpen()) ctx.clock().start(ctx.storageDelay());
         if (!ctx.screenOpen() && ctx.clock().shouldFire()) {
             ctx.actions().command(usingSecondPage ? ctx.settings().secondPage() : ctx.settings().firstPage());
         }
 
-        if (storageOpen(ctx)) ctx.clock().start(ctx.delay());
-        if (storageOpen(ctx) && ctx.scanner().isMenuLoaded(8) && ctx.clock().shouldFire()) {
+        if (storageOpen(ctx)) ctx.clock().start(ctx.storageDelay());
+        if (storageOpen(ctx) && ctx.inventoryMemory().fresh(usingSecondPage?2:1) && ctx.inventoryMemory().fresh(0) && ctx.clock().shouldFire()) {
             BookList bookList = null;
             if (ctx.needToStoreExcessBook()) {
                 for (BookList book : ctx.extras()) {
@@ -100,13 +100,13 @@ final class BookStorage {
             return;
         }
 
-        if (!ctx.screenOpen()) ctx.clock().start(ctx.delay());
+        if (!ctx.screenOpen()) ctx.clock().start(ctx.storageDelay());
         if (!ctx.screenOpen() && ctx.clock().shouldFire()) {
             ctx.actions().command(usingSecondPage ? ctx.settings().secondPage() : ctx.settings().firstPage());
         }
 
-        if (storageOpen(ctx)) ctx.clock().start(ctx.delay());
-        if (!storageOpen(ctx) || !ctx.scanner().isMenuLoaded(8) || !ctx.clock().shouldFire()) return;
+        if (storageOpen(ctx)) ctx.clock().start(ctx.storageDelay());
+        if (!storageOpen(ctx) || (!ctx.inventoryMemory().fresh(usingSecondPage?2:1) || !ctx.inventoryMemory().fresh(0)) || !ctx.clock().shouldFire()) return;
 
         // if we have all the amount we pull out everything
         if (task.getAmountToOrder() == 0) {

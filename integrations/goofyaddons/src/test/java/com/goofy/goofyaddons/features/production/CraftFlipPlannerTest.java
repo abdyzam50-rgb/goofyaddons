@@ -100,13 +100,25 @@ class CraftFlipPlannerTest {
         var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
         var market=market(100);var products=market.getAsJsonObject("products");
         products.getAsJsonObject("INPUT").getAsJsonArray("buy_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",90);
-        products.getAsJsonObject("INPUT").add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":1,\"amount\":10000}]"));
-        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":200,\"amount\":10000}]"));
+        products.getAsJsonObject("INPUT").add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":46,\"amount\":10000}]"));
+        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":400,\"amount\":10000}]"));
         products.getAsJsonObject("OUTPUT").getAsJsonArray("sell_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",3);
         var rows=rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of());
         assertEquals(1,rows.size());var route=rows.getFirst();assertTrue(route.eligible());
         assertEquals(BazaarStrategy.ORDER_OFFER,route.strategy());assertTrue(route.profit()>0);
         assertEquals("order → offer",route.describe(catalog).get("buySell"));
+    }
+
+    @Test void anInputBidFarBelowItsOffersIsPricedAtTheInstantBuy(){
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",4,"")),Map.of());
+        var market=market(100);var products=market.getAsJsonObject("products");
+        products.getAsJsonObject("INPUT").getAsJsonArray("buy_summary").get(0).getAsJsonObject().addProperty("pricePerUnit",90);
+        products.getAsJsonObject("INPUT").add("sell_summary",JsonParser.parseString("[{\"pricePerUnit\":1,\"amount\":10000}]"));
+        products.getAsJsonObject("OUTPUT").add("buy_summary",JsonParser.parseString("[{\"pricePerUnit\":200,\"amount\":10000}]"));
+        // A 1-coin bid under a 90-coin offer never fills, so the 4 inputs cost 374 coins, not 4.
+        assertTrue(rank(market,null,catalog,ProductionRunTest.menu(null),1000,Map.of()).stream().noneMatch(CraftFlipPlanner.Route::eligible));
+        assertEquals(4*90*1.04,BazaarStrategy.ORDER_OFFER.ingredientBuy(products.getAsJsonObject("INPUT"),4),1e-9);
+        assertEquals(4.0,BazaarStrategy.ORDER_OFFER.buy(products.getAsJsonObject("INPUT"),4),1e-9);
     }
 
     @Test void anotherCraftsReservedWorkspaceCanReduceBatchSizeOrExcludeTheRoute() {
@@ -120,6 +132,22 @@ class CraftFlipPlannerTest {
         assertTrue(reserved.getFirst().reason().contains("inventory"));
         var conflicting=CraftFlipPlanner.rank(catalog,market(10000),null,empty,Map.of(),Map.of(),Set.of("INPUT"),1000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),0);
         assertTrue(conflicting.stream().noneMatch(CraftFlipPlanner.Route::eligible));
+    }
+
+    @Test void storageLetsInputsOverflowWhileOneBatchAndTheOutputStillFitTheInventory() {
+        var catalog=new RecipeCatalog(List.of(recipe("OUTPUT","INPUT",64,"")),Map.of());
+        // Cheap inputs and a deep, busy output market make the largest fitting batch the best.
+        var market=JsonParser.parseString(market(10000).toString().replace("\"pricePerUnit\":5","\"pricePerUnit\":1").replace("10000}","10000000}").replace("Week\":10000,","Week\":10000000,")).getAsJsonObject();
+        var empty=ProductionRunTest.menu(null);
+        var inventoryOnly=CraftFlipPlanner.rank(catalog,market,null,empty,Map.of(),Map.of(),Set.of(),100000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),30,"INSTANT_INSTANT",new LinkedHashMap<>(),0)
+            .stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElseThrow();
+        assertEquals(5,inventoryOnly.batches(),"Six free slots hold five batches of inputs and the output");
+        var withStorage=CraftFlipPlanner.rank(catalog,market,null,empty,Map.of(),Map.of(),Set.of(),100000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),30,"INSTANT_INSTANT",new LinkedHashMap<>(),100)
+            .stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElseThrow();
+        assertEquals(16,withStorage.batches());assertEquals(6,withStorage.inventorySlots(),"A storage run reserves the free inventory for its rounds");
+        var tooLittle=CraftFlipPlanner.rank(catalog,market,null,empty,Map.of(),Map.of(),Set.of(),100000,1,1.25,16,"BOTH",NOW,new LinkedHashMap<>(),30,"INSTANT_INSTANT",new LinkedHashMap<>(),3)
+            .stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElseThrow();
+        assertEquals(8,tooLittle.batches(),"Inputs may only overflow into the storage slots observed empty");
     }
 
     @Test void largerHotspotBaitRunsCountAllOutputStacksAndRespectStrategySelection() {

@@ -6,6 +6,13 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class InventoryMemoryTest {
+    @Test void configuredObservationWaitKeepsAFiftyMillisecondFloorAndRestartsOnChanges(){
+        var memory=new InventoryMemory(()->1);var view=menu(1);
+        memory.observe(view,1,1000);memory.observe(view,1,1049);assertFalse(memory.fresh(1));
+        memory.observe(view,1,1050);assertTrue(memory.fresh(1));
+        var changed=menu(1,book(12,1,false));memory.observe(changed,1,1051);assertFalse(memory.fresh(1));
+        memory.observe(changed,1,1100);assertFalse(memory.fresh(1));memory.observe(changed,1,1101);assertTrue(memory.fresh(1));
+    }
     private final Book route = new Book("ENCHANTMENT_OVERLOAD",1,5,"Overload",0,0);
     private SlotView book(int index,int level,boolean inventory) {
         return SlotView.enchantedBook(index,inventory,inventory?index-54:index,"overload",level,List.of(),"Enchanted Book");

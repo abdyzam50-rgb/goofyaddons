@@ -1,7 +1,332 @@
+Nearby pipeline audit: book product navigation now shares an exact level/layout/identity check across buy and sell paths, rejecting same-enchantment wrong-level pages before any navigation click. Server placement cooldowns park rejected replacement sales as unlisted outputs and defer new offers while allowing claims and combines. Ordinary record release now rejects ambiguous non-all ID prefixes atomically. Tests cover both live engine buy/sell paths, contradictory enchantment metadata, search-sized lookalikes, cooldown scheduling and rejection transition, prefix ambiguity and preserved capital, explicit all-release behavior. This is regression coverage of identified gaps, not a live Hypixel end-to-end certification.
+
+Outbid book navigation recognises truncated product breadcrumbs only on the product-sized menu when both the icon and buy control name the exact input level. It clicks only an explicit management control; wrong levels and search-sized lookalikes cannot authorise navigation. Helper and full-engine regressions reproduce diagnostics-1792098060745 (Turbo-Sunflower ➜ Turbo-Sunflow), assert a single Manage Orders click and no accounting effects.
+
+Profile preferences now use account/profile folders alongside the existing scoped journals. First use copies only global preferences, never another profile’s settings or access denials. Invalid profile files block trading instead of keeping a different profile’s valid settings. Skills/API evidence/forecasts clear on observed profile identity changes; late API generations remain discarded. Active/pinned profile changes require restart, including standalone tests. GUI drafts cannot save across preference-file changes. Tests cover independent Pear/Papaya preferences, return to prior profile, invalid-file isolation, file path boundaries, recipe-lock states and per-profile Worker collection metadata. Enchanted Red Sand requires verified current-profile recipe unlock before planning/procurement; the Worker must be redeployed to publish this field.
+
+Unsubmitted ordinary entries that encounter pre-existing orders or inventory now skip that product for 60 seconds, without adopting/cancelling the foreign position or pausing other pipelines. The temporary exclusions feed All-mode forecasts so an alternative route can win. Submitted and craft conflicts retain their reconciliation barrier. Regression verifies no foreign-order click, no acquisition/sale, released unspent reservation, retained-running state and cooldown expiry. Diagnostics-1792067157875 also shows a separate Enchanted Red Sand result barrier, still under investigation; this change does not bypass that crafting verification.
+
+Hypixel's explicit Bazaar order cooldown rejection now defers a recent book/general/craft submission for 61 seconds instead of treating it as an unexplained missing order. The shared capital ledger publishes the cooldown to all order placement paths. Rejected buys retain unspent reservations; rejected sales retain inventory ownership. New confirmations wait and re-enter with fresh prices; unrelated/late notices do not clear uncertain submissions. HUD/debug expose the remaining cooldown and rejection events. Regression reproduces diagnostics-1792065633025 (Stealth I confirmation rejected, three futile absence rechecks, global pause).
+
+Calculator-off selection keeps the configured book/general presets. ALL no longer changes the calculator switches and compares local preset estimates with craft routes when automatic selection is off. Existing profit, margin, volume, capital, inventory and unlock checks remain in place. Debug exports retain configured preset products even while idle; general diagnostics include selection mode, candidate count, spendable funds and filter status. Regression coverage checks disabled calculator, local-only presets, reserve, profit/volume/inventory filters and stale quotes.
+
+General product navigation may open one exact identified search result while its advisory price remains Loading. The whole-menu loading gate permits only that navigation target; transactional pages still require loaded contents and verified prices. The regression drives the real General engine on the captured L.A.S.R.'s Eye search shape and verifies a single acknowledged-navigation intent without submitting a purchase. Fixes diagnostics-1792023694705.
+
+profit clearhistory clears completed sales/session statistics and execution samples for the current profile while stopped. It commits a durable history cutoff atomically before clearing live execution samples, retains active lots/partial executions and duplicate receipt identities, and filters pre-reset samples during transaction replay. Active engine/order/production journals and settings are unchanged. Regression tests cover remaining lot cost, late settlement profit, duplicate receipts, reload/replay and active partial execution completion.
+
+ALL trading mode enables craft, book and general pipelines together. Fresh feasible forecasts compare conservative craft cycle coins/hour against the calculator-selected book/general head; equal hourly returns prefer less capital, with stable ties. Losing entry paths wait while existing positions continue management. All mode respects the automatic analysis setting, uses cached craft rankings between entry boundaries, respects account/market/position checks, and removes craft budget/inventory reservations from other pipeline forecasts. Mode choice, selected family and decision events are visible in GUI/HUD/debug. Tests cover engine composition, mode cycle, cross-family scoring/ties, account reservations, ALL protocol analysis and adapter equivalence.
+
+Outbid search navigation now checks its exact readable book result rather than waiting for unrelated price rows, including the engine loading gate. Anvil collection learns a 1000ms submission-to-claim interval after a real collection slowdown response, avoiding the repeated immediate rejection/three-second retry pattern without delaying receipts already observed. The final verified combine closes and hands off immediately instead of waiting for a NO_PAIR tick. Diagnostics include learned claim timing. Fixes diagnostics-1791974789367.
+
+Book buy-order search proceeds when its exact product/level result is readable, even if unrelated result rows are still Loading. Both the engine-wide loading gate and the buy navigator use the same target check; a loading or missing target still waits. Regression includes the full engine path and Flash I with a loading Flash II sibling. Shared slowdown detection now recognizes the exact Hypixel Whoa! Slow down there! notice, enabling existing bounded anvil retry cooldowns. Fixes diagnostics-1791950057735.
+
+Submitted instant book buys route Confirm Instant Buy to their existing exact-quantity/price/receipt executor while BAZAAR_NAVIGATION owns it. Generic buy-order title and expired-live-quote gates no longer interrupt this submitted operation; unowned confirmation types remain rejected. Production sales wait for an occupied cursor to return before checking inventory ownership, and retain the precise price-floor rejection throughout the retry countdown. Regression tests cover book confirmation followed by exact debit/books, foreign confirmation rejection, cursor ownership wait and retained sale-floor reasons. Fixes diagnostics-1791948661599.
+
+Repeated grid drags preserve equal cell deficits: cursor remainders smaller than the shared target group return to inventory while a larger compatible source is available, and the source picker avoids immediately retrieving that same tiny remainder. Native right-drag adds one item per selected cell when left-drag would exceed the remaining plan. All drag targets still validate before packets, and inventory conservation/reopen recovery remains mandatory. Regression reproduces seven 40-unit Mithril cells using successive full stacks and final right-drag passes.
+
+The live QUICK_CRAFT adapter now accepts compatible partial stacks, matching the planner top-up behavior. It validates all target indices, duplicate slots, item components, placement permission and space for the exact distributed share before sending any packet. Regression tests cover partial/full stacks, incompatible components and zero-share input. Fixes diagnostics-1791937541779, where the second drag was rejected by the old empty-only live guard.
+
+Drag splitting now distributes acknowledged cursor stacks across compatible partial recipe cells as well as empty cells, topping up equal deficits over multiple drags without exceeding the cell plan. Diagnostic events record drag targets, shares and remaining deficits. Instant sale price warnings are confirmed once only after an exact product/quantity/authorized-price match and the server countdown ends; unknown or below-floor warnings retain review. Purchase/sale receipts still require inventory and purse proof.
+
+Verified instant-buy receipts immediately replan procurement and open the next ingredient GUI on the same tick. No intermediate menu close or extra scheduling intervals are required; inventory, purse, journal, price, space and ownership checks remain in place. Regression tests cover immediate handoff and staggered inventory/purse delivery.
+
+Compactor production records an exact starting sack balance from the read-only Bazaar Sell Sacks Now tooltip or enchanted sack GUI. Paid conversions count only when the inventory plus verified sack increase reconciles against raw purchases. Outputs stay in sacks until crafting finishes, then /gfs retrieves only the owned increase and verifies the original sack balance remains. The sell-all-sacks control is never clicked; rounded/hidden counts are rejected and missing withdrawal receipts are not replayed.
+
+Own compactor toggle/filter clicks now wait for transient vanilla-predicted cursor pickup to clear instead of immediately entering REVIEW. No additional click occurs while waiting; the existing eight-second acknowledgement deadline stops a persistent cursor. Foreign/unowned cursor states still stop immediately.
+
+Compactor setup disables automatic conversion while installing the seed filter. After enabling, it closes configuration and opens a fresh Craft Item server container, waits for stable inventory, then reconciles the original raw-equivalent baseline before buying. A local menu close alone cannot refresh stale counts. Persistent shortages still retain the run for review with exact counts.
+
+Intermediate preparation jobs retain up to 1024 requested batches, allowing an exact larger Quick Craft control (e.g. Blaze Powder) to execute early. Grid placement still obeys cell stack limits. The executor rechecks late Quick Craft controls only at acknowledged empty-grid/cursor boundaries and requires the offered amount to fit the remaining request and output slots.
+
+Compactor filter installation now acknowledges the observed filter and closes its GUI before reconciling converted inventory counts. Allows up to eight seconds for staggered input/output updates; no further purchase occurs until the original raw-equivalent baseline and unrelated items reconcile. Persistent mismatch records expected/observed counts and remains REVIEW.
+
+Compactor production now waits for the delegated seed craft while that child owns the cursor/grid. The parent checks cursor safety only after the craft finishes; it cannot open the compactor or issue clicks during the child. Regression reproduces an occupied Gold cursor across multiple child ticks. Fixes diagnostics-1791836767363.
+
+Personal Compactor production supports single-input 160:1 enchanted recipes with instant-buy strategies and a readable hotbar device. Clears old filters, buys an inventory-sized seed lot, crafts one seed, installs/enables its filter once, proves later purchases by raw-equivalent input/output counts and purse debit, then clears the filter before sale. Mixed recipes and buy orders keep the existing path. Craft run/settings/pipeline limits are now 1–1024; child craft jobs remain at most 64 and purchases remain inventory-sized. Existing maximum-batch defaults are preserved. Live filter installation still requires in-game verification.
+
+Legacy profile Worker error responses now identify Hypixel 401/403 credential rejection instead of displaying only a generic gateway 502. Only the fixed known public error is classified; arbitrary provider text is never displayed. Live curedmc lookup confirmed the deployed Worker is returning Hypixel 403. Update its HYPIXEL_API_KEY secret to restore lookup.
+
+Craft inventory mismatch recovery returns owned cursor/grid ingredients one acknowledged transfer at a time, reopens Craft Item once, and reconciles the stable new container against the original input/output baseline. Verified partial outputs count toward completion; unresolved counts, unrelated items, missing room, or timeouts remain REVIEW. Recovery diagnostics include baseline and observed counts.
+
+Storage scans now exclude GUI controls without a product ID from partial-stack detection. Regression covers an Ender Chest Close button alongside an owned partial input stack, then verifies the real stack still accepts a deposit. Fixes the PROCURE null-pointer failure in diagnostics-1791830123997.
+
+Craft rounds now plan room for the largest complete input/output lot that fits, parking movable items before accepting a smaller round. Verify a storage-backed large craft request loads larger rounds, preserves hotbar tools, and retains verified transfer receipts. Explicit small test requests remain small.
+
+### 0.2.120 Storage destination planning
+
+Deposits prefer a known page that fits the whole lot instead of scattering it
+over the first small gaps. An already open suitable page is preferred. Fresh
+capacity observations skip full pages during scans and deposits, except when
+compatible owned partial stacks can still accept the product. Withdrawals always
+visit pages holding the run’s items regardless of their fullness.
+
+Capacity is advisory for two minutes, then reobserved to account for manual
+changes. Partial-product knowledge persists in the storage journal; old journals
+remain readable and uncertain partial capacity is conservatively checked live.
+Each shift-click still requires a verified movement and durable ownership update.
+
+Regression simulations verify skipping a full page, choosing one larger page
+over a two-slot gap for a three-stack lot, stale-capacity refresh, and merging
+into a compatible partial stack on a full page after journal reload.
+1364 Java tests passed; release build succeeded. Live verification remains
+needed.
+
+### 0.2.98 Storage page transition pacing
+
+The export showed about 5.16 seconds between ec 1 and ec 2. The storage move
+carried its old command retry deadline into a different page. Successful page
+completion and skipped-page transitions now schedule the next page using the
+configured navigation delay. Five-second backoff applies only to retries of
+the same unopened page. Cursor checks, page identity, initial contents settle,
+storage ownership and move receipts remain in place.
+
+A regression simulation completes a two-page scan within two seconds with a
+100 ms navigation range, verifies both capacity observations, and emits no item
+clicks. Existing storage and forty-output production tests remain covered.
+1361 Java tests passed and the release build succeeded. Live verification is
+still needed.
+
+### 0.2.97 Bazaar access during test sessions
+
+The export queued a two-compactor production test but it remained at its first
+Auto Smelter purchase with no debit. NPC navigation was intercepted but never
+ticked in standalone test sessions. Shared access navigation now ticks for
+production, book and general tests as well as normal trading.
+
+A server-confirmed Booster Cookie consumption clears the cached AUTO-mode
+command denial and cancels obsolete NPC routing; explicit NPC mode is retained.
+The HUD reports TESTING and the actual test mode/activity instead of STOPPED
+and Use the trading toggle while the test is active. Cookie-message regression
+checks reject player-chat lookalikes. 1360 Java tests passed and the release
+build succeeded. Live NPC/test-session verification remains needed.
+
+### 0.2.96 Independent timing and asynchronous storage close
+
+The book startup export paused because NPC Bazaar navigation observed a storage
+menu that was still closing. Navigation now allows up to three seconds for the
+old menu to disappear, sends no input to it, and still rejects a genuinely
+unrelated menu or an occupied cursor.
+
+G → Macros → Limits includes independent fastest/slowest ranges for navigation,
+storage, and crafting/anvil. New category fields set to zero inherit navigation
+for compatibility. Both crafting and anvil use the crafting range, production
+and book storage use the storage range. Book inventory observations scale with
+the active ranges while keeping a 50 ms minimum stable observation and a 150 ms
+upper bound. Server acknowledgements and unchanged-contents checks remain
+mandatory; the production storage initial page settle remains in place.
+
+Regression coverage checks category independence and inheritance, invalid pairs,
+closing-storage navigation, rejection of persistent unrelated menus, and the
+50 ms observation floor with reset on contents changes. 1360 Java tests
+passed; release build succeeded. Live verification remains needed.
+
+### 0.2.95 Instant book routes enter the execution pipeline
+
+The export repeatedly selected Sunset I to V using instant buy and sell offer,
+then returned to IDLE with no tasks. TradeBudget still rejected every candidate
+using instant buying or selling, despite the receipt-verified instant executors
+added previously. This obsolete planning filter is removed; capital and occupied
+product constraints still apply.
+
+Regression coverage checks order and instant modes through budget selection,
+including insufficient budget, and verifies an instant-buy recommendation
+creates a task and reserves capital instead of silently returning to empty IDLE.
+Account exclusions are supplied by BookServices so this entry test needs no
+live Fabric filesystem. Existing instant-buy/sale receipt tests remain active.
+1357 Java tests passed; release build succeeded. Live verification remains
+needed.
+
+### 0.2.94 Book startup and quote-wait recovery
+
+The supplied launcher log showed Started then Stopped with no book exception;
+it did not identify the exact live wait. Inspection reproduced a separate book
+startup/storage defect: storage was considered visible only when ordinary slot
+8 was nonempty. Empty or sparse pages could stall. Startup and storage now use
+the existing stable, complete inventory observations; combining likewise uses
+confirmed anvil observations instead of slot 8. Loading placeholders remain
+excluded from storage recognition.
+
+Book selection and outbid-monitor requests now expire after 15 seconds and
+retry without adopting a late response. HUD activity distinguishes fetching,
+calculator selection, no configured routes and no feasible profitable routes.
+Regression coverage verifies sparse-page startup and retrying stalled requests.
+1356 Java tests passed; release build succeeded. Live verification is still
+needed. The launcher texture-signature warnings were not treated as a trading
+diagnosis.
+
+### 0.2.93 Crafted-output space and sale lots
+
+The export stalled after 29/40 Dwarven Compactors because storage space-making
+excluded crafted outputs. Verified outputs belonging to the Bazaar craft run
+can now be deposited to make room for the next inputs. Their storage ownership
+remains retained after crafting until withdrawal and sale are verified.
+
+Bazaar output selling handles inventory-sized lots, withdrawing stored output
+as space permits. When storage has no output room, the process sells a verified
+partial lot then continues crafting. Each lot has its own acquisition/sale
+receipt ID and receives its proportional input cost; submitted sales are never
+replayed and unsold units must match verified inventory plus owned storage.
+AH listing behavior remains unchanged.
+
+Regression simulations cover forty unstackable outputs with storage, full-storage
+partial-sale fallback, all forty units crafted and sold, distinct receipts, and
+no remaining owned output. Existing one-lot receipt/cost tests remain covered. 1353 Java tests passed;
+release build succeeded. Live verification remains needed.
+
+### 0.2.92 Inventory-sized instant purchases
+
+Hypixel rejected the exported Enchanted Mithril instant purchase because its
+amount exceeded inventory capacity. Storage-backed instant buys now cap a lot
+to observed inventory capacity. A valid Fill my inventory quote is used only
+when it fits that cap and the remaining requirement. Otherwise the exact capped
+amount is entered. The price ceiling scales with the lot size.
+
+After a verified lot the existing procurement planner counts inventory plus
+owned storage, makes room, and buys only the remainder. Paid short deliveries
+retain stash recovery and never cause a fresh purchase until their receipt is
+resolved. Buy orders retain their existing behavior.
+
+Regression coverage verifies 4096 units across two capacity-sized purchases,
+no stash commands, total cost counted once per lot, a quoted fill purchase, an
+overpriced fill rejection, partial stack space with no empty slots, and a final
+remainder smaller than a fill quote. 1351 Java tests passed; release build
+succeeded. Live Hypixel verification remains needed.
+
+### 0.2.91 Buffered mixed crafts and native drag splitting
+
+Recipes containing unstackable inputs can retain stackable cells between output
+collections. Each cell loads up to its stack capacity and the remaining requested
+batches, then the executor refills only consumed/short cells. Cumulative output
+and exact ingredient conservation are checked through the entire batch. UUID
+items are treated as individual items even when vanilla reports a stack limit.
+
+Native left-drag distributes a cursor stack across empty matching recipe cells
+only when its even distribution equals every selected cell target. The real
+client sends the native QUICK_CRAFT start/add/end sequence. Other action ports
+fall back to the existing splitter. Post-drag inventory/grid acknowledgement,
+conservation checks, pacing and bounded retries apply. Unequal cells use the
+existing exact splitter. No shift-click into the grid is assumed.
+
+Regression coverage proves four mixed crafts load the stackable cell once,
+refill four unstackable items, and leave the grid/cursor empty; it also proves an
+eight-cell drag plus exact ingredient consumption and output. Live Hypixel drag
+behavior remains to be verified. 1349 Java tests passed and the release build
+succeeded.
+
+### 0.2.90 Exact stack splitting
+
+Crafting compares repeated grid halves plus remainder placements against
+individual placements, including cursor-return clicks. Odd stacks correctly
+leave floor(n/2) in the grid. Existing exact-half reuse across matching recipe
+cells remains available. Within a compatible component group, source selection
+prefers fewer placement clicks, so an exact stack beats splitting a larger one.
+
+Regression coverage exercises every requested amount for stack sizes 17, 31,
+47, 63 and 64, verifies exact output and all leftovers, checks the 64-to-20 click
+budget, and confirms exact source-stack selection. Server acknowledgement and
+configured pacing remain mandatory for every click.
+
+1347 Java tests passed and the release build succeeded. Live Minecraft testing
+remains to be performed.
+
+### 0.2.89 Timing limits and fresh-install defaults
+
+The fastest delay accepts 1 ms and the slowest accepts 2 ms. New config defaults
+and pre-config startup fallback use 60–70 ms. Existing saved settings retain
+their configured values. Receipt verification, client ticks and server-response
+waits remain in effect. The shared delay covers ingredient pickup, placement,
+right-click splitting, output collection and Quick Craft. Crafting keeps its
+50 ms minimum server-settle check. Regression coverage verifies 1–2 ms validation and the
+new-install and startup defaults.
+
+### 0.2.88 Loading prices and storage contents
+
+Captured failure: the Dwarven Super Compactor Sell Instantly lore contained
+`Total: Loading...`; the executor classified it as malformed and the run reopened
+the menu repeatedly. Instant selling and buying now wait in place for explicit
+loading placeholders. A genuinely blocked instant sale has a 30-second retry
+cooldown. Existing overall price-loading deadlines still apply.
+
+Storage scans, deposits and withdrawals wait for placeholders to disappear and
+initial contents to remain stable for 400 ms before reading capacity or checking
+ownership. Move receipt checks remain mandatory and loading during a receipt
+never authorizes another click. Auction, craft, workstation, book and general
+trade paths also wait for explicit loading contents with their existing or newly
+bounded timeout. The configured fast action range remains unchanged.
+
+1344 Java tests passed; release build succeeded. Live Minecraft verification
+is still needed.
+
+Regression simulations cover a delayed live sell total then exactly one verified
+sale, delayed buy price, permanent loading timeout and delayed storage scanning.
+
+### 0.2.87 Fast menu timing
+
+The GUI and config now allow a 10–20 ms randomized action range. Navigation keeps
+ownership while a destination window is empty, waits
+for named controls to load, and never retries a source click against the new
+window. Destination loading remains bounded by the existing 15-second timeout.
+Crafting retains its minimum 50 ms acknowledgement settle and adaptive lag backoff;
+a timing setting does not override server receipt verification or client tick rate.
+
+Full Java regression suite: 1340 tests passed. Release build succeeded.
+Live 10–20 ms Minecraft navigation has not been tested here.
+
+Regression coverage includes delayed window contents, no duplicate navigation,
+loading timeout, and validation of the 10–20 ms range.
+
 # Testing the combined client
 
+### 0.2.86 Shared action timing
+
+Crafting and storage now use the existing shared randomized action delay, with
+Fastest delay and Slowest delay controls in Macros → Limits. Tests verify a
+one-second configured delay prevents a second click even after the server has
+acknowledged the first, and permits it once that delay expires. Sampling tests
+check configured bounds, actual variation and pre-configuration defaults.
+Existing craft simulations explicitly inject their 50 ms test clock; runtime
+construction uses the shared configured range. Storage page loading, inventory
+proof, retry bounds and adaptive crafting slowdowns remain covered.
+
+Validation: 1,337 Java tests passed with zero failures, errors or skips (1,210
+client and 127 shared trading tests). The focused suites passed 87 tests. The
+0.2.86-BETA release build succeeded; live Minecraft timing remains to be checked.
+
+### 0.2.85 Full-inventory crafting handoff
+
+The storage-backed round planner now makes room before crafting when no batch
+fits. A regression recreates twenty Dwarven inputs across a completely full main
+inventory and existing storage ownership, including a readable cleared Personal
+Compactor. It verifies all twenty crafts finish, no Bazaar or stash purchase
+command is issued, and the compactor/menu stay in inventory. Existing storage
+and stash checks remain passing.
+
+Validation: 1,334 Java tests passed with zero failures, errors or skips (1,207
+client and 127 shared trading tests); the focused storage suite passed seven
+tests. The 0.2.85-BETA release build succeeded. Live Minecraft validation remains
+for the next user run. Saved interrupted jobs still require review after restart.
+
+### 0.2.84 Pipeline purchase space and stash delivery
+
+Validated on `claude/project-thread-wmox9w`: 1,333 Java tests passed with zero
+failures, errors or skips (1,206 client and 127 shared trading tests), and the
+release build succeeded. Focused storage/instant-buy/command coverage passed
+44 tests before the final complete run.
+
+A pipeline simulation purchases 4,096 inputs once, observes partial delivery,
+stores verified units, collects two stash rounds and reaches processing with
+the original quantity and one 40,960-coin cost record. A separate simulation
+moves six loose inventory stacks into storage before submitting the funded
+ingredient order, keeps the other twenty stacks in inventory, and verifies the
+remaining storage-capacity reading. Unit coverage checks immutable whole-amount
+pricing, multi-round unstackable stash delivery, compatible partial-stack space,
+missing/unpaid stash outcomes and existing storage conservation/recovery.
+
+The JAR version is 0.2.84-BETA. These are simulated menus and durable ledgers;
+live Minecraft execution remains to be checked in the next user run.
+
 Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5 or newer and Fabric API
-0.161.0+26.3. Install [the combined 0.2.83 JAR](dist/astar-client-0.2.83-BETA.jar)
+0.161.0+26.3. Install [the combined 0.2.126 JAR](dist/astar-client-0.2.126-BETA.jar)
 and follow [installation and saved-data migration](docs/GOOFYADDONS.md).
 
 Run `./gradlew -p client test calculatorIntegrationTest build` for the client

@@ -14,6 +14,14 @@ public class CapitalManager {
     private double limit = 300_000_000;
     private double reserve = 50_000_000;
     private long lastPurchaseMs;
+    private long orderCooldownUntil;
+    /** A server rejection applies to every Bazaar order pipeline, not just its current owner. */
+    public boolean orderCooldownNotice(String message,long now) {
+        if(message==null || !message.matches("(?i).*\\[Bazaar\\] Placing orders is on cooldown for up to 1 minute!.*"))return false;
+        orderCooldownUntil=Math.max(orderCooldownUntil,now+61_000);return true;
+    }
+    public long orderCooldownRemaining(long now){return Math.max(0,orderCooldownUntil-now);}
+
     private static final java.util.regex.Pattern BOOK_VARIANT=java.util.regex.Pattern.compile("^(ENCHANTMENT_[A-Z][A-Z0-9_]*)_([1-9][0-9]*)$");
 
     public CapitalManager() { this(System::currentTimeMillis); }

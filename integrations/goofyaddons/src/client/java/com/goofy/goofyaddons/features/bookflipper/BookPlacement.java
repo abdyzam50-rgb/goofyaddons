@@ -34,6 +34,15 @@ final class BookPlacement {
     double submittedPrice() { return submittedPrice; }
     boolean submittedSelling() { return submittedSelling; }
 
+    /** Only a rejection tied to this recent submission makes retrying safe. Silence never does. */
+    boolean cooldownRejected(BookContext ctx,String message) {
+        if(!ctx.capital().orderCooldownNotice(message,ctx.now()) || submittedTask==null
+                || ctx.state()!=State.VERIFY_PLACEMENT || ctx.now()<submittedAt || ctx.now()-submittedAt>10_000)return false;
+        var task=submittedTask;
+        ctx.services().event("WARN","order.placement_rejected",java.util.Map.of("engine","books","trade",task.getProfitTradeId(),
+            "reason","server-order-cooldown","retryAfterMs",ctx.capital().orderCooldownRemaining(ctx.now())));
+        reset();ctx.deferBookPurchase(task,"server-order-cooldown");return true;
+    }
     void reset() {
         submittedTask = null; submittedNextState = null; submittedSelling = false;
         submittedUnits = 0; submittedPrice = 0; submittedAt = 0;
@@ -55,6 +64,7 @@ final class BookPlacement {
      * False when any check or the checkpoint failed and nothing was clicked.
      */
     boolean submit(BookContext ctx, Task task, boolean sale, Task.BookState nextState) {
+        if(ctx.capital().orderCooldownRemaining(ctx.now())>0) {ctx.deferBookPurchase(task,"server-order-cooldown");return false;}
         if (!verifyConfirmation(ctx)) return false;
         if (!recordSubmission(ctx, task, sale)) return false;
         ctx.actions().click(13, false);
@@ -179,16 +189,17 @@ final class BookPlacement {
                     book.getLevel(book.level()), book.getLevel(book.sellLevel()), submittedUnits, 1, submittedAt,
                     expectedProfit(ctx, book, submittedUnits, submittedPrice),
                     task.forecast());
+            ctx.accounting().executionStrategy(task.getProfitTradeId(),task.instaBuy?"instant":"order",task.instaSell?"instant":"offer");
         }
         task.setBookState(submittedNextState);
         submittedTask = null; submittedNextState = null;
         ctx.state(State.IDLE); ctx.clock().stop();
     }
 
-    private static Double expectedProfit(BookContext ctx, Book book, int units, double price) {
+    static Double expectedProfit(BookContext ctx, Book book, int units, double price) {
         var latest = ctx.services().latestQuotes(); var products = latest == null ? null : latest.getAsJsonObject("products");
         var output = products == null ? null : products.getAsJsonObject(book.getLevel(book.sellLevel()));
-        double ask = output == null ? -1 : com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.topPrice(output, "buy_summary");
+        double ask = output == null ? -1 : com.goofy.goofyaddons.features.market.BazaarQuotes.bestAsk(output);
         double expected = ask * (1 - ctx.settings().bazaarTaxPercentage() / 100) - units * price;
         return ask > 0 && Double.isFinite(expected) && expected > 0 ? expected : null;
     }

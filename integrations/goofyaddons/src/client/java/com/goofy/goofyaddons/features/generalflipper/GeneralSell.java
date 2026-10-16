@@ -40,7 +40,7 @@ final class GeneralSell implements GeneralOrderEntry.Side {
         var trade = ctx.trade();
         ctx.command("managebazaarorders");
         if (!ctx.ordersReady() || ctx.ambiguousOrders()) return;
-        if (TradingSafety.saleComplete(trade.claimPending, trade.receipt, ctx.findOrder(true) < 0, ctx.itemCount(ctx.active().item.id()))) {
+        if (TradingSafety.saleComplete(trade.claimPending, trade.receipt, ctx.findOrder(true) < 0, ctx.itemCount(ctx.active().item.id()), trade.inventoryBefore)) {
             if (!ctx.recordSale(trade.claimUnits, trade.claimedProceeds)) return;
             ctx.completePosition();
         } else if (ctx.now() - ctx.stepSince() < com.goofy.goofyaddons.features.transaction.RecoveryRules.RECEIPT_GRACE_MS) {

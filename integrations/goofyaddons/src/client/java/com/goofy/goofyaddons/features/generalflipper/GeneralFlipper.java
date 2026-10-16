@@ -18,7 +18,7 @@ public class GeneralFlipper implements Feature {
     private static final Logger LOGGER = LoggerFactory.getLogger(GeneralFlipper.class);
     static final String OWNER = "general";
     enum Step { OPEN_ORDERS, ORDERS, CANCEL_DETAIL, VERIFY_CANCEL, OPEN_PRODUCT,
-        PRODUCT, QUANTITY, SIGN, PRICE, CONFIRM, VERIFY_ORDER, VERIFY_SALE }
+        PRODUCT, QUANTITY, SIGN, PRICE, CONFIRM, VERIFY_ORDER, VERIFY_SALE, PARTIAL_CLAIM }
 
 
     /** External services stay replaceable so tests can drive real execution without Minecraft or HTTP. */
@@ -35,11 +35,14 @@ public class GeneralFlipper implements Feature {
         void sell(GeneralPosition position, int units, Double proceeds);
         void safetyPause(String reason);
         default boolean productionOnly(){return false;}
+        /** Production buys may claim in parts, storing between claims. */
+        default boolean productionStorage(){return false;}
         /** Null until this live account/profile equals the pinned trading scope. */
         default String accountScope(){return null;}
         default double productionMinimumSellPrice(GeneralPosition position){return position.minimumSellPrice;}
         default void placed(GeneralPosition position) {}
         default com.goofy.goofyaddons.features.profit.ExecutionLedger.Forecast forecast(String item,int batch) {return null;}
+        default void executionFailure(GeneralPosition position) {}
         default void finished(GeneralPosition position) {}
         default java.util.Set<String> excludedProducts() { return java.util.Set.of(); }
         default void excludeProduct(String id,String reason) {}
@@ -135,6 +138,10 @@ public class GeneralFlipper implements Feature {
     public boolean hasStateError() { return blocked; }
     public java.util.Map<String,Object> diagnosticState() {
         var state=new java.util.LinkedHashMap<String,Object>();
+        state.put("orderCooldownRemainingMs",capital.orderCooldownRemaining(world.now()));
+        state.put("selectionMode",services.automaticSelection()?"ranked":"configured presets");
+        state.put("selectionStatus",activity());state.put("candidateCount",snapshotCandidates.size());
+        state.put("spendable",capital.available(snapshotPurse));
         state.put("navigationPending",navigationRetry.pending());
         state.put("navigation",navigationRetry.diagnosticState(view));
         state.put("activeTrade",active==null?"none":active.tradeId);state.put("activeItem",active==null?"none":active.item.id());
@@ -160,6 +167,7 @@ public class GeneralFlipper implements Feature {
             details.put("settlementPending",position.settlementPending);
             details.put("parent",position.productionParent==null?"legacy":position.productionParent);
             details.put("productionInventoryBefore",position.productionInventoryBefore);
+            details.put("productionStoredUnits",position.productionStoredUnits);details.put("productionAwaitingStorage",position.productionAwaitingStorage);
             details.put("productionBasket",position.productionBasket);
             details.put("unitCost",position.unitCost);details.put("maximumBuyPrice",position.maximumBuyPrice);details.put("minimumSellPrice",position.minimumSellPrice);
             details.put("placedAt",position.placedAt);details.put("checkedAt",position.checkedAt);details.put("completed",position.completed);details.put("rejectedReason",position.rejectedReason);details.put("verifiedProceeds",position.verifiedProceeds);
@@ -193,11 +201,12 @@ public class GeneralFlipper implements Feature {
     /** Pure reader: the HUD calls this every frame, so it must not recompute or mutate. */
     public String activity() {
         if(lastFailure!=null && (paused||blocked))return lastFailure;
-        if (active != null) return (services.productionOnly()?"Craft orders: ":"General: ") + step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        if (active != null) return (services.productionOnly()?"Craft orders: ":"General: ") + (step==null?"preparing order":step.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' '));
+        if(capital.orderCooldownRemaining(world.now())>0)return "Bazaar order cooldown: "+((capital.orderCooldownRemaining(world.now())+999)/1000)+"s";
         if (!snapshotFresh) return "Waiting for price data";
         if (!positions.isEmpty()) return services.productionOnly()?(productionWait==null?"Waiting for craft orders":productionWait):"Waiting for general orders";
         if (capital.available(snapshotPurse) <= 0) return "Capital limit / purse reserve reached";
-        return snapshotCandidates.isEmpty() ? "No flips meet the configured filters" : "Selecting eligible flips";
+        return snapshotCandidates.isEmpty() ? (services.automaticSelection()?"No feasible ranked route":"No preset meets profit, margin, volume and inventory limits") : "Selecting eligible flips";
     }
 
     private void restoreFunding(GeneralPosition position) {
@@ -299,7 +308,7 @@ public class GeneralFlipper implements Feature {
         if (active != null) return true;
         long now = world.now();
         if (workPositions().stream().anyMatch(position -> workDue(position, now))) return true;
-        return snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
+        return capital.orderCooldownRemaining(now)==0 && testTradeId == null && snapshotFresh && positions.size() < settings().maxActiveItems && !capital.purchaseSettling()
                 && !snapshotCandidates.isEmpty();
     }
 
@@ -322,6 +331,10 @@ public class GeneralFlipper implements Feature {
             if(recovery==com.goofy.goofyaddons.menu.BedrockMenuRecovery.Result.WAITING)return;
         }
         var navigation = navigationRetry.observe(view,world.signEditorOpen(),actions,now);
+        if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.REOPEN) {
+            actions.closeMenu();transition(Step.OPEN_PRODUCT);
+            services.event("WARN","general.search_menu_reopen",navigationRetry.diagnosticState(view));return;
+        }
         if(navigation==com.goofy.goofyaddons.menu.NavigationRetry.Result.EXHAUSTED) {
             services.event("ERROR","general.navigation_exhausted",java.util.Map.of("step",step.name(),"navigation",navigationRetry.diagnosticState(view)));
             fail("Menu navigation was not acknowledged ("+navigationRetry.diagnosticState(view).get("retries")+" retries); position retained.");return;
@@ -338,6 +351,8 @@ public class GeneralFlipper implements Feature {
             return;
         }
         if (now - stepSince > com.goofy.goofyaddons.features.transaction.RecoveryRules.STEP_TIMEOUT_MS) { fail("Menu/transaction timed out; retained the tracked position for recovery."); return; }
+        boolean searchNavigation=(step==Step.OPEN_PRODUCT || step==Step.PRODUCT) && entry.searchNavigationTarget(session)>=0;
+        if(view!=null && view.loadingContents() && !searchNavigation)return;
         if (now < nextAction || claim.coolingDown(now)) return;
         nextAction = now + services.actionDelay();
         try {
@@ -372,6 +387,7 @@ public class GeneralFlipper implements Feature {
                 case ORDERS -> {if(!cancellation.resumeVerification(session))review.inspect(session);}
                 case CANCEL_DETAIL -> cancellation.detail(session);
                 case VERIFY_CANCEL -> cancellation.verify(session);
+                case PARTIAL_CLAIM -> cancellation.partial(session);
                 case OPEN_PRODUCT -> entry.openProduct(session);
                 case PRODUCT -> entry.product(session);
                 case QUANTITY -> entry.quantity(session, world.signEditorOpen());
@@ -389,7 +405,8 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean workDue(GeneralPosition position, long now) {
-        if(position.completed || services.productionOnly() && position.productionBuy && position.stage==Stage.INVENTORY)return false;
+        if(capital.orderCooldownRemaining(now)>0 && (position.stage==Stage.PLANNED || position.stage==Stage.INVENTORY))return false;
+        if(position.completed || services.productionOnly() && position.productionBuy && (position.stage==Stage.INVENTORY || position.productionAwaitingStorage))return false;
         long interval = position.stage == Stage.INVENTORY ? 2000 : settings().refreshSeconds * 1000L;
         return position.stage == Stage.RECONCILE || now - position.checkedAt >= interval;
     }
@@ -397,6 +414,9 @@ public class GeneralFlipper implements Feature {
     private void selectWork() {
         long now = world.now();
         for (GeneralPosition position : workPositions()) {
+            if("BUY".equals(position.test) && position.stage==Stage.INVENTORY && !position.settlementPending) {
+                active=position;finishTestBuy();return;
+            }
             if(position.settlementPending && !position.completed) {
                 active=position;
                 fail("A settlement was interrupted; reconcile the retained order and profit records before restarting.");
@@ -412,7 +432,7 @@ public class GeneralFlipper implements Feature {
                 return;
             }
         }
-        if (services.productionOnly() || !snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
+        if (capital.orderCooldownRemaining(now)>0 || testTradeId != null || services.productionOnly() || !snapshotFresh || positions.size() >= settings().maxActiveItems || capital.purchaseSettling()) return;
         // Reserving capital stays on a live purse read; only ranking uses the snapshot.
         double purse = services.purse();
         for (GeneralCalculator.Candidate candidate : snapshotCandidates) {
@@ -470,8 +490,10 @@ public class GeneralFlipper implements Feature {
                 if(!freshQuotes())return;
                 if(active.quantity>capacityFor(active.item.id())){fail("Not enough inventory capacity for instant purchase; no purchase submitted.");return;}
                 Double cost=strategy.buy(product,active.quantity),exit=strategy.sell(product,active.quantity);
-                if(cost==null||exit==null||cost>settings().maxCoinsPerItem||exit*.97*(1-services.taxPercentage()/100)-cost*1.03<settings().minProfitPerBatch || cost!=null&&exit!=null&&(exit*.97*(1-services.taxPercentage()/100)-cost*1.03)/cost*100<settings().minMarginPercentage){fail("Instant entry no longer meets profit/depth limits; no purchase submitted.");return;}
-                double limit=Math.min(cost*1.03,settings().maxCoinsPerItem);if(!capital.resize(OWNER,active.item.id(),limit,services.purse())){fail("Instant entry exceeds spendable capital.");return;}
+                if(active.test!=null){
+                    if(cost==null){fail("No fresh instant-buy quote covers "+active.quantity+" "+active.item.name()+"; no purchase submitted.");return;}
+                }else if(cost==null||exit==null||cost>settings().maxCoinsPerItem||exit*.97*(1-services.taxPercentage()/100)-cost*1.03<settings().minProfitPerBatch || cost!=null&&exit!=null&&(exit*.97*(1-services.taxPercentage()/100)-cost*1.03)/cost*100<settings().minMarginPercentage){fail("Instant entry no longer meets profit/depth limits; no purchase submitted.");return;}
+                double limit=active.test!=null?cost*1.03:Math.min(cost*1.03,settings().maxCoinsPerItem);if(!capital.resize(OWNER,active.item.id(),limit,services.purse())){fail("Instant entry exceeds spendable capital.");return;}
                 instantBuying=new com.goofy.goofyaddons.features.production.BazaarInstantBuy(active.item.id(),active.item.name(),active.quantity,limit,reason->{
                     active.stage=Stage.RECONCILE;active.submitted=true;active.purchasePriceKnown=false;if(!save())throw new IllegalStateException("Buy intent failed");
                 });
@@ -493,6 +515,8 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean saleAllowed(double price) {
+        // A flip test sells at the live price, but never far below the quote it started from.
+        if(active.test!=null)return Double.isFinite(price) && price>0 && price>=active.minimumSellPrice;
         // Profit and margin are entry filters. Existing stock exits at a readable
         // market price within the drawdown guard. Age cannot block an exit.
         if(services.productionOnly()) {
@@ -514,14 +538,15 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean shouldReprice(boolean sell) {
-        if (!freshQuotes() || (!services.productionOnly() && active.reprices >= settings().maxReprices)
+        if (!freshQuotes() || (!services.productionOnly() && active.reprices >= settings().maxReprices
+                && !(sell && active.holdingExpired(world.now(),settings().maxHoldingSeconds)))
                 || world.now() - active.placedAt < settings().repriceCooldownSeconds * 1000L) return false;
         // Ingredient replacements return to the parent planner after verified cancellation.
         // It checks the whole basket again; standalone item-flip repricing limits do not apply.
         if (services.productionOnly() && ((!sell && !active.productionBuy) || active.cancelRequested)) return false;
         JsonObject product = products.getAsJsonObject(active.item.id());
         if (product == null) return false;
-        double price = GeneralCalculator.topPrice(product, sell ? "buy_summary" : "sell_summary");
+        double price = com.goofy.goofyaddons.features.market.BazaarQuotes.topPrice(product, sell ? "buy_summary" : "sell_summary");
         return sell ? price > 0 && price < active.sellPrice - 0.01 : price > active.unitCost + 0.01;
     }
 
@@ -536,6 +561,22 @@ public class GeneralFlipper implements Feature {
                 .stream().filter(c->!services.excludedProducts().contains(c.item().id())).toList(),services.recommendations(),world.now());
     }
 
+    /** Transient entry exclusions also feed the cross-family ranking so another route can win. */
+    public java.util.Set<String> entryExclusions() {
+        return cooldownUntil.entrySet().stream().filter(e->e.getValue()>world.now()).map(java.util.Map.Entry::getKey)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+    private void skipUnownedConflict(String reason) {
+        // Only an unsubmitted ordinary entry is disposable. Never adopt, cancel or sell the foreign stock.
+        if(active==null || services.productionOnly() || active.stage!=Stage.PLANNED || active.submitted) {
+            fail("Unowned-order conflict overlaps a submitted or craft position; evidence retained.");return;
+        }
+        String product=active.item.id();
+        cooldownUntil.put(product,world.now()+60_000);
+        services.event("INFO","general.unowned_entry_skipped",java.util.Map.of("item",product,"reason",reason,"retryAfterMs",60_000));
+        capital.release(OWNER,product);positions.remove(active);snapshotCandidates=List.of();
+        finishWork();
+    }
     private void skipUnavailable(String reason) {
         services.event("INFO","general.requirement_skipped",java.util.Map.of("item",active.item.id(),"reason",reason));
         actions.message("Skipping "+active.item.name()+": "+reason);
@@ -545,7 +586,7 @@ public class GeneralFlipper implements Feature {
 
     private double currentAsk() {
         JsonObject product = products == null ? null : products.getAsJsonObject(active.item.id());
-        return product == null ? -1 : GeneralCalculator.topPrice(product, active!=null && active.instantSell?"sell_summary":"buy_summary");
+        return product == null ? -1 : com.goofy.goofyaddons.features.market.BazaarQuotes.topPrice(product, active!=null && active.instantSell?"sell_summary":"buy_summary");
     }
     /** Pure: whether the quotes this engine already adopted are usable right now. */
     private boolean freshQuotes() {
@@ -667,14 +708,55 @@ public class GeneralFlipper implements Feature {
     private int itemCount(String id) { return view.countInInventory(id); }
 
     void onNotice(String message) {
-        if (!running || paused || active == null) return;
+        rememberSaleClaim(message);
+        if (!running || paused) return;
+        boolean cooldown=capital.orderCooldownNotice(message,world.now());
+        if(active==null)return;
+        if(cooldown && step==Step.VERIFY_ORDER && active.submitted && world.now()>=active.placedAt && world.now()-active.placedAt<=10_000) {
+            services.event("WARN","order.placement_rejected",java.util.Map.of("engine",services.productionOnly()?"craft":"general","trade",active.tradeId,"reason","server-order-cooldown","retryAfterMs",capital.orderCooldownRemaining(world.now())));
+            active.submitted=false;active.stage=trade.selling?Stage.INVENTORY:Stage.PLANNED;
+            finishWork();return;
+        }
         if (cancellation.serverNotice(session, message)) return;
         if(!message.contains(active.item.name()))return;
         sellSide.receipt(session, message);
         cancellation.itemNotice(session, message);
     }
+    /**
+     * Sale claim receipts from this game session, kept while stopped or paused. A sell offer the
+     * player claimed by hand settles from its receipt instead of halting as an unknown absence.
+     */
+    private record SaleClaimNotice(long at, String account, String text) {}
+    private final java.util.ArrayDeque<SaleClaimNotice> saleClaims = new java.util.ArrayDeque<>();
+    private void rememberSaleClaim(String message) {
+        if (message == null || !message.contains("coins from selling")) return;
+        if (running && !paused && active != null && step == Step.VERIFY_SALE && trade.claimPending) return; // Our own claim.
+        saleClaims.addLast(new SaleClaimNotice(world.now(), world.username(), message));
+        while (saleClaims.size() > 32) saleClaims.removeFirst();
+    }
+    /** Coins from the one receipt claiming this whole offer since it was placed, or null. */
+    private Double claimedOutside(GeneralPosition position) {
+        if (position == null || position.stage != Stage.SELL_ORDER || !position.submitted
+                || position.cancelRequested || position.settlementPending) return null;
+        SaleClaimNotice found = null;
+        TradeReceipts.SaleClaim match = null;
+        for (var notice : saleClaims) {
+            if (notice.at() < position.placedAt || !java.util.Objects.equals(notice.account(), world.username())) continue;
+            var claim = TradeReceipts.saleClaim(notice.text(), position.item.name());
+            if (claim == null || claim.units() != position.quantity) continue;
+            if (claim.unitPrice() != null
+                    && Math.abs(claim.unitPrice() - position.sellPrice) > Math.max(1, position.sellPrice * 0.001)) continue;
+            if (found != null) return null; // Two candidates; ownership stays with the player.
+            found = notice; match = claim;
+        }
+        if (found == null) return null;
+        saleClaims.remove(found);
+        return match.coins();
+    }
     private boolean recordAcquisition() {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
+        // A one-sided test has no matching sale or purchase, so it stays out of the profit ledger.
+        if (active.test != null && !"BOTH".equals(active.test)) { testEvent("general.test_bought"); return true; }
         services.acquire(active);
         return true;
     }
@@ -682,6 +764,12 @@ public class GeneralFlipper implements Feature {
         if (active.tradeId == null) { active.tradeId=java.util.UUID.randomUUID().toString(); if(!save()) return false; }
         if (active.saleEvent == null) { active.saleEvent=active.tradeId+":legacy-sale:"+active.placedAt; if(!save()) return false; }
         if(services.productionOnly()) {ProductionSaleAccounting.record(active,units,proceeds);if(!save())return false;}
+        if (active.test != null) {
+            var evidence=testEvidence();evidence.put("units",units);evidence.put("proceeds",proceeds);
+            services.event("INFO","general.test_sold",evidence);
+            actions.message(String.format(java.util.Locale.ROOT,"General test: sold %d %s for %s.",units,active.item.name(),proceeds==null?"unconfirmed coins":String.format(java.util.Locale.ROOT,"%,.1f coins",proceeds)));
+            if (!"BOTH".equals(active.test)) return true;
+        }
         services.sell(active, units, proceeds);
         return true;
     }
@@ -704,6 +792,7 @@ public class GeneralFlipper implements Feature {
         finishWork();
     }
     private void fail(String message) {
+        if(active!=null)services.executionFailure(active);
         lastFailure=message;lastFailureParent=active==null?null:active.productionParent;
         services.event("ERROR","general.transaction_blocked",java.util.Map.of("reason",message,"context",orderDiagnosticContext()));
         actions.message(message);
@@ -718,6 +807,89 @@ public class GeneralFlipper implements Feature {
     }
 
     private GeneralOrderEntry.Side side() { return trade.selling ? sellSide : buySide; }
+
+    // ---- Flip tests -----------------------------------------------------------------------
+    public enum TestPart { BUY, SELL, BOTH }
+    private String testTradeId;
+
+    /**
+     * Starts a flip test of one product: buy it, sell every unit held, or both, each with its own
+     * mode. Only the test position is worked and the profit filters are skipped; capital, inventory
+     * room, order verification and receipts still apply. Returns why it cannot start, or null.
+     */
+    public String startTest(GeneralItem item,int quantity,boolean instantBuy,boolean instantSell,TestPart part) {
+        if (services.productionOnly()) return "Craft order engine cannot run flip tests";
+        if (running) return "Stop trading first";
+        restoreBudget();
+        if (blocked) return "General order state is blocked; resolve the logged error first";
+        if (!positions.isEmpty()) return "Ordinary flip orders are still tracked; finish them or use: orders release <id>";
+        if (item == null || !GeneralPosition.validProduct(item.id(), false)) return "Not a Bazaar product the general flipper trades";
+        JsonObject latest = services.latestQuotes();
+        JsonObject product = latest == null || !latest.has("products") ? null : latest.getAsJsonObject("products").getAsJsonObject(item.id());
+        if (product == null) return "No fresh Bazaar quote for " + item.name();
+        observe();
+        var strategy = com.goofy.goofyaddons.features.production.BazaarStrategy.of(instantBuy, instantSell);
+        GeneralPosition position = new GeneralPosition();
+        position.item = item; position.test = part.name(); position.tradeId = java.util.UUID.randomUUID().toString();
+        position.instantBuy = instantBuy; position.instantSell = instantSell;
+        if (part == TestPart.SELL) {
+            int held = itemCount(item.id());
+            if (held <= 0) return "Put the " + item.name() + " you want to sell in your inventory first";
+            if (held > 4096) return "Hold at most 4096 " + item.name();
+            position.quantity = held;
+        } else {
+            if (quantity < 1 || quantity > 4096) return "Buy between 1 and 4096 units";
+            int room = capacityFor(item.id());
+            if (quantity > room) return "The general flipper only counts room for " + Math.max(0, room) + " " + item.name() + " (it keeps 4 slots free and assumes 1 per slot until one is held)";
+            if (part == TestPart.BOTH && itemCount(item.id()) > 0) return "Move the " + item.name() + " you already hold out of your inventory first";
+            position.quantity = quantity;
+        }
+        Double buy = strategy.buy(product, 1), sell = strategy.sell(product, 1);
+        if (part != TestPart.SELL && (buy == null || buy <= 0)) return "No fresh " + (instantBuy ? "instant-buy" : "buy-order") + " price for " + item.name();
+        if (part != TestPart.BUY && (sell == null || sell <= 0)) return "No fresh " + (instantSell ? "instant-sell" : "sell-offer") + " price for " + item.name();
+        position.unitCost = part == TestPart.SELL ? sell : buy;
+        position.sellPrice = sell == null || sell <= 0 ? position.unitCost : sell;
+        // The GUI bids 0.1 above the top order; allow that and a small move before confirming.
+        position.maximumBuyPrice = part == TestPart.SELL ? 0 : Math.max(buy * 1.05, buy + 0.2);
+        position.minimumSellPrice = sell == null || sell <= 0 ? 0 : sell * 0.9;
+        if (part == TestPart.SELL) { position.stage = Stage.INVENTORY; position.purchasePriceKnown = false; position.heldSince = world.now(); }
+        else position.stage = Stage.PLANNED;
+        double purse = services.purse();
+        if (part != TestPart.SELL && !capital.reserve(OWNER, item.id(), position.cost() * 1.05, purse))
+            return "Not enough spendable capital for " + position.quantity + " " + item.name() + " after the purse reserve and trading capital limit";
+        start();
+        if (!running) { capital.release(OWNER, item.id()); return "General flipper could not start"; }
+        positions.add(position);
+        if (part == TestPart.SELL) restoreFunding(position);
+        if (!save()) { positions.remove(position); capital.release(OWNER, item.id()); stop(); return "General order state could not be saved"; }
+        testTradeId = position.tradeId;
+        var evidence = testEvidence(position); evidence.put("buyQuote", buy); evidence.put("sellQuote", sell);
+        services.event("INFO", "general.test_started", evidence);
+        return null;
+    }
+    /** True once the test's position is gone: sold, bought (buy-only), or cancelled. */
+    public boolean testFinished() {
+        return testTradeId != null && positions.stream().noneMatch(p -> testTradeId.equals(p.tradeId));
+    }
+    public boolean testing() { return testTradeId != null; }
+    public void endTest() { testTradeId = null; }
+
+    private void finishTestBuy() {
+        testEvent("general.test_bought_done");
+        actions.message(String.format(java.util.Locale.ROOT, "General test: bought %d %s for about %,.1f coins (%s). They stay in your inventory.",
+                active.quantity, active.item.name(), active.cost(), active.instantBuy ? "instant buy" : "buy order"));
+        completePosition();
+    }
+    private java.util.Map<String,Object> testEvidence() { return testEvidence(active); }
+    private java.util.Map<String,Object> testEvidence(GeneralPosition position) {
+        var evidence = new java.util.LinkedHashMap<String,Object>();
+        evidence.put("trade", position.tradeId); evidence.put("item", position.item.id()); evidence.put("part", position.test);
+        evidence.put("instantBuy", position.instantBuy); evidence.put("instantSell", position.instantSell);
+        evidence.put("quantity", position.quantity); evidence.put("unitCost", position.unitCost); evidence.put("stage", position.stage.name());
+        evidence.put("maximumBuyPrice", position.maximumBuyPrice); evidence.put("minimumSellPrice", position.minimumSellPrice);
+        return evidence;
+    }
+    private void testEvent(String type) { services.event("INFO", type, testEvidence()); }
 
     /** The engine's rules, as the operations see them. */
     private final class Session implements GeneralContext {
@@ -748,6 +920,7 @@ public class GeneralFlipper implements Feature {
         @Override public double unitPrice(int slot) { return GeneralFlipper.this.unitPrice(slot); }
         @Override public int itemCount(String id) { return GeneralFlipper.this.itemCount(id); }
         @Override public int capacityFor(String id) { return GeneralFlipper.this.capacityFor(id); }
+        @Override public int roomFor(String id) { return view.emptyInventorySlots() * view.stackLimitFor(id) + view.partialStackSpace(id); }
         @Override public boolean ordersReady() { return GeneralFlipper.this.ordersReady(); }
         @Override public boolean ambiguousOrders() { return GeneralFlipper.this.ambiguousOrders(); }
         @Override public int findOrder(boolean sell) { return GeneralFlipper.this.findOrder(sell); }
@@ -762,9 +935,11 @@ public class GeneralFlipper implements Feature {
         @Override public void restoreFunding(GeneralPosition position) { GeneralFlipper.this.restoreFunding(position); }
         @Override public boolean recordAcquisition() { return GeneralFlipper.this.recordAcquisition(); }
         @Override public boolean recordSale(int units, Double proceeds) { return GeneralFlipper.this.recordSale(units, proceeds); }
+        @Override public void skipUnownedConflict(String reason) { GeneralFlipper.this.skipUnownedConflict(reason); }
         @Override public void skipUnavailable(String reason) { GeneralFlipper.this.skipUnavailable(reason); }
         @Override public void finishWork() { GeneralFlipper.this.finishWork(); }
         @Override public void completePosition() { GeneralFlipper.this.completePosition(); }
+        @Override public Double claimedOutside() { return GeneralFlipper.this.claimedOutside(active); }
     }
 
     void resetProductionAccount(){
@@ -817,6 +992,33 @@ public class GeneralFlipper implements Feature {
     java.util.List<GeneralPosition> productionPositions(){restoreBudget();return blocked?java.util.List.of():java.util.List.copyOf(positions);}
     GeneralPosition productionPosition(String parent){return positions.stream().filter(p->java.util.Objects.equals(p.productionParent,parent)).findFirst().orElse(null);}
     boolean consumeProduction(){return consumeProduction(productionPosition());}
+    /** No order transaction is in progress, so another menu may be opened safely. */
+    boolean productionIdle(){return active==null;}
+    /** Products whose partial claims wait for the run to store them. */
+    java.util.List<String> productionAwaitingStorage(String parent){
+        return positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent) && p.productionAwaitingStorage && !p.completed).map(p->p.item.id()).toList();
+    }
+    /** Products the run may move freely: claimed in full, or waiting to be stored. */
+    java.util.Set<String> productionStorable(String parent){
+        var ids=new java.util.HashSet<String>();
+        for(var p:positions)if(java.util.Objects.equals(parent,p.productionParent) && p.productionBuy
+                && (p.completed || p.stage==Stage.INVENTORY || p.productionAwaitingStorage))ids.add(p.item.id());
+        return java.util.Set.copyOf(ids);
+    }
+    /** Records units of a waiting partial claim that the run verified into storage. */
+    boolean productionStored(String parent,String product,int units){
+        var p=positions.stream().filter(x->java.util.Objects.equals(parent,x.productionParent) && x.item.id().equals(product)).findFirst().orElse(null);
+        if(units<0 || p==null || p==active || !p.productionBuy || p.completed || !p.productionAwaitingStorage)return false;
+        int before=p.productionInventoryBefore,stored=p.productionStoredUnits;
+        // Units held before the order were moved too; they leave the baseline before counting as stored.
+        int fromBaseline=Math.min(before,units);
+        p.productionInventoryBefore=before-fromBaseline;p.productionStoredUnits=stored+units-fromBaseline;
+        if(p.productionStoredUnits>p.quantity){p.productionInventoryBefore=before;p.productionStoredUnits=stored;return false;}
+        p.productionAwaitingStorage=false;p.checkedAt=0;
+        if(!save()){p.productionInventoryBefore=before;p.productionStoredUnits=stored;p.productionAwaitingStorage=true;return false;}
+        services.event("INFO","order.claim_stored",java.util.Map.of("trade",p.tradeId,"item",product,"units",units,"stored",p.productionStoredUnits,"quantity",p.quantity));
+        return true;
+    }
     boolean consumeProduction(String parent){
         var selected=positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent)).toList();
         if(selected.isEmpty()||selected.stream().anyMatch(p->!(p.completed||p.productionBuy&&p.stage==Stage.INVENTORY)))return false;
@@ -840,6 +1042,48 @@ public class GeneralFlipper implements Feature {
     }
     double productionBuyCommitment(String parent) {
         return positions.stream().filter(p->java.util.Objects.equals(parent,p.productionParent)&&!p.completed&&p.productionBuy).mapToDouble(GeneralPosition::cost).sum();
+    }
+    /**
+     * Drops every craft order record of one reviewed job, once the player has confirmed in game
+     * that those orders were claimed or cancelled by hand. Null when stopped state or saving fails.
+     */
+    List<GeneralPosition> releaseProduction(String parent) {
+        restoreBudget();
+        if(!services.productionOnly() || running && !paused || active!=null || blocked || parent==null) return null;
+        var selected=positions.stream().filter(p->parent.equals(p.productionParent)).toList();
+        if(selected.isEmpty()) return List.of();
+        var before=List.copyOf(positions);positions.removeAll(selected);
+        if(!save()){positions.clear();positions.addAll(before);return null;}
+        selected.forEach(p->capital.release(OWNER,p.item.id()));
+        if(lastFailureParent!=null && lastFailureParent.equals(parent)){paused=false;lastFailure=null;lastFailureParent=null;lastBlockedItem=null;}
+        return selected;
+    }
+    /** One line per ordinary (non-craft) position, for the player to check against /bz before releasing. */
+    public List<String> generalPositionSummaries(){
+        restoreBudget();
+        return positions.stream().filter(p->p.productionParent==null).map(p->(p.tradeId==null?"?":p.tradeId.substring(0,Math.min(8,p.tradeId.length())))+" · "+p.item.name()+" · "+p.quantity+"x · "+p.stage
+            +(p.submitted?" · submitted":"")+(p.settlementPending?" · sale settling":"")+(p.cancelRequested?" · cancel requested":"")).toList();
+    }
+    /**
+     * Drops ordinary flip records after the player confirmed in game that their orders were
+     * claimed or cancelled by hand. A lost confirm click or an unconfirmed sale used to leave a
+     * position that failed every start, with no way to clear it. Null when trading is running,
+     * the state is unreadable or saving fails.
+     */
+    public List<GeneralPosition> releaseGeneral(String reference) {
+        restoreBudget();
+        if(services.productionOnly() || running && !paused || active!=null || blocked || reference==null) return null;
+        boolean all=reference.equalsIgnoreCase("all");
+        if(!all && reference.length()<4) return null;
+        var selected=positions.stream().filter(p->p.productionParent==null && (all || p.tradeId!=null && p.tradeId.regionMatches(true,0,reference,0,reference.length()))).toList();
+        if(selected.isEmpty()) return List.of();
+        if(!all && selected.size()!=1)return null; // A prefix is never authority to forget multiple trades.
+        var before=List.copyOf(positions);positions.removeAll(selected);
+        if(!save()){positions.clear();positions.addAll(before);return null;}
+        selected.forEach(p->capital.release(OWNER,p.item.id()));
+        services.event("INFO","general.positions_released",java.util.Map.of("released",selected.stream().map(p->p.tradeId+" "+p.item.id()+" "+p.stage).toList()));
+        if(lastFailureParent==null){paused=false;lastFailure=null;lastBlockedItem=null;}
+        return selected;
     }
     boolean orphanProductionOrders(java.util.Set<String> parents) {
         restoreBudget();return blocked || positions.stream().anyMatch(p->p.productionParent==null || !parents.contains(p.productionParent));

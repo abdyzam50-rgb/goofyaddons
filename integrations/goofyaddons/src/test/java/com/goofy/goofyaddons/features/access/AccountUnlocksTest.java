@@ -8,6 +8,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AccountUnlocksTest {
+    @Test void legacyWorkerErrorsIdentifyRejectedHypixelKeysWithoutDisplayingRawErrors() {
+        for(int status:new int[]{401,403}) {
+            var body=new JsonObject();body.addProperty("error","Hypixel rejected profile access (HTTP "+status+"). Check the Worker HYPIXEL_API_KEY and its Hypixel application permissions");
+            var response=AccountUnlocks.parseResponse(502,body.toString());
+            assertEquals(status==403?"HYPIXEL_FORBIDDEN":"HYPIXEL_UNAUTHORIZED",response.body().get("failureCode").getAsString());
+            assertEquals(status,response.body().get("upstreamStatus").getAsInt());
+        }
+        assertFalse(AccountUnlocks.parseResponse(502,"{\"error\":\"private-api-secret\"}").body().has("failureCode"));
+    }
+
     @Test void publicAccountServiceConnectionRetriesAfterFiveSecondsAndRecovers() {
         var clock=new AtomicLong(1000000);var calls=new AtomicLong();
         var account=new AccountUnlocks(uri->calls.incrementAndGet()==1
@@ -64,6 +74,16 @@ class AccountUnlocksTest {
         stats.addProperty("hotmTier",11);assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000));
         stats.addProperty("hotmTier",6);stats.getAsJsonObject("slayers").addProperty("Vampire",6);
         assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(data,"Tester","Mango",Map.of(),1000000));
+    }
+    @Test void recipeUnlockGateRejectsLockedAndUnpublishedThenAcceptsVerifiedCurrentProfile() {
+        var root=profile(1000000);var stats=root.getAsJsonArray("profiles").get(0).getAsJsonObject().getAsJsonObject("stats");
+        String requirement="Recipe Enchanted Red Sand unlocked";
+        assertNotNull(RouteRequirements.craft(requirement,Map.of(),AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000).unlocks()));
+        var recipes=new JsonObject();recipes.addProperty("enchantedredsand",0);stats.add("recipeUnlocks",recipes);
+        assertNotNull(RouteRequirements.craft(requirement,Map.of(),AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000).unlocks()));
+        recipes.addProperty("enchantedredsand",1);
+        assertNull(RouteRequirements.craft(requirement,Map.of(),AccountUnlocks.parseProfile(root,"Tester","Mango",Map.of(),1000000).unlocks()));
+        assertThrows(IllegalArgumentException.class,()->AccountUnlocks.parseProfile(root,"Tester","Pear",Map.of(),1000000));
     }
     JsonObject profile(long at) {
         var root=JsonParser.parseString("""

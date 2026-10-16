@@ -1,9 +1,9 @@
 package com.goofy.goofyaddons.features.bookflipper.helper;
 
+import com.goofy.goofyaddons.features.market.BazaarQuotes;
 import com.goofy.goofyaddons.config.GoofyConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.goofy.goofyaddons.features.TradingSafety;
 import net.minecraft.client.Minecraft;
@@ -26,6 +26,9 @@ public class FlipCalculator {
     private final Supplier<Inputs> inputs;
     private final java.util.function.LongSupplier now;
     private boolean running;
+    private long requestedAt;
+    private String lastProblem;
+    public String lastProblem(){return lastProblem;}
     private int generation;
     private CompletableFuture<JsonObject> request;
     private List<FlipItem> flipItemsList = List.of();
@@ -47,8 +50,8 @@ public class FlipCalculator {
     }
 
     public void Refresh() {
-        if (running) return;
-        running = true;
+        if (isRunning()) return;
+        running = true;requestedAt=now.getAsLong();lastProblem=null;
         flipItemsList = List.of();
         int run = generation;
         try {
@@ -64,7 +67,7 @@ public class FlipCalculator {
                     TradingSafety.sourceTime(root, now.getAsLong());
                     flipItemsList = calculate(root.getAsJsonObject("products"), books, tax, minimumProfit);
                 } catch (Exception failure) {
-                    LOGGER.warn("Bazaar fetch failed; retrying later", failure);
+                    lastProblem="Bazaar quote request failed; retrying";LOGGER.warn("Bazaar fetch failed; retrying later", failure);
                 } finally {
                     running = false;
                     request = null;
@@ -73,12 +76,12 @@ public class FlipCalculator {
         } catch (Exception failure) {
             running = false;
             request = null;
-            LOGGER.warn("Bazaar fetch failed; retrying later", failure);
+            lastProblem="Bazaar quote request failed; retrying";LOGGER.warn("Bazaar fetch failed; retrying later", failure);
         }
     }
 
     public void reset() {
-        generation++;
+        lastProblem=null;generation++;
         if (request != null) request.cancel(true);
         request = null;
         running = false;
@@ -86,6 +89,11 @@ public class FlipCalculator {
     }
 
     public boolean isRunning() {
+        if(running && now.getAsLong()-requestedAt>=15000) {
+            generation++;var pending=request;request=null;running=false;
+            lastProblem="Bazaar quote request timed out; retrying";
+            if(pending!=null)pending.cancel(true);
+        }
         return running;
     }
 
@@ -109,10 +117,10 @@ public class FlipCalculator {
         JsonObject buy = products.getAsJsonObject(book.getLevel(book.level()));
         JsonObject sell = products.getAsJsonObject(book.getLevel(book.sellLevel()));
         if (buy == null || sell == null) return null;
-        double bid = topPrice(buy, "sell_summary");
-        double ask = topPrice(buy, "buy_summary");
-        double sellBid = topPrice(sell, "sell_summary");
-        double sellAsk = topPrice(sell, "buy_summary");
+        double bid = BazaarQuotes.bestBid(buy);
+        double ask = BazaarQuotes.bestAsk(buy);
+        double sellBid = BazaarQuotes.bestBid(sell);
+        double sellAsk = BazaarQuotes.bestAsk(sell);
         if (bid <= 0 || ask <= 0 || sellBid <= 0 || sellAsk <= 0) return null;
         return evaluateStrategy(products,book,taxPercentage,minimumProfit,com.goofy.goofyaddons.features.production.BazaarStrategy.of(
                 (ask-bid)/ask*100<=book.instaBuyPercentage(),(sellAsk-sellBid)/sellAsk*100<=book.instaSellPercentage()));
@@ -130,26 +138,13 @@ public class FlipCalculator {
         JsonObject sellQuick = sell.getAsJsonObject("quick_status");
         if (buyQuick == null || sellQuick == null) return null;
         // Historical execution flow, rather than standing order depth.
-        double buyFlow = movingWeek(buyQuick, instaBuy ? "buyMovingWeek" : "sellMovingWeek")
+        double buyFlow = BazaarQuotes.weeklyVolume(buyQuick, instaBuy ? "buyMovingWeek" : "sellMovingWeek")
                 / book.getQtyAmount(book.level());
-        double sellFlow = movingWeek(sellQuick, instaSell ? "sellMovingWeek" : "buyMovingWeek");
+        double sellFlow = BazaarQuotes.weeklyVolume(sellQuick, instaSell ? "sellMovingWeek" : "buyMovingWeek");
         double flow = Math.min(buyFlow, sellFlow);
         if (flow <= 0) return null;
         double score = profit * Math.log10(flow + 1) / Math.sqrt(cost);
         return new FlipItem(book, cost, score, instaBuy, instaSell);
-    }
-
-    private static double movingWeek(JsonObject quick, String key) {
-        if (!quick.has(key)) return 0;
-        double value = quick.get(key).getAsDouble();
-        return Double.isFinite(value) ? Math.max(0, value) : 0;
-    }
-
-    private static double topPrice(JsonObject product, String side) {
-        JsonArray orders = product.getAsJsonArray(side);
-        if (orders == null || orders.isEmpty()) return -1;
-        double price = orders.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
-        return Double.isFinite(price) ? price : -1;
     }
 
     public List<FlipItem> getFlipItemsList() {

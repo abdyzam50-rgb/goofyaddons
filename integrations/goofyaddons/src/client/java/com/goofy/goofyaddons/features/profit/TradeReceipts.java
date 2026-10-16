@@ -4,20 +4,30 @@ import java.util.regex.Pattern;
 
 public final class TradeReceipts {
     private TradeReceipts() {}
+    /** One sale claim receipt: units sold, net coins claimed and, when shown, the gross unit price. */
+    public record SaleClaim(int units,double coins,Double unitPrice) {}
     public static Double saleProceeds(String message,String item,int expectedUnits) {
-        if(message==null || item==null || expectedUnits<=0) return null;
+        if(expectedUnits<=0) return null;
+        var claim=saleClaim(message,item);
+        return claim!=null && claim.units()==expectedUnits ? claim.coins() : null;
+    }
+    private static final Pattern SALE_CLAIM=Pattern.compile("^\\[Bazaar] Claimed ([\\d,]+(?:\\.\\d+)?) coins from selling ([\\d,]+)x "
+            +"(.+?)(?: at ([\\d,]+(?:\\.\\d+)?) each)?[!.]?$",Pattern.CASE_INSENSITIVE);
+    public static SaleClaim saleClaim(String message,String item) {
+        if(message==null || item==null) return null;
         // Hypixel appends " at <gross unit price> each" to a sale claim. The pattern anchored
         // at the item name, so every real claim receipt failed to match: the engine armed a
         // sale claim, collected the coins, never recognised its own receipt, and halted with
         // the sale unrecorded. It is why no session ever logged a completed sale.
-        var match=Pattern.compile("^\\[Bazaar] Claimed ([\\d,]+(?:\\.\\d+)?) coins from selling ([\\d,]+)x "
-                +Pattern.quote(item)+"(?: at [\\d,]+(?:\\.\\d+)? each)?[!.]?$",
-                Pattern.CASE_INSENSITIVE).matcher(com.goofy.goofyaddons.utils.Chat.strip(message));
-        if (!match.matches()) return null;
+        // The item is compared through the order-name rule, so gemstone receipts ("✧ Fine Ruby Gem")
+        // match a position named "Fine Ruby Gemstone" just as its order slot does.
+        var match=SALE_CLAIM.matcher(com.goofy.goofyaddons.utils.Chat.strip(message));
+        if (!match.matches() || !com.goofy.goofyaddons.features.TradingSafety.sameOrderItem(match.group(3),item)) return null;
         try {
             int units=Integer.parseInt(match.group(2).replace(",",""));
             double coins=Double.parseDouble(match.group(1).replace(",",""));
-            return units==expectedUnits && Double.isFinite(coins) && coins>=0 ? coins : null;
+            Double unit=match.group(4)==null ? null : Double.parseDouble(match.group(4).replace(",",""));
+            return units>0 && Double.isFinite(coins) && coins>=0 ? new SaleClaim(units,coins,unit) : null;
         } catch (NumberFormatException bad) { return null; }
     }
     /** Generic refund is usable only when correlated with the entire pending buy's escrow. */

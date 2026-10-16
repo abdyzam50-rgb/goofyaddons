@@ -6,6 +6,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.goofy.goofyaddons.menu.NavigationRetry.Result.*;
 
 class NavigationRetryTest {
+    @Test void fastNavigationWaitsForDestinationContentsWithoutReplayingSourceClick(){
+        flow.sent(source,16,0);
+        var empty=new ArrayList<SlotView>();
+        for(int i=0;i<72;i++)empty.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        var opening=new MenuSnapshot(2,"Next screen",true,empty);
+        for(long now:new long[]{10,20,50,100,3000,5000})
+            assertEquals(WAITING,flow.observe(opening,false,actions,now));
+        assertTrue(actions.serverEffects().isEmpty());
+        assertTrue(flow.pending());
+        assertEquals(READY,flow.observe(menu(2,"Next screen","Loaded control",true),false,actions,5010));
+        assertFalse(flow.pending());
+    }
+    @Test void destinationLoadingTimeoutNeverReplaysTheOldControl(){
+        flow.sent(source,16,0);
+        var opening=new MenuSnapshot(2,"Next screen",true,List.of());
+        assertEquals(WAITING,flow.observe(opening,false,actions,20));
+        assertEquals(EXHAUSTED,flow.observe(opening,false,actions,15000));
+        assertTrue(actions.serverEffects().isEmpty());
+    }
     MenuSnapshot control(String action,int price){
         var m=menu(1,"Cod ➜ Enchanted Raw Cod",action,true);var slots=new ArrayList<>(m.slots());
         slots.set(16,SlotView.named(16,action,List.of("Enchanted Raw Cod","Price: "+price)));
@@ -46,6 +65,35 @@ class NavigationRetryTest {
         for(long now:new long[]{2000,3000,4000})
             assertEquals(WAITING,flow.observe(product("OTHER_PRODUCT",101),false,actions,now));
         assertTrue(actions.serverEffects().isEmpty());
+    }
+    MenuSnapshot loadingSearch(int id,String name,String lore,boolean cursor) {
+        var slots=new ArrayList<SlotView>();
+        for(int i=0;i<90;i++)slots.add(SlotView.empty(i,i>=54,i>=54?i-54:i));
+        slots.set(11,SlotView.named(11,name,List.of(lore)));
+        return new MenuSnapshot(id,"Bazaar ➜ \"Stealth\"",cursor,slots);
+    }
+    @Test void loadingResultRetriesWithChangingPriceLoreThenRequestsBoundedReopens() {
+        var search=loadingSearch(1,"Stealth I","Loading...",true);
+        for(int attempt=0;attempt<3;attempt++) {
+            long start=attempt*16000L;
+            flow.sent(search,11,start);
+            assertEquals(WAITING,flow.observe(search,false,actions,start+2000));
+            assertEquals(RETRIED,flow.observe(loadingSearch(1,"Stealth I","Buy price: 100 coins",true),false,actions,start+3000));
+            assertEquals(attempt<2?REOPEN:EXHAUSTED,flow.observe(search,false,actions,start+15000));
+        }
+        assertEquals(List.of("click:11","click:11","click:11"),actions.serverEffects());
+    }
+    @Test void loadingResultCannotReplayOnDifferentLevelOrCloseWithHeldCursor() {
+        var search=loadingSearch(1,"Stealth I","Loading...",true);flow.sent(search,11,0);
+        assertEquals(WAITING,flow.observe(loadingSearch(1,"Stealth II","Loading...",true),false,actions,3000));
+        assertEquals(EXHAUSTED,flow.observe(loadingSearch(1,"Stealth I","Loading...",false),false,actions,15000));
+        assertTrue(actions.serverEffects().isEmpty());
+    }
+    @Test void successfulSearchAcknowledgementResetsReopenBudget() {
+        var search=loadingSearch(1,"Stealth I","Loading...",true);flow.sent(search,11,0);
+        assertEquals(REOPEN,flow.observe(search,false,actions,15000));flow.sent(search,11,16000);
+        assertEquals(READY,flow.observe(menu(2,"Stealth ➜ Stealth I","Create Buy Order",true),false,actions,16010));
+        assertEquals(0,flow.diagnosticState(search).get("reopens"));
     }
     final NavigationRetry flow=new NavigationRetry();
     final RecordingActions actions=new RecordingActions();

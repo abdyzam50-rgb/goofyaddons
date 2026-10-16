@@ -127,6 +127,16 @@ class GeneralLoopTest {
         return actions.serverEffects().stream().filter(a -> a.equals("click:" + slot)).count();
     }
 
+    @Test void foreignOrderSkipsOnlyUnsubmittedCandidateWithoutPausingOrAdopting()throws Exception {
+        var world=new FakeWorld().showing(orders(false,16,0,0));seed(world,"PLANNED",16,0);
+        var market=new Market(world);var actions=new RecordingActions();var engine=engine(world,actions,market);
+        drive(engine,world,1600);
+        assertFalse((Boolean)engine.diagnosticState().get("paused"));assertFalse(engine.hasStateError());
+        assertTrue(engine.entryExclusions().contains(ID));assertEquals(0,market.capital.committed());
+        assertTrue(new JsonGeneralOrderRepository(()->dir.resolve("orders.json")).load().isEmpty());
+        assertEquals(0,clicks(actions,11));assertEquals(0,market.sales);
+        world.advance(61000);assertFalse(engine.entryExclusions().contains(ID));
+    }
     private void seedCraftSale(FakeWorld world,long age)throws Exception {
         seed(world,"SELL_ORDER",16,age);
         var repo=new JsonGeneralOrderRepository(()->dir.resolve("orders.json"));var p=repo.load().getFirst();

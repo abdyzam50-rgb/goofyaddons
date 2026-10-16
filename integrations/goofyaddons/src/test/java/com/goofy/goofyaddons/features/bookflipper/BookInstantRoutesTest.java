@@ -10,6 +10,15 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BookInstantRoutesTest {
+    @Test void loadedFlashResultDoesNotWaitForOtherLevelsToLoad(){
+        var task=new Task(new Book("ENCHANTMENT_FLASH",1,5,"Flash",0,0),false,false);
+        var ready=menu("Bazaar ➜ \"Flash\"",SlotView.named(11,"Flash I",List.of("Buy price: 3,876,567 coins","Click to view details!")),
+            SlotView.named(12,"Flash II",List.of("Loading...")));
+        assertTrue(ready.loadingContents());
+        assertEquals(11,BookBuy.searchTarget(ready,task));
+        assertEquals(11,BookBuy.searchTarget(menu("Bazaar ➜ \"Flash\"",SlotView.named(11,"Flash I",List.of("Loading..."))),task));
+        assertEquals(-1,BookBuy.searchTarget(menu("Bazaar ➜ \"Flash\"",SlotView.named(12,"Flash II",List.of("Click to view details!"))),task));
+    }
     @SuppressWarnings("unchecked") static <T>T proxy(Class<T> type,java.lang.reflect.InvocationHandler handler){return (T)Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},handler);}
     static MenuSnapshot menu(String title,SlotView... actual){
         var slots=new ArrayList<SlotView>();for(int i=0;i<90;i++)slots.add(SlotView.empty(i,i>=54,i>=54?i-54:i));
@@ -29,6 +38,7 @@ class BookInstantRoutesTest {
             var accounting=proxy(BookAccounting.class,(p,m,a)->{if(m.getName().equals("acquire"))costs.add((Double)a[5]);if(m.getName().equals("sell"))sales.add((Double)a[5]);return null;});
             ctx=proxy(BookContext.class,(p,m,a)->switch(m.getName()){
                 case "activeTask","taskInState"->task;case "now"->now;case "services"->services;case "accounting"->accounting;
+                case "settings"->new BookSettings(List.of(),1.25,0,10000,4,"ec 1","ec 2",false,false,3600,30,3600,20,3,30);
                 case "capital"->capital;case "menu"->menu;case "signOpen"->sign;case "actions"->actions;case "tasks"->tasks;
                 case "checkpoint"->{checkpoints++;yield true;}case "bookPriceAllowed"->true;
                 case "safetyHalt"->{failure=(String)a[0];yield null;}default->null;
@@ -53,5 +63,21 @@ class BookInstantRoutesTest {
         sell.sell(h.ctx);assertTrue(h.sales.isEmpty());assertTrue(h.actions.serverEffects().contains("click:11"));
         h.advance(menu(null));h.purse=-1;sell.sell(h.ctx);assertTrue(h.sales.isEmpty());
         h.now+=100;h.purse=5296.25;sell.sell(h.ctx);assertNull(h.failure);assertEquals(List.of(296.25),h.sales);assertTrue(h.tasks.isEmpty());
+    }
+    @Test void submittedInstantBookPurchaseOwnsItsConfirmationAndVerifiesTheReceipt(){
+        var h=new Harness();var buy=new BookBuy();
+        assertFalse(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        h.menu=menu("Overload IV",book(13,4),SlotView.named(10,"Buy Instantly",List.of("Overload IV","Price per unit: 100 coins")));
+        buy.tick(h.ctx);assertFalse(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        h.advance(menu("How many do you want?",SlotView.named(16,"Custom Amount",List.of())));buy.tick(h.ctx);
+        h.advance(menu(null));h.sign=true;buy.tick(h.ctx);h.sign=false;
+        assertTrue(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        assertFalse(buy.handlesInstantConfirmation("Confirm Sell Offer"));
+        h.advance(menu("Confirm Instant Buy",SlotView.named(11,"Confirm",List.of("Overload IV","Amount: 2x","Price: 200 coins"))));
+        buy.tick(h.ctx);assertNull(h.failure);assertTrue(h.costs.isEmpty());
+        h.advance(menu(null,book(54,4),book(55,4)));h.purse=4800;buy.tick(h.ctx);
+        assertNull(h.failure);assertEquals(List.of(200.0),h.costs);
+        assertFalse(buy.handlesInstantConfirmation("Confirm Instant Buy"));
+        assertEquals(1,h.actions.serverEffects().stream().filter(v->v.equals("click:11")).count());
     }
 }

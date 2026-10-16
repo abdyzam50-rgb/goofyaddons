@@ -3,10 +3,16 @@
 This repository now contains the combined Minecraft 26.3 client, the shared
 trading foundation, and the calculator/collector tools. The original standalone
 trader source and guides live under `integrations/goofyaddons/`; existing save
-files retain their formats and paths. See [installation and migration](docs/GOOFYADDONS.md)
+files retain their formats; active trading files now use per-profile folders. See [installation and migration](docs/GOOFYADDONS.md)
 and [completed architecture work](trading-core/README.md).
 
-Download the latest combined mod: [astar-client-0.2.83-BETA.jar](dist/astar-client-0.2.83-BETA.jar).
+Download the latest combined mod: [astar-client-0.2.131-BETA.jar](dist/astar-client-0.2.131-BETA.jar).
+
+Choose **All flips** in Macros → Mode while stopped to compare craft, book and general entries by estimated net coins/hour. Existing orders and sales keep being managed; new entries share capital and inventory limits. With automatic selection off, book and general entries use your configured presets; craft entries use the local craft ranking. With it on, they use calculator recommendations.
+
+See the [current command reference](docs/COMMANDS.md) for exact syntax, live test commands, profile folders and the differences between reporting resets, order release and production recovery. Worker owners should use the [deployment update guide](tools/gameplay-collector/README.md#update-an-existing-deployment).
+
+To clear completed profit and execution history for the current profile, stop trading and run `.a* goofyaddon profit clearhistory`. Active orders, owned lots, cost basis and settings remain. `.a* goofyaddon profit reset` only starts a new reporting session.
 
 # A*
 
@@ -38,7 +44,7 @@ downloads Java 25 for the build if it isn't installed):
 .\gradlew.bat -p client build
 ```
 
-Put `client\build\libs\astar-client-0.2.83-BETA.jar` (with the trader and Mines map inside)
+Put `client\build\libs\astar-client-0.2.131-BETA.jar` (with the trader and Mines map inside)
 in your `.minecraft\mods` folder, next to Fabric API. On Linux or macOS use
 `./gradlew -p client build`. To try it without installing,
 `.\gradlew.bat -p client runClient` starts a development game with the mod.
@@ -50,21 +56,21 @@ way of the planned ones.
 
 Press **G** in game (the key is in Options, Controls, under *A\* pathfinding*)
 for the mod's window. Going somewhere stays a command (`.A*`); the window is
-for everything around it. Its sidebar has:
+for everything around it. It fills the screen, with a sidebar of pages and a
+top bar showing the page's name, what it's for, a search box and an
+**Edit HUD** button for moving the on-screen widgets. The pages:
 
-- **Search**, a box at the top: type and its page lists every setting whose
-  name or description matches, in a card for each page it's on.
-- **Pathfinder settings**, a group that folds away:
-  - **Drawing**: whether the route is drawn, its look (ribbon, painted floor,
-    comet, breadcrumbs, light tube, lines, key nodes only or none) and its colour.
-  - **Path**, **Teleport**, **Camera** and **Mouse**: every setting from
-    `.A* config`, with a slider or a switch each, what it does under its
-    name and a reset once it's changed.
-  - **Caches**: the maps saved for this server (use, rename or forget each)
-    and the cache settings.
-- **Macros**: integrated SkyBlock trading controls, limits, account checks, market selection and regional rests. See [Trading inside A*](docs/GOOFYADDONS.md).
-- **Themes**: the window's colours. Each theme goes with one of the route
-  colours and draws the route in it too.
+- **Macros**: integrated SkyBlock trading controls, limits, account checks,
+  market selection and regional rests, in a row of small tabs along the top.
+  See [Trading inside A*](docs/GOOFYADDONS.md).
+- **Route**: whether the route is drawn, its look and its colour.
+- **Pathfinder** and **Movement**: a few quick choices at the top, and an
+  **Advanced** switch for every setting from `.A* config`, in folding cards.
+- **Maps**: the maps saved for this server and the cache settings.
+- **Widgets**: the HUD widgets shown while you play.
+- **Themes**: the window's colours and its lettering (font).
+
+Search finds any setting by its name or what it does, trader settings too.
 
 ## Commands
 
@@ -408,3 +414,7 @@ The integration branch builds A* with GoofyAddons as one JAR for Minecraft 26.3.
 See [Trading inside A*](docs/GOOFYADDONS.md) for installation, preserved data and scope.
 
 The optional [Discord companion](docs/DISCORD.md) posts profit status and contact alerts and accepts owner-only manual player controls. Server transfers restart saved-position verification before trading resumes.
+
+Trading settings and remembered Bazaar access restrictions live beside each profile’s journals under `config/goofyaddons/accounts/<player>/<profile>/`. The global `config/goofyaddons.json` seeds a new profile’s preferences; existing profile settings load automatically. Skills, unlocks and forecasts clear on profile changes. After trading files have opened, changing profiles requires restarting Minecraft before trading on the new profile. Global access-denial files are not copied between profiles.
+
+The Worker profile lookup now publishes collection recipe unlocks from Hypixel’s collection resource metadata. Redeploy `tools/gameplay-collector` for this field. Enchanted Red Sand crafting stays excluded while its current-profile recipe unlock is locked or unverified.

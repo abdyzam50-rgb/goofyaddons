@@ -25,4 +25,8 @@ final class GeneralTrade {
     boolean cancelNeedsClaim;
     /** Coins named by the sale receipt, when one was seen. */
     Double claimedProceeds;
+    /** A buy claim larger than the inventory was clicked; the server claims only what fits. */
+    boolean partialClaim;
+    int partialCount=-1;
+    long partialSince;
 }

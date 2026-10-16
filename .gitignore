@@ -14,3 +14,6 @@ client/logs/
 **/contributor-keys/
 # Local Discord pairing material is never distributed.
 **/goofyaddons-discord.key
+
+# Owner-local Worker deployment configuration; retain the tracked template.
+tools/gameplay-collector/wrangler.local.jsonc

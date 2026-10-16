@@ -44,7 +44,7 @@ class AuctionTest {
         advance(executor,a,loading,1000);advance(executor,a,loading,1100);
         assertTrue(a.serverEffects().isEmpty());
         advance(executor,a,menu(1,"Auction House",expected(),SlotView.named(15,"Create BIN Auction",List.of())),4000);
-        var blank=menu(2,"Create BIN Auction",expected());
+        var blank=menu(2,"Create BIN Auction",expected(),SlotView.named(33,"Duration: 2 days",List.of()));
         advance(executor,a,blank,5000);advance(executor,a,blank,5100);
         advance(executor,a,form(2,1000),5200);advance(executor,a,form(2,1000),5300);advance(executor,a,form(2,1000),5400);
         assertEquals(BinListingExecutor.Result.WAITING,executor.tick(menu(3,"Confirm BIN Auction"),false,a,"account",10000,10000,5500));
@@ -124,7 +124,7 @@ class AuctionTest {
         advance(executor,actions,root,1000);advance(executor,actions,root,1100);
         var bidding=menu(2,"Create Auction",SlotView.named(48,"Switch to BIN",List.of()),expected());
         advance(executor,actions,bidding,1300);advance(executor,actions,bidding,1400);
-        var blank=menu(3,"Create BIN Auction",expected());
+        var blank=menu(3,"Create BIN Auction",expected(),SlotView.named(33,"Duration: 2 days",List.of()));
         advance(executor,actions,blank,1600);advance(executor,actions,blank,1800);
         advance(executor,actions,form(3,1000),2000);advance(executor,actions,form(3,1000),2200);
         assertEquals(BinListingExecutor.Result.PREPARED,executor.tick(form(3,1000),false,actions,"account",10000,10000,2400));

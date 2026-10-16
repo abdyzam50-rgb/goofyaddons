@@ -40,7 +40,19 @@ public final class AccountUnlocks {
             .thenApply(response->parseResponse(response.statusCode(),response.body()));
     }
     static Response parseResponse(int status,String body) {
-        try{return new Response(status,JsonParser.parseString(body).getAsJsonObject());}
+        try{
+            var parsed=JsonParser.parseString(body).getAsJsonObject();
+            // Older deployed collectors returned only this fixed public message.
+            // Classify it without ever displaying arbitrary response/error text.
+            if(status==502 && !parsed.has("failureCode")) {
+                String error=safeString(parsed,"error");
+                for(int upstream:new int[]{401,403})if(error.equals("Hypixel rejected profile access (HTTP "+upstream+"). Check the Worker HYPIXEL_API_KEY and its Hypixel application permissions")) {
+                    parsed.addProperty("failureCode",upstream==403?"HYPIXEL_FORBIDDEN":"HYPIXEL_UNAUTHORIZED");
+                    parsed.addProperty("upstreamService","HYPIXEL");parsed.addProperty("upstreamStatus",upstream);
+                }
+            }
+            return new Response(status,parsed);
+        }
         catch(RuntimeException invalid){
             // A gateway may return HTML. Preserve its HTTP failure without
             // displaying the body or mistaking it for a successful profile.
@@ -57,7 +69,7 @@ public final class AccountUnlocks {
         return failure!=null?failure:"Account prerequisite data expired; refreshing";
     }
     public Map<String,Object> diagnosticState(long now) {
-        return Map.ofEntries(Map.entry("status",status(now)),Map.entry("failureCode",failureCode),Map.entry("pending",pending()),
+        return Map.ofEntries(Map.entry("profile",Objects.toString(profile,"unknown")),Map.entry("status",status(now)),Map.entry("failureCode",failureCode),Map.entry("pending",pending()),
             Map.entry("skills",skills(now).size()),Map.entry("unlocks",current(now).size()),Map.entry("collectionsAvailable",now<expires && collectionsAvailable),
             Map.entry("source","PUBLIC_WEBSITE"),Map.entry("expiresInMs",Math.max(0,expires-now)),Map.entry("retryInMs",Math.max(0,next-now)),
             Map.entry("serviceHttpStatus",serviceHttpStatus),Map.entry("upstreamService",upstreamService),Map.entry("upstreamHttpStatus",upstreamHttpStatus));
@@ -169,6 +181,7 @@ public final class AccountUnlocks {
             copy(stats.getAsJsonObject("collections"),"",result);
             if(stats.has("collectionIds"))copy(stats.getAsJsonObject("collectionIds"),"",result);
         }
+        if(!unknown.contains("collections") && stats.has("recipeUnlocks"))copy(stats.getAsJsonObject("recipeUnlocks")," recipe unlocked",result);
         if(!unknown.contains("slayers")) {
             var slayers=stats.getAsJsonObject("slayers");
             for(var e:slayers.entrySet()) {

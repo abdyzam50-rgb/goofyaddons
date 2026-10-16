@@ -113,7 +113,47 @@ class ProductionCancelRejectionTest {
             assertTrue(f.repo.load().getFirst().completed);assertFalse(f.market.capital().occupied(ID));assertEquals(1,f.clicks(13));
         }
     }
-    @Test void genericTryLaterOrMissingAcknowledgementNeverAuthorizesAnotherCancel()throws Exception{
+    @Test void silentSellCancellationReopensExactLiveOfferAndVerifiesReturnedStock()throws Exception{
+        var f=new Fixture("silent-sale.json",List.of(sale()));
+        f.world.showing(orders(10,0,0,0,0,"curedmc",false,true,0));assertTrue(f.engine.resumeProductionSales());f.until("CANCEL_DETAIL");
+        f.world.showing(menu("Sell Order Options",11,0,0,List.of(SlotView.named(13,"Cancel Order",List.of()))));f.tick(120);
+        assertEquals(1,f.clicks(13));
+        f.world.showing(orders(12,0,0,0,0,"curedmc",false,true,0));f.until("CANCEL_DETAIL");
+        assertTrue(f.market.events.contains("order.cancel_unacknowledged_retry"));assertEquals(1,f.clicks(13));
+        f.world.showing(menu("Sell Order Options",13,0,0,List.of(SlotView.named(13,"Cancel Order",List.of()))));f.tick(120);
+        assertEquals(2,f.clicks(13));f.engine.onNotice("[Bazaar] Cancelled sell order for 4x Crafted Output!");
+        f.world.showing(menu("Co-op Bazaar Orders",14,0,4,List.of(SlotView.named(49,"Close",List.of()))));f.tick(1600);
+        var saved=f.repo.load().getFirst();assertEquals(GeneralPosition.Stage.INVENTORY,saved.stage);
+        assertEquals(4,saved.quantity);assertFalse(saved.cancelRequested);assertNull(saved.verifiedProceeds);
+        assertFalse((Boolean)f.engine.diagnosticState().get("paused"));
+    }
+    @Test void silentBuyCancellationStopsAfterTwoVerifiedReopensAndRetainsEscrow()throws Exception{
+        var f=new Fixture("silent-limit.json",List.of(buy(1,100)));f.beginBuy(1,100,false);
+        for(int attempt=0;attempt<2;attempt++){
+            f.world.showing(orders(12+attempt*2,1,0,100,0,"curedmc",false,false,0));f.until("CANCEL_DETAIL");
+            f.world.showing(menu("Buy Order Options",13+attempt*2,0,0,List.of(SlotView.named(13,"Cancel Order",List.of()))));f.tick(120);
+        }
+        f.world.showing(orders(16,1,0,100,0,"curedmc",false,false,0));f.tick(6500);
+        assertEquals(3,f.clicks(13));assertTrue((Boolean)f.engine.diagnosticState().get("paused"));
+        var saved=f.repo.load().getFirst();assertTrue(saved.cancelRequested);assertFalse(saved.completed);assertEquals(100,saved.cost());
+        assertTrue(f.market.capital().occupied(ID));
+    }
+    @Test void silentCancellationCannotRetryAbsentForeignDuplicateOrChangedPriceOrder()throws Exception{
+        for(int variant=0;variant<4;variant++){
+            var f=new Fixture("silent-unsafe-"+variant+".json",List.of(buy(1,100)));f.beginBuy(1,100,false);
+            f.world.showing(orders(12,variant==3?0:1,0,variant==2?101:100,0,variant==0?"OtherPlayer":"curedmc",variant==1,false,0));f.tick(6500);
+            assertEquals(1,f.clicks(13));assertFalse(f.market.events.contains("order.cancel_unacknowledged_retry"));
+            assertTrue(f.repo.load().getFirst().cancelRequested);assertTrue(f.market.capital().occupied(ID));
+        }
+    }
+    @Test void lateRefundDuringSilentRetryWinsBeforeAnotherCancellation()throws Exception{
+        var f=new Fixture("silent-late.json",List.of(buy(1,100)));f.beginBuy(1,100,false);
+        f.world.showing(orders(12,1,0,100,0,"curedmc",false,false,0));f.until("CANCEL_DETAIL");
+        f.engine.onNotice("[Bazaar] Cancelled! Refunded 100 coins from cancelling Buy Order!");f.until("VERIFY_CANCEL");
+        f.world.showing(orders(13,0,0,0,0,"curedmc",false,false,0));f.tick(1600);
+        assertEquals(1,f.clicks(13));assertTrue(f.repo.load().getFirst().completed);assertFalse(f.market.capital().occupied(ID));
+    }
+    @Test void genericTryLaterDoesNotAuthorizeCancelWithoutFreshOptions()throws Exception{
         var f=new Fixture("unknown.json",List.of(buy(1,100)));f.beginBuy(1,100,false);
         f.engine.onNotice("[Bazaar] Please try again later!");
         f.world.showing(orders(12,1,0,100,0,"curedmc",false,false,0));f.tick(8000);

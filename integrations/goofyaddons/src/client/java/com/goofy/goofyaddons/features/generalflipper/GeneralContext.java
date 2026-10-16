@@ -45,6 +45,8 @@ interface GeneralContext {
     double unitPrice(int slot);
     int itemCount(String id);
     int capacityFor(String id);
+    /** Every unit of this item the inventory can physically take now, with no slots kept spare. */
+    int roomFor(String id);
 
     boolean ordersReady();
     boolean ambiguousOrders();
@@ -63,6 +65,9 @@ interface GeneralContext {
     boolean recordAcquisition();
     boolean recordSale(int units, Double proceeds);
     void skipUnavailable(String reason);
+    void skipUnownedConflict(String reason);
     void finishWork();
     void completePosition();
+    /** Coins from a receipt showing the player claimed the active sell offer by hand, or null. */
+    Double claimedOutside();
 }

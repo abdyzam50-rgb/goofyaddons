@@ -22,7 +22,7 @@ public final class CraftingFeature implements Feature {
     public boolean queued(){return recipe!=null;}
     /** The journal id of the most recently queued job, for callers that follow it. */
     public String jobId(){return jobId;}
-    public String activity(){return recipe==null?"No craft queued":(executor.outputCapacityWaiting()?"Waiting for output stack size: ":executor.quickCrafting()?"Quick crafting ":"Crafting ")+RecipeCatalog.instance().name(recipe.outputId())+" · "+remaining+" batches remaining"+(compactorStatus==null?"":" · "+compactorStatus);}
+    public String activity(){return recipe==null?"No craft queued":(executor.recovering()?"Reconciling crafting inventory: ":executor.outputCapacityWaiting()?"Waiting for output stack size: ":executor.quickCrafting()?"Quick crafting ":"Crafting ")+RecipeCatalog.instance().name(recipe.outputId())+" · "+remaining+" batches remaining"+(compactorStatus==null?"":" · "+compactorStatus);}
     public Set<String> lockedProducts(){if(recipe==null)return Set.of();var ids=new HashSet<>(recipe.ingredients().keySet());ids.add(recipe.outputId());return Set.copyOf(ids);}
     private ProductionJobs jobs()throws java.io.IOException {
         if(jobs==null) {
@@ -37,7 +37,7 @@ public final class CraftingFeature implements Feature {
     public boolean queue(String output,int batches,String recipeKey) {return queue(output,batches,recipeKey,false);}
     public boolean queueForProduction(String output,int batches,String recipeKey) {return queue(output,batches,recipeKey,true);}
     private boolean queue(String output,int batches,String recipeKey,boolean keepOpen) {
-        if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>64){new LiveActions().message("Finish the queued craft first; batch count must be 1–64.");return false;}
+        if(recipe!=null || FeatureManager.INSTANCE.auction().queued() || batches<1 || batches>1024){new LiveActions().message("Finish the queued craft first; batch count must be 1–1024.");return false;}
         var menu=new LiveWorld().menu();
         if(menu==null || !menu.cursorEmpty()){new LiveActions().message("Clear the cursor before queueing crafting.");return false;}
         var counts=new HashMap<String,Integer>();
@@ -63,7 +63,7 @@ public final class CraftingFeature implements Feature {
         new LiveActions().message("Queued "+batches+" craft batches of "+RecipeCatalog.instance().name(output)+". Use the trading toggle to run; existing ingredients only.");return true;
     }
     static Optional<ProductionRecipe> selectRecipe(RecipeCatalog catalog,String output,int batches,Map<String,Integer> inventory,Set<String> occupied){
-        if(batches<1 || batches>64)return Optional.empty();
+        if(batches<1 || batches>1024)return Optional.empty();
         return catalog.forOutput(output).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT)
             .filter(r->!occupied.contains(r.outputId()) && r.ingredients().keySet().stream().noneMatch(occupied::contains))
             .filter(r->r.ingredients().entrySet().stream().allMatch(e->inventory.getOrDefault(e.getKey(),0)>=(long)e.getValue()*batches)).findFirst();
@@ -114,11 +114,11 @@ public final class CraftingFeature implements Feature {
                 jobs().put(jobs().find(jobId).orElseThrow().withState(ProductionJobs.State.PROCESSING,null));
                 opening=true;openedAt=now;nextCommand=0;
             }
-            if(menu==null || menu.title()==null) {
+            if(!executor.recovering() && (menu==null || menu.title()==null)) {
                 if(now-openedAt>25000){fail("Craft Item menu did not open");return;}
                 if(now>=nextCommand){nextCommand=now+8000;actions.command("craft");}return;
             }
-            if(!"Craft Item".equals(Chat.strip(menu.title()))){fail("Crafting menu was replaced; inventory retained");return;}
+            if(!executor.recovering() && !"Craft Item".equals(Chat.strip(menu.title()))){fail("Crafting menu was replaced; inventory retained");return;}
             // Hypixel answers a click only when it disagrees with the client's prediction, so the
             // client's menu is the state to act on; a rejected click reverts it, and the executor
             // re-reads it after a settle delay before every next click.

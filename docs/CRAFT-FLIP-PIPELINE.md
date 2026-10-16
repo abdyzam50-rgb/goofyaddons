@@ -105,6 +105,57 @@ increase within the quoted range. An unrelated large purse change is uncertain
 and cannot create confirmed profit. Publication of an AH listing never counts as
 a completed sale. Saved interrupted transactions continue to require review.
 
+## Testing one craft through the pipeline
+
+`.a* goofyaddon production pipeline ITEM_ID BATCHES [strategy]` runs one named
+Bazaar craft through the automatic pipeline for exactly that many batches (1–64):
+inputs are bought by buy orders or instantly, crafted, and the output is sold on
+the Bazaar. Without a strategy it uses the planner's pick for that craft, or
+`order` (ORDER_OFFER) when the planner has none; `instant` means INSTANT_INSTANT,
+and the four strategy names are accepted too. Trading must be stopped; the run
+starts at once and spendable capital caps the buying. Named pipeline tests enable
+the configured storage pages for that run without changing the saved setting.
+
+Before a basket exceeding main-inventory space is submitted, the run inspects its
+configured ender chest/backpack pages and verifies combined space. It parks
+movable inputs and identifiable loose main-inventory items first. Hotbar items
+unrelated to the recipe, Personal Compactors, the SkyBlock Menu and other tracked
+positions are protected. Verified transfers stay in the profile's storage ledger;
+the completion message lists items left in storage.
+
+A storage-backed instant purchase submits the full funded quantity once, rather
+than repeatedly buying whatever fits. If payment is observed but delivery is
+short, the same purchase remains active. The run uses `/pickupstash`, parks
+delivered inputs when it needs space, and picks up the rest in bounded rounds.
+Only inventory plus units durably verified into this run's storage count toward
+the original quantity; the purse debit is recorded once after complete delivery.
+No progress, full/unreadable storage, changed ownership or mismatched quantities
+still stop for review. A submitted confirmation failure cannot clear the intent
+and silently start another purchase.
+
+After procurement, a full main inventory also triggers storage preparation
+before crafting. The run parks enough movable inputs to reserve space for one
+complete batch, whole-stack withdrawals and output, then recomputes its crafting
+round from live inventory and its existing storage ownership. It keeps the same
+parent, cost and inputs, and never returns to buying just to make crafting room.
+Full storage or unavailable movable items use the existing bounded retry/review
+path. This resolves the 0.2.84 Dwarven run that acquired all twenty batches but
+could not begin crafting with zero empty inventory slots.
+
+### Shared menu action timing (0.2.86)
+
+G → Macros → Limits → Menu action timing exposes the existing shared minimum
+and maximum action delays as Fastest delay and Slowest delay, in milliseconds.
+Each action samples within that range. The GUI permits 51–2,000 ms, keeping the
+minimum below the maximum when either field changes. Defaults remain 100–500 ms
+and saved values remain in the existing configuration fields.
+
+Storage deposits/withdrawals and crafting now use the same range as Bazaar
+navigation. A storage transfer no longer adds a separate 400 ms settle after
+each verified move. Initial page loading, actual inventory acknowledgements,
+bounded retries and crafting slowdown backoff still apply; a configured fast
+delay never substitutes for server confirmation.
+
 ## Remaining AH pipeline work
 
 AH crafts appear in the plan with an explicit settlement blocker. The existing
@@ -794,6 +845,61 @@ journal; then inspect leftovers and acknowledge REVIEW entries. Retained sell
 orders still require manual reconciliation. New concurrency does not bypass an
 existing unresolved ownership block.
 
+
+## What a diagnostics export now contains
+
+- `chat.json`: the last 200 game messages (private, party, guild and player chat are never kept). Incidents and pauses carry the last 20.
+- `config.json`: the full settings, with secret-looking keys redacted.
+- `market.json`: top 3 order levels, spread, weekly movement and whether the bid is fillable, for products in active runs and the top 20 routes.
+- `rankings.json`: the last 5 rankings with their inputs (purse, budget, free, reserved and storage slots, market age, blocked products, settings) and top 20 routes.
+- `catalog.json`: recipe count and the NEU revision the client ranks with.
+- `bundle.json`: what was included. Events and incidents are capped at 16 MB, newest first, and the menu and production state are no longer duplicated inside `snapshot.json`.
+
+New or changed events: `production.auto_selected` carries the quotes and ranking inputs behind the pick; `production.run_blocked` carries the menu on the first block of each kind; `production.instant_buy_verified`, `production.instant_sale_verified`, `production.stage_exception` (with stack trace), `production.selection_skipped`, `general.positions_released`. Decision and lifecycle events can no longer be dropped when the queue fills; only context changes, heartbeats, clicks, commands and receipts can. Repeated identical errors within 10 seconds skip the heavy snapshot. Countdown numbers no longer reset the stall detector. Storage, craft and stash commands are named in `command.sent`. A safety pause snapshots state before the engines reset.
+
+## Loops and dead ends removed
+
+- A craft that blocks before spending is skipped for 1 minute, doubling on each repeat up to 30 minutes. A finished run clears it; the third block in a row warns in chat.
+- The job journal keeps the 512 most recent finished jobs and drops older DONE and CANCELLED ones, so it no longer fills to its 4,096 cap.
+- A storage page that never opens counts as full, and the scan names it in chat, so selection stops rescanning every page.
+- Full storage or inventory waits a minute between attempts and asks for review after 5.
+- Acknowledging a review job also releases its storage records.
+- A sale claim completes when the inventory is unchanged since the claim, not only at zero units.
+- Gemstone sale receipts match through the same name rule as their order slots.
+- The menu owner keeps the menu mid-transaction even if it leaves the enabled engine list.
+- `.a* goofyaddon orders` lists ordinary flip records; `orders release <id|all>` drops them after you claim or cancel by hand, while trading is stopped.
+
+## Test commands for each trading part
+
+Every test runs only while trading is stopped; the trading toggle or stop ends it. Buy
+modes are `instant` or `order`, sell modes `instant` or `offer`. Spendable capital, the
+purse reserve, inventory room, order checks and receipts still apply.
+
+| Command | What it does |
+| --- | --- |
+| `test buy <item> <units> <instant\|order>` | Buys units of one Bazaar product and leaves them in the inventory. |
+| `test sell <item> <instant\|offer>` | Sells every unit of that product held. |
+| `test trade <item> <units> <buy> <sell>` | Buys, then sells what it bought. |
+| `test compactor` | `test trade DWARVEN_COMPACTOR 1 instant instant`. |
+| `test general buy\|sell\|flip …` | The same three on the real general flipper, skipping its profit filters. |
+| `test book <book> <buy> <sell>` | One flip of a configured book (`ultimate_wisdom`), skipping the profit target. |
+| `test pipeline <item> <batches> <buy> <sell>` | A craft pipeline; `production pipeline` takes the same two modes. |
+
+`buy`, `sell` and `trade` use the production steps (instant buy, buy orders, instant sell,
+sell offers) with no crafting, and print what was bought, sold and the result. Test
+trades are not written to the craft profit ledger; `production.trade_test_*` events
+carry their numbers. A general flip test records profit only when it both buys and
+sells. Test buys may cost at most 5% over the quote they started from, and test sales
+never go below 90% of it.
+
+## Ingredients with placeholder bids
+
+An ingredient's order price is its top bid, but a lone bid far under the sell offers
+(a 1-coin Auto Smelter bid under 48k offers) is a placeholder that sellers never meet.
+When the top bid is below half the lowest sell offer, the planner, the website port and
+order-strategy runs price that ingredient at its instant-buy cost and add no order wait
+for it. A run in an order strategy instant-buys such ingredients first, then places buy
+orders for the rest. An ingredient with no bids at all still has no order price.
 
 ## 0.2.59 — outbid ingredient-order replacement
 
@@ -1509,3 +1615,48 @@ availability, cancellation claim state, sold units, claimed proceeds and reopene
 cancel options. Recovery status takes precedence over old review text in the HUD.
 These checks are covered by simulated menu and durable-journal regressions;
 live Minecraft execution still requires the next user run.
+
+### Fast navigation timing (0.2.87)
+
+Menu action timing accepts a minimum of 10 ms, including a 10–20 ms range.
+These are minimum inter-action delays, not a promise of 50–100 server actions
+per second. The client tick and observed server acknowledgements determine when
+the next action is possible. New window headers do not acknowledge navigation
+until named controls have arrived. Crafting keeps its
+50 ms minimum settle and adaptive rejection backoff.
+
+### Loading placeholders (0.2.88)
+
+A button marked Loading is a pending server response. Instant buy and sell
+executors wait in the current menu for the quote to become numeric. Storage
+waits for explicit loading placeholders and an initial stable contents window
+before recording capacity or moving items. Transaction receipts still require
+verified inventory/purse changes; no loading state authorizes a replay. Failed
+instant sales back off 30 seconds before reopening.
+
+### Buffered grid and drag distribution (0.2.91)
+
+Mixed recipes keep reusable stackable ingredients in the grid between crafts
+and refill exhausted cells. Buffered amounts never exceed the requested work.
+Native left-drag is used for equal empty cell targets when even distribution
+produces their exact counts; uneven targets use the exact splitter. Every
+distribution still requires observed server acknowledgement and item conservation.
+
+### Inventory-sized instant buying (0.2.92)
+
+Each storage-backed instant purchase is capped to current inventory capacity.
+Use the verified Fill my inventory quote when its amount fits the remaining
+requirement; otherwise submit the exact capped quantity. After receipt and
+storage, replan the outstanding quantity from owned inventory plus storage.
+Existing submitted purchases must finish receipt/stash recovery before any
+replacement lot can be queued. Buy-order placement is unaffected.
+
+### Crafted output space (0.2.93)
+
+Verified Bazaar craft outputs may be stored between craft rounds when their
+inventory and ledger total matches the produced unsold quantity. Output
+ownership stays in the storage ledger until it is withdrawn and sold. Bazaar
+selling withdraws and settles inventory-sized lots. A full storage page set
+triggers a verified partial sale before crafting resumes. Each sale lot has a
+separate receipt and proportional acquisition basis; unsold listings remain
+tracked until proceeds are verified.

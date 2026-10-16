@@ -315,6 +315,17 @@ public final class Tuning {
     public static final Num AIM_VARIATION = new Num("teleport", "aim_variation", 0.1, 0, 0.5,
             Effect.NOW, "How much each of those turns' times varies, as a share either way.");
 
+    // ---- walk: how .A* walks the route. ----
+
+    static {
+        section("walk", "How .A* walks the route.");
+    }
+
+    public static final Num GOAL_REACH = new Num("walk", "goal_reach", 0.6, 0.3, 1.5,
+            Effect.NEXT_ROUTE, "How near the goal, in blocks, counts as there. It lets go of"
+                    + " the keys once it will slide to a stop within this, instead of edging"
+                    + " onto the exact spot. Walks onto a teleport's spot stay exact.");
+
     // ---- camera: where .A* looks while it walks. ----
 
     static {

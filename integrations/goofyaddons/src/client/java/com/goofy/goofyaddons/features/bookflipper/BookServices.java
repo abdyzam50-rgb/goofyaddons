@@ -14,9 +14,13 @@ public interface BookServices {
     BookAccounting accounting();
     double purse();
     int actionDelay();
+    default int observationDelay(){return 150;}
+    default int craftDelay(){return actionDelay();}
+    default int storageDelay(){return actionDelay();}
     JsonObject latestQuotes();
     CompletableFuture<JsonObject> fetchQuotes();
     Map<String,Integer> observedSkills();
+    default java.util.Set<String> excludedProducts(){return java.util.Set.of();}
     MarketAnalysisProtocol.Report automaticReport();
     ExecutionLedger.Forecast executionForecast(String input,String output,int batch);
     void invalidateMarketReport();

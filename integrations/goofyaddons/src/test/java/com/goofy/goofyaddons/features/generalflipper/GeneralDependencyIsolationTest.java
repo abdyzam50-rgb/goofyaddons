@@ -59,6 +59,34 @@ class GeneralDependencyIsolationTest {
         } finally {GoofyConfig.INSTANCE=previous;}
     }
 
+    @Test void aStuckOrdinaryPositionCanBeReleasedOnlyWhileStopped() {
+        var repository=new Repository();repository.position.tradeId="abcd1234-trade";var services=new Services();
+        var engine=new GeneralFlipper(new FakeWorld().showingNothing(),new RecordingActions(),repository,services);
+        engine.start();
+        assertNull(engine.releaseGeneral("abcd"),"Running trading must not release records");
+        engine.stop();
+        assertEquals(1,engine.generalPositionSummaries().size());
+        assertNull(engine.releaseGeneral("ab"),"Too short an id is refused");
+        assertEquals(List.of(),engine.releaseGeneral("ffff"));
+        assertEquals(1,engine.releaseGeneral("ABCD").size());
+        assertFalse(engine.hasRetainedPositions());assertFalse(services.capital.owns("general","ENCHANTED_COAL"));
+    }
+
+    @Test void ambiguousReleasePrefixKeepsEveryRecordAndReservation() {
+        var first=position();first.tradeId="abcd1111-trade";
+        var second=position();second.tradeId="abcd2222-trade";second.item=new GeneralItem("ENCHANTED_IRON","Enchanted Iron");
+        var rows=new java.util.ArrayList<>(List.of(first,second));
+        var repository=new GeneralOrderRepository(){
+            public List<GeneralPosition> load(){return List.copyOf(rows);}
+            public void save(List<GeneralPosition> positions){rows.clear();rows.addAll(positions);}
+        };
+        var services=new Services();var engine=new GeneralFlipper(new FakeWorld().showingNothing(),new RecordingActions(),repository,services);
+        engine.start();engine.stop();double committed=services.capital.committed();
+        assertNull(engine.releaseGeneral("abcd"));assertEquals(2,rows.size());assertEquals(committed,services.capital.committed());
+        assertEquals(1,engine.releaseGeneral("abcd1111").size());assertEquals(second,rows.getFirst());
+        assertTrue(services.capital.owns("general","ENCHANTED_IRON"));
+        assertEquals(1,engine.releaseGeneral("all").size());assertEquals(0,services.capital.committed());
+    }
     @Test void anInvalidStorageBatchCannotPartiallyAdoptPositionsOrReserveFunds() {
         var valid=position();var invalid=position();invalid.quantity=0;
         var repository=new GeneralOrderRepository() {

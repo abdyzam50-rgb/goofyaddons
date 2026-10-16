@@ -125,7 +125,9 @@ public final class AstarClient implements ClientModInitializer {
      * {@code screen <page>} (and {@code closescreen}) opens (and closes) the mod's window
      * ({@link AstarScreen}) on that page. {@code chat <text>} sends that chat line, {@code type
      * <text>} opens chat with it typed in and {@code key tab|up|down|enter}
-     * presses that key there; {@code dropdown} opens the window's first list of choices.
+     * presses that key there; {@code dropdown} opens the window's first list of choices,
+     * {@code hud} the HUD editor, {@code widget <id>} turns a HUD widget on and {@code toast}
+     * shows a sample toast.
      */
     private final List<String> gotoCommands = new ArrayList<>(List.of(
             System.getProperty("astar.goto.commands", "").split(";")));
@@ -310,6 +312,7 @@ public final class AstarClient implements ClientModInitializer {
         AstarConfig.load();
         overlay.register();
         KeyMappingHelper.registerKeyMapping(routeKey);
+        Hud.register(this);
         CastLog.register();
         PracticeAotv.register();
         AstarLoading.register();
@@ -498,6 +501,11 @@ public final class AstarClient implements ClientModInitializer {
         return navigator;
     }
 
+    /** The key that opens the window, for the window's own key setting. */
+    KeyMapping windowKey() {
+        return routeKey;
+    }
+
     private int stopGoto(Feedback source) {
         if (!going()) {
             source.error(Component.literal("Not going anywhere."));
@@ -571,6 +579,15 @@ public final class AstarClient implements ClientModInitializer {
                 if (client.gui.screen() instanceof AstarScreen window) {
                     window.dropFirst();
                 }
+            } else if (command.equals("hud")) {
+                client.gui.setScreen(new HudEditor(client.gui.screen()));
+            } else if (command.startsWith("widget ")) {
+                Hud.Widget w = Hud.find(command.substring(7).strip());
+                if (w != null) {
+                    w.on = true;
+                }
+            } else if (command.equals("toast")) {
+                Hud.sample();
             } else if (command.equals("closescreen")) {
                 client.gui.setScreen(null);
             } else if (command.equals("hidegui")) {
@@ -667,6 +684,7 @@ public final class AstarClient implements ClientModInitializer {
         if (going()) {
             navigator.blendCamera(client);
         }
+        Hud.tick(client, navigator);
         while (routeKey.consumeClick()) {
             if (client.player != null && client.gui.screen() == null) {
                 if(com.goofy.goofyaddons.features.FeatureManager.INSTANCE.isMacroRunning())

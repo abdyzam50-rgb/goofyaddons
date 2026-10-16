@@ -14,6 +14,104 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BookEngineIsolationTest {
+    @Test void outbidEngineNavigatesCapturedTruncatedProductPageWithoutTimingOut()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(new Book("ENCHANTMENT_TURBO_SUNFLOWER",1,5,"Turbo-Sunflower",0,0),false,false);
+        task.setBookState(Task.BookState.OUTBID);field(engine,"taskList",new ArrayList<>(List.of(task)));
+        field(engine,"state",BazaarFlipper.State.OUTBID);
+        var slots=new ArrayList<SlotView>();
+        for(int i=0;i<72;i++)slots.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        slots.set(13,SlotView.named(13,"Turbo-Sunflower I",List.of()));
+        slots.set(15,SlotView.named(15,"Create Buy Order",List.of("Turbo-Sunflower I")));
+        slots.set(32,SlotView.named(32,"Manage Orders",List.of("Your order:","BUY 16x Turbo-Sunflower I")));
+        slots.set(35,SlotView.named(35,"Loaded",List.of()));
+        world.showing(new MenuSnapshot(6,"Turbo-Sunflower ➜ Turbo-Sunflow",true,slots));
+        for(int i=0;i<15&&actions.serverEffects().isEmpty()&&services.pauseReason==null;i++){engine.onTick();world.advance(100);}
+        assertNull(services.pauseReason);assertEquals(List.of("click:32"),actions.serverEffects());
+        assertEquals(Task.BookState.OUTBID,task.getBookState());assertEquals(0,services.accounting.effects);
+    }
+    @Test void buyNavigationIgnoresWrongLevelAndUsesOnlyTheInputLevel()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var actions=new RecordingActions();
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(BOOK,false,false);task.setBookState(Task.BookState.SELECTED);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"activeTask",task);field(engine,"state",BazaarFlipper.State.BAZAAR_NAVIGATION);
+        var slots=new ArrayList<SlotView>();for(int i=0;i<72;i++)slots.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        slots.set(13,SlotView.named(13,"Wisdom V",List.of()));slots.set(15,SlotView.named(15,"Create Buy Order",List.of("Wisdom V")));
+        slots.set(35,SlotView.named(35,"Loaded",List.of()));world.showing(new MenuSnapshot(7,"Wisdom ➜ Wisdom V",true,slots));
+        for(int i=0;i<8;i++){engine.onTick();world.advance(100);}
+        assertNull(services.pauseReason);assertTrue(actions.serverEffects().isEmpty());
+        slots.set(13,SlotView.named(13,"Wisdom I",List.of()));slots.set(15,SlotView.named(15,"Create Buy Order",List.of("Wisdom I")));
+        world.showing(new MenuSnapshot(8,"Wisdom ➜ Wisdom I",true,slots));
+        for(int i=0;i<8&&actions.serverEffects().isEmpty();i++){engine.onTick();world.advance(100);}
+        assertEquals(List.of("click:15"),actions.serverEffects());assertEquals(0,services.accounting.effects);
+    }
+    @Test void sellNavigationIgnoresWrongLevelAndOpensOfferOnlyForTheOutput()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var actions=new RecordingActions();
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(BOOK,false,false);task.assignBook(BOOK,5,0,1);task.setBookState(Task.BookState.SELL);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"state",BazaarFlipper.State.SELL);
+        var slots=new ArrayList<SlotView>();for(int i=0;i<72;i++)slots.add(SlotView.empty(i,i>=36,i>=36?i-36:i));
+        slots.set(13,SlotView.named(13,"Wisdom I",List.of()));slots.set(16,SlotView.named(16,"Create Sell Offer",List.of("Wisdom I")));
+        slots.set(35,SlotView.named(35,"Loaded",List.of()));
+        world.showing(new MenuSnapshot(7,"Wisdom ➜ Wisdom I",true,slots));
+        for(int i=0;i<8;i++){engine.onTick();world.advance(100);}
+        assertNull(services.pauseReason);assertTrue(actions.serverEffects().isEmpty());
+        slots.set(13,SlotView.named(13,"Wisdom V",List.of()));slots.set(16,SlotView.named(16,"Create Sell Offer",List.of("Wisdom V")));
+        world.showing(new MenuSnapshot(8,"Wisdom ➜ Wisdom V",true,slots));
+        for(int i=0;i<8&&actions.serverEffects().isEmpty();i++){engine.onTick();world.advance(100);}
+        assertEquals(List.of("click:16"),actions.serverEffects());assertEquals(0,services.accounting.effects);
+    }
+    @Test void cooldownRejectedReplacementParksAsAnUnlistedOutputUntilCooldownEnds()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var engine=new BazaarFlipper(world,new RecordingActions(),new Store(),services);
+        engine.start();var task=new Task(BOOK,false,false);task.assignBook(BOOK,5,0,1);task.setBookState(Task.BookState.REPLACE_SELL);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"nextFetchMs",world.now()+120000);
+        services.capital.orderCooldownNotice("[Bazaar] Placing orders is on cooldown for up to 1 minute!",world.now());
+        var defer=BazaarFlipper.class.getDeclaredMethod("deferBookPurchase",Task.class,String.class);defer.setAccessible(true);defer.invoke(engine,task,"server-order-cooldown");
+        assertEquals(Task.BookState.SELL,task.getBookState());assertFalse(engine.needsMenu());
+        world.advance(61001);assertTrue(engine.needsMenu());assertEquals(0,services.accounting.effects);
+    }
+    @Test void exactLoadingSearchResultPassesEngineGateAndReopensWhenIgnored()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(BOOK,false,false);task.setBookState(Task.BookState.SELECTED);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"activeTask",task);
+        field(engine,"state",BazaarFlipper.State.BAZAAR_NAVIGATION);
+        var slots=new ArrayList<>(menu(3).slots());
+        slots.set(11,SlotView.named(11,"Wisdom I",List.of("Loading...","Click to view details!")));
+        slots.set(12,SlotView.named(12,"Wisdom II",List.of("Loading...")));
+        var result=new MenuSnapshot(4,"Bazaar ➜ \"Wisdom\"",true,slots);assertTrue(result.loadingContents());
+        world.showing(result);
+        for(int i=0;i<10&&actions.serverEffects().isEmpty()&&services.pauseReason==null;i++){engine.onTick();world.advance(100);}
+        assertNull(services.pauseReason);assertEquals(List.of("click:11"),actions.serverEffects());
+        world.advance(15001);engine.onTick();
+        assertNull(services.pauseReason);assertTrue(actions.performed().contains("close"));
+        assertFalse((Boolean)engine.diagnosticState().get("navigationPending"));
+    }
+    @Test void profitableInstantBuyProposalCreatesABookTaskInsteadOfReturningToEmptyIdle()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        @SuppressWarnings("unchecked") var candidates=(List<FlipItem>)readField(engine,"flipItemList");
+        candidates.add(new FlipItem(BOOK,1600,100,true,false));
+        var process=BazaarFlipper.class.getDeclaredMethod("processData");process.setAccessible(true);process.invoke(engine);
+        assertEquals("STARTUP_CHECK",engine.diagnosticState().get("state"));
+        assertEquals(1,((List<?>)engine.diagnosticState().get("tasks")).size());assertEquals(1600,services.capital.committed());
+    }
+    private static Object readField(BazaarFlipper engine,String name)throws Exception{
+        var f=BazaarFlipper.class.getDeclaredField(name);f.setAccessible(true);return f.get(engine);
+    }
+    @Test void emptyStorageSlotEightDoesNotBlockStartupScanning()throws Exception {
+        var world=new FakeWorld().showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        field(engine,"state",BazaarFlipper.State.STARTUP_CHECK);
+        for(int page=1;page<=2;page++) {
+            var original=menu(page);var slots=new ArrayList<>(original.slots());slots.set(8,SlotView.empty(8,false,8));
+            world.showing(new MenuSnapshot(page,original.title(),true,slots));engine.onTick();world.advance(200);engine.onTick();
+            world.advance(100);
+        }
+        assertEquals("STARTUP_BAZAAR_CHECK",engine.diagnosticState().get("state"));
+        assertNull(services.pauseReason);assertTrue(engine.isRunning());
+    }
     private static final Book BOOK=new Book("ENCHANTMENT_ULTIMATE_WISDOM",1,5,"Wisdom",0,0);
     private static class Store implements BookOrderRepository {
         List<BookPosition> data=List.of();int reads,writes,backups;
@@ -167,4 +265,34 @@ class BookEngineIsolationTest {
         assertNull(services.pauseReason);assertEquals(List.of("click:13"),recorded.serverEffects());
         assertEquals(0,services.accounting.effects);assertTrue(engine.hasRetainedTasks());
     }
+    @Test void serverCooldownRejectsOnlyRecentSubmissionAndRetainsRetryableTask() throws Exception {
+        var world=new FakeWorld().showing(menu(0));var store=new Store();var services=new Services(world);
+        var actions=new RecordingActions();var engine=new BazaarFlipper(world,actions,store,services);
+        engine.start();setupConfirmation(engine,world,services);
+        for(int i=0;i<30&&actions.serverEffects().isEmpty()&&services.pauseReason==null;i++){engine.onTick();world.advance(100);}
+        assertEquals("VERIFY_PLACEMENT",engine.diagnosticState().get("state"));
+        engine.slowdownNotice("[Bazaar] Placing orders is on cooldown for up to 1 minute!");
+        assertNull(services.pauseReason);assertEquals("IDLE",engine.diagnosticState().get("state"));
+        assertEquals("none",engine.diagnosticState().get("submittedTrade"));
+        assertTrue(services.capital.orderCooldownRemaining(world.now())>=60000);
+        assertEquals(1600,services.capital.committed());assertEquals(1600,services.capital.pending());
+        assertTrue(engine.hasRetainedTasks());assertEquals(0,services.accounting.effects);
+        var task=((List<Task>)readField(engine,"taskList")).getFirst();
+        var mayOpen=BazaarFlipper.class.getDeclaredMethod("mayOpenBookOrder",Task.class);mayOpen.setAccessible(true);
+        assertFalse((boolean)mayOpen.invoke(engine,task));
+        world.advance(61001);assertEquals(0,services.capital.orderCooldownRemaining(world.now()));
+        var retries=(Map<String,Long>)readField(engine,"bookBuyRetryAt");
+        assertTrue(retries.get(task.getProfitTradeId())<world.now());assertEquals(Task.BookState.SELECTED,task.getBookState());
+    }
+    @Test void unrelatedOrLateNoticeCannotClearAnUncertainBookSubmission() throws Exception {
+        var world=new FakeWorld().showing(menu(0));var services=new Services(world);var actions=new RecordingActions();
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();setupConfirmation(engine,world,services);
+        for(int i=0;i<30&&actions.serverEffects().isEmpty();i++){engine.onTick();world.advance(100);}
+        engine.slowdownNotice("Placing orders is on cooldown for up to 1 minute!");
+        assertEquals("VERIFY_PLACEMENT",engine.diagnosticState().get("state"));
+        world.advance(11000);engine.slowdownNotice("[Bazaar] Placing orders is on cooldown for up to 1 minute!");
+        assertEquals("VERIFY_PLACEMENT",engine.diagnosticState().get("state"));
+        assertEquals("confirmed-trade",engine.diagnosticState().get("submittedTrade"));
+    }
+
 }

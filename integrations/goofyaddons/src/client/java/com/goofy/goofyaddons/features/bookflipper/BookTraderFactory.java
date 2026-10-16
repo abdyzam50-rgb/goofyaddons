@@ -49,6 +49,8 @@ public final class BookTraderFactory {
             public void writeOff(String id,String engine,String item,String event,int units) {ProfitTracker.INSTANCE.writeOff(id,engine,item,event,units);}
             public Double knownCost(String id,int units) {return ProfitTracker.INSTANCE.knownCost(id,units);}
             public Double openCost(String id) {return ProfitTracker.INSTANCE.openCost(id);}
+            public void executionFailure(String id) {ProfitTracker.INSTANCE.executionFailure(id);}
+            public void executionStrategy(String id,String buy,String sell) {ProfitTracker.INSTANCE.executionStrategy(id,buy,sell);}
             public void beginExecution(String id,String engine,String input,String output,int units,int batch,long started,Double expectedProfit,ExecutionLedger.Forecast forecast) {
                 ProfitTracker.INSTANCE.beginExecution(id,engine,input,output,units,batch,started,expectedProfit,forecast);
             }
@@ -57,10 +59,14 @@ public final class BookTraderFactory {
             public BookSettings settings() {
                 var c=GoofyConfig.INSTANCE;
                 return new BookSettings(c.books,c.bazaarTaxPercentage,c.minNetProfit,c.maxTradingCapital,c.maxActiveBooks,
-                        c.firstPage,c.secondPage,c.marketAnalysis.automaticSelection,c.liquidateStaleBooks,c.bookStaleSeconds,
+                        c.firstPage,c.secondPage,(c.marketAnalysis.usesAutomaticSelection() || c.tradingMode==com.goofy.goofyaddons.features.TradingMode.ALL),c.liquidateStaleBooks,c.bookStaleSeconds,
                         c.bookOrderRecheckSeconds,c.maxBookHoldingSeconds,c.maxBookDrawdownPercentage,c.maxBookReprices,c.bookRepriceCooldownSeconds);
             }
+            public int observationDelay(){return Math.max(50,Math.min(150,Math.min(craftDelay(),storageDelay())));}
+            public int craftDelay(){return com.goofy.goofyaddons.utils.ActionDelay.craft();}
+            public int storageDelay(){return com.goofy.goofyaddons.utils.ActionDelay.storage();}
             public CapitalManager capital() {return CapitalManager.INSTANCE;}
+            public java.util.Set<String> excludedProducts(){return com.goofy.goofyaddons.features.generalflipper.BazaarAccess.instance().excluded();}
             public BookAccounting accounting() {return accounting;}
             public double purse() {return new ScoreboardUtils().getPurse();}
             public int actionDelay() {return ActionDelay.next();}

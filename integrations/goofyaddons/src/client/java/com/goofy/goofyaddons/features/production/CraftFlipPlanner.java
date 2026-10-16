@@ -45,13 +45,24 @@ final class CraftFlipPlanner {
             Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
             double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded,int reservedSlots,String strategySetting,
             Map<String,Map<String,Integer>> excludedByOutput) {
+        return rank(catalog,market,ah,menu,skills,unlocks,blocked,budget,minimumProfit,bazaarTax,maxBatches,venue,now,excluded,reservedSlots,strategySetting,excludedByOutput,0);
+    }
+    /**
+     * With {@code storageSlots}, bought inputs may overflow into that many empty storage slots:
+     * the output and one batch's inputs must still fit the inventory, since crafting runs in
+     * rounds. Routes that prepare intermediates keep the whole run in the inventory.
+     */
+    static List<Route> rank(RecipeCatalog catalog,JsonObject market,JsonObject ah,MenuSnapshot menu,
+            Map<String,Integer> skills,Map<String,Integer> unlocks,Set<String> blocked,double budget,
+            double minimumProfit,double bazaarTax,int maxBatches,String venue,long now,Map<String,Integer> excluded,int reservedSlots,String strategySetting,
+            Map<String,Map<String,Integer>> excludedByOutput,int storageSlots) {
         excludedByOutput.clear();excluded.clear();
         if(menu==null){exclude(excluded,"Player inventory unavailable");return List.of();}
         if(!menu.cursorEmpty()){exclude(excluded,"Clear the item held on the cursor");return List.of();}
         if(!Double.isFinite(budget)||budget<=0){exclude(excluded,"No observed spendable budget");return List.of();}
         if(market==null||!market.has("lastUpdated")||!TradingSafety.fresh(market.get("lastUpdated").getAsLong(),now)
                 ||!Double.isFinite(minimumProfit)||minimumProfit<0
-                ||!Double.isFinite(bazaarTax)||bazaarTax<0||bazaarTax>=100||maxBatches<1||maxBatches>64||!Set.of("BOTH","BAZAAR","AH").contains(venue)
+                ||!Double.isFinite(bazaarTax)||bazaarTax<0||bazaarTax>=100||maxBatches<1||maxBatches>1024||!Set.of("BOTH","BAZAAR","AH").contains(venue)
                 ||!Set.of("AUTO","ORDER_OFFER","INSTANT_OFFER","ORDER_INSTANT","INSTANT_INSTANT").contains(strategySetting)){exclude(excluded,"Fresh Bazaar prices or valid craft settings unavailable");return List.of();}
         var products=market.getAsJsonObject("products");if(products==null){exclude(excluded,"Bazaar products unavailable");return List.of();}
         var auctions=new HashMap<String,JsonObject>();
@@ -59,15 +70,19 @@ final class CraftFlipPlanner {
             var row=value.getAsJsonObject();auctions.put(row.get("item").getAsString(),row);
         }catch(RuntimeException ignored){}
         var best=new HashMap<String,Route>();
+        var books=new com.goofy.goofyaddons.features.market.BazaarQuotes.Snapshot(products);
+        String compactorConflict=CompactorClearance.unreadable(menu);
+        int freeSlots=Math.max(0,menu.emptyInventorySlots()-reservedSlots);
         for(var recipe:catalog.recipes()) {
             if(recipe.kind()!=ProductionRecipe.Kind.CRAFT)continue;
-            boolean bz=products.has(recipe.outputId());String sale=bz?"BAZAAR":"AH";
+            boolean bz=books.has(recipe.outputId());String sale=bz?"BAZAAR":"AH";
             if(!venue.equals("BOTH")&&!venue.equals(sale))continue;
             if(!bz&&!auctions.containsKey(recipe.outputId())){exclude(excluded,excludedByOutput,recipe.outputId(),"AH quote unavailable");continue;}
             String requirement=RouteRequirements.craft(recipe.requirement(),skills,unlocks);
             if(requirement==null)requirement=RouteRequirements.product(recipe.outputId(),unlocks);
             if(requirement==null)requirement=RouteRequirements.products(IngredientPreparation.dependencies(catalog,recipe.ingredients().keySet()),unlocks);
-            int limit=bz?Math.min(64,maxBatches):1;
+            int limit=bz?Math.min(1024,maxBatches):1;
+            boolean outputHeld=menu.countInInventory(recipe.outputId())>0;
             var preparations=new HashMap<Integer,IngredientPreparation.Plan>();
             for(var strategy:bz?BazaarStrategy.values():new BazaarStrategy[]{BazaarStrategy.INSTANT_INSTANT}) for(int batches=1;batches<=limit;batches++)try {
                 if(bz && !strategySetting.equals("AUTO") && !strategy.name().equals(strategySetting))continue;
@@ -78,18 +93,19 @@ final class CraftFlipPlanner {
                     return IngredientPreparation.plan(catalog,quantities,Map.of());
                 });
                 String reason=requirement;
-                if(menu.countInInventory(recipe.outputId())>0)reason="Output already held; move it before automatic production";
+                if(outputHeld)reason="Output already held; move it before automatic production";
                 if(blocked.contains(recipe.outputId())||preparation.products().stream().anyMatch(blocked::contains))reason="Product belongs to another position or unresolved production job";
-                String conflict=CompactorClearance.unreadable(menu);if(conflict!=null)reason=conflict;
-                int outputSlots=inventorySlotsForProduct(recipe.outputId(),Math.multiplyExact(recipe.outputCount(),batches));
+                if(compactorConflict!=null)reason=compactorConflict;
+                int outputSlots=inventorySlotsForProduct(catalog,recipe.outputId(),Math.multiplyExact(recipe.outputCount(),batches));
                 int slots=outputSlots;double cost=0,orderWait=0;boolean priced=true;
                 for(var entry:preparation.purchases().entrySet()) {
-                    var product=products.get(entry.getKey());
-                    Double amount=product!=null&&product.isJsonObject()?strategy.buy(product.getAsJsonObject(),entry.getValue()):null;
+                    var product=books.element(entry.getKey());
+                    Double amount=product!=null&&product.isJsonObject()?(strategy.instantBuy?books.instantBuyCost(entry.getKey(),entry.getValue()):strategy.ingredientBuy(product.getAsJsonObject(),entry.getValue())):null;
                     if(amount==null){priced=false;break;}
-                    cost+=amount;slots+=inventorySlotsForProduct(entry.getKey(),entry.getValue());
-                    if(!strategy.instantBuy) {
-                        double rate=hourlyActivity(product.getAsJsonObject())*0.05;
+                    cost+=amount;slots+=inventorySlotsForProduct(catalog,entry.getKey(),entry.getValue());
+                    // An input without a fillable bid is bought instantly, so it adds no order wait.
+                    if(!strategy.instantBuy && com.goofy.goofyaddons.features.market.BazaarQuotes.orderableBid(product.getAsJsonObject())) {
+                        double rate=books.hourlyActivity(entry.getKey())*0.05;
                         if(rate<=0){reason="Input order activity unavailable";}
                         // The funded ingredient basket is submitted before any fill wait;
                         // its orders fill concurrently, so the slowest input sets that wait.
@@ -99,32 +115,48 @@ final class CraftFlipPlanner {
                 if(!priced||cost<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Missing input prices or insufficient buy depth");continue;}
                 for(var craft:preparation.crafts()) {
                     var intermediate=catalog.forOutput(craft.output()).stream().filter(r->r.kind()==ProductionRecipe.Kind.CRAFT).findFirst().orElseThrow();
-                    slots=Math.max(slots,outputSlots+inventorySlotsForProduct(intermediate.outputId(),Math.multiplyExact(intermediate.outputCount(),craft.batches()))+
-                        intermediate.ingredients().entrySet().stream().mapToInt(e->inventorySlotsForProduct(e.getKey(),Math.multiplyExact(e.getValue(),craft.batches()))).sum());
+                    slots=Math.max(slots,outputSlots+inventorySlotsForProduct(catalog,intermediate.outputId(),Math.multiplyExact(intermediate.outputCount(),craft.batches()))+
+                        intermediate.ingredients().entrySet().stream().mapToInt(e->inventorySlotsForProduct(catalog,e.getKey(),Math.multiplyExact(e.getValue(),craft.batches()))).sum());
                 }
-                if(slots>Math.max(0,menu.emptyInventorySlots()-reservedSlots))reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
+                if(storageSlots>0 && preparation.crafts().isEmpty() && slots>freeSlots) {
+                    int round=outputSlots+1;
+                    for(var entry:recipe.ingredients().entrySet())round+=inventorySlotsForProduct(catalog,entry.getKey(),entry.getValue())+(catalog.unstackable(entry.getKey())?0:1);
+                    if(round<=freeSlots && slots<=freeSlots+storageSlots)slots=freeSlots;
+                }
+                if(strategy.instantBuy && CompactorProduction.supported(recipe,catalog) && CompactorProduction.available(menu)!=null
+                        && preparation.crafts().isEmpty() && ProductionStorage.Move.inventoryCount(menu,recipe.outputId())==0)
+                    slots=outputSlots+4; // One seed plus an inventory-sized raw lot; conversions free the raw slots.
+                if(slots>freeSlots)reason="Insufficient empty inventory slots for inputs, intermediate crafts and output";
                 double fee=0,net,liquidity;long price=ProductionRun.SELL_ON_BAZAAR;
                 if(bz) {
-                    var product=products.getAsJsonObject(recipe.outputId());
-                    Double gross=strategy.sell(product,recipe.outputCount()*batches);
+                    var product=books.object(recipe.outputId());
+                    Double gross=strategy.instantSell?books.instantSellValue(recipe.outputId(),recipe.outputCount()*batches):strategy.sell(product,recipe.outputCount()*batches);
                     if(gross==null){exclude(excluded,excludedByOutput,recipe.outputId(),"Insufficient Bazaar sell depth");continue;}
                     net=gross*ProductionRun.SALE_FLOOR*(1-bazaarTax/100);
-                    var quick=product.getAsJsonObject("quick_status");
-                    double week=quick==null?0:Math.min(quick.get("buyMovingWeek").getAsDouble(),quick.get("sellMovingWeek").getAsDouble());
+                    double week=com.goofy.goofyaddons.features.market.BazaarQuotes.weeklyFlow(product);
                     if(!Double.isFinite(week)||week<=0){exclude(excluded,excludedByOutput,recipe.outputId(),"Daily volume unavailable");continue;}
                     if(recipe.outputCount()*batches>week/7*0.05)reason="Batch exceeds 5% of observed daily market volume";
                     liquidity=week/168;
                     if(!strategy.instantSell)orderWait+=recipe.outputCount()*batches/(liquidity*0.05)*3600;
                 } else {
-                    if(recipe.outputCount()!=1)continue; // Existing BIN executor lists one exact item.
-                    var row=auctions.get(recipe.outputId());var quote=row.getAsJsonObject("quote");
-                    if(quote==null||now-quote.get("fetchedAt").getAsLong()>60000||quote.get("fetchedAt").getAsLong()>now+5000)continue;
-                    price=AuctionPricing.listingPrice(AuctionPricing.parse(quote,recipe.outputId(),now));
+                    // Existing BIN executor lists one exact item.
+                    if(recipe.outputCount()!=1){exclude(excluded,excludedByOutput,recipe.outputId(),"AH output stacks are not listed automatically");continue;}
+                    var row=auctions.get(recipe.outputId());var quote=row.get("quote");
+                    var fetched=quote!=null&&quote.isJsonObject()?quote.getAsJsonObject().get("fetchedAt"):null;
+                    if(fetched==null||!fetched.isJsonPrimitive()||now-fetched.getAsLong()>60000||fetched.getAsLong()>now+5000){exclude(excluded,excludedByOutput,recipe.outputId(),"AH quote stale");continue;}
+                    AuctionPricing.Quote parsed;
+                    try{parsed=AuctionPricing.parse(quote.getAsJsonObject(),recipe.outputId(),now);}
+                    catch(RuntimeException invalid){exclude(excluded,excludedByOutput,recipe.outputId(),"AH quote invalid");continue;}
+                    if(parsed.secondLowest()!=null&&parsed.lowest()*2<parsed.secondLowest()){exclude(excluded,excludedByOutput,recipe.outputId(),"AH lowest BIN looks like an outlier");continue;}
+                    price=AuctionPricing.listingPrice(parsed);
                     fee=ProductionPlanner.listingFeeLimit(price);
                     // Price can vary within the GUI validation band; include conservative claim tax too.
                     net=price*0.90*0.965;
                     if(reason==null)reason="AH sale/expiry/claim reconciliation is not implemented; use production test for one verified listing";
-                    double volume=row.get("volume").getAsDouble();if(!Double.isFinite(volume)||volume<=2)continue;
+                    // Catalog outputs without reported sales arrive with a null volume.
+                    var reported=row.get("volume");
+                    double volume=reported==null||!reported.isJsonPrimitive()?Double.NaN:reported.getAsDouble();
+                    if(!Double.isFinite(volume)||volume<=2){exclude(excluded,excludedByOutput,recipe.outputId(),"AH demand unavailable or too low");continue;}
                     liquidity=Math.min(1,Math.log1p(volume)/Math.log(101));
                 }
                 double capital=cost*1.03+fee,profit=net-capital;
@@ -140,16 +172,13 @@ final class CraftFlipPlanner {
         }
         return best.values().stream().sorted(Comparator.comparingDouble(Route::score).reversed().thenComparing(r->r.recipe().key())).toList();
     }
-    /** Books can be unstackable; reserve every unit until an actual stack proves otherwise. */
-    static int inventorySlotsForProduct(String id,int units) {
+    private static final java.util.regex.Pattern BOOK=java.util.regex.Pattern.compile("ENCHANTMENT_[A-Z][A-Z0-9_]*_(?:[1-9][0-9]?|100)");
+    private static final Map<String,Boolean> BOOK_IDS=new java.util.concurrent.ConcurrentHashMap<>();
+    /** Books and catalogued unstackable items take one slot per unit; everything else stacks to 64. */
+    static int inventorySlotsForProduct(RecipeCatalog catalog,String id,int units) {
         if(units<0)throw new IllegalArgumentException("Negative inventory quantity");
-        return id!=null && id.matches("ENCHANTMENT_[A-Z][A-Z0-9_]*_(?:[1-9][0-9]?|100)")?units:Math.toIntExact((units+63L)/64);
-    }
-    private static double hourlyActivity(JsonObject product) {
-        var quick=product.getAsJsonObject("quick_status");
-        if(quick==null || !quick.has("buyMovingWeek") || !quick.has("sellMovingWeek"))return 0;
-        double week=Math.min(quick.get("buyMovingWeek").getAsDouble(),quick.get("sellMovingWeek").getAsDouble());
-        return Double.isFinite(week)&&week>0?week/168:0;
+        if(catalog.unstackable(id))return units;
+        return id!=null && BOOK_IDS.computeIfAbsent(id,key->BOOK.matcher(key).matches())?units:Math.toIntExact((units+63L)/64);
     }
     private static void exclude(Map<String,Integer> excluded,Map<String,Map<String,Integer>> byOutput,String output,String reason) {
         exclude(excluded,reason);byOutput.computeIfAbsent(output,id->new LinkedHashMap<>()).merge(reason,1,Integer::sum);

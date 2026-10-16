@@ -32,7 +32,10 @@ public class GoofyConfig {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    private static Path profileConfigPath;
+    private static GoofyConfig globalTemplate;
     private static Path configPath() {
+        if(profileConfigPath!=null)return profileConfigPath;
         return FabricLoader.getInstance().getConfigDir().resolve("goofyaddons.json");
     }
 
@@ -58,10 +61,16 @@ public class GoofyConfig {
         public String venue="BOTH",strategy="AUTO";
         public double maximumCapital=0,minimumProfit=10000;
         public int maxBatches=64,maxActiveCrafts=3;
-        public void validate() {
+        /** Park bought inputs in storage so a run may buy more than the inventory holds. */
+        public boolean useStorage=false;
+        /** Storage pages in the order they fill. */
+        public String storagePages=com.goofy.goofyaddons.features.production.ProductionStorage.DEFAULT_PAGES;
+        private static boolean validCategoryDelay(int min,int max){return min==0&&max==0 || min>=1&&max>min&&max<=60000;}
+    public void validate() {
             if(!Set.of("AUTO","ORDER_OFFER","INSTANT_OFFER","ORDER_INSTANT","INSTANT_INSTANT").contains(strategy)
                     ||!Set.of("BOTH","BAZAAR","AH").contains(venue)||!Double.isFinite(maximumCapital)||maximumCapital<0
-                    ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>64||maxActiveCrafts<1||maxActiveCrafts>4)
+                    ||!Double.isFinite(minimumProfit)||minimumProfit<0||maxBatches<1||maxBatches>1024||maxActiveCrafts<1||maxActiveCrafts>4
+                    ||storagePages==null||useStorage&&com.goofy.goofyaddons.features.production.ProductionStorage.pages(storagePages).isEmpty())
                 throw new IllegalArgumentException("Invalid craft-flip limits");
         }
     }
@@ -69,8 +78,9 @@ public class GoofyConfig {
     public com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings marketAnalysis = new com.goofy.goofyaddons.features.marketanalysis.MarketAnalysisSettings();
     public int toggleKey = InputConstants.KEY_F6;
     public int reloadKey = InputConstants.KEY_F8;
-    public int minActionDelay = 100;
-    public int maxActionDelay = 500;
+    public int minActionDelay = 60;
+    public int maxActionDelay = 70;
+    public int minCraftDelay=0,maxCraftDelay=0,minStorageDelay=0,maxStorageDelay=0;
     public double bazaarTaxPercentage = 1.25;
     public double minNetProfit = 0;
     public int maxBookHoldingSeconds = 21600;
@@ -97,6 +107,18 @@ public class GoofyConfig {
 
     public static void load() {
         load(configPath());
+        if(profileConfigPath==null && loadError==null)globalTemplate=GSON.fromJson(GSON.toJson(INSTANCE),GoofyConfig.class);
+    }
+    /** Activate only while engines are stopped; a rejected profile file cannot inherit another profile's limits. */
+    public static void selectProfile(Path path)throws java.io.IOException {
+        if(path==null || path.equals(profileConfigPath))return;
+        if(profileConfigPath==null && loadError!=null)throw new java.io.IOException(loadError);
+        if(globalTemplate==null)globalTemplate=GSON.fromJson(GSON.toJson(INSTANCE),GoofyConfig.class);
+        profileConfigPath=path;
+        try {
+            if(!Files.exists(path))commitSettings(GSON.fromJson(GSON.toJson(globalTemplate),GoofyConfig.class),path);
+            else {INSTANCE=null;load(path);}
+        }catch(java.io.IOException failure){loadError="Profile settings unavailable: "+failure.getMessage();lastLoadProblem=loadError;throw failure;}
     }
 
     static void load(Path path) {
@@ -165,6 +187,7 @@ public class GoofyConfig {
         return loadError;
     }
 
+    private static boolean validCategoryDelay(int min,int max){return min==0&&max==0 || min>=1&&max>min&&max<=60000;}
     public void validate() {
         if (keyCodeSchema!=2 || tradingMode == null || general == null || !Double.isFinite(maxTradingCapital)
                 || maxTradingCapital <= 0 || !Double.isFinite(purseReserve) || purseReserve < 0
@@ -183,8 +206,9 @@ public class GoofyConfig {
         marketAnalysis.validate();
         if (!Double.isFinite(profitHudScale) || profitHudScale<0.75 || profitHudScale>3.0) throw new IllegalArgumentException("HUD scale must be between 0.75 and 3.0");
         if (!"LEFT".equals(profitHudSide) && !"RIGHT".equals(profitHudSide)) throw new IllegalArgumentException("HUD side must be LEFT or RIGHT");
-        if (minActionDelay < 51 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
-            throw new IllegalArgumentException("Require 51 <= minActionDelay < maxActionDelay <= 60000");
+        if(!validCategoryDelay(minCraftDelay,maxCraftDelay)||!validCategoryDelay(minStorageDelay,maxStorageDelay))throw new IllegalArgumentException("Craft/storage delays must both be 0 to inherit navigation, or 1 <= min < max <= 60000");
+        if (minActionDelay < 1 || maxActionDelay <= minActionDelay || maxActionDelay > 60000) {
+            throw new IllegalArgumentException("Require 1 <= minActionDelay < maxActionDelay <= 60000");
         }
         if (!Double.isFinite(bazaarTaxPercentage) || bazaarTaxPercentage < 0 || bazaarTaxPercentage >= 100
                 || !Double.isFinite(minNetProfit) || minNetProfit < 0 || maxBookHoldingSeconds < 60
@@ -222,12 +246,19 @@ public class GoofyConfig {
         return Double.isFinite(value) && value >= 0 && value <= 100;
     }
 
+    private static void checkProfileOwner() {
+        if(profileConfigPath==null)return;
+        var storage=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        if(storage.current()!=null && storage.pinned()!=null && !storage.current().equals(storage.pinned()))
+            throw new IllegalStateException("Profile changed; restart Minecraft before editing trading settings");
+    }
     public static void save() {
-        save(configPath());
+        checkProfileOwner();save(configPath());
     }
 
     /** GUI changes commit atomically before replacing the last working in-memory settings. */
     public static void commitSettings(GoofyConfig candidate)throws java.io.IOException {
+        checkProfileOwner();
         if(!com.goofy.goofyaddons.features.FeatureManager.INSTANCE.canReloadConfig())throw new IllegalStateException("Stop trading before editing settings");
         commitSettings(candidate,configPath());
     }

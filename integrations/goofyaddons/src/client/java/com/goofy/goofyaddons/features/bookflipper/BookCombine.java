@@ -30,11 +30,11 @@ final class BookCombine {
             String prerequisite = com.goofy.goofyaddons.features.access.RouteRequirements.book(task.getBook().id(), ctx.services().observedSkills());
             if (prerequisite != null) { ctx.skipBookRequirement(task, prerequisite); return; }
         }
-        if (!ctx.screenOpen()) ctx.clock().start(ctx.delay());
+        if (!ctx.screenOpen()) ctx.clock().start(ctx.craftDelay());
         if (!ctx.screenOpen() && ctx.clock().shouldFire()) ctx.actions().command("anvil");
         if (!ctx.containerNameCheck("Anvil")) return;
-        ctx.clock().start(ctx.delay());
-        if (!ctx.scanner().isMenuLoaded(8) || !ctx.clock().shouldFire()) return;
+        ctx.clock().start(ctx.craftDelay());
+        if (!ctx.inventoryMemory().fresh(-2) || !ctx.clock().shouldFire()) return;
         int previousRetries = combiner.actionRetries();
         combiner.observedSkills(ctx.services().observedSkills());
         var result = combiner.tick(task, ctx.menu(), ctx.actions(), ctx.now());
@@ -45,6 +45,10 @@ final class BookCombine {
             case MERGED -> {
                 inputsAbsent = 0;
                 ctx.debug("[BazaarFlipper] COMBINE: verified input consumption and output arrival for " + task.getBook());
+                if(task.getAmountToOrder()==0 && task.bookList.size()==1
+                    && task.bookList.getFirst().location==0 && task.bookList.getFirst().level==task.getBook().sellLevel()) {
+                    task.finishCombining();ctx.actions().closeMenu();ctx.clock().stop();ctx.state(State.IDLE);
+                }
             }
             case NO_PAIR -> {
                 inputsAbsent = 0;

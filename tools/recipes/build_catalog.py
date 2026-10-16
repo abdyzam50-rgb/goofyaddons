@@ -37,6 +37,26 @@ def parse_stack(value, enchants):
         raise ValueError('Ingredient count cannot fit one crafting cell')
     return {'id': product, 'count': int(count)}
 
+RARITY = re.compile(r'^(?:a )?(?:VERY SPECIAL|SPECIAL|DIVINE|MYTHIC|LEGENDARY|EPIC|RARE|UNCOMMON|COMMON|SUPREME|ULTIMATE|ADMIN)\s*(.*)$')
+# Item types after the rarity that stack to 64. Every other typed item is treated as unstackable.
+STACKABLE_TYPES = {'GEMSTONE', 'ORE', 'BLOCK', 'DWARVEN METAL', 'BAIT', 'MUTATION', 'SALT', 'ARROW'}
+# Untyped items whose first lore line marks them as one per slot (compactors, smelters, fuels...).
+UNSTACKABLE_CATEGORIES = {'Minion Upgrade', 'Minion Fuel', 'Minion Storage', 'Drill Part', 'Ship Part', 'Rod Part'}
+
+def unstackable(item):
+    """True when the item takes one inventory slot per unit. Errs towards True: an extra slot only shrinks a batch."""
+    internal = item['internalname']
+    if ';' in internal or re.search(r'_GENERATOR_[0-9]+$', internal):
+        return True
+    raw = item.get('lore', [])
+    lore = [re.sub('§.', '', line).strip() for line in raw]
+    last = next((line for line in reversed(lore) if line), '')
+    match = RARITY.match(last)
+    if match and match[1].strip() and match[1].strip() not in STACKABLE_TYPES:
+        return True
+    first = re.sub('§.', '', raw[0]).strip() if raw and raw[0].startswith('§8') else ''
+    return first in UNSTACKABLE_CATEGORIES
+
 def import_recipe(item, raw, index, enchants):
     output = canonical_id(raw.get('overrideOutputId', item['internalname']), enchants)
     key = f"crafting:{item['internalname']}:{index}"
@@ -110,10 +130,13 @@ def build(source, baseline, enchants, extra=None):
     names = dict(baseline['names'])
     recipes, rejected, seen = [], [], set()
     raw_count = 0
+    single = set()
     for file in sorted((source / 'items').glob('*.json')):
         item = json.loads(file.read_text())
         name = re.sub(r'§.', '', item.get('displayname', item['internalname']))
         names[canonical_id(item['internalname'], enchants)] = name
+        if unstackable(item):
+            single.add(canonical_id(item['internalname'], enchants))
         rows = ([item['recipe']] if item.get('recipe') else []) + item.get('recipes', [])
         local_grids = set()
         for index, raw in enumerate(rows):
@@ -153,10 +176,15 @@ def build(source, baseline, enchants, extra=None):
         recipe['requirement']=merge_requirements(recipe.get('requirement'),*requirements)
     if len({r['key'] for r in recipes}) != len(recipes):
         raise ValueError('Duplicate recipe keys')
+    used = {id for r in recipes for id in (r['outputId'], *r['ingredients'])}
+    # A grid slot holding more than one unit, or a yield above one, proves the item stacks.
+    single -= {cell['id'] for r in recipes for cell in r.get('grid') or [] if cell and cell['count'] > 1}
+    single -= {r['outputId'] for r in recipes if r.get('outputCount', 1) > 1}
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip()
     return {**baseline, 'source': f'https://github.com/NotEnoughUpdates/NotEnoughUpdates-REPO/tree/{revision}',
             'sourceRevision': revision, 'names': dict(sorted(names.items())), 'recipes': recipes,
             'rejectedRecipes': len(rejected), 'unsupportedCrafts': rejected,
+            'unstackable': sorted(single & used),
             'coverage': dict(sourceCraftRows=raw_count, importedCraftRows=raw_count-len(rejected),
                              unsupportedCraftRows=len(rejected), retainedCraftRows=sum(r['kind']=='CRAFT' for r in retained)),
             'requirementSource': 'NEU crafttext/slayer/reputation, parsed calculator requirements and existing reviewed gates; unresolved requirements block execution.'}

@@ -18,16 +18,19 @@ public final class BazaarAccess {
             return Set.copyOf(ids);
         } catch(java.io.IOException failure) { throw new IllegalStateException("Cannot read mutation category catalog",failure); }
     }
-    private static final class Live {
-        static final BazaarAccess INSTANCE = new BazaarAccess(net.fabricmc.loader.api.FabricLoader.getInstance()
-                .getConfigDir().resolve("goofyaddons-bazaar-access.json"));
+    private static final Map<Path,BazaarAccess> PROFILES=new HashMap<>();
+    private static final BazaarAccess UNIDENTIFIED=new BazaarAccess(null);
+    public static BazaarAccess instance() {
+        try {
+            var path=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.preferencesPath("goofyaddons-bazaar-access.json");
+            return path==null?UNIDENTIFIED:PROFILES.computeIfAbsent(path,BazaarAccess::new);
+        }catch(IllegalStateException profileChanged){return UNIDENTIFIED;}
     }
-    public static BazaarAccess instance() { return Live.INSTANCE; }
     private final Path path;
     private final Map<String,String> denied = new TreeMap<>();
     public BazaarAccess(Path path) {
         this.path=path;
-        if(Files.exists(path))try {
+        if(path!=null && Files.exists(path))try {
             Map<String,String> saved=new Gson().fromJson(Files.readString(path),new TypeToken<Map<String,String>>(){}.getType());
             if(saved==null || saved.size()>4096 || saved.entrySet().stream().anyMatch(e->e.getKey()==null
                     || !e.getKey().matches("[A-Z0-9_]+") || e.getValue()==null || e.getValue().length()>500))
@@ -60,6 +63,7 @@ public final class BazaarAccess {
         if(changed)save();
     }
     private void save() {
+        if(path==null)return;
         Path temporary=path.resolveSibling(path.getFileName()+".tmp");
         try {
             Files.createDirectories(path.getParent());

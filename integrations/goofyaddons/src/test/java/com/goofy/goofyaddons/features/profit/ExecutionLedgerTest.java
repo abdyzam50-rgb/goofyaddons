@@ -79,4 +79,21 @@ class ExecutionLedgerTest {
   invalid.complete("bad","e",1,200.0,100.0,61000,false);assertNull(invalid.samples().getFirst().forecast());
  }
 
+ @Test void failuresPersistSeparatelyFromMarketTimingAndNeverClearHoldings()throws Exception {
+  var l=new ExecutionLedger();l.begin("t","general","COAL","COAL",16,16,1000,100.0);
+  l.strategy("t","instant","offer");assertEquals("instant",l.active(2000).getFirst().buyMode());
+  var failure=l.failure("t",3000);assertEquals("PIPELINE_FAILURE",failure.outcome());assertFalse(failure.eligible());
+  assertFalse(failure.censored());assertNull(failure.profit());assertNull(l.failure("t",4000));assertTrue(l.active(4000).isEmpty());
+  l.complete("t","real-sale",16,200.0,50.0,5000,false);
+  assertEquals(2,l.samples().size());assertFalse(l.samples().getLast().eligible());assertEquals(50.0,l.samples().getLast().profit());
+  l.write(dir.resolve("failure.json"));assertEquals(l.samples(),ExecutionLedger.read(dir.resolve("failure.json")).samples());
+ }
+ @Test void shortAbandonedOrdersAndKnownLossesKeepNegativeEvidenceWithoutInventingProfit() {
+  var l=new ExecutionLedger();l.begin("retired","general","COAL","COAL",16,16,1000);
+  assertTrue(l.retire("retired",61000));assertEquals(60000,l.samples().getFirst().observedMillis());assertNull(l.samples().getFirst().profit());
+  l.begin("lost","general","COAL","COAL",16,16,1000,100.0);
+  var loss=l.complete("lost","writeoff",16,0.0,-200.0,61000,true);
+  assertEquals("LOSS",loss.outcome());assertEquals(-200.0,loss.profit());assertFalse(loss.eligible());
+ }
+
 }

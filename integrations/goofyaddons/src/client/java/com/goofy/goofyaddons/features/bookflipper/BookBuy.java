@@ -14,10 +14,14 @@ import java.util.List;
 final class BookBuy {
     private com.goofy.goofyaddons.features.production.BazaarInstantBuy instant;
     private Task instantTask;
-    private long signSubmittedAt;
+    private long signSubmittedAt,instantStartedAt;
     private int signRestarts;
 
     void reset() { instant=null;instantTask=null;signSubmittedAt = 0; signRestarts = 0; }
+    boolean handlesInstantConfirmation(String title) {
+        return instant!=null && instant.submitted() && title!=null
+            && com.goofy.goofyaddons.utils.Chat.strip(title).startsWith("Confirm Instant Buy");
+    }
 
     /** Forgets a written amount whose menu is being reopened. */
     void menuReopened() { signSubmittedAt = 0; }
@@ -52,10 +56,9 @@ final class BookBuy {
         }
 
         if (ctx.containerNameCheck("Bazaar")) ctx.clock().start(ctx.delay());
-        if (ctx.containerNameCheck("Bazaar") && ctx.scanner().isMenuLoaded(53) && ctx.clock().shouldFire()) {
-            List<Integer> slots = ctx.scanner().findContainer(task.getBook().getRomanLevel(task.getBook().level()));
-            if (slots.isEmpty()) return;
-            ctx.navigationClick(slots.getFirst()); return;
+        if (ctx.containerNameCheck("Bazaar") && ctx.clock().shouldFire()) {
+            int target=searchTarget(ctx.menu(),task);
+            if(target>=0){ctx.navigationClick(target);return;}
         }
 
         boolean productPage = productPage(ctx, task);
@@ -132,6 +135,12 @@ final class BookBuy {
         }
     }
 
+    static int searchTarget(com.goofy.goofyaddons.menu.MenuSnapshot menu,Task task) {
+        var book=task.getBook();
+        int target=ProductIdentity.searchResult(menu,book.getLevel(book.level()),book.getRomanLevel(book.level()));
+        return target; // Exact identity is enough for reversible navigation; price lore may still be loading.
+    }
+
     private void instant(BookContext ctx,Task task){
         if(instantTask!=task){instant=null;instantTask=task;}
         var book=task.getBook();int units=task.getAmountToOrder();
@@ -143,6 +152,7 @@ final class BookBuy {
             if(quote==null || !ctx.bookPriceAllowed(task,quote*1.03/units,false)){ctx.deferBookPurchase(task,"instant-buy-price-or-depth");return;}
             double limit=quote*1.03;
             if(!ctx.capital().resize("books",book.id(),Math.max(ctx.capital().cost("books",book.id()),limit),limit,ctx.services().purse())){ctx.deferBookPurchase(task,"insufficient-spendable-capital");return;}
+            instantStartedAt=ctx.now();
             instant=new com.goofy.goofyaddons.features.production.BazaarInstantBuy(book.getLevel(book.level()),book.getRomanLevel(book.level()),units,limit,reason->{
                 ctx.expose(book.id());task.recordPlacement(ctx.now());if(!ctx.checkpoint())throw new IllegalStateException("Book intent not saved");
             });
@@ -151,6 +161,9 @@ final class BookBuy {
         switch(result){
             case BOUGHT -> {
                 int bought=instant.amount();double cost=instant.spent();
+                ctx.accounting().beginExecution(task.getProfitTradeId(),"books",book.getLevel(book.level()),book.getLevel(book.sellLevel()),bought,1,instantStartedAt,
+                        BookPlacement.expectedProfit(ctx,book,bought,cost/bought),task.forecast());
+                ctx.accounting().executionStrategy(task.getProfitTradeId(),"instant",task.instaSell?"instant":"offer");
                 ctx.accounting().acquire(task.getProfitTradeId(),"books",book.name(),task.getProfitTradeId()+":instant-buy:"+ctx.now(),bought,cost);
                 if(task.assignBook(book,book.level(),0,bought)<0){ctx.safetyHalt("Instant book input assignment failed; inventory retained");return;}
                 task.setReservedUnitCost(Math.max(task.getReservedUnitCost(),cost/bought));ctx.capital().purchased("books",book.id());ctx.fundedHoldings(task);
@@ -168,10 +181,7 @@ final class BookBuy {
      * and only on a product-sized page, never the larger search results.
      */
     private static boolean productPage(BookContext ctx, Task task) {
-        if (ctx.containerNameCheck(task.getBook().name())) return true;
-        var menu = ctx.menu();
-        return ctx.screenOpen() && menu != null && menu.containerEnd() == 36
-                && ProductIdentity.truncatedProductPage(menu, task.getBook().getRomanLevel(task.getBook().level()), 15);
+        return ctx.screenOpen() && com.goofy.goofyaddons.features.bookflipper.helper.BookProductPage.matches(ctx.menu(),task.getBook(),false);
     }
 
     private void writeAmount(BookContext ctx, Task task) {

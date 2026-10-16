@@ -26,6 +26,7 @@ public class ChatHook {
         if (overlay == true) return;
         String text = message.getString().replaceAll("§.", "");
         if (text.startsWith("[GoofyAddons]")) return;
+        Diagnostics.chat(text);
         if(text.startsWith("[Bazaar]")) Diagnostics.event("INFO","bazaar.receipt",java.util.Map.of("message",text));
         // A first announcement only identifies the profile; a different profile, or an explicit switch, pauses.
         if(com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE.chat(text) || text.startsWith("You switched to profile")) {

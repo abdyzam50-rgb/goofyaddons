@@ -115,6 +115,51 @@ class ProductionSellRepriceTest {
         assertFalse(engine.productionFailed());assertTrue(engine.consumeProduction("parent-repriced"));
     }
 
+    @Test void offerClaimedByHandWhileStoppedSettlesFromItsReceipt() throws Exception {
+        var engine=stoppedSale("[Bazaar] Claimed 653.4 coins from selling 6x Output at 110 each!");
+        assertFalse(engine.productionFailed(),engine.diagnosticState().toString());
+        var result=ProductionBazaarOrders.basketResult(engine.productionPositions(),false,"Verified");
+        assertTrue(result.done());assertEquals(6,result.units());assertEquals(653.4,result.proceeds());
+    }
+
+    @Test void receiptForAnotherPriceOrQuantityStillNeedsReview() throws Exception {
+        assertTrue(stoppedSale("[Bazaar] Claimed 594 coins from selling 6x Output at 100 each!").productionFailed());
+        assertTrue(stoppedSale("[Bazaar] Claimed 544.5 coins from selling 5x Output at 110 each!").productionFailed());
+        assertTrue(stoppedSale("[Bazaar] Claimed 653.4 coins from selling 6x Other at 110 each!").productionFailed());
+    }
+
+    @Test void receiptFromBeforeTheOfferWasPlacedIsIgnored() throws Exception {
+        assertTrue(stoppedSale("[Bazaar] Claimed 653.4 coins from selling 6x Output at 110 each!",120000).productionFailed());
+    }
+
+    @Test void releasingAReviewedJobForgetsOnlyThatJobsOrders() throws Exception {
+        GoofyConfig.INSTANCE=new GoofyConfig();GoofyConfig.INSTANCE.purseReserve=0;
+        var path=dir.resolve("release.json");var repository=new JsonGeneralOrderRepository(()->path);
+        var reviewed=sale(6);var other=sale(7);other.item=new GeneralItem("OTHER","Other");other.productionParent="parent-other";
+        repository.save(List.of(reviewed,other));
+        var engine=new GeneralFlipper(new FakeWorld(),new RecordingActions(),repository,
+            new ConfiguredTestServices(){public boolean productionOnly(){return true;}public double purse(){return 100000;}});
+        var released=engine.releaseProduction("parent-repriced");
+        assertEquals(1,released.size());assertEquals("OUTPUT",released.getFirst().item.id());
+        var remaining=repository.load();assertEquals(1,remaining.size());assertEquals("parent-other",remaining.getFirst().productionParent);
+        assertTrue(engine.releaseProduction("parent-repriced").isEmpty());
+    }
+
+    private GeneralFlipper stoppedSale(String receipt) throws Exception { return stoppedSale(receipt,0); }
+    /** A restored six-unit offer whose receipt arrived while stopped; the orders menu no longer lists it. */
+    private GeneralFlipper stoppedSale(String receipt,long receiptAge) throws Exception {
+        GoofyConfig.INSTANCE=new GoofyConfig();GoofyConfig.INSTANCE.purseReserve=0;
+        var world=new FakeWorld().showing(orders(0,0,0,false));
+        var path=dir.resolve(java.util.UUID.randomUUID()+".json");var repository=new JsonGeneralOrderRepository(()->path);
+        var offer=sale(6);offer.placedAt=world.clock()-60000;repository.save(List.of(offer));
+        var engine=new GeneralFlipper(world,new RecordingActions(),repository,
+            new ConfiguredTestServices(){public boolean productionOnly(){return true;}public double purse(){return 100000;}});
+        world.advance(-receiptAge);engine.onNotice(receipt);world.advance(receiptAge);
+        world.advance(30000);
+        engine.start();drive(engine,world,12000);
+        return engine;
+    }
+
     @Test void unknownBasisAllowsOnlyOriginalInitialListing() {
         var p=sale(10);p.submitted=false;
         assertTrue(ProductionSaleAccounting.initialListing(p));

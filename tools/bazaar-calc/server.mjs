@@ -46,6 +46,12 @@ export function coflnetToken(env=process.env) {
 }
 export function createCompanion({ collector = null, dashboard = new DashboardState(), executions = new ExecutionHistory(), community = null, control = null, profileFetcher=fetch, resourcesFetcher=fetch, publishingFetcher=fetch, auctionFetcher=fetch, auctionToken=coflnetToken, bundle=null } = {}) {
   const forecasts=new DashboardForecast({provenance});
+  let executionSnapshotAt=0;
+  const acceptExecutions=body=>{
+    if(body.executionError || !Array.isArray(body.executions) || body.sentAt<=executionSnapshotAt)return;
+    // Both local feeds publish full profile snapshots. Never retain rows absent from the new source.
+    executions.ingest(body.executions,true,true);executionSnapshotAt=body.sentAt;
+  };
   let itemMetadata=null,itemMetadataAt=0,itemMetadataFlight=null;
   const auctionPrices=new Map();
   async function auctionPrice(item) {
@@ -148,7 +154,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
         const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
         if(body.protocol!=='goofy-executions/1' || Object.keys(body).sort().join(',')!=='executions,protocol,sentAt'
           ||!Number.isFinite(body.sentAt)||Math.abs(Date.now()-body.sentAt)>30000)throw new Error();
-        executions.ingest(body.executions);community?.tick();
+        acceptExecutions(body);community?.tick();
         send(200,{ok:true,execution:executions.status()});
       } catch {send(400,{error:'Invalid execution snapshot'});}
       return;
@@ -160,7 +166,7 @@ export function createCompanion({ collector = null, dashboard = new DashboardSta
         for await(const chunk of req) {length+=chunk.length;if(length>1024*1024){send(413,{error:'Account snapshot too large'});return;}chunks.push(chunk);}
         const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
         if(dashboard.accept(body)) {
-          if(body.executions)executions.ingest(body.executions);
+          acceptExecutions(body);
           executions.ingestActive(body.account.connected && body.status.state==='RUNNING' ? body.activeExecutions??[] : []);
           community?.tick();
         }

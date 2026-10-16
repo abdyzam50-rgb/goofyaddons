@@ -5,13 +5,13 @@ import astar.client.ui.LoadingArt;
 import astar.client.ui.MazeBackground;
 import astar.client.ui.Panels;
 import astar.client.ui.Pixel;
+import astar.client.ui.PixelText;
 import astar.client.ui.Theme;
 import astar.client.ui.Ui;
 import astar.pathing.Tuning;
 import com.mojang.blaze3d.platform.InputConstants;
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -32,9 +32,11 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 
 /**
- * The mod's window, opened with a key (G unless changed in Controls): a sidebar of pages (where
- * to go, how the route is drawn, a page per {@link Tuning} section, and colour themes), each a
- * set of cards of settings. Everything here can also be done with {@code .A*}.
+ * The mod's window, opened with a key (G unless changed here or in Controls): a sidebar of pages
+ * with icons and who's playing at the bottom, a top bar with the page's title, the HUD editor's
+ * button and a search over every setting, and each page's cards of settings in two columns. A
+ * card folds shut by its title; one with a switch shows its settings only while it's on. Most of
+ * it can also be done with {@code .A*}.
  *
  * <p>Drawn entirely by the mod: rounded shapes from the {@code panel} shader ({@link Panels})
  * and pixel fonts for the text, at its own scale of whole screen pixels ({@link #px}), whatever the GUI
@@ -42,18 +44,33 @@ import net.minecraft.util.FormattedCharSequence;
  */
 final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds.BindingCaptureScreen {
 
-    // ---- Pages -----------------------------------------------------------------------------
+    // ---- Pages ----------------------------------------------------------------------------
 
-    static final String DRAWING = "drawing";
+    static final String ROUTE = "route";
+    static final String PATHFINDER = "pathfinder";
+    static final String MOVEMENT = "movement";
+    static final String MAPS = "maps";
+    static final String WIDGETS = "widgets";
     static final String THEMES = "themes";
     static final String MACROS = "macros";
-    /** The {@link Tuning} section of the saved maps, shown with the maps themselves. */
-    static final String CACHE = "cache";
-    /** Settings found by what they're called or do, from the box at the top of the sidebar. */
+    /** Settings found by what they're called or do, from the box in the top bar. */
     static final String SEARCH = "search";
 
-    /** Kept while the game runs, so the window opens as it was left. */
-    private static String lastPage = DRAWING;
+    /**
+     * The page that holds a page of before (drawing, path, camera...) or a section of the
+     * settings file, so {@code screen <page>} and old habits still land somewhere.
+     */
+    static String pageOf(String name) {
+        return switch (name) {
+            case "drawing", "overlay" -> ROUTE;
+            case "path", "teleport" -> PATHFINDER;
+            case "walk", "camera", "mouse" -> MOVEMENT;
+            case "cache", "caches" -> MAPS;
+            case "hud" -> WIDGETS;
+            default -> name;
+        };
+    }
+
 
     private final AstarClient client;
     private final RouteOverlay overlay;
@@ -62,11 +79,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
     // ---- Size, in units of px screen pixels -------------------------------------------------
 
-    private static final int SIDE_W = 142;
+    private static final int SIDE_W = 156;
     private static final int HEAD_H = 50;
     private static final int PAD = 12;
     /** The width of a row's box or list, so they line up down a card. */
     private static final int CONTROL_W = 96;
+    /** Side-by-side choices all this wide, so they line up. */
+    private static final int SEG_W = 152;
     private static final int GAP = 8;
 
     /** Screen pixels per unit of this window. */
@@ -102,6 +121,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private Mode<?> dropped;
     private El pressed;
     private El hovered;
+    /** The mouse, in units, this frame: for controls with parts. */
+    private double mouseUX;
     private long hoveredSince;
 
     private String problem;
@@ -113,7 +134,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         super(Component.literal("A* Client"));
         this.client = client;
         this.overlay = overlay;
-        this.page = page == null ? lastPage : page;
+        // Opens on Macros unless a page is asked for.
+        this.page = pageOf(page == null ? MACROS : page);
+        openedAt = System.currentTimeMillis();
         LoadingArt logo = LoadingArt.logo();
         if (logo != null) {
             logo.restart();
@@ -154,15 +177,28 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     /** The pages in the sidebar: name and label. */
     private static Map<String, String> pages() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put(DRAWING, "Drawing");
-        for (String s : Tuning.sections().keySet()) {
-            if (!s.equals("overlay")) {
-                m.put(s, s.equals(CACHE) ? "Caches" : capital(s));
-            }
-        }
         m.put(MACROS, "Macros");
+        m.put(ROUTE, "Route");
+        m.put(PATHFINDER, "Pathfinder");
+        m.put(MOVEMENT, "Movement");
+        m.put(MAPS, "Maps");
+        m.put(WIDGETS, "Widgets");
         m.put(THEMES, "Themes");
         return m;
+    }
+
+    /** What each page is for, under its title in the top bar. */
+    private static String pageAbout(String page) {
+        return switch (page) {
+            case ROUTE -> "How the route is drawn, and keys";
+            case PATHFINDER -> "What moves cost and when to teleport";
+            case MOVEMENT -> "How the camera and the mouse move";
+            case MAPS -> "Saved maps and what to keep";
+            case WIDGETS -> "Panels on the screen as you play";
+            case THEMES -> "The window's colours and the route's";
+            case MACROS -> "Things to do on their own";
+            default -> "Every setting that matches";
+        };
     }
 
     @Override
@@ -171,67 +207,62 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         // Whole screen pixels per unit: 2 on a 1080p screen, 3 at 1440p, 4 at 4K.
         px = Math.clamp(window.getHeight() / 400, 1, 4);
         k = px / (float) window.getGuiScale();
+        fonts();
+        int screenW = Math.round(width / k);
+        int screenH = Math.round(height / k);
+        // The whole screen.
+        winW = screenW;
+        winH = screenH;
+        winX = 0;
+        winY = 0;
+        areaX = winX + SIDE_W + PAD;
+        areaY = winY + HEAD_H + 10;
+        areaW = winW - SIDE_W - 2 * PAD;
+        areaH = winH - HEAD_H - 14;
+
+        fixed.clear();
+        if (!page.equals(SEARCH) && !pages().containsKey(page)) {
+            page = ROUTE;
+        }
+        // The top bar: the search box and the HUD editor's button on the right.
+        String typed = search == null ? "" : search.text;
+        search = new SearchBox(typed);
+        int sw = Math.min(130, areaW / 3);
+        search.at(winX + winW - PAD - sw, winY + (HEAD_H - 20) / 2, sw, 20);
+        fixed.add(search);
+        hudButton = new Button("Edit HUD", this::editHud, Button.PLAIN)
+                .tip("Move and resize the widgets on the screen.");
+        hudButton.at(search.ex - 6 - hudButton.prefW(), search.ey, hudButton.prefW(), 20);
+        fixed.add(hudButton);
+        int sy = winY + HEAD_H + 8;
+        for (var e : pages().entrySet()) {
+            fixed.add(new SideItem(e.getKey(), e.getValue(), winX + 8, sy, SIDE_W - 16, 22));
+            sy += 25;
+        }
+        buildPage();
+    }
+
+    private Button hudButton;
+
+    /** The lettering the fonts are in, to pick them again when it changes. */
+    private Ui.Lettering fontsFor;
+
+    private void fonts() {
+        fontsFor = Ui.lettering();
         body = Ui.font("body", px);
         strong = Ui.font("strong", px);
         small = Ui.font("small", px);
         title = Ui.font("title", px);
-        int screenW = Math.round(width / k);
-        int screenH = Math.round(height / k);
-        // The stone frame goes round the outside.
-        winW = Math.min(620, screenW - 2 * Pixel.FRAME - 8);
-        winH = Math.min(380, screenH - 2 * Pixel.FRAME - 8);
-        winX = (screenW - winW) / 2;
-        winY = (screenH - winH) / 2;
-        areaX = winX + SIDE_W + PAD;
-        areaY = winY + HEAD_H + 16;
-        areaW = winW - SIDE_W - 2 * PAD;
-        areaH = winH - HEAD_H - 20;
-
-        fixed.clear();
-        if (!page.equals(SEARCH) && !pages().containsKey(page)) {
-            page = DRAWING;
-        }
-        String typed = search == null ? "" : search.text;
-        search = new SearchBox(typed);
-        search.at(winX + 10, winY + HEAD_H + 10, SIDE_W - 20, 22);
-        fixed.add(search);
-        side();
-        buildPage();
     }
 
-    /** Whether the pathfinder group is open: folded each time the window opens. */
-    private boolean pathfinderOpen;
+    /** When the window opened, for its opening bounce. */
+    private final long openedAt;
+    /** When the page last changed, for its slide in. */
+    private long pageAt;
 
-    /** The pages that fold into "Pathfinder settings". */
-    private static boolean pathfinderPage(String name) {
-        return !name.equals(MACROS) && !name.equals(THEMES);
-    }
-
-    /** Lays out the sidebar: the other pages, then the pathfinder group (folded or not). */
-    private void side() {
-        fixed.removeIf(e -> e instanceof SideItem || e instanceof SideGroup);
-        List<El> items = new ArrayList<>();
-        int sy = winY + HEAD_H + 40;
-        for (var e : pages().entrySet()) {
-            if (!pathfinderPage(e.getKey())) {
-                items.add(new SideItem(e.getKey(), e.getValue(), winX + 10, sy, SIDE_W - 20,
-                        22));
-                sy += 26;
-            }
-        }
-        sy += 6;
-        items.add(new SideGroup(winX + 10, sy, SIDE_W - 20, 22));
-        sy += 28;
-        if (pathfinderOpen) {
-            for (var e : pages().entrySet()) {
-                if (pathfinderPage(e.getKey())) {
-                    items.add(new SideItem(e.getKey(), e.getValue(), winX + 18, sy,
-                            SIDE_W - 28, 20));
-                    sy += 23;
-                }
-            }
-        }
-        fixed.addAll(0, items);
+    private void editHud() {
+        focus(null);
+        minecraft.gui.setScreen(new HudEditor(this));
     }
 
     /** Types {@code words} into the search box, as the {@code search} test step does. */
@@ -256,8 +287,10 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private void open(String name) {
+        if (!name.equals(page)) {
+            pageAt = System.currentTimeMillis();
+        }
         page = name;
-        lastPage = name;
         problem = null;
         search.text = "";
         focus(null);
@@ -269,23 +302,48 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private void buildPage() {
         dropped = null;
         fixed.removeIf(e->e instanceof TradingTab);
-        areaY=winY+HEAD_H+16;
-        areaH=winH-HEAD_H-20;
+        areaY=winY+HEAD_H+10;
+        areaH=winH-HEAD_H-14;
         if(page.equals(MACROS))tradingTabs();
         cards.clear();
         tiles.clear();
-        if (page.equals(SEARCH)) {
-            buildSearch(search.text.strip().toLowerCase(Locale.ROOT));
-        } else if (page.equals(DRAWING)) {
-            buildDrawing();
-        } else if (page.equals(MACROS)) {
-            buildTrading();
-        } else if (page.equals(THEMES)) {
-            for (Theme theme : Theme.values()) {
-                tiles.add(new Tile(theme));
+        switch (page) {
+            case SEARCH -> buildSearch(search.text.strip().toLowerCase(Locale.ROOT));
+            case ROUTE -> buildRoute();
+            case PATHFINDER -> {
+                buildQuickPathfinder();
+                advanced(() -> buildGroups("path", "teleport"));
             }
-        } else {
-            buildSection(page);
+            case MOVEMENT -> {
+                buildQuickMovement();
+                advanced(() -> buildGroups("walk", "camera", "mouse"));
+            }
+            case MAPS -> {
+                buildMaps();
+                Card keep = card("Keeping maps", "What's saved as you play.");
+                keep.option(Tuning.SAVE_CHUNKS);
+                keep.option(Tuning.WHOLE_MAP);
+                advanced(() -> buildGroups("cache"));
+            }
+            case WIDGETS -> buildWidgets();
+            case MACROS -> buildTrading();
+            case THEMES -> {
+                Card font = card("Font", "How all the text is lettered.");
+                font.row("Lettering", () -> switch (Ui.lettering()) {
+                    case CLEAN -> "Inter: plain and clean, made for screens";
+                    case HYPERLEGIBLE -> "Atkinson Hyperlegible: every letter easy to tell apart";
+                    case WIDE -> "Lexend: wide and open, made to be easy to read";
+                    case ROUNDED -> "Nunito: soft and rounded";
+                    case SOFT -> "Pixelify Sans: a soft pixel look";
+                    case MINECRAFT -> "The game's own letters";
+                    case CAPS -> "Spaced-out capitals, like a pixel game";
+                }, new Mode<>(List.of(Ui.Lettering.values()), Ui::lettering, l -> l.label,
+                        Ui::lettering));
+                for (Theme theme : Theme.values()) {
+                    tiles.add(new Tile(theme));
+                }
+            }
+            default -> buildGroups(page);
         }
     }
 
@@ -357,14 +415,14 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
     }
     private void tradingTabs() {
-        int x=areaX, y=winY+HEAD_H+8;
+        int left=columnX(), right=left+columnW(), x=left, y=winY+HEAD_H+10;
         for(var section:TradingSection.values()) {
             int w=width(section.label,body)+16;
-            if(x>areaX && x+w>areaX+areaW){x=areaX;y+=24;}
+            if(x>left && x+w>right){x=left;y+=24;}
             fixed.add(new TradingTab(section).at(x,y,w,18));x+=w+4;
         }
-        areaY=y+30;
-        areaH=winY+winH-4-areaY;
+        areaY=y+28;
+        areaH=winY+winH-14-areaY;
     }
     private final class TradingTab extends El {
         final TradingSection section;
@@ -396,7 +454,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStart();
             },Button.ACCENT).when(()->!draft.dirty() && !manager.isMacroRunning() && client.canStartTrading()),
             new Button("Stop",()->com.goofy.goofyaddons.features.sessions.SessionScheduler.INSTANCE.manualStop(),Button.PLAIN));
-        status.row("Mode",()->"Change trading mode while stopped.",new Mode<>(List.of(com.goofy.goofyaddons.features.TradingMode.values()),
+        status.row("Mode",()->"All flips compares books, general and crafts by estimated net coins/hour. Change while stopped.",new Mode<>(List.of(com.goofy.goofyaddons.features.TradingMode.values()),
             ()->draft.view().tradingMode,com.goofy.goofyaddons.features.TradingMode::label,v->editTrading("Mode",cfg->cfg.tradingMode=v)));
         Card keys=card("Keybinds","Click Change, then press a key. Escape cancels. Bindings also appear in Minecraft Controls.");
         keys.row("Trading on / off",()->com.goofy.goofyaddons.keybinds.GoofyKeybinds.toggleKey.getTranslatedKeyMessage().getString(),
@@ -409,6 +467,20 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
     private void buildTradingLimits() {
         var manager=com.goofy.goofyaddons.features.FeatureManager.INSTANCE;
+        Card timing=card("Menu action timing","Navigation timing. Crafting and storage follow this range until their own timing is configured.");
+        timing.row("Fastest delay (ms)",()->"Minimum delay between actions. Server updates must still be verified.",
+            tradingWhole("Fastest delay",()->draft.view().minActionDelay,1,1999,(cfg,v)->{cfg.minActionDelay=v;cfg.maxActionDelay=Math.max(cfg.maxActionDelay,v+1);}));
+        timing.row("Slowest delay (ms)",()->"Maximum randomized delay. Keep the range narrow for consistent speed or widen it for more variation.",
+            tradingWhole("Slowest delay",()->draft.view().maxActionDelay,2,2000,(cfg,v)->{cfg.maxActionDelay=v;cfg.minActionDelay=Math.min(cfg.minActionDelay,v-1);}));
+        Card workTiming=card("Crafting and storage timing","Crafting and anvil share one range. Storage has its own range. Until edited, both follow navigation timing; server acknowledgements still apply.");
+        workTiming.row("Craft / anvil fastest (ms)",()->"Ingredient placement, grid actions and book combining.",
+            tradingWhole("Craft fastest",()->draft.view().minCraftDelay==0?draft.view().minActionDelay:draft.view().minCraftDelay,1,1999,(cfg,v)->{cfg.minCraftDelay=v;cfg.maxCraftDelay=Math.max(cfg.maxCraftDelay==0?cfg.maxActionDelay:cfg.maxCraftDelay,v+1);}));
+        workTiming.row("Craft / anvil slowest (ms)",()->"Upper end of randomized crafting delay.",
+            tradingWhole("Craft slowest",()->draft.view().maxCraftDelay==0?draft.view().maxActionDelay:draft.view().maxCraftDelay,2,2000,(cfg,v)->{cfg.maxCraftDelay=v;cfg.minCraftDelay=Math.min(cfg.minCraftDelay==0?cfg.minActionDelay:cfg.minCraftDelay,v-1);}));
+        workTiming.row("Storage fastest (ms)",()->"Deposits, withdrawals and book storage moves.",
+            tradingWhole("Storage fastest",()->draft.view().minStorageDelay==0?draft.view().minActionDelay:draft.view().minStorageDelay,1,1999,(cfg,v)->{cfg.minStorageDelay=v;cfg.maxStorageDelay=Math.max(cfg.maxStorageDelay==0?cfg.maxActionDelay:cfg.maxStorageDelay,v+1);}));
+        workTiming.row("Storage slowest (ms)",()->"Upper end of randomized storage delay.",
+            tradingWhole("Storage slowest",()->draft.view().maxStorageDelay==0?draft.view().maxActionDelay:draft.view().maxStorageDelay,2,2000,(cfg,v)->{cfg.maxStorageDelay=v;cfg.minStorageDelay=Math.min(cfg.minStorageDelay==0?cfg.minActionDelay:cfg.minStorageDelay,v-1);}));
         Card capital=card("Spending limits","These limits apply to every purchase. Changes require stopping the trader.");
         capital.row("Capital limit",()->"Maximum committed trading capital, in coins.",tradingNumber("Capital limit",()->draft.view().maxTradingCapital,(cfg,v)->cfg.maxTradingCapital=v));
         capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber("Purse reserve",()->draft.view().purseReserve,(cfg,v)->cfg.purseReserve=v));
@@ -454,7 +526,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         crafts.row("Batch capital",()->"Maximum coins per craft run; zero uses spendable funds.",tradingNumber("Craft capital",()->draft.view().craftFlips.maximumCapital,(cfg,v)->cfg.craftFlips.maximumCapital=v));
         crafts.row("Minimum net profit",()->"Require this profit after depth, taxes and price movement allowance before buying.",tradingNumber("Craft profit",()->draft.view().craftFlips.minimumProfit,(cfg,v)->cfg.craftFlips.minimumProfit=v));
         crafts.row("Active crafts",()->"1–4 independent jobs. Wait on orders in parallel; GUI actions remain sequential.",tradingWhole("Active crafts",()->draft.view().craftFlips.maxActiveCrafts,1,4,(cfg,v)->cfg.craftFlips.maxActiveCrafts=v));
-        crafts.row("Maximum batches",()->"1–64; planning reduces the batch to fit money, depth, volume and inventory.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,64,(cfg,v)->cfg.craftFlips.maxBatches=v));
+        crafts.row("Maximum batches",()->"1–1024; purchases and crafting use inventory-sized rounds.",tradingWhole("Craft batches",()->draft.view().craftFlips.maxBatches,1,1024,(cfg,v)->cfg.craftFlips.maxBatches=v));
+        crafts.row("Use storage",()->"Buy more than the inventory holds: claim what fits, park it in ender chest pages 1–3 and backpacks 1–4, then claim the rest. Test it in game first.",
+            new Check(()->draft.view().craftFlips.useStorage,v->editTrading("Use storage",cfg->cfg.craftFlips.useStorage=v)).toggle());
         crafts.row("Inspect ranking",()->"Show estimated coins/hour, batch profit, strategy and route blockers in chat.",new Button("Best crafts",()->manager.production().showCraftPlans(),Button.PLAIN));
         crafts.row("Current plan",manager.production()::discoveryStatus);
         Card auctionTests=card("Auction House tests","Craft and list one BIN. Automatic sale and claim tracking is still pending.");
@@ -541,30 +615,25 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         files.callout(()->Callout.INFO,()->tradingNote);
     }
 
-    private void buildDrawing() {
+    private void buildRoute() {
         Card route = card("Route in the world", Tuning.sections().get("overlay"));
-        drawingRows(route, words -> true);
+        route.master(overlay::shown, overlay::shown, "Draw the route while going (.A* show).");
+        drawingRows(route, words -> true, false);
         for (Tuning.Option o : Tuning.all()) {
             if (o.section.equals("overlay")) {
                 route.option(o);
             }
         }
-        // The logo big, beside the settings: the search it plays is the route's look in small.
-        Card preview = card("Preview", "The logo's search, in this theme.");
-        preview.preview = true;
-        preview.row("Live search", () -> "Play it again", new Button("Replay", () -> {
-            LoadingArt logo = LoadingArt.logo();
-            if (logo != null) {
-                logo.restart();
-                if (Theme.current() != Theme.RAINBOW) {
-                    logo.finish();
-                }
-            }
-        }, Button.ACCENT));
+        Card keys = card("Keys", "Keys for the window. Esc or this key closes it.");
+        keys.row("Open window", () -> "Click, then press a key", new KeyBind());
     }
 
-    /** The Drawing page's own rows (not settings from the file) whose words pass {@code keep}. */
-    private void drawingRows(Card route, java.util.function.Predicate<String> keep) {
+    /**
+     * The Route page's own rows (not settings from the file) whose words pass {@code keep};
+     * {@code shown} adds the on/off line, which the page itself has as its card's switch.
+     */
+    private void drawingRows(Card route, java.util.function.Predicate<String> keep,
+            boolean shown) {
         StringBuilder looks = new StringBuilder();
         for (RouteOverlay.Style s : RouteOverlay.Style.values()) {
             looks.append(' ').append(s.label).append(' ').append(s.id()).append(' ')
@@ -574,9 +643,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         for (OverlayColour c : OverlayColour.values()) {
             colours.append(' ').append(c.id());
         }
-        if (keep.test("shown show hide draw route")) {
+        if (shown && keep.test("shown show hide draw route")) {
             route.row("Shown", () -> "Draw the route while going (.A* show)",
-                new Check(overlay::shown, overlay::shown));
+                new Check(overlay::shown, overlay::shown).toggle());
         }
         if (keep.test("look style render route" + looks)) {
             route.row("Look", () -> overlay.style().about,
@@ -584,44 +653,276 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                             s -> s.label, overlay::style));
         }
         if (keep.test("colour color route theme" + colours)) {
-            Mode<OverlayColour> colour = new Mode<>(List.of(OverlayColour.values()),
-                    overlay::colour, c -> capital(c.id()), overlay::colour);
-            colour.swatch = OverlayColour::lineNow;
-            route.row("Colour", () -> overlay.colour() == Theme.current().route ? "Matches the theme"
-                    : "The theme's is " + capital(Theme.current().route.id()), colour);
+            Swatches colour = new Swatches(List.of(OverlayColour.values()), overlay::colour,
+                    overlay::colour);
+            route.row("Colour", () -> capital(overlay.colour().id())
+                    + (overlay.colour() == Theme.current().route ? ", matches the theme" : ""),
+                    colour);
         }
     }
 
-    private void buildSection(String section) {
-        if (section.equals(CACHE)) {
-            buildMaps();
-        }
-        List<Tuning.Option> options = new ArrayList<>();
-        for (Tuning.Option o : Tuning.all()) {
-            if (o.section.equals(section)) {
-                options.add(o);
+    // ---- Quick choices ---------------------------------------------------------------------
+
+    /**
+     * One of a few ways to set several settings at once: its name, a line on what it does,
+     * and the settings, as "section.name=value".
+     */
+    private record Preset(String label, String about, String... values) {
+
+        boolean matches() {
+            for (String v : values) {
+                int eq = v.indexOf('=');
+                Tuning.Option o = Tuning.find(v.substring(0, eq));
+                String want = v.substring(eq + 1);
+                boolean same = o instanceof Tuning.Num n
+                        ? Math.abs(n.get() - Double.parseDouble(want)) < 1e-9
+                        : o != null && o.text().equals(want);
+                if (!same) {
+                    return false;
+                }
             }
+            return true;
         }
-        // In cards of a few, so two columns fill evenly.
-        int per = Math.max(4, (options.size() + 1) / 2);
-        if (!twoColumns()) {
-            per = options.size();
+    }
+
+    /** A line of quick choices: picking one sets all its settings. */
+    private void quick(Card c, String name, Preset... presets) {
+        List<String> labels = new ArrayList<>();
+        for (Preset p : presets) {
+            labels.add(p.label());
         }
-        for (int i = 0; i < options.size(); i += per) {
-            Card c = i == 0 ? card(capital(section), Tuning.sections().get(section))
-                    : card(null, null);
-            for (Tuning.Option o : options.subList(i, Math.min(options.size(), i + per))) {
-                c.option(o);
+        Supplier<Preset> now = () -> {
+            for (Preset p : presets) {
+                if (p.matches()) {
+                    return p;
+                }
             }
-            if (i == 0) {
-                c.header = new Button("Reset all", () -> {
-                    for (Tuning.Option o : options) {
-                        o.reset();
+            return null;
+        };
+        Segmented<String> mode = new Segmented<>(labels, () -> now.get() == null ? null
+                : now.get().label(), v -> v, v -> {
+                    for (Preset p : presets) {
+                        if (p.label().equals(v)) {
+                            for (String set : p.values()) {
+                                int eq = set.indexOf('=');
+                                apply(Tuning.find(set.substring(0, eq)), set.substring(eq + 1));
+                            }
+                        }
                     }
-                    notes.clear();
-                    changedSettings = true;
-                }, Button.GHOST).when(() -> options.stream().anyMatch(Tuning.Option::changed));
+                });
+        StringBuilder tip = new StringBuilder();
+        for (Preset p : presets) {
+            tip.append(tip.isEmpty() ? "" : "\n\n").append(p.label()).append(": ")
+                    .append(p.about());
+        }
+        Row r = c.row(name, () -> now.get() == null
+                ? "Your own mix, set under Advanced" : now.get().about(), mode);
+        r.tip = tip.toString();
+        mode.about = v -> {
+            for (Preset p : presets) {
+                if (p.label().equals(v)) {
+                    return p.about();
+                }
             }
+            return null;
+        };
+    }
+
+    private void buildQuickPathfinder() {
+        Card c = card("Routes", "How .A* picks its way. Changes count from the next route.");
+        quick(c, "Route style",
+                new Preset("Balanced", "Keeps a little off walls, few needless turns",
+                        "path.wall=0.3", "path.turn=0.1", "path.jump=2", "path.drop=2"),
+                new Preset("Direct", "The shortest way, close to walls",
+                        "path.wall=0", "path.turn=0.05", "path.jump=1.5", "path.drop=1.5"),
+                new Preset("Careful", "Well off walls and edges, fewer jumps",
+                        "path.wall=1", "path.turn=0.2", "path.jump=3", "path.drop=3"));
+        quick(c, "Teleports",
+                new Preset("Normal", "Teleports where it saves a good bit of walking",
+                        "teleport.etherwarp_cost=8", "teleport.it_cost=5"),
+                new Preset("Often", "Teleports whenever it's a little quicker",
+                        "teleport.etherwarp_cost=5", "teleport.it_cost=3"),
+                new Preset("Rarely", "Walks unless teleporting saves a lot",
+                        "teleport.etherwarp_cost=14", "teleport.it_cost=9"));
+        quick(c, "Aiming",
+                new Preset("Normal", "About a second to aim a teleport",
+                        "teleport.aim_time=1", "teleport.aim_variation=0.1"),
+                new Preset("Quick", "Aims fast, like a practised player",
+                        "teleport.aim_time=0.6", "teleport.aim_variation=0.05"),
+                new Preset("Steady", "Takes its time over each aim",
+                        "teleport.aim_time=1.5", "teleport.aim_variation=0.15"));
+    }
+
+    private void buildQuickMovement() {
+        Card c = card("Feel", "How .A* moves the camera and walks.");
+        quick(c, "Camera",
+                new Preset("Normal", "Smooth turns, looks a little ahead",
+                        "camera.look_ahead=2.5", "camera.pitch_speed=90", "camera.hold=2",
+                        "camera.drift=0.35", "mouse.stiffness=25", "mouse.turn_speed=540"),
+                new Preset("Calm", "Slow, gentle turns, looks further ahead",
+                        "camera.look_ahead=3.5", "camera.pitch_speed=60", "camera.hold=3",
+                        "camera.drift=0.5", "mouse.stiffness=15", "mouse.turn_speed=360"),
+                new Preset("Snappy", "Quick, tight turns",
+                        "camera.look_ahead=2", "camera.pitch_speed=150", "camera.hold=1",
+                        "camera.drift=0.2", "mouse.stiffness=40", "mouse.turn_speed=900"));
+        c.option(Tuning.STRAFE);
+        c.option(Tuning.HAND);
+        quick(c, "Stopping",
+                new Preset("Normal", "Walks up to the goal and lets go",
+                        "walk.goal_reach=0.6"),
+                new Preset("Exact", "Stops right on the goal block's middle",
+                        "walk.goal_reach=0.3"),
+                new Preset("Loose", "Anywhere about a block from the goal",
+                        "walk.goal_reach=1"));
+    }
+
+    /** The pages whose every setting is shown: kept while the game runs. */
+    private static final java.util.Set<String> ADVANCED = new java.util.HashSet<>();
+
+    /** A switch for every setting on the page, one by one, and those settings while it's on. */
+    private void advanced(Runnable build) {
+        Card c = card("Advanced", "Every setting on its own, for fine tuning.");
+        String on = page;
+        c.master(() -> ADVANCED.contains(on), show -> {
+            if (show) {
+                ADVANCED.add(on);
+            } else {
+                ADVANCED.remove(on);
+            }
+            buildPage();
+        }, "Show every setting on this page, one by one.");
+        if (ADVANCED.contains(on)) {
+            build.run();
+        }
+    }
+
+    /** A card of settings: its title, what it's for, its switch (if any) and its settings. */
+    private record Group(String title, String about, String master, String... options) {}
+
+    /** Each section's settings in cards, in the order they're shown. */
+    private static final Map<String, List<Group>> GROUPS = Map.of(
+            "path", List.of(
+                    new Group("Move costs", "What each kind of step costs. Dearer ones are"
+                            + " used less.", null, "walk", "diagonal", "jump", "drop",
+                            "drop_per_block", "swim", "climb"),
+                    new Group("Route shape", "Keeping off walls and cutting needless turns.",
+                            null, "wall", "turn")),
+            "teleport", List.of(
+                    new Group("Etherwarp", "Teleports to a block you aim at.", null,
+                            "etherwarp_cost", "etherwarp_min"),
+                    new Group("Instant transmission", "Teleports straight ahead.", null,
+                            "it_cost", "it_min"),
+                    new Group("Aiming", "How long aiming a teleport takes.", null, "aim_time",
+                            "aim_variation")),
+            "walk", List.of(
+                    new Group("Arriving", "How near the goal counts as there.", null,
+                            "goal_reach")),
+            "camera", List.of(
+                    new Group("Look ahead", "How far down the route the camera looks.", null,
+                            "look_ahead", "look_ahead_per_speed", "ridge_look",
+                            "ridge_look_per_speed", "view_height"),
+                    new Group("Pitch", "How far up and down the camera looks.", null,
+                            "pitch_min", "pitch_max", "pitch_speed"),
+                    new Group("Strafing", "Walking sideways round corners, looking ahead.",
+                            "strafe", "strafe_lead", "strafe_look", "strafe_look_per_speed",
+                            "hold_strafing"),
+                    new Group("Hold and drift", "Keeping still on straights, and in the air.",
+                            null, "hold", "drift", "drift_pitch", "air_turn_accel")),
+            "mouse", List.of(
+                    new Group("Hand and easing", "Which hand moves the mouse, and how turns"
+                            + " ease in and out.", null, "hand", "ease_turns", "ease_flicks"),
+                    new Group("Turn speed", "How fast the mouse can turn.", null, "stiffness",
+                            "turn_speed", "turn_accel"),
+                    new Group("Sweeps and flicks", "Big turns: one sweep, or a quick flick"
+                            + " that misses a little.", null, "sweep_over", "flick_over",
+                            "sweep_time", "sweep_time_per_doubling", "undershoot",
+                            "overshoot_out", "overshoot_in")),
+            "cache", List.of(
+                    new Group("Saving chunks", "Keeping chunks you've seen, to plan past"
+                            + " render distance.", "save_chunks", "keep_files",
+                            "bundled_mines"),
+                    new Group("Map detection", "Telling which saved map this is.",
+                            "auto_detect", "match", "matches_needed", "new_after"),
+                    new Group("Whole map", "Planning over the whole saved map at once.",
+                            "whole_map", "whole_map_size")));
+
+    /** The sections' settings in their cards; any not in one go in a last card. */
+    private void buildGroups(String... sections) {
+        for (String section : sections) {
+            List<Tuning.Option> left = new ArrayList<>();
+            for (Tuning.Option o : Tuning.all()) {
+                if (o.section.equals(section)) {
+                    left.add(o);
+                }
+            }
+            for (Group gr : GROUPS.getOrDefault(section, List.of())) {
+                Card c = card(gr.title(), gr.about());
+                List<Tuning.Option> in = new ArrayList<>();
+                if (gr.master() != null
+                        && Tuning.find(section + "." + gr.master()) instanceof Tuning.Flag f) {
+                    c.master(f::get, on -> apply(f, on.toString()), f.help);
+                    left.remove(f);
+                    in.add(f);
+                }
+                for (String name : gr.options()) {
+                    Tuning.Option o = Tuning.find(section + "." + name);
+                    if (o == null || !left.contains(o)) {
+                        continue;
+                    }
+                    if (name.equals("pitch_min")
+                            && Tuning.find(section + ".pitch_max") instanceof Tuning.Num hi
+                            && o instanceof Tuning.Num lo) {
+                        c.range("Pitch range", lo, hi);
+                        left.remove(hi);
+                        in.add(hi);
+                    } else {
+                        c.option(o);
+                    }
+                    left.remove(o);
+                    in.add(o);
+                }
+                c.resetAll(in);
+            }
+            if (!left.isEmpty()) {
+                Card c = card(GROUPS.containsKey(section) ? "More " + section : capital(section),
+                        Tuning.sections().get(section));
+                for (Tuning.Option o : left) {
+                    c.option(o);
+                }
+                c.resetAll(left);
+            }
+        }
+    }
+
+    /** The HUD's widgets, a card each, and its toasts. */
+    private void buildWidgets() {
+        Card edit = card("HUD editor", "Drag widgets where you want them, scroll to size them.");
+        edit.row("Placing", () -> "Opens the screen with the widgets on it",
+                new Button("Edit HUD", this::editHud, Button.ACCENT));
+        Card toasts = card("Notifications", "Pop-ups when a trip plans, starts and ends.");
+        toasts.master(() -> Hud.toasts, on -> {
+            Hud.toasts = on;
+            Hud.save();
+        }, "Show a toast in the bottom right as trips change.");
+        toasts.row("Try it", () -> "Shows one now", new Button("Show", Hud::sample,
+                Button.PLAIN));
+        for (Hud.Widget w : Hud.WIDGETS) {
+            Card c = card(w.label, w.about);
+            c.master(() -> w.on, on -> {
+                w.on = on;
+                Hud.save();
+            }, "Show the " + w.label.toLowerCase(Locale.ROOT) + " widget.");
+            Mode<Integer> size = new Mode<>(List.of(0, 1, 2, 3, 4), () -> w.size,
+                    n -> n == 0 ? "Auto" : n + "x", n -> {
+                        w.size = n;
+                        Hud.save();
+                    });
+            c.row("Size", () -> w.size == 0 ? "As big as this window's pixels"
+                    : "Screen pixels per pixel of it", size);
+            c.row("Place", () -> "Where it is on the screen", new Button("Reset", () -> {
+                w.resetPlace();
+                Hud.save();
+            }, Button.PLAIN).tip("Back to where it starts, at its own size."));
         }
     }
 
@@ -684,7 +985,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private void buildSearch(String words) {
         if (words.isEmpty()) {
             Card c = card("Search", "Finds any setting by its name or what it does.");
-            c.callout(() -> Callout.INFO, () -> "Type in the box at the top left.");
+            c.callout(() -> Callout.INFO, () -> "Type in the box at the top right.");
             return;
         }
         String[] each = words.split("\\s+");
@@ -697,17 +998,23 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             }
             return true;
         };
-        Card drawing = card("Drawing", null);
-        drawingRows(drawing, hay -> matches.test("drawing " + hay));
-        Map<String, Card> bySection = new LinkedHashMap<>();
-        bySection.put("overlay", drawing);
+        Card drawing = card("Route", null);
+        drawingRows(drawing, hay -> matches.test("route drawing " + hay), true);
+        // A card per page, the settings in the order the page shows them.
+        Map<String, Card> byPage = new LinkedHashMap<>();
+        byPage.put(ROUTE, drawing);
         for (Tuning.Option o : Tuning.all()) {
-            String page = o.section.equals("overlay") ? DRAWING : o.section;
+            String page = pageOf(o.section);
             String hay = pages().get(page) + " " + o.section + " " + o.name.replace('_', ' ')
                     + " " + o.help + " " + Tuning.sections().get(o.section);
+            for (Group gr : GROUPS.getOrDefault(o.section, List.of())) {
+                if (gr.master() != null && gr.master().equals(o.name)
+                        || List.of(gr.options()).contains(o.name)) {
+                    hay += " " + gr.title() + " " + gr.about();
+                }
+            }
             if (matches.test(hay)) {
-                bySection.computeIfAbsent(o.section, sec -> card(pages().get(sec), null))
-                        .option(o);
+                byPage.computeIfAbsent(page, pg -> card(pages().get(pg), null)).option(o);
             }
         }
         List<Card> existing=List.copyOf(cards);
@@ -730,8 +1037,15 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         return c;
     }
 
-    private boolean twoColumns() {
-        return !page.equals(MACROS) && !page.equals(SEARCH) && areaW >= 420;
+    /** The one column the page's cards go down: at most this wide, in the middle. */
+    private static final int COLUMN_W = 520;
+
+    private int columnW() {
+        return Math.min(areaW, COLUMN_W);
+    }
+
+    private int columnX() {
+        return areaX + (areaW - columnW()) / 2;
     }
 
     // ---- Doing things ------------------------------------------------------------------------
@@ -805,14 +1119,20 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     private List<El> all() {
         List<El> list = new ArrayList<>(fixed);
         for (Card c : cards) {
+            // Its title's own controls before the title line under them.
             if (c.header != null) {
                 list.add(c.header);
             }
+            if (c.master != null) {
+                list.add(c.master);
+            }
+            list.add(c.head);
             for (Row r : c.rows) {
                 list.addAll(r.controls);
                 if (r.slider != null) {
                     list.add(r.slider);
                 }
+                list.add(r.hint);
                 if (r.reset != null) {
                     list.add(r.reset);
                 }
@@ -852,6 +1172,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         El e = at(mx, my);
         if (!(e instanceof Field)) {
             focus(null);
+        }
+        if (!(e instanceof KeyBind)) {
+            listening = null;
         }
         if (e != null && e.enabled()) {
             pressed = e;
@@ -914,6 +1237,22 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             dropped = null;
             return true;
         }
+        if (listening != null) {
+            // The window key's new key, unless it's Esc.
+            if (!event.isEscape()) {
+                client.windowKey().setKey(InputConstants.getKey(event));
+                net.minecraft.client.KeyMapping.resetMapping();
+                minecraft.options.save();
+            }
+            listening = null;
+            return true;
+        }
+        if (focused == null && client.windowKey().matches(event)
+                && System.currentTimeMillis() - openedAt > 600) {
+            // The key that opened it closes it.
+            onClose();
+            return true;
+        }
         if (focused != null) {
             if (event.isEscape() || event.isConfirmation()) {
                 focus(null);
@@ -949,8 +1288,13 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float a) {
         super.extractRenderState(g, mouseX, mouseY, a);
+        if (fontsFor != Ui.lettering()) {
+            // Picked on the Themes page: the page is laid out again in the new letters.
+            init();
+        }
         double mx = ux(mouseX);
         double my = uy(mouseY);
+        mouseUX = mx;
         El hot = dropped != null && (dropped.itemAt(mx, my) >= 0 || dropped.in(mx, my)) ? dropped
                 : at(mx, my);
         if (hot != hovered) {
@@ -960,21 +1304,31 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         Theme.Colours th = t();
         g.pose().pushMatrix();
         g.pose().scale(k, k);
+        // Opening, the window grows from a little smaller with a small bounce.
+        double open = Math.min(1, (System.currentTimeMillis() - openedAt) / 220.0);
+        if (open < 1) {
+            float grow = (float) (0.9 + 0.1 * backOut(open));
+            float midX = winX + winW / 2f;
+            float midY = winY + winH / 2f;
+            g.pose().translate(midX, midY);
+            g.pose().scale(grow, grow);
+            g.pose().translate(-midX, -midY);
+        }
 
-        // The window in its stone frame, and its sidebar.
-        Pixel.bricks(g, winX, winY, winW, winH, th);
+        // The window over the whole screen, and its sidebar.
         Panels.rect(g, winX, winY, winW, winH, 0, th.bg);
         // The whole window is a piece of the loading screen's map: a search solving one random
         // maze after another, with the sidebar and the cards laid over it.
         g.enableScissor(winX + 1, winY + 1, winX + winW - 1, winY + winH - 1);
-        MazeBackground.get().draw(g, winX + 1, winY + 1, winW - 2, winH - 2, 0.55f);
+        MazeBackground.get().draw(g, winX + 1, winY + 1, winW - 2, winH - 2, 0.2f);
         g.disableScissor();
         Panels.rect(g, winX, winY, SIDE_W, winH, 0, th.bgPanel);
-        // A double line between the sidebar and the page, and one under the page's title.
+        // A double line between the sidebar and the page, and one under the top bar.
         Panels.rect(g, winX + SIDE_W, winY, 1, winH, 0, th.panelBorder);
         Panels.rect(g, winX + SIDE_W + 1, winY, 1, winH, 0, th.bg);
         Panels.rect(g, winX + SIDE_W + PAD, winY + HEAD_H, winW - SIDE_W - 2 * PAD, 1, 0,
                 th.panelBorder);
+        Panels.rect(g, winX + 8, winY + HEAD_H, SIDE_W - 16, 1, 0, th.panelBorder);
         // The logo in its dark box, then "A* Client" and the version beside it.
         int lx = winX + 8;
         int ly = winY + (HEAD_H - LOGO) / 2;
@@ -983,21 +1337,14 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         int tx = lx + LOGO + 8;
         text(g, "A* Client", strong, tx, winY + HEAD_H / 2 - 9, th.text);
         text(g, "v" + VERSION, small, tx, winY + HEAD_H / 2 + 3, th.textDim);
-        // Where this is, at the bottom of the sidebar, by a sparkle.
-        int fy = winY + winH - 44;
-        Pixel.panel(g, winX + 8, fy, SIDE_W - 16, 36, th.panelBorder, th.bg);
-        Places.Place place = Places.current();
-        boolean going = state() != Navigator.State.DONE;
-        Pixel.sparkle(g, winX + 22, fy + 18, 5, going ? th.accentBright : th.accent,
-                th.highlight, th.bg);
-        text(g, fit(place == null ? "Unknown map" : place.name, strong, SIDE_W - 52),
-                strong, winX + 36, fy + 8, t().text);
-        text(g, fit(stateWord(), small, SIDE_W - 52), small, winX + 36, fy + 21, t().textDim);
-        // The page's title.
+        userCard(g, th);
+        // The page's title and what it's for, in the top bar.
         String heading = page.equals(SEARCH) ? "Search" : pages().get(page);
-        text(g, heading, title, winX + SIDE_W + PAD + 4, winY + (HEAD_H - 12) / 2 + 1, t().text);
+        int room = hudButton.ex - (winX + SIDE_W + PAD + 4) - 8;
+        text(g, fit(heading, title, room), title, winX + SIDE_W + PAD + 4, winY + 13, th.text);
         String feedback=page.equals(MACROS)?tradingFeedback():null;
-        if(feedback!=null)text(g,fit(feedback,small,areaW-8),small,areaX+4,winY+HEAD_H-11,Callout.WARN);
+        text(g, fit(feedback!=null?feedback:pageAbout(page), small, room), small, winX + SIDE_W + PAD + 4, winY + 30,
+                feedback!=null?Callout.WARN:th.textDim);
 
         for (El e : fixed) {
             e.draw(g, e == hot);
@@ -1006,7 +1353,8 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         // The page, scrolled, inside its area.
         g.enableScissor(areaX - 4, areaY - 4, areaX + areaW + 4, areaY + areaH);
         int scroll = scrolls.getOrDefault(key(), 0);
-        contentH = tiles.isEmpty() ? layoutCards(scroll) : layoutTiles(scroll);
+        int cardsH = cards.isEmpty() ? -GAP : layoutCards(scroll);
+        contentH = tiles.isEmpty() ? cardsH : cardsH + GAP + layoutTiles(scroll - cardsH - GAP);
         int max = Math.max(0, contentH - areaH);
         if (scroll > max) {
             scrolls.put(key(), max);
@@ -1037,7 +1385,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             g.nextStratum();
             tooltip(g, hot.tip(), (int) mx, (int) my);
         }
-        if(feedback!=null && dropped==null && mx>=areaX && mx<areaX+areaW && my>=winY+HEAD_H-13 && my<winY+HEAD_H) {
+        if(feedback!=null && dropped==null && mx>=winX+SIDE_W && my>=winY+28 && my<winY+40 && mx<hudButton.ex) {
             g.nextStratum();tooltip(g,feedback,(int)mx,(int)my);
         }
         g.pose().popMatrix();
@@ -1071,6 +1419,51 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
     }
 
+    /** How far the page still has to slide in from the right, in units. */
+    private int slide() {
+        double t = Math.min(1, (System.currentTimeMillis() - pageAt) / 160.0);
+        double u = 1 - t;
+        return (int) Math.round(16 * u * u * u);
+    }
+
+    /** Eases out past 1 and back, for the opening bounce. */
+    private static double backOut(double t) {
+        double c = 1.6;
+        double u = t - 1;
+        return 1 + (c + 1) * u * u * u + c * u * u;
+    }
+
+    /**
+     * Who's playing, at the bottom of the sidebar: their face, their name, and which map this
+     * is and what .A* is doing, by a sparkle that lights up while it's going.
+     */
+    private void userCard(GuiGraphicsExtractor g, Theme.Colours th) {
+        int x = winX + 8;
+        int w = SIDE_W - 16;
+        int y = winY + winH - 46;
+        Pixel.panel(g, x, y, w, 38, th.panelBorder, th.bg);
+        int face = 22;
+        int fx = x + 8;
+        int fy = y + 8;
+        Pixel.panel(g, fx - 2, fy - 2, face + 4, face + 4, th.slate, th.bg);
+        if (minecraft.player != null) {
+            net.minecraft.client.gui.components.PlayerFaceExtractor.extractRenderState(g,
+                    minecraft.player.getSkin(), fx, fy, face);
+        }
+        String name = minecraft.player == null ? minecraft.getUser().getName()
+                : minecraft.player.getName().getString();
+        int textX = fx + face + 7;
+        int room = x + w - 6 - textX;
+        text(g, fit(name, strong, room), strong, textX, y + 9, th.text);
+        Places.Place place = Places.current();
+        boolean going = state() != Navigator.State.DONE;
+        String line = going ? stateWord() : place == null ? "Unknown map" : place.name;
+        text(g, fit(line, small, room - 8), small, textX + 8, y + 23, going ? th.highlight
+                : th.textDim);
+        Pixel.sparkle(g, textX + 2, y + 26, 3, going ? th.accentBright : th.accent,
+                th.highlight, th.bg);
+    }
+
     private String stateWord() {
         return switch (state()) {
             case DONE -> "Idle";
@@ -1080,66 +1473,31 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         };
     }
 
-    /** Places the cards in one or two columns, each in the shorter; returns the height used. */
+    /** Places the cards one under another, down the middle; returns the height used. */
     private int layoutCards(int scroll) {
-        int columns = twoColumns() ? 2 : 1;
-        int colW = (areaW - GAP * (columns - 1)) / columns;
-        int[] bottom = new int[columns];
+        int y = 0;
         for (Card c : cards) {
-            int col = 0;
-            for (int i = 1; i < columns; i++) {
-                if (bottom[i] < bottom[col]) {
-                    col = i;
-                }
-            }
-            int h = c.layout(areaX + col * (colW + GAP), areaY + bottom[col] - scroll, colW);
-            bottom[col] += h + GAP;
+            y += c.layout(columnX() + slide(), areaY + y - scroll, columnW()) + GAP;
         }
-        int most = 0;
-        for (int b : bottom) {
-            most = Math.max(most, b - GAP);
-        }
-        return most;
+        return y - GAP;
     }
 
     private int layoutTiles(int scroll) {
-        int columns = areaW >= 420 ? 3 : 2;
-        int w = (areaW - GAP * (columns - 1)) / columns;
-        int h = 70;
+        int columns = Math.clamp((columnW() + GAP) / (160 + GAP), 2, 4);
+        int w = (columnW() - GAP * (columns - 1)) / columns;
+        int h = 64;
         for (int i = 0; i < tiles.size(); i++) {
-            tiles.get(i).at(areaX + (i % columns) * (w + GAP),
+            tiles.get(i).at(columnX() + slide() + (i % columns) * (w + GAP),
                     areaY + (i / columns) * (h + GAP) - scroll, w, h);
         }
         int rows = (tiles.size() + columns - 1) / columns;
         return rows * (h + GAP) - GAP;
     }
 
-    /** Units between letters, on top of the font's own gap: the pixel-art look's tracking. */
-    private static final int TRACK = 1;
-    /** Each letter's width in each font, measured once. */
-    private final Map<FontDescription, Map<Integer, Integer>> advances = new HashMap<>();
-
-    /**
-     * Headings use tracked capitals; body text and typed values retain their case.
-     */
+    /** Window text: in capitals, letters spaced out like a pixel-art game's ({@link PixelText}). */
     private void text(GuiGraphicsExtractor g, String s, FontDescription f, int at, int top,
             int colour) {
-        String up = headingFont(f)?s.toUpperCase(Locale.ROOT):s;
-        int x = at;
-        for (int i = 0; i < up.length(); ) {
-            int cp = up.codePointAt(i);
-            if (cp != ' ') {
-                g.text(font, Ui.text(Character.toString(cp), f), x, top, colour, false);
-            }
-            x += advance(cp, f) + (headingFont(f)?TRACK:0);
-            i += Character.charCount(cp);
-        }
-    }
-
-    private boolean headingFont(FontDescription f) { return f.equals(strong)||f.equals(title); }
-    private int advance(int cp, FontDescription f) {
-        return advances.computeIfAbsent(f, k -> new HashMap<>()).computeIfAbsent(cp,
-                c -> font.width(Ui.text(Character.toString(c), f)));
+        PixelText.draw(g, font, s, f, at, top, colour);
     }
 
     /**
@@ -1158,16 +1516,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
     }
 
     private int width(String s, FontDescription f) {
-        String up = headingFont(f)?s.toUpperCase(Locale.ROOT):s;
-        int w = 0;
-        int n = 0;
-        for (int i = 0; i < up.length(); ) {
-            int cp = up.codePointAt(i);
-            w += advance(cp, f);
-            n++;
-            i += Character.charCount(cp);
-        }
-        return w + Math.max(0, n - 1) * (headingFont(f)?TRACK:0);
+        return PixelText.width(font, s, f);
     }
 
     /** As much of {@code s} as fits in {@code w}, with "..." if cut. */
@@ -1224,12 +1573,6 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         return capital(name.replace('_', ' '));
     }
 
-    /** The first sentence of a setting's help, for under its name. */
-    private static String firstSentence(String help) {
-        int end = help.indexOf(". ");
-        return end < 0 ? help.replaceAll("\\.$", "") : help.substring(0, end);
-    }
-
     private static String when(Tuning.Effect effect) {
         return switch (effect) {
             case ROUTES, NEXT_ROUTE -> "Used from the next route.";
@@ -1240,13 +1583,23 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
     // ---- Cards and rows ----------------------------------------------------------------------
 
-    /** A card of rows: a title, what it's for, and its settings. */
+    /** The cards folded shut, by page and title: kept while the game runs. */
+    private static final java.util.Set<String> FOLDED = new java.util.HashSet<>();
+
+    /**
+     * A card of rows: a title, what it's for, and its settings. A click on its title folds it
+     * shut or opens it; a card with a switch shows its settings only while it's on.
+     */
     private final class Card {
         final String title;
         final String about;
         final List<Row> rows = new ArrayList<>();
         /** A small button by the title. */
         El header;
+        /** Its on/off switch, by the title. */
+        Check master;
+        /** The title line, which folds it. */
+        final Head head = new Head();
         /** Shows the logo big under its title. */
         boolean preview;
         int artY;
@@ -1255,11 +1608,22 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         int cy;
         int cw;
         int ch;
+        int headH;
         List<String> aboutLines = List.of();
 
         Card(String title, String about) {
             this.title = title;
             this.about = about;
+        }
+
+        String foldKey() {
+            return page + "/" + title;
+        }
+
+        /** Whether its rows show: not folded, and on if it has a switch. */
+        boolean open() {
+            return title == null || !FOLDED.contains(foldKey())
+                    && (master == null || master.get.getAsBoolean());
         }
 
         Row row(String label, Supplier<String> desc, El... controls) {
@@ -1275,32 +1639,67 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             rows.add(r);
         }
 
-        /** A line for a {@link Tuning} setting: its control, a slider for a number, a reset. */
+        /** Gives it an on/off switch by its title. */
+        void master(BooleanSupplier get, Consumer<Boolean> set, String tip) {
+            master = new Check(get, on -> {
+                set.accept(on);
+                changedSettings = true;
+            }).toggle();
+            master.tip(tip);
+        }
+
+        /** A "Reset" by the title, for when any of these settings has been changed. */
+        void resetAll(List<Tuning.Option> options) {
+            if (options.isEmpty()) {
+                return;
+            }
+            header = new Button("Reset", () -> {
+                for (Tuning.Option o : options) {
+                    o.reset();
+                    notes.remove(o);
+                }
+                changedSettings = true;
+            }, Button.GHOST).when(() -> options.stream().anyMatch(Tuning.Option::changed))
+                    .tip("Put this card's settings back as they started.");
+        }
+
+        /**
+         * A line for a {@link Tuning} setting: its name, a slider and its value for a number,
+         * a switch or a list for the rest. What it does is in its tooltip; the line under the
+         * name only says when something's wrong with what was typed.
+         */
         void option(Tuning.Option o) {
             El control = switch (o) {
-                case Tuning.Num n -> {
-                    Field f = new Field(n.text(), 12, "", s -> apply(o, s),
-                            c -> Character.isDigit(c) || c == '.' || c == '-');
-                    f.live = n::text;
-                    yield f.wide(72);
-                }
+                case Tuning.Num n -> numberField(n);
                 case Tuning.Flag f -> new Check(f::get, on -> apply(o, on.toString())).toggle();
-                case Tuning.Choice c -> new Mode<>(c.choices, c::get, v -> v, v -> apply(o, v));
+                case Tuning.Choice c when c.choices.size() <= 3 -> new Segmented<>(c.choices,
+                        c::get, AstarScreen::choiceName, v -> apply(o, v));
+                case Tuning.Choice c -> new Mode<>(c.choices, c::get, AstarScreen::choiceName,
+                        v -> apply(o, v));
             };
-            Row r = row(label(o.name), () -> notes.getOrDefault(o, firstSentence(o.help)),
-                    control);
+            Row r = row(optionName(o), () -> notes.get(o), control);
             r.option = o;
+            r.changed = o::changed;
             r.tip = o.help + "\n\n" + capital(o.range()) + ", default " + o.defaultText() + ". "
-                    + when(o.effect);
+                    + when(o.effect) + (o instanceof Tuning.Flag ? ""
+                    : " Right click to put it back.");
             control.tip(r.tip);
             if (o instanceof Tuning.Num n) {
                 r.slider = new Slider(n, o);
+                r.slider.tip(r.tip);
             }
-            r.reset = new Button("Reset", () -> {
-                o.reset();
-                notes.remove(o);
-                changedSettings = true;
-            }, Button.GHOST).tip("Back to " + o.defaultText() + ".");
+        }
+
+        /** One line for two numbers that are the ends of a range, with a two-knob slider. */
+        void range(String name, Tuning.Num lo, Tuning.Num hi) {
+            Row r = row(name, () -> notes.containsKey(lo) ? notes.get(lo) : notes.get(hi),
+                    numberField(lo), numberField(hi));
+            r.option = lo;
+            r.changed = () -> lo.changed() || hi.changed();
+            r.tip = lo.help + "\n\n" + hi.help + "\n\nRight click to put it back.";
+            r.controls.forEach(e -> e.tip(r.tip));
+            r.slider = new RangeSlider(lo, hi);
+            r.slider.tip(r.tip);
         }
 
         /** Places everything at this spot; returns the card's height. */
@@ -1309,14 +1708,27 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             cy = top;
             cw = w;
             int yy = top + 10;
+            boolean open = open();
             if (title != null) {
                 yy += 14;
-                aboutLines = about == null ? List.of() : wrap(about, small, w - 20, w - 20, 2);
+                aboutLines = about == null ? List.of() : wrap(about, small, w - 20, w - 20, 1);
                 yy += 11 * aboutLines.size();
-                yy += 10;
-                if (header != null) {
-                    header.at(at + w - 10 - header.prefW(), top + 8, header.prefW(), 16);
+                headH = yy - top;
+                int right = at + w - 10;
+                if (master != null) {
+                    master.at(right - master.prefW(), top + 6, master.prefW(), 18);
+                    right -= master.prefW() + 6;
                 }
+                if (header != null) {
+                    header.at(right - header.prefW(), top + 7, header.prefW(), 16);
+                }
+                head.at(at, top, w, Math.max(24, headH));
+                yy += open && !rows.isEmpty() ? 10 : 2;
+            }
+            if (!open || rows.isEmpty() && !preview) {
+                hideRows();
+                ch = yy - top + 4;
+                return ch;
             }
             if (preview) {
                 // About 96 units, at a whole number of screen pixels per pixel of the art.
@@ -1338,20 +1750,39 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 return;
             }
             Theme.Colours th = t();
+            boolean open = open();
+            boolean off = master != null && !master.get.getAsBoolean();
             Pixel.panel(g, cx, cy, cw, ch, cardEdge(th), th.bgPanel);
             if (title != null) {
-                text(g, fit(title, strong, cw - (header==null?20:header.prefW()+30)), strong, cx + 10, cy + 11, t().text);
+                head.shown = true;
+                boolean lit = hot == head;
+                int titleRoom = (header != null && header.enabled() ? header.ex
+                        : master != null ? master.ex : cx + cw - 10) - cx - 30;
+                // A fold arrow, then the title: dim while its switch is off.
+                arrow(g, cx + 13, cy + 14, FOLDED.contains(foldKey()) ? '>' : 'v',
+                        lit ? th.text : th.slate);
+                text(g, fit(title, strong, titleRoom), strong, cx + 21, cy + 11,
+                        off ? th.textDim : lit ? th.highlight : th.text);
                 for (int i = 0; i < aboutLines.size(); i++) {
-                    text(g, aboutLines.get(i), small, cx + 10, cy + 24 + 11 * i, t().textDim);
+                    text(g, aboutLines.get(i), small, cx + 10, cy + 24 + 11 * i, th.textDim);
                 }
-                int line = cy + 10 + 14 + 11 * aboutLines.size() + 4;
-                Panels.rect(g, cx + 10, line, cw - 20, 1, 0, th.panelBorder);
+                if (open && !rows.isEmpty()) {
+                    int line = cy + headH + 4;
+                    Panels.rect(g, cx + 10, line, cw - 20, 1, 0, th.panelBorder);
+                }
                 if (header != null) {
-                    header.shown = header.enabled();
+                    header.shown = header.enabled() && open;
                     if (header.shown) {
                         header.draw(g, header == hot);
                     }
                 }
+                if (master != null) {
+                    master.shown = true;
+                    master.draw(g, master == hot);
+                }
+            }
+            if (!open) {
+                return;
             }
             if (preview) {
                 int ax = cx + (cw - artS) / 2;
@@ -1367,10 +1798,19 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
 
         private void hideAll() {
+            head.shown = false;
             if (header != null) {
                 header.shown = false;
             }
+            if (master != null) {
+                master.shown = false;
+            }
+            hideRows();
+        }
+
+        private void hideRows() {
             for (Row r : rows) {
+                r.hint.shown = false;
                 r.controls.forEach(e -> e.shown = false);
                 if (r.slider != null) {
                     r.slider.shown = false;
@@ -1380,6 +1820,100 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 }
             }
         }
+
+        /** The card's title line: a click folds the card or opens it. */
+        private final class Head extends El {
+            @Override
+            void draw(GuiGraphicsExtractor g, boolean hot) {}
+
+            @Override
+            String tip() {
+                return null;
+            }
+
+            @Override
+            void click(double mx, double my, int button) {
+                if (!FOLDED.remove(foldKey())) {
+                    FOLDED.add(foldKey());
+                }
+            }
+        }
+    }
+
+    /** A box for a number setting, following it while not typed in, its unit after it. */
+    private Field numberField(Tuning.Num n) {
+        Field f = new Field(n.text(), 12, "", s -> apply(n, s),
+                c -> Character.isDigit(c) || c == '.' || c == '-');
+        f.live = n::text;
+        f.unit = unit(n);
+        f.reset = () -> {
+            n.reset();
+            notes.remove(n);
+            changedSettings = true;
+        };
+        return f.wide(64);
+    }
+
+    /** A number's unit, short, after its value. */
+    private static String unit(Tuning.Num n) {
+        return switch (n.name) {
+            case "goal_reach", "look_ahead", "strafe_look", "ridge_look", "view_height",
+                    "lead_ahead", "etherwarp_min", "it_min" -> "blocks";
+            case "pitch_min", "pitch_max", "strafe_lead", "hold", "hold_strafing", "drift",
+                    "drift_pitch", "sweep_over", "flick_over" -> "\u00b0";
+            case "pitch_speed", "turn_speed" -> "\u00b0/s";
+            case "air_turn_accel", "turn_accel" -> "\u00b0/s\u00b2";
+            case "aim_time", "sweep_time", "sweep_time_per_doubling" -> "s";
+            case "whole_map_size" -> "M";
+            default -> "";
+        };
+    }
+
+    /** What a setting is called in the window, where its name in the file reads badly. */
+    private static String optionName(Tuning.Option o) {
+        return switch (o.name) {
+            case "drop_per_block" -> "Drop, per block";
+            case "etherwarp_cost" -> "Etherwarp cost";
+            case "etherwarp_min" -> "Shortest etherwarp";
+            case "it_cost" -> "Transmission cost";
+            case "it_min" -> "Shortest transmission";
+            case "aim_variation" -> "Aim time varies";
+            case "goal_reach" -> "Goal reach";
+            case "look_ahead_per_speed" -> "Look ahead, per speed";
+            case "strafe_look_per_speed" -> "Strafe look, per speed";
+            case "ridge_look_per_speed" -> "Ridge look, per speed";
+            case "air_turn_accel" -> "Speed-up in the air";
+            case "turn_accel" -> "Turn speed-up";
+            case "sweep_time_per_doubling" -> "Sweep time, per doubling";
+            case "overshoot_out" -> "Overshoot, out";
+            case "overshoot_in" -> "Overshoot, in";
+            case "hand" -> "Mouse hand";
+            case "strafe" -> "Strafe round corners";
+            case "save_chunks" -> "Save chunks you see";
+            case "auto_detect" -> "Tell maps apart";
+            case "match" -> "Likeness needed";
+            case "new_after" -> "New map after";
+            case "bundled_mines" -> "Bundled Mines map";
+            case "whole_map" -> "Plan over the whole map";
+            case "whole_map_size" -> "Biggest whole map";
+            case "keep_files" -> "Keep map files";
+            default -> label(o.name);
+        };
+    }
+
+    /** A choice's value as shown: "easeInOutSine" as "Sine, in and out", "right" as "Right". */
+    static String choiceName(String v) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("ease(InOut|In|Out)(\\w+)").matcher(v);
+        if (m.matches()) {
+            String way = switch (m.group(1)) {
+                case "InOut" -> "in and out";
+                case "In" -> "in";
+                default -> "out";
+            };
+            return m.group(2) + ", " + way;
+        }
+        return capital(v.replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase(Locale.ROOT));
     }
 
     /** A card's edge: a step lighter than the boxes inside it. */
@@ -1401,7 +1935,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         final Supplier<String> desc;
         final List<El> controls;
         Tuning.Option option;
-        Slider slider;
+        /** Whether its setting isn't at its default. */
+        BooleanSupplier changed = () -> false;
+        El slider;
         Button reset;
         String tip;
         /** Controls across the whole line, evenly, instead of on the right. */
@@ -1412,6 +1948,10 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         int ry;
         int rw;
         int rh;
+        /** How wide its name may be. */
+        int labelW;
+        /** Its name, for its tooltip. */
+        final Hint hint = new Hint();
         List<String> descLines = List.of();
         boolean stacked;
 
@@ -1435,6 +1975,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             if(reset!=null)controlsWidth+=reset.prefW()+6;
             if(label!=null && !controls.isEmpty() && controlsWidth+width(label,body)+12>w) {
                 stacked=true;
+                labelW=w;
+                hint.at(at,top,w,18);
+                hint.tip(tip);
                 String description=desc==null?null:desc.get();
                 descLines=description==null?List.of():wrap(description,small,w,w,4);
                 int yy=top+18+descLines.size()*11+5,xx=at;
@@ -1449,7 +1992,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 if(slider!=null){slider.at(at,top+rh,w,10);rh+=14;}
                 return rh;
             }
-            int cyy = top + (30 - 18) / 2;
+            int cyy = top + (ROW_H - 18) / 2;
             if (spread) {
                 int each = (w - 6 * (controls.size() - 1)) / controls.size();
                 for (int i = 0; i < controls.size(); i++) {
@@ -1474,18 +2017,23 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 int ew = reset.prefW();
                 reset.at(right - ew, cyy, ew, 18);
             }
-            // The line under the name: as much as fits beside the controls, the rest wrapped
-            // across the row below them.
+            // A number's slider on the same line, between its name and its value.
+            labelW = controlsLeft() - at - 8;
+            if (slider != null) {
+                labelW = Math.min(w * 2 / 5, 150);
+                int sx = at + labelW;
+                slider.at(sx, cyy + 4, Math.max(20, controlsLeft() - 10 - sx), 10);
+            }
+            // The line under the name, if it has one: as much as fits beside the controls,
+            // the rest wrapped across the row below them.
             descLines = List.of();
             String d = desc == null ? null : desc.get();
             if (label != null && d != null && !d.isEmpty()) {
-                descLines = wrap(d, small, controlsLeft() - at - 10, w, 3);
+                descLines = wrap(d, small, labelW, w, 2);
             }
-            int extra = Math.max(0, descLines.size() - 1) * 11;
-            rh = 30 + extra + (slider != null ? 14 : 0);
-            if (slider != null) {
-                slider.at(at, top + 32 + extra, w, 10);
-            }
+            rh = descLines.isEmpty() ? ROW_H : ROW_H + 4 + (descLines.size() - 1) * 11;
+            hint.at(at, top, Math.max(0, labelW), rh);
+            hint.tip(tip);
             return rh;
         }
 
@@ -1509,6 +2057,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 return;
             }
             boolean in = ry + rh > areaY && ry < areaY + areaH;
+            hint.shown = in && tip != null;
             for (El e : controls) {
                 e.shown = in;
             }
@@ -1516,21 +2065,23 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 slider.shown = in;
             }
             if (reset != null) {
-                reset.shown = in && option.changed();
+                reset.shown = in && changed.getAsBoolean();
             }
             if (!in) {
                 return;
             }
             if (label != null) {
-                int room = stacked?rw:controlsLeft() - rx - 8;
-                boolean changed = option != null && option.changed();
-                text(g, fit(label, body, room), body, rx, ry + 6, t().text);
-                if (changed) {
-                    Panels.rect(g, rx - 6, ry + 9, 3, 3, 1, t().slateLight);
+                int ly = descLines.isEmpty() ? ry + (ROW_H - 7) / 2 : ry + 5;
+                text(g, fit(label, body, labelW), body, rx, ly,
+                        hint == hovered && tip != null ? t().highlight : t().text);
+                if (changed.getAsBoolean()) {
+                    // Changed from how it started: a dot by its name.
+                    Panels.rect(g, rx - 6, ly + 2, 3, 3, 1, t().accentBright);
                 }
-                boolean note = option != null && notes.containsKey(option);
+                boolean note = option != null && (notes.containsKey(option)
+                        || slider instanceof RangeSlider rs && notes.containsKey(rs.hi));
                 for (int i = 0; i < descLines.size(); i++) {
-                    text(g, descLines.get(i), small, rx, ry + 18 + 11 * i,
+                    text(g, descLines.get(i), small, rx, ry + 17 + 11 * i,
                             note ? Callout.WARN : t().textDim);
                 }
             }
@@ -1544,6 +2095,15 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 reset.draw(g, reset == hot);
             }
         }
+    }
+
+    /** A row's height without a line under its name. */
+    private static final int ROW_H = 26;
+
+    /** A spot that only shows a tooltip, such as a setting's name. */
+    private final class Hint extends El {
+        @Override
+        void draw(GuiGraphicsExtractor g, boolean hot) {}
     }
 
     private void drawCallout(GuiGraphicsExtractor g, int at, int top, int w, int h, int colour,
@@ -1699,7 +2259,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
         Check toggle() {
             toggle = true;
-            ew = 24;
+            ew = 30;
             return this;
         }
 
@@ -1707,11 +2267,11 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         void draw(GuiGraphicsExtractor g, boolean hot) {
             Theme.Colours th = t();
             boolean on = get.getAsBoolean();
-            int top = ey + (eh - 12) / 2;
             if (toggle) {
-                Pixel.toggle(g, ex, top, ew, 12, on, hot, th);
+                Pixel.toggle(g, ex, ey + (eh - 16) / 2, ew, 16, on, hot, th);
                 return;
             }
+            int top = ey + (eh - 12) / 2;
             // A route node: a slate square when off; on, an accent one round a highlight centre.
             int edge = on ? th.accent : hot ? th.slateLight : th.slate;
             Pixel.panel(g, ex, top, ew, 12, edge, th.bg);
@@ -1726,7 +2286,151 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
     }
 
-    /** A dropdown of named choices; right click steps back. */
+    /** A few choices side by side, the picked one lit: one click, nothing hidden. */
+    private final class Segmented<T> extends El {
+        final List<T> values;
+        final Supplier<T> get;
+        final Function<T, String> label;
+        final Consumer<T> set;
+        /** What each choice does, for its tooltip. */
+        Function<T, String> about = v -> null;
+
+        Segmented(List<T> values, Supplier<T> get, Function<T, String> label, Consumer<T> set) {
+            this.values = values;
+            this.get = get;
+            this.label = label;
+            this.set = set;
+        }
+
+        int segW(T v) {
+            return width(label.apply(v), body) + 18;
+        }
+
+        @Override
+        int prefW() {
+            int w = 2;
+            for (T v : values) {
+                w += segW(v);
+            }
+            return Math.max(w, SEG_W);
+        }
+
+        /** Where each choice starts, spread over its width. */
+        int segX(int i) {
+            int total = 0;
+            for (T v : values) {
+                total += segW(v);
+            }
+            int extra = ew - 2 - total;
+            int x = ex + 1;
+            for (int j = 0; j < i; j++) {
+                x += segW(values.get(j)) + extra / values.size();
+            }
+            return x;
+        }
+
+        int under(double mx) {
+            for (int i = values.size() - 1; i >= 0; i--) {
+                if (mx >= segX(i)) {
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        @Override
+        String tip() {
+            String a = about.apply(values.get(under(mouseUX)));
+            return a != null ? label.apply(values.get(under(mouseUX))) + ": " + a : tip;
+        }
+
+        @Override
+        void draw(GuiGraphicsExtractor g, boolean hot) {
+            Theme.Colours th = t();
+            Pixel.panel(g, ex, ey, ew, eh, th.slate, th.bgPanel);
+            T now = get.get();
+            int over = hot ? under(mouseUX) : -1;
+            for (int i = 0; i < values.size(); i++) {
+                T v = values.get(i);
+                int x = segX(i);
+                int w = (i == values.size() - 1 ? ex + ew - 1 : segX(i + 1)) - x;
+                boolean picked = v.equals(now);
+                if (picked) {
+                    Pixel.panel(g, x, ey + 1, w, eh - 2, th.accent, th.accentDeep);
+                    Panels.rect(g, x + 1, ey + 2, w - 2, 1, 0, th.accent);
+                } else if (i == over) {
+                    Panels.rect(g, x + 1, ey + 2, w - 2, eh - 4, 0, th.terrainLight);
+                }
+                if (i > 0 && !picked && !values.get(i - 1).equals(now)) {
+                    Panels.rect(g, x, ey + 4, 1, eh - 8, 0, th.panelBorder);
+                }
+                String s = label.apply(v);
+                text(g, s, body, x + (w - width(s, body)) / 2, ey + (eh - 7) / 2,
+                        picked ? th.highlight : i == over ? th.text : th.textDim);
+            }
+        }
+
+        @Override
+        void click(double mx, double my, int button) {
+            set.accept(values.get(under(mx)));
+        }
+    }
+
+    /** Colour squares in a line; a click picks one. */
+    private final class Swatches extends El {
+        static final int S = 14;
+        static final int GAP = 4;
+        final List<OverlayColour> values;
+        final Supplier<OverlayColour> get;
+        final Consumer<OverlayColour> set;
+
+        Swatches(List<OverlayColour> values, Supplier<OverlayColour> get,
+                Consumer<OverlayColour> set) {
+            this.values = values;
+            this.get = get;
+            this.set = set;
+        }
+
+        @Override
+        int prefW() {
+            return values.size() * (S + GAP) - GAP + 4;
+        }
+
+        int under(double mx) {
+            int i = (int) ((mx - ex - 2) / (S + GAP));
+            return Math.max(0, Math.min(values.size() - 1, i));
+        }
+
+        @Override
+        String tip() {
+            return capital(values.get(under(mouseUX)).id());
+        }
+
+        @Override
+        void draw(GuiGraphicsExtractor g, boolean hot) {
+            Theme.Colours th = t();
+            OverlayColour now = get.get();
+            int over = hot ? under(mouseUX) : -1;
+            int top = ey + (eh - S) / 2;
+            for (int i = 0; i < values.size(); i++) {
+                OverlayColour c = values.get(i);
+                int x = ex + 2 + i * (S + GAP);
+                if (c == now) {
+                    Pixel.panel(g, x - 2, top - 2, S + 4, S + 4, th.highlight, th.bg);
+                } else if (i == over) {
+                    Pixel.panel(g, x - 2, top - 2, S + 4, S + 4, th.slateLight, th.bg);
+                }
+                Pixel.panel(g, x, top, S, S, th.bg, 0xFF000000 | c.lineNow());
+            }
+        }
+
+        @Override
+        void click(double mx, double my, int button) {
+            set.accept(values.get(under(mx)));
+        }
+    }
+
+    /** A box showing one of a few values; a click steps to the next, a right click back. */
     private final class Mode<T> extends El {
         final List<T> values;
         final Supplier<T> get;
@@ -1842,6 +2546,10 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         Supplier<String> live;
         boolean secret;
         Field masked(){secret=true;return this;}
+        /** A unit, dim after the value. */
+        String unit = "";
+        /** What a right click does: puts a setting back. */
+        Runnable reset;
 
         Field(String text, int max, String hint, Consumer<String> changed,
                 java.util.function.Predicate<Character> allowed) {
@@ -1867,7 +2575,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             // Sunk into the card: darker than it, the edge lighting up when typed in.
             Pixel.panel(g, ex, ey, ew, eh, on ? th.accent : hot ? th.slateLight
                     : th.panelBorder, th.bg);
-            int room = ew - 16;
+            int room = ew - 16 - (unit.isEmpty() || on ? 0 : width(unit, small) + 3);
             if (text.isEmpty() && !on) {
                 text(g, fit(hint, body, room), body, ex + 8, ey + 6, t().slate);
                 return;
@@ -1878,6 +2586,9 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
                 shown = on ? shown.substring(1) : shown.substring(0, shown.length() - 1);
             }
             text(g, shown, body, ex + 8, ey + 6, t().text);
+            if (!unit.isEmpty() && !on) {
+                text(g, unit, small, ex + ew - 6 - width(unit, small), ey + 7, th.textDim);
+            }
             if (on && System.currentTimeMillis() / 500 % 2 == 0) {
                 int cx = ex + 9 + width(shown, body);
                 Panels.rect(g, cx, ey + 5, 1, 8, 0, th.accentBright);
@@ -1886,6 +2597,11 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
 
         @Override
         void click(double mx, double my, int button) {
+            if (reset != null && button == InputConstants.MOUSE_BUTTON_RIGHT) {
+                focus(null);
+                reset.run();
+                return;
+            }
             focus(this);
         }
 
@@ -1915,24 +2631,33 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             this.o = o;
         }
 
+        /**
+         * The slider's top end: about three times the default rather than the most the file
+         * takes, so the usual values use the slider's length; further if the value is past it.
+         * Anything past that can still be typed.
+         */
+        private double top() {
+            double soft = n.def > 0 ? Math.max(3 * n.def, n.def + 1) : n.max;
+            double hi = Math.min(n.max, soft);
+            double v = n.get();
+            return v > hi ? Math.min(n.max, v * 1.25) : hi;
+        }
+
         /** Wide ranges go by ratio, so the small end isn't squeezed. */
         private boolean log() {
-            return n.min > 0 && n.max / n.min >= 100;
+            return n.min > 0 && top() / n.min >= 100;
         }
 
         private double toT(double v) {
-            v = Math.clamp(v, n.min, n.max);
-            return log() ? Math.log(v / n.min) / Math.log(n.max / n.min)
-                    : (v - n.min) / (n.max - n.min);
+            double hi = top();
+            v = Math.clamp(v, n.min, hi);
+            return log() ? Math.log(v / n.min) / Math.log(hi / n.min)
+                    : (v - n.min) / (hi - n.min);
         }
 
         private double fromT(double t) {
-            return log() ? n.min * Math.pow(n.max / n.min, t) : n.min + t * (n.max - n.min);
-        }
-
-        @Override
-        String tip() {
-            return null;
+            double hi = top();
+            return log() ? n.min * Math.pow(hi / n.min, t) : n.min + t * (hi - n.min);
         }
 
         @Override
@@ -1960,15 +2685,31 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             Panels.rect(g, kx - 2, track - 1, 4, 4, 0, on ? th.highlight : th.accent);
         }
 
+        /** The top end while dragging, so the slider doesn't stretch under the mouse. */
+        private double held = Double.NaN;
+
         @Override
         void click(double mx, double my, int button) {
+            if (button == InputConstants.MOUSE_BUTTON_RIGHT) {
+                o.reset();
+                notes.remove(o);
+                changedSettings = true;
+                pressed = null;
+                return;
+            }
+            held = top();
             drag(mx);
         }
 
         @Override
         void drag(double mx) {
-            double v = fromT(Math.clamp((mx - ex) / ew, 0, 1));
-            apply(o, round(v, n.max - n.min));
+            if (pressed != this) {
+                return;
+            }
+            double hi = Double.isNaN(held) ? top() : held;
+            double t = Math.clamp((mx - ex) / ew, 0, 1);
+            double v = log() ? n.min * Math.pow(hi / n.min, t) : n.min + t * (hi - n.min);
+            apply(o, round(v, hi - n.min));
         }
 
         /** About three figures, as typed. */
@@ -1981,8 +2722,87 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
     }
 
+    /** Two numbers that are a range's ends, as two knobs on one line that can't cross. */
+    private final class RangeSlider extends El {
+        final Tuning.Num lo;
+        final Tuning.Num hi;
+        /** The knob held: the high one if true. */
+        boolean high;
+
+        RangeSlider(Tuning.Num lo, Tuning.Num hi) {
+            this.lo = lo;
+            this.hi = hi;
+        }
+
+        private double toT(double v) {
+            return (Math.clamp(v, lo.min, lo.max) - lo.min) / (lo.max - lo.min);
+        }
+
+        @Override
+        void draw(GuiGraphicsExtractor g, boolean hot) {
+            Theme.Colours th = t();
+            int track = ey + eh / 2 - 1;
+            int a = ex + (int) Math.round(toT(lo.get()) * ew);
+            int b = ex + (int) Math.round(toT(hi.get()) * ew);
+            // Dotted outside the range, a solid accent line between its ends.
+            for (int x = ex; x + 1 <= ex + ew; x += 3) {
+                if (x < a - 5 || x > b + 5) {
+                    Panels.rect(g, x, track + 1, 1, 1, 0, th.slate);
+                }
+            }
+            Panels.rect(g, a, track, Math.max(0, b - a), 2, 0, th.accent);
+            Panels.rect(g, ex + (int) Math.round(toT(lo.def) * ew), track - 2, 1, 6, 0,
+                    th.slateLight);
+            Panels.rect(g, ex + (int) Math.round(toT(hi.def) * ew), track - 2, 1, 6, 0,
+                    th.slateLight);
+            boolean held = pressed == this;
+            knob(g, a, track, held && !high, hot, th);
+            knob(g, b, track, held && high, hot, th);
+        }
+
+        private void knob(GuiGraphicsExtractor g, int kx, int track, boolean held, boolean hot,
+                Theme.Colours th) {
+            int r = 5;
+            Pixel.panel(g, kx - r, track + 1 - r, 2 * r, 2 * r, held ? th.highlight
+                    : hot ? th.slateLight : th.slate, th.bg);
+            Panels.rect(g, kx - 2, track - 1, 4, 4, 0, held ? th.highlight : th.accent);
+        }
+
+        @Override
+        void click(double mx, double my, int button) {
+            if (button == InputConstants.MOUSE_BUTTON_RIGHT) {
+                lo.reset();
+                hi.reset();
+                notes.remove(lo);
+                notes.remove(hi);
+                changedSettings = true;
+                pressed = null;
+                return;
+            }
+            // The nearer knob; on top of each other, the one the mouse is past.
+            double a = ex + toT(lo.get()) * ew;
+            double b = ex + toT(hi.get()) * ew;
+            high = Math.abs(mx - b) < Math.abs(mx - a) || (a == b && mx > b);
+            drag(mx);
+        }
+
+        @Override
+        void drag(double mx) {
+            if (pressed != this) {
+                return;
+            }
+            double v = lo.min + Math.clamp((mx - ex) / ew, 0, 1) * (lo.max - lo.min);
+            String text = Slider.round(v, lo.max - lo.min);
+            if (high) {
+                apply(hi, Double.parseDouble(text) < lo.get() ? lo.text() : text);
+            } else {
+                apply(lo, Double.parseDouble(text) > hi.get() ? hi.text() : text);
+            }
+        }
+    }
+
     /**
-     * The search box at the top of the sidebar, its own page: clicking it or typing in it opens
+     * The search box in the top bar, its own page: clicking it or typing in it opens
      * the Search page, which lists the settings that match.
      */
     private final class SearchBox extends Field {
@@ -1990,7 +2810,6 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             super(text, 32, "Search", typed -> {
                 if (!page.equals(SEARCH)) {
                     page = SEARCH;
-                    lastPage = SEARCH;
                     problem = null;
                 }
                 buildPage();
@@ -2001,7 +2820,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         void draw(GuiGraphicsExtractor g, boolean hot) {
             Theme.Colours th = t();
             boolean on = focused == this || page.equals(SEARCH);
-            // Sunk into the sidebar, like the mockup's: darker than it, no icon.
+            // Sunk into the top bar: darker than it, no icon.
             Pixel.panel(g, ex, ey, ew, eh, on ? th.accent : hot ? th.slateLight
                     : th.panelBorder, th.bg);
             int room = ew - 18;
@@ -2026,14 +2845,53 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             super.click(mx, my, button);
             if (!page.equals(SEARCH)) {
                 page = SEARCH;
-                lastPage = SEARCH;
                 problem = null;
                 buildPage();
             }
         }
     }
 
-    /** A page in the sidebar. */
+    /** Each page's icon in the sidebar, 9 by 9: '#' lit, '+' dim, '.' clear. */
+    private static final Map<String, String[]> ICONS = Map.of(
+            ROUTE, new String[] {
+                    "......##.", "......###", "......#..", "....+.#..", ".........",
+                    "..+......", ".........", "##.......", "##......."},
+            PATHFINDER, new String[] {
+                    "....#....", "....#....", ".#..#..#.", "..#.#.#..", "...###...",
+                    "..#.#.#..", ".#..#..#.", "....#....", "....#...."},
+            MOVEMENT, new String[] {
+                    ".........", ".#...+...", "..#...+..", "...#...+.", "....#...+",
+                    "...#...+.", "..#...+..", ".#...+...", "........."},
+            MAPS, new String[] {
+                    "#########", "#+++#...#", "#+++#...#", "#+++#...#", "#########",
+                    "#...#+++#", "#...#+++#", "#...#+++#", "#########"},
+            WIDGETS, new String[] {
+                    "####.####", "#++#.#..#", "####.#..#", ".....#..#", "####.####",
+                    "#..#.....", "#..#.####", "#..#.#++#", "####.####"},
+            THEMES, new String[] {
+                    "....#....", "...###...", "...###...", "..##+##..", ".##+++##.",
+                    ".#+++++#.", ".#+++++#.", "..#+++#..", "...###..."},
+            MACROS, new String[] {
+                    ".........", ".##......", ".#+##....", ".#+++##..", ".#+++++#.",
+                    ".#+++##..", ".#+##....", ".##......", "........."});
+
+    private static void icon(GuiGraphicsExtractor g, String page, int x, int y, int lit,
+            int dim) {
+        String[] rows = ICONS.get(page);
+        if (rows == null) {
+            return;
+        }
+        for (int r = 0; r < rows.length; r++) {
+            for (int c = 0; c < rows[r].length(); c++) {
+                char ch = rows[r].charAt(c);
+                if (ch != '.') {
+                    Panels.rect(g, x + c, y + r, 1, 1, 0, ch == '#' ? lit : dim);
+                }
+            }
+        }
+    }
+
+    /** A page in the sidebar: its icon and name. */
     private final class SideItem extends El {
         final String name;
         final String label;
@@ -2049,22 +2907,17 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
             Theme.Colours th = t();
             boolean open = name.equals(page);
             if (open) {
-                // The page that's open: an accent edge round a darker box.
+                // The page that's open: an accent edge round a darker box, a bar at its left.
                 Pixel.panel(g, ex, ey, ew, eh, th.accent, th.bg);
+                Panels.rect(g, ex + 1, ey + 3, 2, eh - 6, 0, th.highlight);
             } else if (hot) {
                 Pixel.panel(g, ex, ey, ew, eh, th.panelBorder, th.bgPanel);
             }
             int colour = open ? th.highlight : hot ? th.text : th.textDim;
-            // A route node: a hollow accent square round a highlight centre for the open page,
-            // a small slate one for the rest.
             int cy = ey + eh / 2;
-            if (open) {
-                Pixel.panel(g, ex + 7, cy - 4, 8, 8, th.accent, th.bg);
-                Panels.rect(g, ex + 10, cy - 1, 2, 2, 0, th.highlight);
-            } else {
-                Panels.rect(g, ex + 9, cy - 2, 3, 3, 0, hot ? th.slateLight : th.slate);
-            }
-            text(g, label, body, ex + 21, cy - 3, colour);
+            icon(g, name, ex + 8, cy - 5, open ? th.accentBright : hot ? th.slateLight
+                    : th.slate, open ? th.accentDeep : th.panelBorder);
+            text(g, label, body, ex + 23, cy - 3, colour);
         }
 
         @Override
@@ -2073,34 +2926,46 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         }
     }
 
-    /** "Pathfinder settings": folds the pathfinder's pages away and back. */
-    private final class SideGroup extends El {
+    /** The window key's setting: click, then press the new key (Esc keeps the old one). */
+    private final class KeyBind extends El {
 
-        SideGroup(int at, int top, int w, int h) {
-            at(at, top, w, h);
+        private String key() {
+            return listening == this ? "Press a key"
+                    : client.windowKey().getTranslatedKeyMessage().getString();
+        }
+
+        @Override
+        int prefW() {
+            return Math.max(CONTROL_W, width(key(), body) + 20);
+        }
+
+        @Override
+        String tip() {
+            return "The key that opens this window. Click, then press the key you want; Esc"
+                    + " keeps the one it has. Also in Controls.";
         }
 
         @Override
         void draw(GuiGraphicsExtractor g, boolean hot) {
             Theme.Colours th = t();
-            // Folded with one of its pages open, it shows that the page is in here.
-            boolean inside = !pathfinderOpen && pathfinderPage(page) && !page.equals(SEARCH);
-            if (inside) {
-                Pixel.panel(g, ex, ey, ew, eh, th.accent, th.bg);
-            }
-            // A section's header: quieter than the pages under it, as in a pixel game's menu.
-            int colour = inside ? th.highlight : hot ? th.text : th.textDim;
-            text(g, fit("Pathfinder", body, ew - 22), body, ex + 6, ey + eh / 2 - 3, colour);
-            arrow(g, ex + ew - 11, ey + eh / 2, pathfinderOpen ? 'v' : '>',
-                    hot ? th.text : th.slate);
+            boolean on = listening == this;
+            Pixel.button(g, ex, ey, ew, eh, on ? Pixel.State.ACTIVE
+                    : hot ? Pixel.State.HOVER : Pixel.State.NORMAL, th);
+            String s = key();
+            int tw = width(s, body);
+            boolean blink = on && System.currentTimeMillis() / 400 % 2 == 0;
+            text(g, s, body, ex + (ew - tw) / 2, ey + (eh - 7) / 2,
+                    on ? (blink ? th.highlight : th.textDim) : th.text);
         }
 
         @Override
         void click(double mx, double my, int button) {
-            pathfinderOpen = !pathfinderOpen;
-            side();
+            listening = listening == this ? null : this;
         }
     }
+
+    /** The key setting waiting for a key, if any. */
+    private KeyBind listening;
 
     /** A colour theme to pick, with its colours along the bottom. */
     private final class Tile extends El {

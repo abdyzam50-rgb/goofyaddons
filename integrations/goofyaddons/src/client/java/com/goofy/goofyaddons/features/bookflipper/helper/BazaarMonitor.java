@@ -2,7 +2,6 @@ package com.goofy.goofyaddons.features.bookflipper.helper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 
@@ -22,6 +21,7 @@ public class BazaarMonitor {
     private boolean running;
     private static final long DURATION = 20000;
     private long startMs;
+    private long requestedAt;
     private long lastUpdated;
     private int generation;
     private CompletableFuture<JsonObject> request;
@@ -62,7 +62,12 @@ public class BazaarMonitor {
     }
 
     public void onTick() {
-        if (!running || monitorItemList.isEmpty() || request != null) return;
+        if(!running)return;
+        if(request!=null && now.getAsLong()-requestedAt>=15000) {
+            generation++;var pending=request;request=null;pending.cancel(true);
+            LOGGER.warn("Book order quote request timed out; monitoring will retry");
+        }
+        if (monitorItemList.isEmpty() || request != null) return;
         if (now.getAsLong() - startMs < DURATION) return;
         startMs = now.getAsLong();
         refresh();
@@ -85,6 +90,7 @@ public class BazaarMonitor {
         if (!running || request != null) return;
         int run = generation;
         try {
+            requestedAt=now.getAsLong();
             request = fetch.get();
             request.whenComplete((root, error) -> clientThread.execute(() -> {
                 if (run != generation || !running) return;
@@ -119,9 +125,9 @@ public class BazaarMonitor {
             JsonObject product = products.getAsJsonObject(item.book.getLevel(
                     item.isSellOrder ? item.book.sellLevel() : item.book.level()));
             if (product == null) return Double.NaN;
-            JsonArray orders = product.getAsJsonArray(item.isSellOrder ? "buy_summary" : "sell_summary");
-            if (orders == null || orders.isEmpty()) return Double.NaN;
-            return orders.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
+            double price = item.isSellOrder ? com.goofy.goofyaddons.features.market.BazaarQuotes.bestAsk(product)
+                    : com.goofy.goofyaddons.features.market.BazaarQuotes.bestBid(product);
+            return price > 0 ? price : Double.NaN;
         } catch (RuntimeException malformed) {
             return Double.NaN;
         }

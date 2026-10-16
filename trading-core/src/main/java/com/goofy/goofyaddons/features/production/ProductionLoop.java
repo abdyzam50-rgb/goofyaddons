@@ -62,6 +62,8 @@ public final class ProductionLoop {
         Outcome sell(long now);
         /** Durably records that the run has reached {@code stage}. Throws if it could not. */
         void persist(Stage stage, String reason) throws Exception;
+        /** Told about an exception the loop turned into a reason, so its stack trace is not lost. */
+        default void failed(String what, Stage stage, Exception failure) {}
     }
 
     private final Plan plan;
@@ -107,6 +109,7 @@ public final class ProductionLoop {
                 case DONE, REVIEW -> throw new IllegalStateException();
             };
         } catch (RuntimeException failure) {
+            ports.failed("stage", stage, failure);
             // A port that cannot tell what happened is treated like an unproven click.
             outcome = Outcome.uncertain("Production " + stage.name().toLowerCase(java.util.Locale.ROOT) + " failed: "
                     + (failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage()));
@@ -117,7 +120,7 @@ public final class ProductionLoop {
             case BLOCKED -> { reason = outcome.reason(); return Step.BLOCKED; }
             case UNCERTAIN -> {
                 reason = outcome.reason();
-                try { ports.persist(Stage.REVIEW, reason); } catch (Exception ignored) { /* Review stays in memory; nothing replays. */ }
+                try { ports.persist(Stage.REVIEW, reason); } catch (Exception failure) { ports.failed("persist_review", stage, failure); /* Review stays in memory; nothing replays. */ }
                 stage = Stage.REVIEW;
                 return Step.UNCERTAIN;
             }
@@ -131,6 +134,7 @@ public final class ProductionLoop {
         try {
             ports.persist(next, null);
         } catch (Exception failure) {
+            ports.failed("persist_stage", next, failure);
             reason = "Production journal could not record the next stage; no further action taken";
             return Step.BLOCKED;
         }

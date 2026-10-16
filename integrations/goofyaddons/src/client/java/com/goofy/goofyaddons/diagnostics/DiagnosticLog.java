@@ -99,7 +99,15 @@ public final class DiagnosticLog {
             for(int i=0;i<old.size()-16;i++)Files.deleteIfExists(old.get(i));
         }
     }
-    public synchronized Path export(Map<String,?> snapshot) throws IOException {
+    public synchronized Path export(Map<String,?> snapshot) throws IOException { return export(snapshot,Map.of()); }
+    public synchronized Path export(Map<String,?> snapshot,Map<String,Path> accountFiles) throws IOException { return export(snapshot,accountFiles,Map.of()); }
+    /** Events and incidents beyond this many bytes are left out, newest kept, so a bundle stays easy to send. */
+    static final long EXPORT_LOG_BUDGET=16L*1024*1024;
+    /**
+     * Account journals (orders, production jobs) go in under account/, redacted like every other
+     * entry. {@code extras} become their own JSON files (config, chat, market snapshot, rankings).
+     */
+    public synchronized Path export(Map<String,?> snapshot,Map<String,Path> accountFiles,Map<String,?> extras) throws IOException {
         Files.createDirectories(directory);
         Path bundles=directory.resolve("bundles");Files.createDirectories(bundles);
         try(var files=Files.list(bundles)) {
@@ -107,29 +115,48 @@ public final class DiagnosticLog {
             for(int i=0;i<old.size()-4;i++) Files.deleteIfExists(old.get(i));
         }
         Path target=bundles.resolve("diagnostics-"+System.currentTimeMillis()+"-"+UUID.randomUUID().toString().substring(0,8)+".zip");
+        var manifest=new LinkedHashMap<String,Object>();var included=new ArrayList<String>();var omitted=new ArrayList<String>();
         try(var zip=new ZipOutputStream(Files.newOutputStream(target))) {
-            zip.putNextEntry(new ZipEntry("snapshot.json"));
-            zip.write(safeJson(snapshot).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
-            if(snapshot.get("currentMenu") instanceof Map<?,?> menu) {
-                zip.putNextEntry(new ZipEntry("current-menu.json"));
-                zip.write(safeJson(menu).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            // The menu and production state get their own files; they are not repeated in the snapshot.
+            var trimmed=new LinkedHashMap<String,Object>(snapshot);
+            Object menu=trimmed.remove("currentMenu"),production=trimmed.remove("productionDebug");
+            write(zip,"snapshot.json",trimmed,included);
+            if(menu instanceof Map<?,?>) write(zip,"current-menu.json",menu,included);
+            if(production instanceof Map<?,?>) write(zip,"production-debug.json",production,included);
+            for(var extra:new TreeMap<String,Object>(extras).entrySet()) if(extra.getValue()!=null) write(zip,extra.getKey()+".json",extra.getValue(),included);
+            for(var journal:new TreeMap<>(accountFiles).entrySet()) {
+                Path file=journal.getValue();
+                if(file==null || !Files.isRegularFile(file)) continue;
+                zip.putNextEntry(new ZipEntry("account/"+journal.getKey()));
+                zip.write(accountJournal(file).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();included.add("account/"+journal.getKey());
             }
-            if(snapshot.get("productionDebug") instanceof Map<?,?> production) {
-                zip.putNextEntry(new ZipEntry("production-debug.json"));
-                zip.write(safeJson(production).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
-            }
+            // Newest first: current events, then incidents newest to oldest, then older event archives.
+            var logs=new ArrayList<Map.Entry<String,Path>>();
+            Path current=directory.resolve("events.jsonl");if(Files.exists(current))logs.add(Map.entry("events.jsonl",current));
             Path incidents=directory.resolve("incidents");
             if(Files.isDirectory(incidents))try(var paths=Files.list(incidents)) {
-                for(var file:paths.filter(p->p.getFileName().toString().endsWith(".json")).sorted().toList()) {
-                    zip.putNextEntry(new ZipEntry("incidents/"+file.getFileName()));Files.copy(file,zip);zip.closeEntry();
-                }
+                for(var file:paths.filter(p->p.getFileName().toString().endsWith(".json")).sorted(Comparator.reverseOrder()).toList())
+                    logs.add(Map.entry("incidents/"+file.getFileName(),file));
             }
-            for(int i=0;i<=archives;i++) {
-                Path file=directory.resolve(i==0?"events.jsonl":"events."+i+".jsonl");
-                if(!Files.exists(file)) continue;
-                zip.putNextEntry(new ZipEntry(file.getFileName().toString()));Files.copy(file,zip);zip.closeEntry();
+            for(int i=1;i<=archives;i++) {Path file=directory.resolve("events."+i+".jsonl");if(Files.exists(file))logs.add(Map.entry(file.getFileName().toString(),file));}
+            long used=0;
+            for(var log:logs) {
+                long size=Files.size(log.getValue());
+                if(used+size>EXPORT_LOG_BUDGET && used>0){omitted.add(log.getKey()+" ("+size+" bytes)");continue;}
+                zip.putNextEntry(new ZipEntry(log.getKey()));Files.copy(log.getValue(),zip);zip.closeEntry();used+=size;included.add(log.getKey());
             }
+            manifest.put("included",included);manifest.put("omittedForSize",omitted);manifest.put("logBudgetBytes",EXPORT_LOG_BUDGET);manifest.put("logBytes",used);
+            zip.putNextEntry(new ZipEntry("bundle.json"));zip.write(safeJson(manifest).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
         } catch(IOException failed) { Files.deleteIfExists(target);throw failed; }
         return target;
+    }
+    private void write(ZipOutputStream zip,String name,Object value,List<String> included) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));zip.write(safeJson(value).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();included.add(name);
+    }
+    private String accountJournal(Path file) throws IOException {
+        long bytes=Files.size(file);
+        if(bytes>8L*1024*1024) return safeJson(Map.of("omitted","larger than 8 MiB","bytes",bytes));
+        try { return safeJson(com.google.gson.JsonParser.parseString(Files.readString(file))); }
+        catch(RuntimeException unreadable) { return safeJson(Map.of("unreadable",unreadable.getClass().getSimpleName(),"bytes",bytes)); }
     }
 }

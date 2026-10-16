@@ -24,7 +24,8 @@ public final class ActionRetry {
         String text=Chat.strip(message).toLowerCase(Locale.ROOT);
         return text.startsWith("you are clicking too fast") || text.startsWith("you're clicking too fast")
                 || text.startsWith("you are doing that too fast") || text.startsWith("you're doing that too fast")
-                || text.startsWith("please slow down") || text.startsWith("slow down!");
+                || text.startsWith("please slow down") || text.startsWith("slow down!")
+                || text.equals("whoa! slow down there!");
     }
     public void reset() { retries=0; sentAt=0; blockedUntil=0; stableSlots=null; }
     public void slowdown(long now) { blockedUntil=Math.max(blockedUntil,now+1_500); stableSlots=null; }

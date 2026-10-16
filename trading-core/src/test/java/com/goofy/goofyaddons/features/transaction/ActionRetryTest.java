@@ -37,6 +37,8 @@ class ActionRetryTest {
         assertTrue(ActionRetry.slowdownMessage("§cYou are clicking too fast! Slow down!"));
         assertTrue(ActionRetry.slowdownMessage("You're doing that too fast!"));
         assertTrue(ActionRetry.slowdownMessage("Please slow down!"));
+        assertTrue(ActionRetry.slowdownMessage("§cWhoa! Slow down there!"));
+        assertFalse(ActionRetry.slowdownMessage("[Player] Whoa! Slow down there!"));
         assertFalse(ActionRetry.slowdownMessage("[Player] please slow down"));
         assertFalse(ActionRetry.slowdownMessage("[Bazaar] Claimed items!"));
     }

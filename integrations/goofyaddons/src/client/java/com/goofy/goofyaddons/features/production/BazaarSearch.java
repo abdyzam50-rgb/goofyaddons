@@ -40,19 +40,6 @@ final class BazaarSearch {
     }
 
     static int resultSlot(MenuSnapshot menu, String productId,String name) {
-        if (!resultsPage(menu)) return -1;
-        int identified=-1,found = -1;boolean ambiguousName=false;
-        for (var slot : menu.slots()) {
-            if (slot.empty() || slot.inPlayerInventory()) continue;
-            if(slot.customId()!=null && !slot.customId().isBlank()) {
-                if(!com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(slot,productId))continue;
-                if(identified>=0)return -1;
-                identified=slot.index();continue;
-            }
-            if (slot.hoverName()==null || !Chat.strip(slot.hoverName()).equalsIgnoreCase(name)) continue;
-            if (found >= 0) ambiguousName=true;
-            found = slot.index();
-        }
-        return identified>=0?identified:ambiguousName?-1:found;
+        return com.goofy.goofyaddons.features.transaction.ProductIdentity.searchResult(menu,productId,name);
     }
 }

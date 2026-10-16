@@ -81,7 +81,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Test Discord controls and companion integration
-        run: node --test tools/bazaar-calc/discord-control.test.mjs tools/bazaar-calc/adapter.test.mjs tools/bazaar-calc/data-paths.test.mjs tools/bazaar-calc/community.test.mjs
+        run: node --test tools/bazaar-calc/discord-control.test.mjs tools/bazaar-calc/adapter.test.mjs tools/bazaar-calc/data-paths.test.mjs tools/bazaar-calc/community.test.mjs tools/bazaar-calc/craft-plan.test.mjs
 
       - name: Build the client mod
         run: |

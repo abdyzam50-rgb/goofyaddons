@@ -1,6 +1,5 @@
 package com.goofy.goofyaddons.features.generalflipper;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -52,7 +51,7 @@ public final class GeneralCalculator {
         double bid=buyQuote==null?-1:buyQuote,ask=sellQuote==null?-1:sellQuote;
         JsonObject quick = product.getAsJsonObject("quick_status");
         if (quick == null || bid <= 0 || ask <= bid) return null;
-        double flow = Math.min(number(quick, "sellMovingWeek"), number(quick, "buyMovingWeek"));
+        double flow = com.goofy.goofyaddons.features.market.BazaarQuotes.weeklyFlow(product);
         if (flow < settings.minWeeklyVolume || flow <= 0) return null;
         double net = ask * (1 - taxPercentage / 100) - bid;
         if (net <= 0 || net / bid * 100 < settings.minMarginPercentage) return null;
@@ -62,18 +61,5 @@ public final class GeneralCalculator {
         if (quantity <= 0 || net * quantity < settings.minProfitPerBatch) return null;
         return new Candidate(item, quantity, bid, ask, net * quantity,
                 net * quantity * Math.log10(flow + 1) / Math.sqrt(bid * quantity),strategy);
-    }
-
-    public static double topPrice(JsonObject product, String side) {
-        JsonArray summary = product.getAsJsonArray(side);
-        if (summary == null || summary.isEmpty()) return -1;
-        double value = summary.get(0).getAsJsonObject().get("pricePerUnit").getAsDouble();
-        return Double.isFinite(value) && value > 0 ? value : -1;
-    }
-
-    private static double number(JsonObject object, String key) {
-        if (!object.has(key)) return 0;
-        double value = object.get(key).getAsDouble();
-        return Double.isFinite(value) ? Math.max(0, value) : 0;
     }
 }

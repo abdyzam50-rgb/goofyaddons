@@ -9,6 +9,10 @@ public record PipelineAccount(long observedAt, TradingMode mode, Double purse, d
                               double pending, double available, int inventoryCapacity,
                               int bookSlots, int generalSlots, Set<String> excludedProducts,
                               boolean ready, String reason) {
+    public PipelineAccount withProductionReservations(double spendable,int slots) {
+        return new PipelineAccount(observedAt,mode,purse,committed,pending,Math.max(0,Math.min(available,spendable)),
+            Math.max(0,inventoryCapacity-Math.max(0,slots)),bookSlots,generalSlots,excludedProducts,ready,reason);
+    }
     public static PipelineAccount capture(long now,TradingMode mode,CapitalManager capital,double purse,
                                            MenuSnapshot inventory,int maxBooks,int maxGeneral) {
         return capture(now,mode,capital,purse,inventory,maxBooks,maxGeneral,Set.of());

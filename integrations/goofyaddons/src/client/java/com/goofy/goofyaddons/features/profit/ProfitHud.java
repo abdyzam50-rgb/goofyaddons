@@ -207,6 +207,14 @@ public final class ProfitHud {
                     boolean ok=ProfitTracker.INSTANCE.resetSession();
                     context.getSource().sendFeedback(Component.literal(ok?"Session stats reset. Open trade costs retained.":"Cannot reset: profit ledger has an error; file preserved."));
                     return ok?1:0;
+                })).then(ClientCommands.literal("clearhistory").executes(context->{
+                    var manager=FeatureManager.INSTANCE;
+                    if(!manager.canReloadConfig() || manager.production().queued() || manager.crafting().queued() || manager.auction().queued()) {
+                        context.getSource().sendError(Component.literal("Stop trading and production before clearing completed history."));return 0;
+                    }
+                    boolean ok=ProfitTracker.INSTANCE.clearCompletedHistory();
+                    context.getSource().sendFeedback(Component.literal(ok?"Completed trade/profit history cleared. Active orders, holdings and their cost basis kept.":"History was not cleared: profile or history files are unavailable. Existing records kept."));
+                    return ok?1:0;
                 })).then(ClientCommands.literal("left").executes(context->side("LEFT")))
                   .then(ClientCommands.literal("right").executes(context->side("RIGHT")))
                   .then(ClientCommands.literal("scale").then(ClientCommands.argument("size",DoubleArgumentType.doubleArg(0.75,3.0))

@@ -1,3 +1,6 @@
+> Historical standalone documentation. For the current combined mod, use the
+> [command reference](../../../../docs/COMMANDS.md). Older slash commands, keybinds and storage paths below may differ.
+
 # Books, General, and Both (1.3.21-BETA)
 
 J starts the configured mode. K stops both engines. M cycles Books → General →
@@ -92,7 +95,7 @@ lore labels, stacking behavior, and server confirmation timing need checking.
 Use ordinary items initially. Unknown stack limits deliberately restrict buy
 sizes until matching native item data is visible. The realized-profit dashboard
 uses confirmed receipts; it does not guarantee earnings. Automatic market-wide selection and recipe discovery remain separate work.
-The optional [Bazaar Calc companion](../../tools/bazaar-calc/README.md) now logs
+The optional [Bazaar Calc companion](../../../../tools/bazaar-calc/README.md) now logs
 read-only market-wide recommendations while the existing allowlist still controls
 execution. Use order-based book transactions initially.
 

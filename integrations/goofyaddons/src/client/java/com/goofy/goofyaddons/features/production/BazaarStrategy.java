@@ -1,7 +1,7 @@
 package com.goofy.goofyaddons.features.production;
 
 import com.google.gson.JsonObject;
-import com.goofy.goofyaddons.features.generalflipper.GeneralCalculator;
+import com.goofy.goofyaddons.features.market.BazaarQuotes;
 
 /** Execution strategy shared by recipe, book and ordinary-item selection. */
 public enum BazaarStrategy {
@@ -11,13 +11,22 @@ public enum BazaarStrategy {
     public String label(){return (instantBuy?"instant":"order")+" → "+(instantSell?"instant":"offer");}
     public Double buy(JsonObject product,int units){
         if(product==null||units<1)return null;
-        if(instantBuy)return ProductionPlanner.instantBuyCost(product,units);
-        double price=GeneralCalculator.topPrice(product,"sell_summary");return price>0 && units>0?price*units:null;
+        if(instantBuy)return BazaarQuotes.instantBuyCost(product,units);
+        double price=BazaarQuotes.bestBid(product);return price>0 && units>0?price*units:null;
+    }
+    /**
+     * Craft-input cost: like {@link #buy}, except an input whose bids are too far below its sell
+     * offers to fill is priced, and later bought, instantly rather than at its placeholder bid.
+     */
+    public Double ingredientBuy(JsonObject product,int units){
+        if(product==null||units<1)return null;
+        if(!instantBuy && !BazaarQuotes.orderableBid(product))return BazaarQuotes.instantBuyCost(product,units);
+        return buy(product,units);
     }
     public Double sell(JsonObject product,int units){
         if(product==null||units<1)return null;
-        if(instantSell)return ProductionPlanner.instantSellValue(product,units);
-        double price=GeneralCalculator.topPrice(product,"buy_summary");return price>0 && units>0?price*units:null;
+        if(instantSell)return BazaarQuotes.instantSellValue(product,units);
+        double price=BazaarQuotes.bestAsk(product);return price>0 && units>0?price*units:null;
     }
     public static BazaarStrategy of(boolean buy,boolean sell){return buy?(sell?INSTANT_INSTANT:INSTANT_OFFER):(sell?ORDER_INSTANT:ORDER_OFFER);}
 }

@@ -98,7 +98,7 @@ test('companion automatically uploads, retries failures, persists acknowledgemen
   assert.ok(!JSON.stringify(restarted.status()).includes(token));
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
-test('same-route fleet data supplies a bounded prior; ten personal outcomes override it and unrelated volumes do not transfer',async()=>{
+test('same-route fleet data supplies a bounded prior; personal outcomes outweigh it and unrelated volumes do not transfer',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'goofy-fleet-prior-'));try {
   const h=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now});
   const samples=await exportSamples(Array.from({length:10},(_,i)=>source(`private-${i}`)),'x'.repeat(64),now);
@@ -110,7 +110,7 @@ test('same-route fleet data supplies a bounded prior; ten personal outcomes over
   h.setCommunity(varied.map(s=>({contributor:'a'.repeat(64),...s})));const bounded=row();h.calibrate(bounded);assert.equal(bounded.executionEvidence.sharedSamples,10,'one contributor is capped across all comparable routes');
   h.setCommunity(samples.map(s=>({contributor:'a'.repeat(64),...s})));
   h.ingest(Array.from({length:10},(_,i)=>({...source(`own-${i}`),observedMillis:60000,profit:100})));
-  const own=row();h.calibrate(own);assert.equal(own.executionEvidence.throughputFactor,1);assert.equal(own.executionEvidence.profitRealizationFactor,1);
+  const own=row();h.calibrate(own);assert.ok(own.executionEvidence.throughputFactor>r.executionEvidence.throughputFactor);assert.ok(own.executionEvidence.throughputFactor<1);assert.ok(own.executionEvidence.profitRealizationFactor>r.executionEvidence.profitRealizationFactor);
   const far={...row(),inputId:'DIAMOND',outputId:'DIAMOND',volumeEvidence:{inputEffectivePerDay:24000,outputEffectivePerDay:24000}};
   h.calibrate(far);assert.equal(far.executionEvidence,undefined);
  }finally{rmSync(dir,{recursive:true,force:true});}

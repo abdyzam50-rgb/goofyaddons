@@ -17,24 +17,87 @@ public final class ProductionLoopFeature implements Feature {
         double budget;
         double estimatedCapital;
         int inventorySlots;
+        boolean storageRequested;
         long nextAction;
         String lastReason;
-        String lastObservation;
+        String lastObservation,lastBlockCaptured;
         long lastObserved,lastChanged;
         long lastTickAt=System.currentTimeMillis();
         final ProductionWaitEvidence waitEvidence=new ProductionWaitEvidence();
         String id(){return run.jobId();}
     }
     private final List<Work> work=new ArrayList<>();
+    public boolean storageEnabled(){return GoofyConfig.INSTANCE.craftFlips.useStorage||work.stream().anyMatch(w->w.storageRequested);}
     private Work foreground;
     private final CraftMenuLease<Work> menuLease=new CraftMenuLease<>();
     private boolean recoveringOrders;
     private boolean reconcilingExternalOrder;
     private final CraftFlipSelection selection=new CraftFlipSelection();
     private long nextSelection;
+    private final CraftBlockCooldown blockCooldown=new CraftBlockCooldown();
     private long nextSaleRestore;
     public boolean hasRetainedOrders(){return orders.retained();}
     public boolean hasRetainedOrders(String parent){return orders.retained(parent);}
+    public java.util.List<String> releaseOrders(String parent){
+        if(queued())return null;
+        var released=orders.release(parent);
+        if(released==null)return null;
+        var all=new ArrayList<>(released);
+        try{var ledger=storageLedger();if(ledger!=null)ledger.release(parent).forEach(entry->all.add("storage record "+entry));}
+        catch(Exception failed){Diagnostics.failure("production.storage_release_failed",failed);all.add("storage records kept: ledger unreadable");}
+        return all;
+    }
+    /**
+     * Drops a reviewed job's storage records. Left behind, they stayed "owned" after the player
+     * moved those items, and every later storage step stopped as a ledger mismatch.
+     */
+    public java.util.List<String> releaseStorage(String parent){
+        try{var ledger=storageLedger();return ledger==null?List.of():ledger.release(parent);}
+        catch(Exception failed){Diagnostics.failure("production.storage_release_failed",failed);return List.of("storage records kept: ledger unreadable");}
+    }
+    private ProductionStorage storageLedger;
+    private java.nio.file.Path storageLedgerPath;
+    private ProductionStorage.Move scanning;
+    /** The pinned profile's storage ledger; throws when it exists but cannot be read. */
+    ProductionStorage storageLedger() {
+        var accounts=com.goofy.goofyaddons.features.account.AccountStorage.INSTANCE;
+        if(accounts.pinned()==null)return null;
+        var path=accounts.path(com.goofy.goofyaddons.features.account.AccountStorage.PRODUCTION_STORAGE);
+        if(!path.equals(storageLedgerPath)) {
+            try{storageLedger=new ProductionStorage(path);storageLedgerPath=path;}
+            catch(java.io.IOException unreadable){throw new IllegalStateException(unreadable.getMessage(),unreadable);}
+        }
+        return storageLedger;
+    }
+    private static List<ProductionStorage.Page> storagePages(){return ProductionStorage.pages(GoofyConfig.INSTANCE.craftFlips.storagePages);}
+    /** Empty storage slots the planner may overflow inputs into; zero while storage is off or unread. */
+    int storageSlots() {
+        if(!GoofyConfig.INSTANCE.craftFlips.useStorage)return 0;
+        try{var ledger=storageLedger();return ledger==null?0:Math.max(0,ledger.emptySlots(storagePages()));}
+        catch(RuntimeException unreadable){return 0;}
+    }
+    /** Reads each storage page once, so the planner knows how much may overflow. */
+    private boolean scanStorageIfUnread() {
+        if(!GoofyConfig.INSTANCE.craftFlips.useStorage || scanning!=null)return scanning!=null;
+        try {
+            var ledger=storageLedger();
+            if(ledger==null || ledger.emptySlots(storagePages())>=0)return false;
+            scanning=ProductionStorage.Move.scan(ledger,storagePages());
+            new LiveActions().message("Checking your ender chest and backpacks for free space before planning bigger craft runs.");
+            return true;
+        }catch(RuntimeException unreadable){Diagnostics.failure("production.storage_unreadable",unreadable);return false;}
+    }
+    private void scanStep() {
+        var world=new LiveWorld();
+        var result=scanning.tick(world.menu(),new LiveActions(),world.now());
+        if(result==ProductionStorage.Move.Result.WAITING)return;
+        var move=scanning;scanning=null;
+        if(result==ProductionStorage.Move.Result.BLOCKED){FeatureManager.INSTANCE.safetyPause("Storage check stopped: "+move.failure());return;}
+        var scanned=new LinkedHashMap<String,Object>(storageLedger().diagnosticState());scanned.put("skippedPages",move.skippedPages());
+        Diagnostics.event("INFO","production.storage_scanned",scanned);
+        if(!move.skippedPages().isEmpty())new LiveActions().message("These storage pages never opened and count as full: "+String.join(", ",move.skippedPages())+". Unlock them or remove them from the storage pages setting.");
+        selection.refresh();
+    }
     public boolean hasOrphanOrders(){return orders.orphaned(work.stream().map(Work::id).collect(java.util.stream.Collectors.toSet()));}
     private double availableFor(String owner,double purse) {
         if(!Double.isFinite(purse)||purse<0)return 0;
@@ -43,9 +106,10 @@ public final class ProductionLoopFeature implements Feature {
         return CraftPortfolioBudget.available(capital.limit()-capital.committed(),purse-capital.reserve()-capital.pending(),allocations,owner);
     }
     double selectionBudget(double purse){return availableFor(null,purse)/Math.max(1,GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts-work.size());}
-    int reservedInventorySlots(MenuSnapshot menu) {
+    public double availableForOtherPipelines(double purse){return availableFor(null,purse);}
+    public int reservedInventorySlots(MenuSnapshot menu) {
         return CraftPortfolioInventory.reserved(menu,work.stream().map(w->new CraftPortfolioInventory.Allocation(
-            w.run.stage()==ProductionLoop.Stage.SELL?CraftFlipPlanner.inventorySlotsForProduct(w.run.output(),w.run.outputUnits()):w.inventorySlots,w.run.lockedProducts())).toList());
+            w.run.stage()==ProductionLoop.Stage.SELL?CraftFlipPlanner.inventorySlotsForProduct(RecipeCatalog.instance(),w.run.output(),w.run.outputUnits()):w.inventorySlots,w.run.lockedProducts())).toList());
     }
     public void refreshSelection(){selection.refresh();}
     public Map<String,Object> craftPlan(){
@@ -59,9 +123,12 @@ public final class ProductionLoopFeature implements Feature {
         var state=new LinkedHashMap<String,Object>();var world=new LiveWorld();
         state.put("schema",1);state.put("observedAt",world.now());state.put("running",running);state.put("paused",paused);
         state.put("recoveringOrders",recoveringOrders);state.put("reconcilingExternalOrder",reconcilingExternalOrder);state.put("foregroundJob",foreground==null?null:foreground.id());
-        state.put("nextSelectionAt",nextSelection);state.put("selection",selection.diagnosticState());
+        state.put("nextSelectionAt",nextSelection);state.put("blockedCraftCooldowns",blockCooldown.diagnosticState(System.currentTimeMillis()));state.put("selection",selection.diagnosticState());
         state.put("settings",GoofyConfig.INSTANCE.craftFlips);state.put("orders",orders.diagnosticState());
         state.put("lockedProducts",lockedProducts());
+        try{var ledger=storageLedger();state.put("storage",ledger==null?null:ledger.diagnosticState());state.put("storageSlots",storageSlots());}
+        catch(RuntimeException unreadable){state.put("storageError",unreadable.getMessage());}
+        state.put("storageScan",scanning==null?null:scanning.describe());
         state.put("craftDelegateQueued",FeatureManager.INSTANCE.crafting().queued());state.put("auctionDelegateQueued",FeatureManager.INSTANCE.auction().queued());
         state.put("activeRuns",work.stream().map(w->{var row=new LinkedHashMap<>(safeRunState(w.run));row.put("budget",w.budget);row.put("estimatedCapital",w.estimatedCapital);row.put("reservedCapital",w.budget);row.put("inventorySlots",w.inventorySlots);row.put("nextActionAt",w.nextAction);row.put("lastObservedAt",w.lastObserved);row.put("lastStateChangeAt",w.lastChanged);return row;}).toList());
         try {
@@ -80,7 +147,7 @@ public final class ProductionLoopFeature implements Feature {
         catch(RuntimeException failed){return Map.of("job",run.jobId(),"observationError",failed.getClass().getSimpleName());}
     }
     private void checkWait(Work current,long now) {
-        String signature=current.run.stage()+":"+current.run.reason()+":"+current.run.spent();
+        String signature=current.run.stage()+":"+stableReason(current.run.reason())+":"+current.run.spent();
         if(current.waitEvidence.due(signature,now)) {
             var data=new LinkedHashMap<>(incident(current,"State unchanged for at least 120 seconds; this is evidence, not proof of a failed order"));
             data.put("lastTickAt",current.lastTickAt);data.put("craftDelegateQueued",FeatureManager.INSTANCE.crafting().queued());
@@ -89,8 +156,13 @@ public final class ProductionLoopFeature implements Feature {
         }
     }
     private void observeRun(Work current,ProductionLoop.Step result,boolean ownsMenu,long now) {
-        String signature=current.run.stage()+":"+result+":"+current.run.reason()+":"+current.run.spent();
+        String signature=current.run.stage()+":"+result+":"+stableReason(current.run.reason())+":"+current.run.spent();
         boolean changed=!Objects.equals(signature,current.lastObservation);
+        if(changed && result==ProductionLoop.Step.BLOCKED && !Objects.equals(stableReason(current.run.reason()),current.lastBlockCaptured)) {
+            // The first block of each kind carries the menu, which reviews already get but blocks did not.
+            current.lastBlockCaptured=stableReason(current.run.reason());
+            Diagnostics.event("WARN","production.run_blocked",incident(current,current.run.reason()));
+        }
         if(changed){current.lastObservation=signature;current.lastChanged=now;}
         if(!changed && now-current.lastObserved<30000)return;
         current.lastObserved=now;
@@ -99,6 +171,8 @@ public final class ProductionLoopFeature implements Feature {
         data.put("unchangedForMs",now-current.lastChanged);data.put("orders",orders.diagnosticState());
         Diagnostics.event("INFO","production.run_observed",data);
     }
+    /** Countdowns ("Ready in 3 min", "retrying in 12 seconds") would reset the stall detector and flood the log. */
+    static String stableReason(String reason){return reason==null?null:reason.replaceAll("\\d+(?:[.,]\\d+)?","#");}
     private Map<String,Object> incident(Work current,String reason) {
         var data=new LinkedHashMap<String,Object>();data.put("job",current.id());data.put("reason",reason);
         data.put("run",safeRunState(current.run));data.put("orders",orders.diagnosticState());
@@ -106,6 +180,14 @@ public final class ProductionLoopFeature implements Feature {
         data.put("foregroundJob",foreground==null?null:foreground.id());return data;
     }
 
+    /** Products in active runs and the leading routes, for the export's market snapshot. */
+    public Set<String> referencedProducts(){
+        var ids=new TreeSet<String>();
+        for(var w:work){ids.add(w.run.output());ids.addAll(w.run.lockedProducts());}
+        selection.routes().stream().limit(20).forEach(r->{ids.add(r.recipe().outputId());ids.addAll(r.recipe().ingredients().keySet());});
+        return ids;
+    }
+    public List<Map<String,Object>> recentRankings(){return selection.recentRankings();}
     public void showCraftPlans(){
         selection.refresh();var actions=new LiveActions();
         var rows=selection.currentRoutes();
@@ -118,15 +200,40 @@ public final class ProductionLoopFeature implements Feature {
         if(rows.isEmpty())return selection.emptyReason();
         return rows.stream().filter(CraftFlipPlanner.Route::eligible).findAny().isPresent()?"Ready to select a craft":rows.getFirst().reason();
     }
+    private boolean automaticMode(){return Set.of("CRAFT","ALL").contains(FeatureManager.INSTANCE.modeLabel());}
+    private CraftFlipPlanner.Route bestAutomaticCandidate() {
+        if(recoveringOrders || reconcilingExternalOrder || work.size()>=GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts
+            || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()
+            || FeatureManager.INSTANCE.accountRequirementsPending() || hasOrphanOrders())return null;
+        long now=System.currentTimeMillis();
+        if(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh()==null)return null;
+        var occupied=new HashSet<>(CapitalManager.INSTANCE.occupiedProducts());occupied.addAll(lockedProducts());
+        double budget=selectionBudget(new com.goofy.goofyaddons.utils.ScoreboardUtils().getPurse());
+        // Entry arbitration reads the cached ranking; full recipe planning belongs to
+        // refreshSelection and the actual five-second procurement selection boundary.
+        return selection.routes().stream().filter(CraftFlipPlanner.Route::eligible)
+            .filter(r->r.capital()<=budget && !occupied.contains(r.recipe().outputId())
+                && r.recipe().ingredients().keySet().stream().noneMatch(occupied::contains))
+            .filter(r->!blockCooldown.coolingDown(r.recipe().outputId(),now)).findFirst().orElse(null);
+    }
+    public double automaticCoinsPerHour(){var route=bestAutomaticCandidate();return route==null?0:route.score()*3600;}
+    public double automaticCapital(){var route=bestAutomaticCandidate();return route==null?0:route.capital();}
     private void selectAutomatic() {
-        if(!"CRAFT".equals(FeatureManager.INSTANCE.modeLabel())||System.currentTimeMillis()<nextSelection || recoveringOrders || reconcilingExternalOrder
+        if(!automaticMode()||System.currentTimeMillis()<nextSelection || recoveringOrders || reconcilingExternalOrder
                 ||work.size()>=GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts
                 ||FeatureManager.INSTANCE.crafting().queued()||FeatureManager.INSTANCE.auction().queued())return;
         nextSelection=System.currentTimeMillis()+5000;
         var manager=FeatureManager.INSTANCE;
         if(manager.accountRequirementsPending() || hasOrphanOrders())return;
-        var candidate=selection.currentRoutes().stream().filter(CraftFlipPlanner.Route::eligible).findFirst().orElse(null);
-        if(candidate==null)return;
+        if(work.isEmpty() && scanStorageIfUnread())return;
+        long now=System.currentTimeMillis();
+        var eligible=selection.currentRoutes().stream().filter(CraftFlipPlanner.Route::eligible).toList();
+        var candidate=eligible.stream().filter(r->!blockCooldown.coolingDown(r.recipe().outputId(),now)).findFirst().orElse(null);
+        if(candidate==null){
+            if(!eligible.isEmpty())Diagnostics.event("INFO","production.selection_skipped",Map.of("reason","Every eligible craft is cooling down after a block","eligible",eligible.size(),"cooldowns",blockCooldown.diagnosticState(now)));
+            return;
+        }
+        if(!manager.allModeCraftSelected(candidate.score()*3600,candidate.capital()))return;
         try {
             var current=new Work();current.estimatedCapital=candidate.capital();current.inventorySlots=candidate.inventorySlots();
             current.budget=CraftPortfolioBudget.allocated(candidate.capital(),candidate.profit(),GoofyConfig.INSTANCE.craftFlips.minimumProfit,
@@ -137,6 +244,9 @@ public final class ProductionLoopFeature implements Feature {
             new LiveActions().message("Automatic craft "+work.size()+"/"+GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts+": "+RecipeCatalog.instance().name(current.run.output())+" · "+candidate.strategy().label()+" · "+candidate.batches()+" batches · budget "+Math.round(current.budget)+" · conservative net "+Math.round(candidate.profit()));
             var evidence=new LinkedHashMap<>(candidate.describe(RecipeCatalog.instance()));
             evidence.put("estimatedCapital",current.estimatedCapital);evidence.put("reservedCapital",current.budget);
+            var products=new TreeSet<>(candidate.recipe().ingredients().keySet());products.add(candidate.recipe().outputId());
+            evidence.put("quotes",com.goofy.goofyaddons.features.market.MarketSnapshot.of(com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh(),products,now));
+            evidence.put("ranking",selection.latestRanking());
             Diagnostics.event("INFO","production.auto_selected",evidence);
         }catch(Exception failed){Diagnostics.failure("production.auto_queue_failed",failed);FeatureManager.INSTANCE.safetyPause("Automatic craft could not be journaled; review production jobs");}
     }
@@ -162,7 +272,7 @@ public final class ProductionLoopFeature implements Feature {
     public String activity() {
         if(reconcilingExternalOrder)return "Reconciling manually handled craft order · fresh orders and inventory checks";
         if(recoveringOrders)return "Recovering craft positions · "+orders.diagnosticState().get("step");
-        if(work.isEmpty())return "CRAFT".equals(FeatureManager.INSTANCE.modeLabel())?discoveryStatus():"No production run queued";
+        if(work.isEmpty())return automaticMode()?discoveryStatus():"No production run queued";
         var current=foreground!=null && work.contains(foreground)?foreground:work.getFirst();
         return "Craft queue "+work.size()+"/"+GoofyConfig.INSTANCE.craftFlips.maxActiveCrafts+" · "+current.run.output()+" · "+current.run.stage().name().toLowerCase(Locale.ROOT)+(current.run.reason()==null?"":" · "+current.run.reason());
     }
@@ -202,6 +312,71 @@ public final class ProductionLoopFeature implements Feature {
             actions.message("Cannot queue production: " + invalid.getMessage()); return false;
         } catch (Exception failure) {
             Diagnostics.failure("production.run_queue_failed", failure);
+            actions.message("Production journal could not be saved; no action performed."); return false;
+        }
+    }
+
+    /**
+     * Runs one craft the player names through the automatic pipeline for exactly this many
+     * batches: inputs are bought by the strategy (the planner's own pick for this craft when it
+     * has one), crafted, and the output sold on the Bazaar. Spendable capital caps the buying.
+     */
+    public boolean queuePipeline(String output, int batches, BazaarStrategy strategy) {
+        var actions = new LiveActions();
+        if (queued() || hasOrphanOrders() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
+            actions.message("Finish the queued production work first."); return false;
+        }
+        try {
+            var catalog = RecipeCatalog.instance();
+            var route = selection.routes().stream().filter(r -> r.recipe().outputId().equals(output) && "BAZAAR".equals(r.venue())).findFirst().orElse(null);
+            var recipe = route != null ? route.recipe() : catalog.forOutput(output).stream().filter(r -> r.kind() == ProductionRecipe.Kind.CRAFT).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("no verified crafting recipe for " + output));
+            var chosen = strategy != null ? strategy : route != null ? route.strategy() : BazaarStrategy.ORDER_OFFER;
+            var current = new Work();
+            current.storageRequested=true;
+            current.run = ProductionRun.startCraft(environment(current, true, false), catalog, recipe, batches, ProductionRun.SELL_ON_BAZAAR, 0, chosen);
+            work.add(current);
+            FeatureManager.INSTANCE.invalidateMarketReport();
+            actions.message("Pipeline test: " + catalog.name(output) + " · " + batches + (batches == 1 ? " batch" : " batches") + " · " + chosen.label()
+                    + " · configured storage enabled for this test. The trading toggle or stop ends it.");
+            Diagnostics.event("INFO", "production.pipeline_test", Map.of("job", current.id(), "output", output, "batches", batches, "strategy", chosen.name()));
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            actions.message("Cannot start the pipeline test: " + invalid.getMessage()); return false;
+        } catch (Exception failure) {
+            Diagnostics.failure("production.pipeline_queue_failed", failure);
+            actions.message("Production journal could not be saved; no action performed."); return false;
+        }
+    }
+
+    /**
+     * Buys and/or sells one Bazaar product with the chosen strategy and no crafting, so each half
+     * of the pipeline can be tried in game on its own. Spendable capital caps the buying.
+     */
+    public boolean queueTrade(String product, int units, ProductionRun.TradePart part, BazaarStrategy strategy) {
+        var actions = new LiveActions();
+        if (queued() || hasOrphanOrders() || FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued()) {
+            actions.message("Finish the queued production work first."); return false;
+        }
+        try {
+            var current = new Work();
+            current.run = ProductionRun.startTrade(environment(current, true, false), RecipeCatalog.instance(), product, units, part, strategy);
+            work.add(current);
+            FeatureManager.INSTANCE.invalidateMarketReport();
+            String name = RecipeCatalog.instance().name(product);
+            int count = current.run.outputUnits();
+            String how = switch (part) {
+                case BUY -> "buy " + count + " " + name + " with " + (strategy.instantBuy ? "an instant buy" : "a buy order");
+                case SELL -> "sell all " + count + " " + name + " held with " + (strategy.instantSell ? "an instant sell" : "a sell offer");
+                case BOTH -> "buy " + count + " " + name + " (" + (strategy.instantBuy ? "instant" : "order") + "), then sell them (" + (strategy.instantSell ? "instant" : "offer") + ")";
+            };
+            actions.message("Trade test: " + how + ". The trading toggle or stop ends it.");
+            Diagnostics.event("INFO", "production.trade_test", Map.of("job", current.id(), "product", product, "units", count, "part", part.name(), "strategy", strategy.name()));
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            actions.message("Cannot start the trade test: " + invalid.getMessage()); return false;
+        } catch (Exception failure) {
+            Diagnostics.failure("production.trade_queue_failed", failure);
             actions.message("Production journal could not be saved; no action performed."); return false;
         }
     }
@@ -250,7 +425,7 @@ public final class ProductionLoopFeature implements Feature {
         foreground=menuLease.select(work,w->w.run.wantsMenu(),FeatureManager.INSTANCE.crafting().queued() || FeatureManager.INSTANCE.auction().queued());
         return foreground;
     }
-    public boolean needsMenu() { return isRunning() && (reconcilingExternalOrder || (recoveringOrders?orders.needsMenu():menuWork()!=null)); }
+    public boolean needsMenu() { return isRunning() && (reconcilingExternalOrder || (recoveringOrders?orders.needsMenu():scanning!=null || menuWork()!=null)); }
     public boolean canYield() { return !needsMenu(); }
 
     /** Recover ingredient buys and verified unsubmitted outputs; never select another craft. */
@@ -337,7 +512,7 @@ public final class ProductionLoopFeature implements Feature {
     }
     private void restoreSavedSales(){
         long now=System.currentTimeMillis();
-        if(!work.isEmpty() || recoveringOrders || reconcilingExternalOrder || now<nextSaleRestore || !"CRAFT".equals(FeatureManager.INSTANCE.modeLabel()))return;
+        if(!work.isEmpty() || recoveringOrders || reconcilingExternalOrder || now<nextSaleRestore || !automaticMode())return;
         nextSaleRestore=now+5000;
         var sales=orders.savedSales();if(sales.isEmpty() || sales.size()>4)return;
         try {
@@ -358,6 +533,7 @@ public final class ProductionLoopFeature implements Feature {
         if(!needsMenu())return;
         if(reconcilingExternalOrder){reconcileExternalOrderStep(true);return;}
         if(recoveringOrders){recoverOrderStep(true);return;}
+        if(scanning!=null){scanStep();return;}
         var current=menuWork();if(current!=null)step(current,true);
     }
     private void step(Work current,boolean ownsMenu) {
@@ -374,6 +550,7 @@ public final class ProductionLoopFeature implements Feature {
                     if(ownsMenu && run.hasReusableCraftMenu())new LiveActions().closeMenu();
                     new LiveActions().message("Production of "+RecipeCatalog.instance().name(run.output())+" finished.");
                     Diagnostics.event("INFO","production.run_finished",Map.of("job",run.jobId(),"output",run.output()));
+                    blockCooldown.finished(run.output());
                     work.remove(current);if(foreground==current)foreground=null;FeatureManager.INSTANCE.invalidateMarketReport();
                 }
                 case UNCERTAIN -> {
@@ -384,7 +561,13 @@ public final class ProductionLoopFeature implements Feature {
                 }
                 case BLOCKED,PENDING -> {
                     if(result==ProductionLoop.Step.BLOCKED && current.budget>0 && run.cancelUnstarted(run.reason())) {
-                        Diagnostics.event("INFO","production.auto_reselect",Map.of("job",run.jobId(),"reason",run.reason()));
+                        var cooled=blockCooldown.blocked(run.output(),run.reason(),now);
+                        var evidence=new LinkedHashMap<String,Object>();
+                        evidence.put("job",run.jobId());evidence.put("output",run.output());evidence.put("reason",run.reason());
+                        evidence.put("strategy",String.valueOf(run.strategy()));evidence.put("budget",current.budget);
+                        evidence.put("blocksForThisCraft",cooled.blocks());evidence.put("cooldownMs",cooled.until()-now);
+                        Diagnostics.event(cooled.blocks()>=CraftBlockCooldown.STUCK_AFTER?"WARN":"INFO","production.auto_reselect",evidence);
+                        if(cooled.blocks()==CraftBlockCooldown.STUCK_AFTER)new LiveActions().message("Skipping "+RecipeCatalog.instance().name(run.output())+" for a while: it blocked "+cooled.blocks()+" times in a row ("+run.reason()+")");
                         work.remove(current);if(foreground==current)foreground=null;nextSelection=now+5000;FeatureManager.INSTANCE.invalidateMarketReport();return;
                     }
                     if(result==ProductionLoop.Step.BLOCKED && run.reason()!=null && !run.reason().equals(current.lastReason))new LiveActions().message("Production waiting: "+run.reason());
@@ -425,7 +608,7 @@ public final class ProductionLoopFeature implements Feature {
                 }
             }
         }catch(Exception failure){Diagnostics.failure("production.journal_failed",failure);}
-        orders.stop();work.clear();foreground=null;menuLease.clear();recoveringOrders=false;reconcilingExternalOrder=false;
+        orders.stop();work.clear();foreground=null;menuLease.clear();recoveringOrders=false;reconcilingExternalOrder=false;scanning=null;
     }
 
     private ProductionRun.Environment environment(Work current,boolean buyInputs,boolean marketPricing) throws java.io.IOException {
@@ -465,20 +648,28 @@ public final class ProductionLoopFeature implements Feature {
                 var market = com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
                 if (market == null || !market.has("products")) return null;
                 var product = market.getAsJsonObject("products").get(id);
-                return product != null && product.isJsonObject() ? ProductionPlanner.instantBuyCost(product.getAsJsonObject(), units) : null;
+                return product != null && product.isJsonObject() ? com.goofy.goofyaddons.features.market.BazaarQuotes.instantBuyCost(product.getAsJsonObject(), units) : null;
             }
             public Double instantSellValue(String id, int units) {
                 var market = com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
                 if (market == null || !market.has("products")) return null;
                 var product = market.getAsJsonObject("products").get(id);
-                return product != null && product.isJsonObject() ? ProductionPlanner.instantSellValue(product.getAsJsonObject(), units) : null;
+                return product != null && product.isJsonObject() ? com.goofy.goofyaddons.features.market.BazaarQuotes.instantSellValue(product.getAsJsonObject(), units) : null;
             }
             public Double orderBuyCost(String id,int units){return strategyQuote(id,units,true);}
+            public void event(String level,String type,Map<String,Object> data){Diagnostics.event(level,type,data);}
+            public boolean orderable(String id){
+                var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
+                if(market==null||!market.has("products"))return true;
+                var product=market.getAsJsonObject("products").get(id);
+                try{return product==null||!product.isJsonObject()||com.goofy.goofyaddons.features.market.BazaarQuotes.orderableBid(product.getAsJsonObject());}
+                catch(RuntimeException malformed){return true;}
+            }
             public Double offerSellValue(String id,int units){return strategyQuote(id,units,false);}
             private Double strategyQuote(String id,int units,boolean buy){
                 var market=com.goofy.goofyaddons.features.bookflipper.helper.BazaarApi.latestFresh();
                 if(market==null)return null;var product=market.getAsJsonObject("products").getAsJsonObject(id);
-                return buy?BazaarStrategy.ORDER_OFFER.buy(product,units):BazaarStrategy.ORDER_OFFER.sell(product,units);
+                return buy?BazaarStrategy.ORDER_OFFER.ingredientBuy(product,units):BazaarStrategy.ORDER_OFFER.sell(product,units);
             }
             public boolean queueOrder(String id,int units,double price,boolean buy,double limit){return orders.queue(current.id(),id,name(id),units,price,buy,limit);}
             public boolean queueIngredientOrders(List<com.goofy.goofyaddons.features.generalflipper.ProductionBazaarOrders.IngredientOrder> basket){return orders.queueBasket(current.id(),basket);}
@@ -503,6 +694,14 @@ public final class ProductionLoopFeature implements Feature {
                 return (marketPricing?auction.queueMarket(product,price,true,maximumFee):auction.queue(product,price,true,maximumFee)) ? auction.jobId() : null;
             }
             public boolean listingQueued() { return FeatureManager.INSTANCE.auction().queued(); }
+            public ProductionStorage storage(){return storageLedger();}
+            public boolean storageEnabled(){return GoofyConfig.INSTANCE.craftFlips.useStorage||current.storageRequested;}
+            public List<ProductionStorage.Page> storagePages(){return ProductionLoopFeature.storagePages();}
+            public List<String> orderAwaitingStorage(){return orders.awaitingStorage(current.id());}
+            public Set<String> orderStorable(){return orders.storable(current.id());}
+            public Set<String> orderTracked(){return orders.tracked(current.id());}
+            public boolean orderStored(String product,int units){return orders.stored(current.id(),product,units);}
+            public boolean orderIdle(){return orders.idle();}
             public void outputConfirmed(String id,String output,int units,Double cost) {
                 com.goofy.goofyaddons.features.profit.ProfitTracker.INSTANCE.acquire(id,"craft",output,"craft-output:"+id,units,cost);
             }

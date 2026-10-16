@@ -14,6 +14,12 @@ public interface GameActions {
 
     /** Right-button pickup: split a source stack or deposit one cursor item. */
     default void rightClick(int slot){throw new UnsupportedOperationException("Right-button inventory clicks unavailable");}
+    default boolean supportsDrag(){return false;}
+    /** Native left-drag distributes the cursor evenly across these exact slots. */
+    default void dragSplit(int[] slots){throw new UnsupportedOperationException("Drag inventory clicks unavailable");}
+    default boolean supportsRightDrag(){return false;}
+    /** Native right-drag adds one cursor item to every selected slot. */
+    default void rightDragSplit(int[] slots){throw new UnsupportedOperationException("Right-drag inventory clicks unavailable");}
 
     /** Close whatever menu is open. A no-op when nothing is open. */
     void closeMenu();

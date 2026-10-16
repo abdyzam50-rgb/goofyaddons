@@ -3,9 +3,18 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from build_catalog import build, import_recipe, canonical_id, parsed_requirements, merge_requirements
+from build_catalog import build, import_recipe, canonical_id, parsed_requirements, merge_requirements, unstackable
 
 class CatalogImportTest(unittest.TestCase):
+    def test_unstackable_items_come_from_lore_type_and_category(self):
+        item = lambda name, lore: {'internalname': name, 'lore': lore}
+        self.assertTrue(unstackable(item('SUPER_COMPACTOR_3000', ['§8Minion Upgrade', '', '§9§lRARE'])))
+        self.assertTrue(unstackable(item('ASPECT_OF_THE_END', ['§7Damage: §c+100', '§9§lRARE SWORD'])))
+        self.assertTrue(unstackable(item('COAL_GENERATOR_4', ['§9§lRARE'])))
+        self.assertFalse(unstackable(item('ENCHANTED_MITHRIL', ['§8Collection Item', '', '§9§lRARE DWARVEN METAL'])))
+        self.assertFalse(unstackable(item('HOTSPOT_BAIT', ['§8Fishing Bait', '§9§lRARE BAIT'])))
+        self.assertFalse(unstackable(item('ENCHANTED_PAPER', ['§a§lUNCOMMON'])))
+
     def test_variant_and_book_ids_use_hypixel_ids(self):
         self.assertEqual('LOG:1', canonical_id('LOG-1', set()))
         self.assertEqual('ENCHANTMENT_SHARPNESS_4', canonical_id('SHARPNESS;4', {'SHARPNESS'}))
@@ -60,6 +69,18 @@ class CatalogImportTest(unittest.TestCase):
             self.assertEqual('Requires: Gold Ingot IV & Combat 5',result['recipes'][0]['requirement'])
             self.assertEqual('PET.json',result['unsupportedCrafts'][0]['sourceFile'])
             self.assertEqual({'A1':'EGG:1'},result['unsupportedCrafts'][0]['grid'])
+
+    def test_a_grid_that_stacks_an_item_overrides_its_lore_category(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source=Path(directory);(source/'items').mkdir()
+            for name,lore,recipe in [('COAL',['§8Minion Fuel','§f§lCOMMON ORE'],None),('SMELTER',['§8Minion Upgrade','§f§lCOMMON'],None),
+                                     ('ENCHANTED_COAL',['§a§lUNCOMMON'],{'A1':'COAL:32','A2':'COAL:32','B1':'SMELTER:1'})]:
+                item={'internalname':name,'displayname':name,'lore':lore}
+                if recipe:item['recipe']=recipe
+                (source/f'items/{name}.json').write_text(json.dumps(item))
+            with patch('build_catalog.subprocess.check_output',return_value='abc123\n'):
+                result=build(source,{'names':{},'recipes':[]},set())
+            self.assertEqual(['SMELTER'],result['unstackable'])
 
 if __name__ == '__main__':
     unittest.main()

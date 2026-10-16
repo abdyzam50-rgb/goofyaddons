@@ -170,19 +170,25 @@ public final class MarketAnalysisProtocol {
                 int samples=integer(e,"samples",0,2000);double factor=positive(e,"throughputFactor");
                 double baseline=positive(e,"marketCycleSeconds"),baselineCoins=positive(e,"marketCoinsPerHour");
                 long latest=timestamp(e,"latestAt");
-                if(factor<0.1 || factor>1.5 || !same(seconds,baseline/factor) || !same(coins,baselineCoins*factor*realization)
+                boolean sameDay=e.has("sameDayWeight");
+                if(factor<(sameDay?0.000001:0.1) || factor>1.5 || !same(seconds,baseline/factor) || !same(coins,baselineCoins*factor*realization)
                         || latest>now+5000 || now-latest>86400000)throw new IllegalArgumentException("Invalid personal execution calibration");
                 int pending=e.has("pendingSamples")?integer(e,"pendingSamples",0,100):0;
                 int censored=e.has("censoredSamples")?integer(e,"censoredSamples",0,2000):0;
                 int shared=e.has("sharedSamples")?integer(e,"sharedSamples",0,2000):0;
                 int sharedProfit=e.has("sharedProfitSamples")?integer(e,"sharedProfitSamples",0,2000):0;
-                if(shared>0 && shared<3 || sharedProfit>shared || samples<3 && pending+censored==0 && shared<3 || samples+shared<10 && factor>1)
+                int failed=e.has("pipelineFailureSamples")?integer(e,"pipelineFailureSamples",0,2000):0;
+                int losses=e.has("lossSamples")?integer(e,"lossSamples",0,2000):0;
+                if(shared>0 && shared<3 || sharedProfit>shared || samples<(sameDay?1:3) && pending+censored+failed+losses==0 && shared<3 || samples+shared<(sameDay?6:10) && factor>1)
                     throw new IllegalArgumentException("Insufficient personal execution evidence");
                 int expectedSamples=e.has("expectedProfitSamples")?integer(e,"expectedProfitSamples",0,2000):0;
-                if(expectedSamples>samples || realization<1 && expectedSamples<3 && sharedProfit<3)throw new IllegalArgumentException("Insufficient realized profit evidence");
+                if(expectedSamples>samples+losses || realization<1 && expectedSamples<(sameDay?1:3) && sharedProfit<3)throw new IllegalArgumentException("Insufficient realized profit evidence");
                 var values=new LinkedHashMap<String,Object>(Map.of("pendingSamples",pending,"censoredSamples",censored,"samples",samples,"throughputFactor",factor,"marketCycleSeconds",baseline,
                         "marketCoinsPerHour",baselineCoins,"p75ObservedSeconds",positive(e,"p75ObservedSeconds"),
                         "observedCoinsPerHour",number(e,"observedCoinsPerHour"),"latestAt",latest));
+                values.put("pipelineFailureSamples",failed);values.put("lossSamples",losses);
+                if(e.has("sameDayWeight")){double weight=number(e,"sameDayWeight");if(weight<0||weight>0.7)throw new IllegalArgumentException("Invalid same-day weight");values.put("sameDayWeight",weight);}
+                for(String field:List.of("pipelineReliabilityFactor","marketTimingFactor"))if(e.has(field))values.put(field,positive(e,field));
                 values.put("profitRealizationFactor",realization);values.put("expectedProfitSamples",expectedSamples);
                 values.put("sharedSamples",shared);values.put("sharedProfitSamples",sharedProfit);
                 for(String field:List.of("sharedThroughputFactor","sharedProfitRealizationFactor"))if(e.has(field)) {

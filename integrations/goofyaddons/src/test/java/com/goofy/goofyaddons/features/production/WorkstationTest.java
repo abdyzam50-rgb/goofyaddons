@@ -36,12 +36,46 @@ class WorkstationTest {
         assertEquals(ForgeNavigation.State.FAILED,nav.state());assertTrue(actions.serverEffects().isEmpty());
         assertFalse(ProductionMenus.forgeConfirmation(menu(2,"Confirm Process",item(10,"INPUT",3,List.of()),item(23,"OUTPUT",1,List.of())),forge()));
     }
+    @Test void craftRecoveryReturnsCursorAndGridAndCreditsOnlyReconciledPartialOutput() {
+        recoveryCheck(true);
+    }
+    @Test void craftRecoveryDoesNotResumeWhenFreshServerCountsStillDisagree() {
+        recoveryCheck(false);
+    }
+    private void recoveryCheck(boolean reconciles) {
+        var r=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",2),
+            Arrays.asList(new ProductionRecipe.Ingredient("INPUT",2),null,null,null,null,null,null,null,null),0,0,"",null);
+        var executor=new CraftingExecutor(()->50);var actions=new RecordingActions();
+        executor.tick(r,2,menu(1,"Craft Item",item(54,"INPUT",4,List.of())),actions,Map.of(),Map.of(),1000);
+        var base=menu(1,"Craft Item",item(10,"INPUT",2,List.of()),item(55,"OUTPUT",1,List.of()));
+        var bad=new MenuSnapshot(1,"Craft Item",false,base.slots(),item(-1,"INPUT",1,List.of()));
+        executor.tick(r,2,bad,actions,Map.of(),Map.of(),1200);
+        executor.tick(r,2,bad,actions,Map.of(),Map.of(),2800);
+        assertTrue(executor.recovering());actions=new RecordingActions();
+        executor.tick(r,2,bad,actions,Map.of(),Map.of(),3000);
+        assertEquals(List.of("click:54"),actions.serverEffects());
+        var cursorReturned=menu(1,"Craft Item",item(10,"INPUT",2,List.of()),item(54,"INPUT",1,List.of()),item(55,"OUTPUT",1,List.of()));
+        executor.tick(r,2,cursorReturned,actions,Map.of(),Map.of(),3300);
+        executor.tick(r,2,cursorReturned,actions,Map.of(),Map.of(),3500);
+        var cleared=menu(1,"Craft Item",item(54,"INPUT",3,List.of()),item(55,"OUTPUT",1,List.of()));
+        executor.tick(r,2,cleared,actions,Map.of(),Map.of(),3800);
+        executor.tick(r,2,cleared,actions,Map.of(),Map.of(),4000);
+        executor.tick(r,2,menu(0,null),actions,Map.of(),Map.of(),4300);
+        assertTrue(actions.serverEffects().contains("command:craft"),actions.serverEffects().toString());
+        var fresh=menu(2,"Craft Item",item(54,"INPUT",reconciles?2:3,List.of()),item(55,"OUTPUT",1,List.of()));
+        executor.tick(r,2,fresh,actions,Map.of(),Map.of(),4600);
+        var result=executor.tick(r,2,fresh,actions,Map.of(),Map.of(),5000);
+        assertEquals(reconciles?CraftingExecutor.Result.CRAFTED:CraftingExecutor.Result.BLOCKED,result,executor.failure());
+        if(reconciles)assertEquals(1,executor.completedBatches());
+        else assertTrue(executor.failure().contains("do not reconcile"));
+    }
+
     @Test void unchangedServerObservationCannotTriggerASecondCraftAction() {
         var r=new ProductionRecipe("craft:OUTPUT:0",ProductionRecipe.Kind.CRAFT,"OUTPUT",1,Map.of("INPUT",2),
             Arrays.asList(new ProductionRecipe.Ingredient("INPUT",2),null,null,null,null,null,null,null,null),0,0,"",null);
         var source=menu(1,"Craft Item",item(54,"INPUT",2,List.of()));
         var confirmed=new MenuSnapshot(1,source.title(),true,source.slots(),source.carried(),7);
-        var execute=new CraftingExecutor();var actions=new RecordingActions();execute.tick(r,confirmed,actions,Map.of(),1000);
+        var execute=new CraftingExecutor(()->50);var actions=new RecordingActions();execute.tick(r,confirmed,actions,Map.of(),1000);
         execute.tick(r,confirmed,actions,Map.of(),4000);execute.tick(r,confirmed,actions,Map.of(),7000);
         assertEquals(1,actions.serverEffects().size());
         assertEquals(CraftingExecutor.Result.BLOCKED,execute.tick(r,confirmed,actions,Map.of(),9500));

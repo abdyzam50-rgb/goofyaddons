@@ -45,6 +45,11 @@ final class GeneralOrderEntry {
         int create = ctx.find(createLabel(ctx), false);
         if (ctx.menu("Bazaar") || productMenuMatches(ctx, create)) ctx.transition(Step.PRODUCT);
     }
+    int searchNavigationTarget(GeneralContext ctx) {
+        // Search quotes are advisory. Opening one exact result does not buy anything;
+        // product controls and transaction quotes are still checked on the next page.
+        return ctx.active()!=null && ctx.find(createLabel(ctx),false)<0?searchResult(ctx):-1;
+    }
 
     void product(GeneralContext ctx) {
         var active = ctx.active();
@@ -96,6 +101,7 @@ final class GeneralOrderEntry {
     }
 
     void confirm(GeneralContext ctx, Side side) {
+        if(ctx.capital().orderCooldownRemaining(ctx.now())>0){ctx.finishWork();return;}
         var view = ctx.view();
         var active = ctx.active();
         if (!ctx.menu("Confirm")) return;
@@ -192,13 +198,8 @@ final class GeneralOrderEntry {
         return com.goofy.goofyaddons.features.transaction.ProductIdentity.productPage(ctx.view(), active.item.id(), active.item.name(), create);
     }
 
+    /** The same result choice as every other Bazaar search: identity first, then a unique exact name. */
     private int searchResult(GeneralContext ctx) {
-        if(!ctx.active().item.id().startsWith("ENCHANTMENT_"))return ctx.find(ctx.active().item.name(),true);
-        int found=-1;
-        for(var slot:ctx.view().slots())if(!slot.inPlayerInventory()
-            && com.goofy.goofyaddons.features.transaction.ProductIdentity.matches(slot,ctx.active().item.id())) {
-            if(found>=0)return -1;found=slot.index();
-        }
-        return found;
+        return com.goofy.goofyaddons.features.transaction.ProductIdentity.searchResult(ctx.view(),ctx.active().item.id(),ctx.active().item.name());
     }
 }

@@ -155,6 +155,34 @@ class MarketAnalysisProtocolTest {
         e.addProperty("expectedProfitSamples",2);
         assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
     }
+    @Test void sameDayModelAcceptsOneVerifiedOutcomeAndSeparatePipelineFailures() {
+        var c=config();var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
+        double original=row.get("coinsPerHour").getAsDouble();var e=new JsonObject();
+        e.addProperty("samples",1);e.addProperty("expectedProfitSamples",1);e.addProperty("sameDayWeight",0.3);
+        e.addProperty("throughputFactor",1);e.addProperty("profitRealizationFactor",0.85);
+        e.addProperty("marketCycleSeconds",row.get("cycleSeconds").getAsDouble());e.addProperty("marketCoinsPerHour",original);
+        e.addProperty("p75ObservedSeconds",row.get("cycleSeconds").getAsDouble());e.addProperty("observedCoinsPerHour",original*0.5);e.addProperty("latestAt",NOW);
+        row.addProperty("coinsPerHour",original*0.85);row.add("executionEvidence",e);
+        assertEquals(0.3,MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst().executionEvidence().get("sameDayWeight"));
+        e.addProperty("samples",0);e.addProperty("expectedProfitSamples",0);e.addProperty("pipelineFailureSamples",1);
+        e.addProperty("profitRealizationFactor",1);e.addProperty("throughputFactor",0.3);e.addProperty("sameDayWeight",0);
+        row.addProperty("cycleSeconds",e.get("marketCycleSeconds").getAsDouble()/0.3);
+        row.addProperty("outputsPerHour",row.get("outputsPerHour").getAsDouble()*0.3);row.addProperty("coinsPerHour",original*0.3);
+        assertEquals(1,MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst().executionEvidence().get("pipelineFailureSamples"));
+        e.addProperty("sameDayWeight",0.9);assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+    }
+    @Test void sameDayLongWaitCanReduceThroughputBelowTheLegacyTenTimesFloor() {
+        var c=config();var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
+        double original=row.get("coinsPerHour").getAsDouble(),seconds=row.get("cycleSeconds").getAsDouble();var e=new JsonObject();
+        e.addProperty("samples",0);e.addProperty("pendingSamples",1);e.addProperty("sameDayWeight",0);
+        e.addProperty("throughputFactor",0.001);e.addProperty("profitRealizationFactor",1);
+        e.addProperty("marketCycleSeconds",seconds);e.addProperty("marketCoinsPerHour",original);
+        e.addProperty("p75ObservedSeconds",seconds/0.001);e.addProperty("observedCoinsPerHour",0);e.addProperty("latestAt",NOW);
+        row.addProperty("coinsPerHour",original*0.001);row.addProperty("outputsPerHour",row.get("outputsPerHour").getAsDouble()*0.001);
+        row.addProperty("cycleSeconds",seconds/0.001);row.add("executionEvidence",e);
+        assertEquals(0.001,MarketAnalysisProtocol.parse(r,request(c,NOW),NOW).rows().getFirst().executionEvidence().get("throughputFactor"));
+        e.remove("sameDayWeight");assertThrows(IllegalArgumentException.class,()->MarketAnalysisProtocol.parse(r,request(c,NOW),NOW));
+    }
     @Test void volumePeerEvidenceCanCalibrateUntestedRoutesWithoutPretendingTheyCompletedTrades() {
         var c=config();var r=response(NOW);var row=r.getAsJsonArray("rows").get(0).getAsJsonObject();
         double original=row.get("coinsPerHour").getAsDouble();var e=new JsonObject();

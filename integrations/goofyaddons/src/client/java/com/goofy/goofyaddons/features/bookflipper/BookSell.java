@@ -56,8 +56,8 @@ final class BookSell {
 
         if (!cancelOffer(ctx, task)) return;
 
-        if (ctx.containerNameCheck(task.getBook().name())) ctx.clock().start(ctx.delay());
-        if (ctx.containerNameCheck(task.getBook().name()) && ctx.scanner().isMenuLoaded(35) && ctx.clock().shouldFire()) {
+        if (com.goofy.goofyaddons.features.bookflipper.helper.BookProductPage.matches(ctx.menu(),task.getBook(),true)) ctx.clock().start(ctx.delay());
+        if (com.goofy.goofyaddons.features.bookflipper.helper.BookProductPage.matches(ctx.menu(),task.getBook(),true) && ctx.scanner().isMenuLoaded(35) && ctx.clock().shouldFire()) {
             if (task.instaSell) {
                 ctx.safetyHalt("Instant book sales need manual confirmation; tracked book retained.");
                 return;
@@ -144,8 +144,8 @@ final class BookSell {
 
         if (!cancelOffer(ctx, task)) return;
 
-        if (ctx.containerNameCheck(task.getBook().name())) ctx.clock().start(ctx.delay());
-        if (ctx.containerNameCheck(task.getBook().name()) && ctx.scanner().isMenuLoaded(35) && ctx.clock().shouldFire()) {
+        if (com.goofy.goofyaddons.features.bookflipper.helper.BookProductPage.matches(ctx.menu(),task.getBook(),true)) ctx.clock().start(ctx.delay());
+        if (com.goofy.goofyaddons.features.bookflipper.helper.BookProductPage.matches(ctx.menu(),task.getBook(),true) && ctx.scanner().isMenuLoaded(35) && ctx.clock().shouldFire()) {
             ctx.navigationClick(16); return;
         }
 

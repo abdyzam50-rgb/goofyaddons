@@ -13,8 +13,9 @@ import com.goofy.goofyaddons.utils.Chat;
  * it when it made all of them. The product page must name the product, the inventory must
  * still hold exactly the expected amount, and the quoted unit price must reach the floor before
  * anything is clicked. The intent is recorded before the click, which is the irreversible step.
- * The sale counts only when the units are gone and the purse rose. Anything else, including a
- * price-warning confirmation screen, ends in review: an instant sale is never repeated.
+ * The sale counts only when the units are gone and the purse rose. An exact price warning
+ * may be confirmed once after its countdown, within the same authorized price bounds.
+ * Unrecognized confirmations end in review: an instant sale is never repeated.
  */
 public final class BazaarInstantSell {
     public enum Result { WAITING, SOLD, BLOCKED, UNCERTAIN }
@@ -29,6 +30,7 @@ public final class BazaarInstantSell {
     private long started, stepAt, heldSince;
     private double purseBefore = Double.NaN, proceeds;
     private String failure;
+    private boolean warningClicked;
 
     public BazaarInstantSell(String productId,String name,int amount,double minimumProceeds,BazaarInstantBuy.Intent intent) {
         this(productId,name,amount,minimumProceeds,Double.POSITIVE_INFINITY,intent);
@@ -48,7 +50,7 @@ public final class BazaarInstantSell {
     public Result tick(MenuSnapshot menu, GameActions actions, double purse, long now) {
         if (step == Step.DONE) return Result.SOLD;
         if (started == 0) started = now;
-        if (step == Step.VERIFY) return verify(menu, purse, now);
+        if (step == Step.VERIFY) return verify(menu, actions, purse, now);
         if (now - started > 45_000) return block("Instant sale of " + name + " did not reach the product page; nothing sold");
         // Hypixel menus can leave a clicked button on the cursor until the server resyncs it, so
         // a held item pauses clicks for a moment before it blocks. Opening the Bazaar is a command.
@@ -63,6 +65,7 @@ public final class BazaarInstantSell {
         }
         int control = productControl(menu);
         if (control < 0) return Result.WAITING;
+        if(menu.loading(control))return Result.WAITING;
         if (count(menu) != amount) return block("Inventory holds a different amount of " + name + " than the run made; sell it by hand");
         Double quoted = quotedProceeds(menu.slot(control).lore(), amount);
         if (quoted == null) return block("Instant sale price for " + name + " is unreadable: " + Chat.strip(menu.slot(control).lore()).replace('\n', ' '));
@@ -76,13 +79,36 @@ public final class BazaarInstantSell {
         return Result.WAITING;
     }
 
-    private Result verify(MenuSnapshot menu, double purse, long now) {
-        if (menu != null && menu.title() != null && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm"))
-            return uncertain("Unexpected instant sale confirmation screen; inspect it before continuing");
+    private Result verify(MenuSnapshot menu, GameActions actions, double purse, long now) {
         if (menu != null && Double.isFinite(purse) && purse >= 0 && count(menu) == 0 && purse > purseBefore) {
             double delta=purse-purseBefore;
             if(delta+0.51<minimumProceeds||delta>maximumProceeds+0.51)return uncertain("Sale purse delta is outside the quoted range; profit is unverified");
             proceeds=delta;step=Step.DONE;return Result.SOLD;
+        }
+        if (menu != null && menu.title() != null && Chat.strip(menu.title()).toLowerCase(java.util.Locale.ROOT).contains("confirm")) {
+            int warning=-1;
+            for(var slot:menu.slots()) {
+                if(slot.empty() || slot.inPlayerInventory() || !"WARNING".equals(Chat.strip(slot.hoverName())))continue;
+                String lore=Chat.strip(slot.lore());
+                if(!lore.lines().anyMatch(name::equals) || !lore.contains("for much lower than the average")
+                    || !lore.contains("insta-selling price!"))continue;
+                var matched=java.util.regex.Pattern.compile("(?m)^Matched Amount: ([0-9,]+)x$").matcher(lore);
+                var unit=java.util.regex.Pattern.compile("(?m)^Per unit: ([0-9,]+(?:\\.[0-9]+)?) coins$").matcher(lore);
+                if(!matched.find() || !unit.find())continue;
+                double quote=Double.parseDouble(unit.group(1).replace(",",""))*amount;
+                if(Integer.parseInt(matched.group(1).replace(",",""))!=amount || quote<minimumProceeds || quote>maximumProceeds)continue;
+                if(warning>=0)return uncertain("Ambiguous instant sale warning; no confirmation clicked");
+                warning=slot.index();
+            }
+            if(warning<0)return uncertain("Unexpected instant sale confirmation screen; inspect it before continuing");
+            if(!warningClicked && menu.cursorEmpty() && !menu.loading(warning)
+                && java.util.regex.Pattern.compile("(?im)^Click to (?:sell|proceed|confirm)!$").matcher(Chat.strip(menu.slot(warning).lore())).find()) {
+                try { intent.record("Instant sale warning confirmation: "+amount+" "+productId+" within authorized proceeds range"); }
+                catch(Exception journal){return uncertain("Instant sale warning intent could not be saved; no confirmation clicked");}
+                com.goofy.goofyaddons.diagnostics.Diagnostics.event("INFO","production.instant_sale_warning_confirmed",java.util.Map.of(
+                    "product",productId,"amount",amount,"slot",warning,"container",menu.containerId(),"minimumProceeds",minimumProceeds));
+                warningClicked=true;stepAt=now;actions.click(warning,false);
+            }
         }
         return now - stepAt > RecoveryRules.RECEIPT_GRACE_MS ? uncertain("Instant sale of " + name + " was not confirmed by inventory and purse") : Result.WAITING;
     }

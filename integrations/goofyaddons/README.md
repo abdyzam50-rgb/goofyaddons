@@ -1,3 +1,6 @@
+> Historical standalone documentation. For the current combined mod, use the
+> [command reference](../../docs/COMMANDS.md). Older slash commands, keybinds and storage paths below may differ.
+
 # Imported trader module
 
 This directory preserves GoofyAddons source, regression tests, fixtures and license.
