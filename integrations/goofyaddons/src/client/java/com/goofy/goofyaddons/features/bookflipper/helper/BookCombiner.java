@@ -17,6 +17,7 @@ public final class BookCombiner {
     private Phase phase;
     private int container, beforeInput, beforeOutput;
     private long started;
+    private long excessSince=-1;
     private long learnedClaimDelay,claimNotBefore;
     private String failure;
     private java.util.Map<String,Integer> skillLevels=java.util.Map.of();
@@ -44,9 +45,9 @@ public final class BookCombiner {
     public java.util.Map<String,Object> diagnosticState() {
         return java.util.Map.of("phase",progress(),"container",container,"inputLevel",first==null?0:first.level,
                 "beforeInputs",beforeInput,"beforeOutputs",beforeOutput,"failure",failure==null?"none":failure,
-                "actionRetries",retry.retries(),"learnedClaimDelayMs",learnedClaimDelay,"claimNotBefore",claimNotBefore);
+                "actionRetries",retry.retries(),"learnedClaimDelayMs",learnedClaimDelay,"claimNotBefore",claimNotBefore,"excessSince",excessSince);
     }
-    public void reset() { owner=null;first=null;second=null;phase=null;failure=null;retry.reset(); }
+    public void reset() { owner=null;first=null;second=null;phase=null;failure=null;excessSince=-1;retry.reset(); }
 
     public Result tick(Task task, MenuSnapshot menu, GameActions actions, long now) {
         if (failure != null) return Result.BLOCKED;
@@ -96,8 +97,15 @@ public final class BookCombiner {
         }
         if (now - started >= 30_000)
             return block("Anvil operation timed out; inputs and ownership retained.");
-        if (output>beforeOutput+1 || input>beforeInput)
-            return block("Unexpected books arrived during combination; reconcile before continuing.");
+        if (output>beforeOutput+1 || input>beforeInput) {
+            // The input slot packet can arrive before the inventory removal packet.
+            // Freeze this operation instead of treating that overlap as new ownership.
+            if(excessSince<0)excessSince=now;
+            retry.clearObservation();
+            if(now-excessSince<2000)return Result.WAITING;
+            return block("Unexpected books remained after anvil updates settled; reconcile before continuing.");
+        }
+        excessSince=-1;
         if (retry.coolingDown(now)) { retry.clearObservation();return Result.WAITING; }
         if (phase==Phase.FIRST_INPUT) {
             if (occupied(menu.slot(29)) && !matches(menu.slot(29),book,level)
