@@ -176,7 +176,7 @@ final class GeneralOrderReview {
             ctx.actions().closeMenu();
             return;
         }
-        if (soldUnits >= 0 && ctx.shouldReprice(true) && (ctx.services().productionOnly() || active.reprices < settings.maxReprices) && ctx.freshQuotes()
+        if (soldUnits >= 0 && ctx.shouldReprice(true) && (ctx.services().productionOnly() || active.reprices < settings.maxReprices || active.holdingExpired(ctx.now(),settings.maxHoldingSeconds)) && ctx.freshQuotes()
                 && ctx.saleAllowed(ctx.currentAsk())) {
             ctx.services().event("INFO","order.sell_reprice",java.util.Map.of("trade",active.tradeId,"parent",active.productionParent==null?"none":active.productionParent,"oldPrice",active.sellPrice,"newPrice",ctx.currentAsk(),"remaining",active.quantity-soldUnits));
             trade.selling = true;

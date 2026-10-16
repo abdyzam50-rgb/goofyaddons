@@ -538,7 +538,8 @@ public class GeneralFlipper implements Feature {
     }
 
     private boolean shouldReprice(boolean sell) {
-        if (!freshQuotes() || (!services.productionOnly() && active.reprices >= settings().maxReprices)
+        if (!freshQuotes() || (!services.productionOnly() && active.reprices >= settings().maxReprices
+                && !(sell && active.holdingExpired(world.now(),settings().maxHoldingSeconds)))
                 || world.now() - active.placedAt < settings().repriceCooldownSeconds * 1000L) return false;
         // Ingredient replacements return to the parent planner after verified cancellation.
         // It checks the whole basket again; standalone item-flip repricing limits do not apply.

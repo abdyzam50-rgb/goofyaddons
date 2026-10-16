@@ -170,7 +170,8 @@ public final class MarketAnalysisProtocol {
                 int samples=integer(e,"samples",0,2000);double factor=positive(e,"throughputFactor");
                 double baseline=positive(e,"marketCycleSeconds"),baselineCoins=positive(e,"marketCoinsPerHour");
                 long latest=timestamp(e,"latestAt");
-                if(factor<0.1 || factor>1.5 || !same(seconds,baseline/factor) || !same(coins,baselineCoins*factor*realization)
+                boolean sameDay=e.has("sameDayWeight");
+                if(factor<(sameDay?0.000001:0.1) || factor>1.5 || !same(seconds,baseline/factor) || !same(coins,baselineCoins*factor*realization)
                         || latest>now+5000 || now-latest>86400000)throw new IllegalArgumentException("Invalid personal execution calibration");
                 int pending=e.has("pendingSamples")?integer(e,"pendingSamples",0,100):0;
                 int censored=e.has("censoredSamples")?integer(e,"censoredSamples",0,2000):0;
@@ -178,7 +179,6 @@ public final class MarketAnalysisProtocol {
                 int sharedProfit=e.has("sharedProfitSamples")?integer(e,"sharedProfitSamples",0,2000):0;
                 int failed=e.has("pipelineFailureSamples")?integer(e,"pipelineFailureSamples",0,2000):0;
                 int losses=e.has("lossSamples")?integer(e,"lossSamples",0,2000):0;
-                boolean sameDay=e.has("sameDayWeight");
                 if(shared>0 && shared<3 || sharedProfit>shared || samples<(sameDay?1:3) && pending+censored+failed+losses==0 && shared<3 || samples+shared<(sameDay?6:10) && factor>1)
                     throw new IllegalArgumentException("Insufficient personal execution evidence");
                 int expectedSamples=e.has("expectedProfitSamples")?integer(e,"expectedProfitSamples",0,2000):0;

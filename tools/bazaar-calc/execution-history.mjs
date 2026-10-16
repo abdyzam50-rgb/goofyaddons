@@ -24,7 +24,7 @@ export class ExecutionHistory {
     try { if(readFileSync(this.file).length>2*1024*1024)throw new Error('History too large');this.ingest(JSON.parse(readFileSync(this.file,'utf8')),false); }
     catch(e){if(e.code!=='ENOENT')this.error=`Execution history unreadable; preserved: ${e.message}`;}
   }
-  ingest(samples,save=true) {
+  ingest(samples,save=true,replace=false) {
     if(!Array.isArray(samples)||samples.length>2000)throw new Error('Invalid execution samples');
     const rows=samples.map(s=>{
       if(!s||typeof s.eventId!=='string'||!s.eventId.length||s.eventId.length>200||!['books','general'].includes(s.engine)
@@ -43,7 +43,8 @@ export class ExecutionHistory {
         buyMode:s.buyMode??'order',sellMode:s.sellMode??'offer',outcome:s.outcome??(s.eligible?'COMPLETED':s.censored?'RETIRED':'UNKNOWN'),completedAt:s.completedAt,observedMillis:s.observedMillis,proceeds:s.proceeds??null,profit:s.profit??null,eligible:s.eligible,censored:s.censored===true,expectedProfit:s.expectedProfit??null,forecast:s.forecast?{cycleSeconds:s.forecast.cycleSeconds,inputPerDay:s.forecast.inputPerDay,outputPerDay:s.forecast.outputPerDay}:null};
     });
     if(this.error)return;
-    let changed=false;
+    let changed=replace && JSON.stringify([...this.rows.values()])!==JSON.stringify(rows);
+    if(replace)this.rows=new Map(); // The mod snapshot is authoritative for its current profile, including history resets.
     for(const s of rows)if(s.completedAt>=this.now()-7*DAY&&!this.rows.has(s.eventId)){this.rows.set(s.eventId,s);changed=true;}
     for(const [id,s]of this.rows)if(s.completedAt<this.now()-7*DAY){this.rows.delete(id);changed=true;}
     this.rows=new Map([...this.rows.entries()].sort((a,b)=>a[1].completedAt-b[1].completedAt).slice(-2000));
@@ -85,7 +86,8 @@ export class ExecutionHistory {
       &&strategyMatches(s,row)&&s.completedAt>=this.now()-DAY);
     const losses=[...this.rows.values()].filter(s=>s.outcome==='LOSS'&&s.profit!=null&&s.expectedProfit>0&&s.completedAt>=this.now()-DAY&&matching(s));
     const normalized=s=>s.observedMillis/1000/s.batch*row.batch;
-    const lower=[...censored,...pending].map(normalized).filter(t=>t>row.cycleSeconds);
+    const lower=[...censored.map(s=>row.cycleSeconds+Math.max(0,normalized(s)-row.cycleSeconds)*dayFreshness(s.completedAt,this.now())),
+      ...pending.map(normalized)].filter(t=>t>row.cycleSeconds);
     // Transfer ratios, never raw durations, from the same engine and similar two-sided volumes.
     // Volume is expressed per output unit so 16-input book recipes can be compared fairly.
     const v=row.volumeEvidence,recipe=row.inputUnits/row.batch;
@@ -118,7 +120,7 @@ export class ExecutionHistory {
     const weightedTimes=recent.map((s,i)=>({seconds:validForecast(s.forecast)?row.cycleSeconds*(s.observedMillis/1000)/s.forecast.cycleSeconds:normalized(s),weight:dayFreshness(s.completedAt,this.now())}));
     const observed=times.length?weightedQuantile(weightedTimes,'seconds',0.75):row.cycleSeconds;
     row.marketCycleSeconds=row.cycleSeconds;
-    const rawFactor=Math.max(0.1,Math.min(1.5,row.marketCycleSeconds/observed));
+    const rawFactor=Math.max(0.000001,Math.min(1.5,row.marketCycleSeconds/observed));
     // Downward evidence starts after three cycles; an improvement needs ten.
     const freshness=recent.length?recent.reduce((n,s)=>n+dayFreshness(s.completedAt,this.now()),0)/recent.length:0;
     const strength=dayWeight(recent.length)*freshness;
@@ -127,7 +129,7 @@ export class ExecutionHistory {
     let factor=1/((1-strength)/prior+strength/personalFactor);
     const overdue=lower.length?Math.max(...lower):0;
     if(overdue) {
-      const lowerFactor=Math.max(0.1,row.marketCycleSeconds/overdue);
+      const lowerFactor=Math.max(0.000001,row.marketCycleSeconds/overdue);
       // Unfinished, continuously observed cycles supply duration lower bounds.
       factor=Math.min(factor,lowerFactor);
     }
@@ -138,7 +140,7 @@ export class ExecutionHistory {
     const reliability=1-0.7*failureWeight/Math.max(1,failureWeight+successWeight);
     const marketTimingFactor=factor;
     factor*=reliability;
-    factor=Math.max(0.1,Math.min(1.5,factor));
+    factor=Math.max(0.000001,Math.min(1.5,factor));
     if(Number.isFinite(row.maxOutputsPerHour))factor=Math.min(factor,row.maxOutputsPerHour/(row.batch/row.marketCycleSeconds*3600));
     row.cycleSeconds=row.marketCycleSeconds/factor;
     row.outputsPerHour=row.batch/row.cycleSeconds*3600;

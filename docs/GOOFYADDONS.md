@@ -1,8 +1,8 @@
 # Trading inside A*
 
-Current combined release: **0.2.130-BETA**, Minecraft **26.3**, Java **25**,
+Current combined release: **0.2.131-BETA**, Minecraft **26.3**, Java **25**,
 Fabric Loader **0.19.5+** and Fabric API **0.161.0+26.3**.
-Download [the combined JAR](../dist/astar-client-0.2.130-BETA.jar).
+Download [the combined JAR](../dist/astar-client-0.2.131-BETA.jar).
 Install it with Fabric API; remove duplicate standalone A*/GoofyAddons JARs.
 
 The [command reference](COMMANDS.md) is the source for current user commands,
@@ -72,6 +72,10 @@ exceeds the forecast. Outbid/reprice time stays in the original cycle. Retired
 orders retain a duration lower bound; verified losses reduce profit realization.
 Three market stalls within 15 minutes defer new entries for that route for five
 minutes after the latest stall; existing positions still receive maintenance.
+The mod sends authoritative personal-history snapshots: profile changes and
+history resets remove stale private samples from the companion. Directly
+observed waits can reduce throughput beyond 10×; borrowed peer corrections
+remain bounded.
 GUI/verification failures reduce engine/strategy reliability separately from
 market timing. Pausing or disconnecting alone is not recorded as a market failure.
 No failure record invents a sale, refund or realized profit.
@@ -81,6 +85,11 @@ their comparison in All mode. Manual preset selection, the separate craft ranker
 and the public website do not consume this local execution calibration.
 
 ## Budget and timing
+
+After the holding-time limit expires, an outbid General sell offer can resume
+repricing beyond the normal reprice cap. Ownership, quote freshness, cooldown,
+inventory capacity and drawdown checks still apply. This does not force an
+instant sale or guarantee a buyer.
 
 `maxTradingCapital` caps estimated committed input costs. `purseReserve` leaves
 coins free; it is not a batch budget. Craft batch capital is a per-run maximum;
@@ -192,7 +201,7 @@ from the cloned repository, with the existing D1/Worker configuration.
 
 Build from the repository root with `./gradlew -p client test build` (Windows:
 `.\gradlew.bat -p client test build`). Output:
-`client/build/libs/astar-client-0.2.130-BETA.jar`. Automated checks cover simulated
+`client/build/libs/astar-client-0.2.131-BETA.jar`. Automated checks cover simulated
 transactions and regression cases; [in-game validation](guides/IN_GAME_VALIDATION.md)
 still needs the actual server's menus, latency and account state.
 

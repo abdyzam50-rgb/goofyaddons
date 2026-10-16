@@ -39,6 +39,10 @@ public final class GeneralPosition {
     double minimumSellPrice;
     /** BUY, SELL or BOTH for a player-started flip test, which skips the profit filters; null otherwise. */
     String test;
+    boolean holdingExpired(long now,int seconds) {
+        long since=heldSince>0?heldSince:placedAt;
+        return since>0 && now-since>=seconds*1000L;
+    }
     double cost() { return quantity * unitCost; }
     int acquiredInventory(int total) { return productionBuy ? total - productionInventoryBefore + productionStoredUnits : total; }
 

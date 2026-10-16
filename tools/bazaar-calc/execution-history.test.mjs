@@ -187,3 +187,28 @@ test('three recent retired stalls set a bounded entry cooldown without inventing
   assert.equal(r.executionEvidence.observedCoinsPerHour,0);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test('authoritative profile snapshots remove stale personal evidence and history resets survive restart',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'goofy-authoritative-history-'));
+ try {
+  const file=join(dir,'history.json'),h=new ExecutionHistory({file,now:()=>now});
+  h.ingest(Array.from({length:6},(_,i)=>({...sample(i),inputId:'FUMING_POTATO_BOOK',outputId:'FUMING_POTATO_BOOK'})));
+  const previous={...row(),inputId:'FUMING_POTATO_BOOK',outputId:'FUMING_POTATO_BOOK'};h.calibrate(previous);assert.equal(previous.executionEvidence.samples,6);
+  h.ingest([sample(50)],true,true);
+  const current={...row(),inputId:'FUMING_POTATO_BOOK',outputId:'FUMING_POTATO_BOOK'};h.calibrate(current);assert.equal(current.executionEvidence,undefined);
+  assert.equal(h.rows.size,1);assert.equal(new ExecutionHistory({file,now:()=>now}).rows.size,1);
+  assert.throws(()=>h.ingest([{...sample(51),profit:Infinity}],true,true));assert.equal(h.rows.size,1,'invalid snapshots cannot erase valid evidence');
+  h.ingest([],true,true);assert.equal(new ExecutionHistory({file,now:()=>now}).rows.size,0);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('multi-hour observed stalls cannot be hidden behind a ten-times slowdown floor',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'goofy-long-wait-'));
+ try {
+  const h=new ExecutionHistory({file:join(dir,'history.json'),now:()=>now});
+  h.ingestActive([{tradeId:'ten-hours',engine:'general',inputId:'COAL',outputId:'COAL',inputUnits:16,batch:16,startedAt:now-36000000,observedAt:now,observedMillis:36000000}]);
+  const r=row();h.calibrate(r);assert.equal(r.cycleSeconds,36000);assert.ok(r.executionEvidence.throughputFactor<0.1);
+  assert.ok(Math.abs(r.coinsPerHour-4.8)<1e-9);assert.equal(r.executionEvidence.samples,0);
+  const smaller={...row(),batch:8,inputUnits:8,cycleSeconds:30};h.calibrate(smaller);assert.equal(smaller.cycleSeconds,18000);assert.ok(Math.abs(smaller.coinsPerHour-4.8)<1e-9);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});

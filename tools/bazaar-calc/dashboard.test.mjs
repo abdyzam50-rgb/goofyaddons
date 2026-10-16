@@ -78,3 +78,20 @@ test('full slots and unreadable purse keep fresh rankings visible while the plan
  const next=structuredClone(body);next.sentAt++;next.analysis.pipeline.account.ready=false;next.analysis.pipeline.account.reason='Purse is unreadable';state.accept(next);assert.ok(state.view().predictions);assert.equal(state.view().pipeline.account.reason,'Purse is unreadable');
  next.sentAt++;next.analysis.pipeline.account.ready=true;next.analysis.pipeline.account.generalSlots=1;state.accept(next);assert.ok(state.view().predictions);
 });
+
+test('both full execution feeds replace personal evidence and late snapshots cannot resurrect cleared trades',async()=>{
+ const feeds=[];const executions={ingest(rows,save,replace){feeds.push({rows,save,replace});},ingestActive(){},status:()=>({samples:feeds.at(-1)?.rows.length??0,error:null})};
+ const server=createCompanion({executions});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const url=`http://127.0.0.1:${server.address().port}`;
+ const send=(route,body,extra={})=>fetch(url+route,{method:'POST',headers:{'Content-Type':'application/json','X-Goofy-Dashboard':'local-v1',...extra},body:JSON.stringify(body)});
+ try {
+  const at=Date.now(),old={protocol:'goofy-executions/1',sentAt:at,executions:[{eventId:'removed'}]};
+  assert.equal((await send('/v1/executions',old)).status,200);
+  const current={...snapshot(at+1),executions:[],activeExecutions:[]};
+  assert.equal((await send('/v1/account',current,{'X-Goofy-Dashboard':'local-v1'})).status,200);
+  assert.equal((await send('/v1/executions',old)).status,200);
+  assert.equal(feeds.length,2);assert.ok(feeds.every(f=>f.replace===true));assert.deepEqual(feeds.at(-1).rows,[]);
+  const errored={...current,sentAt:at+2,executions:[{eventId:'invalid-source'}],executionError:'History unreadable'};
+  assert.equal((await send('/v1/account',errored,{'X-Goofy-Dashboard':'local-v1'})).status,200);assert.equal(feeds.length,2);
+ }finally{await new Promise(r=>server.close(r));}
+});
