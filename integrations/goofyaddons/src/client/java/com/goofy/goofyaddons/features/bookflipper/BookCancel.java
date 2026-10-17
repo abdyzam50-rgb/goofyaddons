@@ -22,6 +22,8 @@ final class BookCancel {
     /** Forgets observation windows when the engine changes state. */
     void stateChanged() { outbidFlow.reset(); startupOrders.reset(); }
     void resetStartup() { startupOrders.reset(); }
+    java.util.Map<String,Object> diagnosticState() {return java.util.Map.of("pending",outbidFlow.cancellationSent(),
+            "awaitingFreshOrder",outbidFlow.awaitingFreshOrder(),"reopens",outbidFlow.cancellationReopens());}
 
     /** Read once per tick, before any checkpoint, while checking startup orders. */
     List<Task> startupMissing(BookContext ctx) {
@@ -106,6 +108,10 @@ final class BookCancel {
         if (outbidFlow.cancellationTimedOut(ctx.now())) {
             ctx.safetyHalt("Outbid book cancellation was not verified; no replacement submitted."); return;
         }
+        if(outbidFlow.cancellationReopenDue(ctx.now()) && ctx.menu().cursorEmpty()) {
+            outbidFlow.reopenCancellation(ctx.now());ctx.actions().closeMenu();ctx.clock().stop();
+            ctx.services().event("WARN","books.outbid_cancel_reopen",java.util.Map.of("trade",task.getProfitTradeId(),"attempt",outbidFlow.cancellationReopens()));return;
+        }
         boolean navigatingOutbid = !ctx.screenOpen()
                 || !TradingSafety.ordersTitle(ctx.menuTitle()) && !ctx.containerNameCheck("Order");
         if (navigatingOutbid) ctx.clock().start(ctx.delay());
@@ -136,8 +142,12 @@ final class BookCancel {
                 return;
             }
 
-            if (outbidFlow.cancellationSent()) return; // Wait for removal; never re-claim/cancel stale packets.
             if (!ctx.bookOrderAdoptable(task, slot.getFirst(), "outbid-order-amount-unreadable")) return;
+            if (outbidFlow.cancellationSent()) {
+                if(!outbidFlow.resumeFreshOrder(ctx.menu(),slot.getFirst(),ctx.username()))return;
+                ctx.services().event("WARN","books.outbid_cancel_retry_verified",java.util.Map.of("trade",task.getProfitTradeId(),"attempt",outbidFlow.cancellationReopens()));
+            }
+            outbidFlow.rememberOrder(ctx.menu(),slot.getFirst());
             int amount = ctx.scanner().checkOrder(slot.getFirst());
             if (amount > ctx.scanner().getEmptyInventorySlots()) {
                 ctx.debug("[BazaarFlipper] OUTBID: not enough empty inventory slots to claim " + amount + " items, going to IDLE and marking inventory full");

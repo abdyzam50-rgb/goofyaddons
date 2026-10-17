@@ -31,6 +31,32 @@ class BookEngineIsolationTest {
         assertNull(services.pauseReason);assertEquals(List.of("click:32"),actions.serverEffects());
         assertEquals(Task.BookState.OUTBID,task.getBookState());assertEquals(0,services.accounting.effects);
     }
+    @Test void silentOutbidCancellationReopensAndRetriesOnlyAfterFreshOwnedOrder()throws Exception {
+        var world=new FakeWorld().username("curedmc").showing(menu(0));var actions=new RecordingActions();var services=new Services(world);
+        var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();
+        var task=new Task(BOOK,false,false);task.setBookState(Task.BookState.OUTBID);
+        field(engine,"taskList",new ArrayList<>(List.of(task)));field(engine,"state",BazaarFlipper.State.OUTBID);
+        var slots=new ArrayList<>(menu(3).slots());slots.set(11,SlotView.named(11,"BUY Wisdom I",List.of("Order amount: 16","Filled: 0/16",
+                "Price per unit: 100 coins","By: [MVP+] curedmc","Click to view options!")));
+        world.showing(new MenuSnapshot(10,"Co-op Bazaar Orders",true,slots));
+        for(int n=0;n<30&&actions.serverEffects().isEmpty()&&services.pauseReason==null;n++){engine.onTick();world.advance(100);}
+        assertEquals(List.of("click:11"),actions.serverEffects());
+        var options=new ArrayList<>(menu(3).slots());options.set(11,SlotView.named(11,"Cancel Order",List.of("You will be refunded 1,600 coins")));
+        world.showing(new MenuSnapshot(11,"Order options",true,options));
+        for(int n=0;n<20&&actions.serverEffects().size()<2&&services.pauseReason==null;n++){engine.onTick();world.advance(100);}
+        assertEquals(List.of("click:11","click:11"),actions.serverEffects());
+        world.advance(5001);engine.onTick();assertTrue(actions.performed().contains("close"));assertNull(services.pauseReason);
+        world.showing(menu(0));
+        for(int n=0;n<20&&!actions.serverEffects().contains("command:managebazaarorders");n++){engine.onTick();world.advance(100);}
+        assertTrue(actions.serverEffects().contains("command:managebazaarorders"));
+        world.showing(new MenuSnapshot(12,"Co-op Bazaar Orders",true,slots));int before=actions.serverEffects().size();
+        for(int n=0;n<30&&actions.serverEffects().size()==before&&services.pauseReason==null;n++){engine.onTick();world.advance(100);}
+        assertEquals("click:11",actions.serverEffects().getLast());assertTrue(actions.serverEffects().size()>before);
+        world.showing(new MenuSnapshot(13,"Order options",true,options));before=actions.serverEffects().size();
+        for(int n=0;n<20&&actions.serverEffects().size()==before&&services.pauseReason==null;n++){engine.onTick();world.advance(100);}
+        assertTrue(actions.serverEffects().size()>before);assertEquals("click:11",actions.serverEffects().getLast());
+        assertNull(services.pauseReason);assertEquals(0,services.accounting.effects);assertEquals(Task.BookState.OUTBID,task.getBookState());
+    }
     @Test void buyNavigationIgnoresWrongLevelAndUsesOnlyTheInputLevel()throws Exception {
         var world=new FakeWorld().showing(menu(0));var services=new Services(world);var actions=new RecordingActions();
         var engine=new BazaarFlipper(world,actions,new Store(),services);engine.start();

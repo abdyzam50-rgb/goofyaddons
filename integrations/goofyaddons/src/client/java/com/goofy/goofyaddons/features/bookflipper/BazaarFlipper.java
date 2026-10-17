@@ -169,7 +169,7 @@ public class BazaarFlipper implements Feature {
         state.put("state",this.state.name());state.put("recoveryRequired",recoveryRequired);
         state.put("recovery",java.util.Map.of("pending",recoveryPending(),"fileError",recoveryFileError,"records",recoveryPositions,"progress",recoveryCheck==null?"not checking":recoveryCheck.progress()));state.put("inventoryFull",inventoryIsFull);
         state.put("buyClaimPending",claim.pendingBuy()!=null);state.put("buyClaimBefore",claim.buyBefore());state.put("buyClaimExpected",claim.buyExpected());
-        state.put("navigationPending",navigationRetry.pending());
+        state.put("navigationPending",navigationRetry.pending());state.put("outbidCancellation",cancel.diagnosticState());
         state.put("retirement",retirement.diagnosticState());
         state.put("sellCancelPending",sellCancellation.pending());
         state.put("saleClaimPending",claim.pendingSale()!=null);state.put("saleReceipt",claim.saleReceipt());

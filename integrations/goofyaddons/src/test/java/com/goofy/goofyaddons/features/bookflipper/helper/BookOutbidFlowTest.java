@@ -132,4 +132,32 @@ class BookOutbidFlowTest {
         assertFalse(flow.freshAfterCancellation(64));assertTrue(flow.cancellationTimedOut(31000));
         flow.reset();flow.selectTrade("pending-trade");assertFalse(flow.cancellationSent());
     }
+    private MenuSnapshot ownedBuy(int container,String owner,double price,int units) {
+        return menu(container,"Co-op Bazaar Orders",90,SlotView.named(11,"BUY Overload I",List.of("Order amount: "+units,"Filled: 0/"+units,
+                "Price per unit: "+price+" coins","By: [MVP+] "+owner,"Click to view options!")));
+    }
+    @Test void silentCancellationReopensTwiceOnlyAfterFreshExactOwnershipEvidence() {
+        var flow=new BookOutbidFlow();flow.selectTrade("trade");flow.rememberOrder(ownedBuy(10,"curedmc",100,16),11);
+        for(int i=0;i<2;i++) {
+            long now=i*10000L;flow.sentCancellation(11+i*2,now);
+            assertFalse(flow.cancellationReopenDue(now+4999));assertTrue(flow.cancellationReopenDue(now+5000));
+            flow.reopenCancellation(now+5000);assertTrue(flow.awaitingFreshOrder());
+            assertEquals("managebazaarorders",flow.navigate(book,null).command());
+            assertFalse(flow.resumeFreshOrder(ownedBuy(11+i*2,"curedmc",100,16),11,"curedmc"));
+            assertTrue(flow.resumeFreshOrder(ownedBuy(12+i*2,"curedmc",100,16),11,"curedmc"));
+            assertFalse(flow.cancellationSent());
+        }
+        flow.sentCancellation(20,20000);assertFalse(flow.cancellationReopenDue(25000));assertTrue(flow.cancellationTimedOut(50000));
+        assertEquals(2,flow.cancellationReopens());
+    }
+    @Test void cancellationRecoveryCannotAdoptChangedPriceQuantityOwnerOrProduct() {
+        var flow=new BookOutbidFlow();flow.selectTrade("trade");flow.rememberOrder(ownedBuy(10,"curedmc",100,16),11);
+        flow.sentCancellation(11,0);flow.reopenCancellation(5000);
+        for(var candidate:List.of(ownedBuy(12,"OtherPlayer",100,16),ownedBuy(12,"curedmc",101,16),ownedBuy(12,"curedmc",100,15),
+                menu(12,"Co-op Bazaar Orders",90,SlotView.named(11,"BUY Overload II",List.of("Order amount: 16","Filled: 0/16","Price per unit: 100 coins","By: curedmc")))))
+            assertFalse(flow.resumeFreshOrder(candidate,11,"curedmc"));
+        assertTrue(flow.cancellationSent());assertTrue(flow.awaitingFreshOrder());
+        flow.selectTrade("next-trade");assertEquals(0,flow.cancellationReopens());assertFalse(flow.cancellationSent());
+    }
+
 }

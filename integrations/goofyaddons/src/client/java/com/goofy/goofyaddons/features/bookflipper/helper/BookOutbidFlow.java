@@ -12,10 +12,16 @@ public final class BookOutbidFlow {
     private boolean useOrdersFallback;
     private long cancellationAt;
     private String tradeId;
+    private int cancellationReopens;
+    private boolean awaitingFreshOrder;
+    private String orderName;
+    private Integer orderTotal;
+    private Double orderPrice;
 
     public void reset() {
         clickedContainer = -1; cancellationContainer = -1;
         useOrdersFallback = false; cancellationAt = 0; tradeId = null;
+        cancellationReopens=0;awaitingFreshOrder=false;orderName=null;orderTotal=null;orderPrice=null;
     }
 
     /** The engine can handle several OUTBID tasks without changing its outer state.
@@ -64,6 +70,31 @@ public final class BookOutbidFlow {
         return new Navigation(null, slot, false);
     }
 
+    public void rememberOrder(MenuSnapshot menu,int slot) {
+        if(orderName!=null)return;
+        var item=menu.slot(slot);orderName=item.hoverName();
+        orderTotal=com.goofy.goofyaddons.features.generalflipper.OrderLore.total(item.lore());
+        orderPrice=com.goofy.goofyaddons.features.profit.TradeReceipts.unitPrice(item.lore());
+    }
+    public boolean cancellationReopenDue(long now) {
+        return cancellationSent() && !awaitingFreshOrder && now-cancellationAt>=5000 && cancellationReopens<2;
+    }
+    public void reopenCancellation(long now) {
+        if(!cancellationReopenDue(now))throw new IllegalStateException("Cancellation reopen is not due");
+        cancellationReopens++;awaitingFreshOrder=true;useOrdersFallback=true;clickedContainer=-1;cancellationAt=now;
+    }
+    public boolean awaitingFreshOrder(){return awaitingFreshOrder;}
+    /** The caller also checks uniqueness and the route's allowable quantity before resuming. */
+    public boolean resumeFreshOrder(MenuSnapshot menu,int slot,String username) {
+        if(!awaitingFreshOrder || menu.containerId()==cancellationContainer || orderTotal==null || orderPrice==null)return false;
+        var item=menu.slot(slot);if(item==null || item.empty() || item.inPlayerInventory())return false;
+        var price=com.goofy.goofyaddons.features.profit.TradeReceipts.unitPrice(item.lore());
+        if(!java.util.Objects.equals(orderName,item.hoverName()) || !orderTotal.equals(com.goofy.goofyaddons.features.generalflipper.OrderLore.total(item.lore()))
+                || price==null || Math.abs(price-orderPrice)>0.051
+                || !com.goofy.goofyaddons.features.generalflipper.OrderLore.ownOrder(item.lore(),username))return false;
+        cancellationContainer=-1;awaitingFreshOrder=false;return true;
+    }
+    public int cancellationReopens(){return cancellationReopens;}
     public boolean cancellationSent() { return cancellationContainer != -1; }
     public void sentCancellation(int container, long now) {
         cancellationContainer = container; cancellationAt = now;
