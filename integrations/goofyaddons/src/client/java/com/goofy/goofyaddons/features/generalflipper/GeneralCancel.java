@@ -67,6 +67,7 @@ final class GeneralCancel {
                 return;
             }
         }
+        if(claimAdditionalSales(ctx))return;
         // Partial buy claims leave the order in the list. Reopen its options
         // only after the expected inventory delta and the server's options hint.
         if (!trade.reopenedCancelOptions && ctx.ordersReady() && !ctx.ambiguousOrders()) {
@@ -93,6 +94,51 @@ final class GeneralCancel {
             return;
         }
         ctx.claim().retry(ctx);
+    }
+
+    /** Sales may continue between claiming proceeds and opening the offer's options. */
+    private boolean claimAdditionalSales(GeneralContext ctx) {
+        var active=ctx.active();var trade=ctx.trade();
+        if(!trade.selling || trade.cancelSoldUnits<=0 || trade.claimedProceeds==null || !ctx.ordersReady())return false;
+        if(ctx.ambiguousOrders())return true;
+        int order=ctx.findOrder(true);
+        if(order>=0 && !ctx.orderMatchesPosition(order))return true;
+        var fill=order<0?null:OrderLore.fill(ctx.lore(order));
+        if(trade.additionalSaleUnits>0) {
+            var receipt=trade.additionalSaleReceipt;
+            if(receipt==null){ctx.claim().retry(ctx);return true;}
+            int total=trade.cancelSoldUnits+receipt.units();
+            if(ctx.itemCount(active.item.id())!=trade.inventoryBefore) {
+                ctx.fail("Inventory changed during an additional sale claim; position retained.");return true;
+            }
+            if(order<0?total!=active.quantity:fill==null || fill.filled()<total) {
+                ctx.recheckOrders("additional-sale-claim-not-visible");return true;
+            }
+            trade.cancelSoldUnits=total;trade.claimedProceeds+=receipt.coins();
+            trade.expectedClaim=active.quantity-total;trade.additionalSaleUnits=0;trade.additionalSaleReceipt=null;
+            ctx.claim().reset();ctx.transition(Step.CANCEL_DETAIL);
+            ctx.services().event("INFO","order.additional_sale_claim_verified",java.util.Map.of("trade",active.tradeId,"units",receipt.units(),"soldTotal",total,"proceeds",receipt.coins()));
+            if(order<0) {
+                if(!ctx.recordSale(total,trade.claimedProceeds))return true;
+                active.settlementPending=false;ctx.completePosition();
+            }
+            return true;
+        }
+        if(order<0) {
+            if(trade.cancelSoldUnits==active.quantity && ctx.itemCount(active.item.id())==trade.inventoryBefore) {
+                if(ctx.recordSale(trade.cancelSoldUnits,trade.claimedProceeds)){active.settlementPending=false;ctx.completePosition();}
+            } else ctx.recheckOrders("partial-sale-offer-not-visible");
+            return true;
+        }
+        if(fill==null || fill.filled()<trade.cancelSoldUnits) {ctx.recheckOrders("additional-sale-fill-not-readable");return true;}
+        if(fill.filled()==trade.cancelSoldUnits)return false;
+        if(!ctx.lore(order).contains("Click to claim!"))return true;
+        trade.additionalSaleUnits=fill.filled()-trade.cancelSoldUnits;
+        trade.additionalSaleReceipt=null;trade.reopenedCancelOptions=false;
+        if(!ctx.save())return true;
+        ctx.claim().arm(ctx,order);ctx.transition(Step.CANCEL_DETAIL);ctx.click(order);
+        ctx.services().event("INFO","order.additional_sale_claim",java.util.Map.of("trade",active.tradeId,"units",trade.additionalSaleUnits,"previousSold",trade.cancelSoldUnits));
+        return true;
     }
 
     /**
@@ -336,8 +382,15 @@ final class GeneralCancel {
         var trade = ctx.trade();
         var step = ctx.step();
         if (trade.selling && trade.cancelSoldUnits > 0 && (step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL)) {
-            Double coins = TradeReceipts.saleProceeds(message, active.item.name(), trade.cancelSoldUnits);
-            if (coins != null) trade.claimedProceeds = coins;
+            var claim=TradeReceipts.saleClaim(message,active.item.name());
+            if(claim!=null) {
+                if(trade.additionalSaleUnits>0) {
+                    if(trade.additionalSaleReceipt==null && claim.units()>=trade.additionalSaleUnits
+                            && claim.units()<=active.quantity-trade.cancelSoldUnits)trade.additionalSaleReceipt=claim;
+                } else if(trade.claimedProceeds==null && claim.units()>=trade.cancelSoldUnits && claim.units()<=active.quantity) {
+                    trade.cancelSoldUnits=claim.units();trade.expectedClaim=active.quantity-claim.units();trade.claimedProceeds=claim.coins();
+                }
+            }
         }
         if ((step == Step.CANCEL_DETAIL || step == Step.VERIFY_CANCEL || step == Step.ORDERS && (rejections > 0 || missingAckRetries > 0)) && active.cancelRequested
                 && TradingSafety.cancellationReceipt(message, active.item.name())) trade.receipt = true;

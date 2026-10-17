@@ -30,7 +30,7 @@ final class GeneralClaim {
         var trade = ctx.trade();
         boolean unchanged = java.util.Objects.equals(title, ctx.view().title())
                 && ctx.findOrder(trade.selling) == slot && java.util.Objects.equals(lore, ctx.lore(slot))
-                && ctx.itemCount(ctx.active().item.id()) == trade.inventoryBefore && !trade.receipt && trade.claimedProceeds == null;
+                && ctx.itemCount(ctx.active().item.id()) == trade.inventoryBefore && !trade.receipt && (trade.additionalSaleUnits>0?trade.additionalSaleReceipt==null:trade.claimedProceeds == null);
         if (retry.retry(ctx.view(), unchanged, ctx.actions(), ctx.now())) {
             ctx.services().event("WARN", "general.claim_retried", java.util.Map.of(
                     "trade", ctx.active().tradeId, "attempt", retry.retries(), "slot", slot));

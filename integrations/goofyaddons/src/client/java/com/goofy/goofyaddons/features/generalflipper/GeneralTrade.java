@@ -20,6 +20,9 @@ final class GeneralTrade {
     int claimUnits;
     /** Units already sold on a sell offer that is being cancelled for repricing. */
     int cancelSoldUnits;
+    /** Additional partial-sale claim observed while preparing to cancel the same offer. */
+    int additionalSaleUnits;
+    com.goofy.goofyaddons.features.profit.TradeReceipts.SaleClaim additionalSaleReceipt;
     boolean reopenedCancelOptions;
     /** The server said a buy order gained claimable goods while it was being cancelled. */
     boolean cancelNeedsClaim;

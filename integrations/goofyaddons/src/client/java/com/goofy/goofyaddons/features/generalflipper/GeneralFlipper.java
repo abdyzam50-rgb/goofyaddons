@@ -149,7 +149,7 @@ public class GeneralFlipper implements Feature {
         state.put("paused",paused);state.put("blocked",blocked);state.put("claimPending",trade.claimPending);state.put("receipt",trade.receipt);
         state.put("claimUnits",trade.claimUnits);state.put("inventoryBefore",trade.inventoryBefore);state.put("expectedClaim",trade.expectedClaim);
         state.put("ordersContainer",ordersSettle.container());state.put("selling",trade.selling);
-        state.put("cancelNeedsClaim",trade.cancelNeedsClaim);state.put("cancelSoldUnits",trade.cancelSoldUnits);
+        state.put("cancelNeedsClaim",trade.cancelNeedsClaim);state.put("cancelSoldUnits",trade.cancelSoldUnits);state.put("additionalSaleUnits",trade.additionalSaleUnits);state.put("additionalSaleReceipt",trade.additionalSaleReceipt!=null);
         state.put("claimedProceeds",trade.claimedProceeds);state.put("hasClaimedProceeds",trade.claimedProceeds!=null);
         state.put("reopenedCancelOptions",trade.reopenedCancelOptions);
         if(active!=null) {

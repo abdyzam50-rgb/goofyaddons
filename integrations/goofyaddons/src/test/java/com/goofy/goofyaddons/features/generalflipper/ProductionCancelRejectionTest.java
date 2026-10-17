@@ -187,6 +187,63 @@ class ProductionCancelRejectionTest {
         f.world.showing(menu("Buy Order Options",13,0,0,List.of(SlotView.named(13,"Cancel Order",List.of()))));f.tick(120);
         assertEquals(2,f.clicks(13));assertTrue(f.market.capital().occupied(ID));assertFalse(f.repo.load().getFirst().completed);
     }
+    private MenuSnapshot claimingSale(int container,int sold) {
+        var original=orders(container,0,0,0,0,"curedmc",false,true,sold);var slots=new ArrayList<>(original.slots());
+        slots.set(15,SlotView.named(15,"SELL Crafted Output",List.of("Offer amount: 4","Filled: "+sold+"/4",
+                "Price per unit: 130 coins","By: [MVP+] curedmc","You have coins to claim!","Click to claim!")));
+        return new MenuSnapshot(container,original.title(),true,slots);
+    }
+    @Test void extraFillAfterPartialSaleClaimIsClaimedBeforeCancellationAndAllReceiptsAreKept()throws Exception {
+        var f=new Fixture("extra-sale.json",List.of(sale()));
+        f.world.showing(claimingSale(10,1));assertTrue(f.engine.resumeProductionSales());f.until("CANCEL_DETAIL");
+        f.engine.onNotice("[Bazaar] Claimed 120 coins from selling 1x Crafted Output at 130 each!");
+        f.world.showing(claimingSale(11,2));f.tick(1000);
+        assertEquals(2,f.clicks(15));assertTrue(f.market.events.contains("order.additional_sale_claim"));
+        f.engine.onNotice("[Bazaar] Claimed 120 coins from selling 1x Crafted Output at 130 each!");
+        f.engine.onNotice("[Bazaar] Claimed 120 coins from selling 1x Crafted Output at 130 each!");
+        f.world.showing(orders(12,0,0,0,0,"curedmc",false,true,2));f.tick(1000);
+        assertTrue(f.market.events.contains("order.additional_sale_claim_verified"));
+        f.world.showing(menu("Sell Order Options",13,0,0,List.of(SlotView.named(13,"Cancel Order",List.of()))));f.tick(120);
+        assertEquals(1,f.clicks(13));f.engine.onNotice("[Bazaar] Cancelled sell order for 4x Crafted Output!");
+        f.world.showing(menu("Co-op Bazaar Orders",14,0,2,List.of(SlotView.named(49,"Close",List.of()))));f.tick(1600);
+        var saved=f.repo.load().getFirst();assertEquals(GeneralPosition.Stage.INVENTORY,saved.stage);assertEquals(2,saved.quantity);
+        assertEquals(2,saved.productionSoldUnits);assertEquals(240.0,saved.verifiedProceeds);assertFalse(saved.settlementPending);
+        assertFalse((Boolean)f.engine.diagnosticState().get("paused"));
+    }
+    @Test void remainingUnitsCanSellDuringAdditionalClaimAndFinishWithoutCancellingAnAbsentOffer()throws Exception {
+        var f=new Fixture("extra-full-sale.json",List.of(sale()));
+        f.world.showing(claimingSale(10,1));assertTrue(f.engine.resumeProductionSales());f.until("CANCEL_DETAIL");
+        f.engine.onNotice("[Bazaar] Claimed 120 coins from selling 1x Crafted Output at 130 each!");
+        f.world.showing(claimingSale(11,2));f.tick(1000);assertEquals(2,f.clicks(15));
+        // Two more units fill after observing 2/4, so this second click claims three units.
+        f.engine.onNotice("[Bazaar] Claimed 360 coins from selling 3x Crafted Output at 130 each!");
+        f.world.showing(orders(12,0,0,0,0,"curedmc",false,false,0));f.tick(1600);
+        var saved=f.repo.load().getFirst();assertTrue(saved.completed);assertEquals(4,saved.productionSoldUnits);assertEquals(480.0,saved.verifiedProceeds);
+        assertEquals(0,f.clicks(13));assertFalse((Boolean)f.engine.diagnosticState().get("paused"));
+    }
+    @Test void firstPartialSaleReceiptCanIncludeAFillThatLandedBeforeTheClaimClick()throws Exception {
+        var f=new Fixture("first-more-sale.json",List.of(sale()));
+        f.world.showing(claimingSale(10,1));assertTrue(f.engine.resumeProductionSales());f.until("CANCEL_DETAIL");
+        f.engine.onNotice("[Bazaar] Claimed 240 coins from selling 2x Crafted Output at 130 each!");
+        f.world.showing(orders(11,0,0,0,0,"curedmc",false,true,2));f.tick(1000);
+        assertEquals(2,f.clicks(15)); // Initial claim plus opening the same owned offer's options.
+        f.world.showing(menu("Sell Order Options",12,0,0,List.of(SlotView.named(13,"Cancel Order",List.of()))));f.tick(120);
+        f.engine.onNotice("[Bazaar] Cancelled sell order for 4x Crafted Output!");
+        f.world.showing(menu("Co-op Bazaar Orders",13,0,2,List.of(SlotView.named(49,"Close",List.of()))));f.tick(1600);
+        var saved=f.repo.load().getFirst();assertEquals(2,saved.quantity);assertEquals(2,saved.productionSoldUnits);assertEquals(240.0,saved.verifiedProceeds);
+    }
+
+    @Test void additionalSaleNeedsItsOwnReceiptBeforeOptionsCanBeCancelled()throws Exception {
+        var f=new Fixture("extra-missing-receipt.json",List.of(sale()));
+        f.world.showing(claimingSale(10,1));assertTrue(f.engine.resumeProductionSales());f.until("CANCEL_DETAIL");
+        f.engine.onNotice("[Bazaar] Claimed 120 coins from selling 1x Crafted Output at 130 each!");
+        f.world.showing(claimingSale(11,2));f.tick(1000);
+        f.engine.onNotice("[Bazaar] Claimed 120 coins from selling 1x Different Output at 130 each!");
+        f.world.showing(orders(12,0,0,0,0,"curedmc",false,true,2));f.tick(2000);
+        assertEquals(2,f.clicks(15));assertEquals(0,f.clicks(13));assertNull(f.repo.load().getFirst().verifiedProceeds);
+        assertFalse(f.market.events.contains("order.additional_sale_claim_verified"));assertTrue(f.market.capital().occupied("SELL_OUTPUT"));
+    }
+
     @Test void sellRejectionKeepsAlreadyClaimedPartialSaleProceeds()throws Exception{
         var f=new Fixture("partial-sale.json",List.of(sale()));
         f.world.showing(orders(10,0,0,0,0,"curedmc",false,true,1));assertTrue(f.engine.resumeProductionSales());f.until("CANCEL_DETAIL");
