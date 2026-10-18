@@ -151,7 +151,7 @@ public class GeneralFlipper implements Feature {
         state.put("ordersContainer",ordersSettle.container());state.put("selling",trade.selling);
         state.put("cancelNeedsClaim",trade.cancelNeedsClaim);state.put("cancelSoldUnits",trade.cancelSoldUnits);state.put("additionalSaleUnits",trade.additionalSaleUnits);state.put("additionalSaleReceipt",trade.additionalSaleReceipt!=null);
         state.put("claimedProceeds",trade.claimedProceeds);state.put("hasClaimedProceeds",trade.claimedProceeds!=null);
-        state.put("reopenedCancelOptions",trade.reopenedCancelOptions);
+        state.put("reopenedCancelOptions",trade.reopenedCancelOptions);state.put("cancelOptionsAttempts",trade.cancelOptionsAttempts);
         if(active!=null) {
             int inventory=itemCount(active.item.id());
             state.put("targetInventoryTotal",inventory);state.put("targetAcquiredInventory",active.acquiredInventory(inventory));

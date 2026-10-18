@@ -68,6 +68,45 @@ class ProductionCancelRejectionTest {
         }
     }
 
+    @Test void partialBuyClaimSurvivesTemporarilyAbsentOrderAndRetriesIgnoredOptionsClick()throws Exception {
+        var f=new Fixture("partial-gap.json",List.of(buy(23,100)));
+        f.world.showing(orders(10,23,5,100,0,"curedmc",false,false,0));assertTrue(f.engine.recoverProductionBuy());f.until("CANCEL_DETAIL");
+        assertEquals(1,f.clicks(11));
+        // A stale claim hint for the same five fills must not start another claim.
+        var old=orders(99,23,5,100,5,"curedmc",false,false,0);var oldSlots=new ArrayList<>(old.slots());
+        oldSlots.set(11,SlotView.named(11,"BUY "+NAME,List.of("Order amount: 23","Filled: 5/23","Price per unit: 100 coins",
+                "By: [MVP+] curedmc","You have 5 items to claim!","Click to claim!")));
+        f.world.showing(new MenuSnapshot(99,old.title(),true,oldSlots));f.tick(1000);assertEquals(1,f.clicks(11));
+        // Inventory arrives before the refreshed order list populates: this is not a full fill.
+        f.world.showing(orders(11,0,0,0,5,"curedmc",false,false,0));f.tick(1200);
+        assertEquals("CANCEL_DETAIL",f.engine.diagnosticState().get("step"));assertEquals(5,f.engine.diagnosticState().get("expectedClaim"));
+        f.world.showing(orders(12,23,5,100,5,"curedmc",false,false,0));f.tick(1200);
+        assertEquals(2,f.clicks(11));f.tick(3500);assertEquals(3,f.clicks(11));
+        assertEquals(5,f.engine.diagnosticState().get("expectedClaim"));
+        f.world.showing(menu("Buy Order Options",13,5,0,List.of(SlotView.named(13,"Cancel Order",List.of()))));f.tick(120);
+        assertEquals(1,f.clicks(13));f.engine.onNotice("[Bazaar] Cancelled! Refunded 1,800 coins from cancelling Buy Order!");
+        f.world.showing(orders(14,0,0,0,5,"curedmc",false,false,0));f.tick(1600);
+        var saved=f.repo.load().getFirst();assertEquals(GeneralPosition.Stage.INVENTORY,saved.stage);assertEquals(5,saved.quantity);
+        assertEquals(5,f.market.acquired);assertEquals(500,f.market.acquiredCost);assertFalse(saved.cancelRequested);
+    }
+    @Test void fullBuyCanStillBeAcknowledgedWhenAllUnitsActuallyArriveBeforeOrderRemoval()throws Exception {
+        var f=new Fixture("full-gap.json",List.of(buy(23,100)));
+        f.world.showing(orders(10,23,5,100,0,"curedmc",false,false,0));assertTrue(f.engine.recoverProductionBuy());f.until("CANCEL_DETAIL");
+        f.world.showing(orders(11,0,0,0,23,"curedmc",false,false,0));f.tick(2000);
+        var saved=f.repo.load().getFirst();assertEquals(GeneralPosition.Stage.INVENTORY,saved.stage);assertEquals(23,saved.quantity);
+        assertEquals(23,f.market.acquired);assertEquals(0,f.clicks(13));assertFalse((Boolean)f.engine.diagnosticState().get("paused"));
+    }
+    @Test void ignoredOptionsClicksAreBoundedAndNewFillsGetTheirOwnClaimBaseline()throws Exception {
+        var f=new Fixture("partial-bound.json",List.of(buy(23,100)));
+        f.world.showing(orders(10,23,5,100,0,"curedmc",false,false,0));assertTrue(f.engine.recoverProductionBuy());f.until("CANCEL_DETAIL");
+        f.world.showing(orders(11,23,5,100,5,"curedmc",false,false,0));f.tick(1000);f.tick(11000);
+        assertEquals(4,f.clicks(11)); // One claim and at most three attempts to open options.
+        f.world.showing(orders(12,23,6,100,5,"curedmc",false,false,0));f.tick(1200);
+        assertEquals(5,f.clicks(11));assertEquals(1,f.engine.diagnosticState().get("expectedClaim"));
+        assertEquals(5,f.engine.diagnosticState().get("inventoryBefore"));assertTrue(f.market.events.contains("order.additional_buy_claim"));
+        assertEquals(0,f.clicks(13));assertTrue(f.market.capital().occupied(ID));
+    }
+
     @Test void explicitRejectionRetriesExactOrderAndPreservesSubmittedSiblingOffer()throws Exception{
         var f=new Fixture("retry.json",List.of(sale(),buy(1,133475.5)));f.beginBuy(1,133475.5,true);
         f.engine.onNotice(REJECTION);f.engine.onNotice(REJECTION); // Duplicate notice cannot authorize another retry.

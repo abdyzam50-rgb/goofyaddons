@@ -1,8 +1,8 @@
 # Trading inside A*
 
-Current combined release: **0.2.133-BETA**, Minecraft **26.3**, Java **25**,
+Current combined release: **0.2.134-BETA**, Minecraft **26.3**, Java **25**,
 Fabric Loader **0.19.5+** and Fabric API **0.161.0+26.3**.
-Download [the combined JAR](../dist/astar-client-0.2.133-BETA.jar).
+Download [the combined JAR](../dist/astar-client-0.2.134-BETA.jar).
 Install it with Fabric API; remove duplicate standalone A*/GoofyAddons JARs.
 
 The [command reference](COMMANDS.md) is the source for current user commands,
@@ -201,7 +201,7 @@ from the cloned repository, with the existing D1/Worker configuration.
 
 Build from the repository root with `./gradlew -p client test build` (Windows:
 `.\gradlew.bat -p client test build`). Output:
-`client/build/libs/astar-client-0.2.133-BETA.jar`. Automated checks cover simulated
+`client/build/libs/astar-client-0.2.134-BETA.jar`. Automated checks cover simulated
 transactions and regression cases; [in-game validation](guides/IN_GAME_VALIDATION.md)
 still needs the actual server's menus, latency and account state.
 

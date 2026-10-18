@@ -24,6 +24,8 @@ final class GeneralTrade {
     int additionalSaleUnits;
     com.goofy.goofyaddons.features.profit.TradeReceipts.SaleClaim additionalSaleReceipt;
     boolean reopenedCancelOptions;
+    long cancelOptionsAt;
+    int cancelOptionsAttempts;
     /** The server said a buy order gained claimable goods while it was being cancelled. */
     boolean cancelNeedsClaim;
     /** Coins named by the sale receipt, when one was seen. */

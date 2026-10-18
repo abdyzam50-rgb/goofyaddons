@@ -67,10 +67,11 @@ final class GeneralCancel {
                 return;
             }
         }
-        if(claimAdditionalSales(ctx))return;
+        if(claimAdditionalSales(ctx) || claimAdditionalBuys(ctx))return;
         // Partial buy claims leave the order in the list. Reopen its options
         // only after the expected inventory delta and the server's options hint.
-        if (!trade.reopenedCancelOptions && ctx.ordersReady() && !ctx.ambiguousOrders()) {
+        if ((!trade.reopenedCancelOptions || ctx.now()-trade.cancelOptionsAt>=3000 && trade.cancelOptionsAttempts<3)
+                && ctx.ordersReady() && !ctx.ambiguousOrders()) {
             int order = ctx.findOrder(trade.selling);
             boolean mayOpen = order >= 0 && (trade.selling
                     ? OrderLore.canOpenSellOptionsAfterClaim(ctx.lore(order), trade.cancelSoldUnits, trade.claimedProceeds != null)
@@ -79,13 +80,14 @@ final class GeneralCancel {
                 if (!ctx.orderMatchesPosition(order)) return;
                 ctx.services().event("INFO", "order.claim_then_open_options", java.util.Map.of("trade", active.tradeId,
                         "inventoryBefore", trade.inventoryBefore, "inventoryNow", ctx.itemCount(active.item.id()), "expectedClaim", trade.expectedClaim));
-                trade.reopenedCancelOptions = true;
+                trade.reopenedCancelOptions = true;trade.cancelOptionsAt=ctx.now();trade.cancelOptionsAttempts++;
                 ctx.click(order);
                 return;
             }
         }
         // A fully filled order can be claimed directly without an order detail screen.
-        if (!trade.selling && ctx.ordersReady() && ctx.itemCount(active.item.id()) > trade.inventoryBefore && ctx.findOrder(false) < 0) {
+        if (!trade.selling && ctx.ordersReady() && active.acquiredInventory(ctx.itemCount(active.item.id()))==active.quantity
+                && ctx.itemCount(active.item.id()) > trade.inventoryBefore && ctx.findOrder(false) < 0) {
             // More units may fill between reading the order and claiming it. Use the
             // acknowledged whole position, not the earlier partial-fill estimate.
             trade.expectedClaim = active.quantity - active.acquiredInventory(trade.inventoryBefore);
@@ -94,6 +96,28 @@ final class GeneralCancel {
             return;
         }
         ctx.claim().retry(ctx);
+    }
+
+    /** A buy can gain new fills while its already-claimed items wait for the options screen. */
+    private boolean claimAdditionalBuys(GeneralContext ctx) {
+        var active=ctx.active();var trade=ctx.trade();int count=ctx.itemCount(active.item.id());
+        if(trade.selling || !ctx.ordersReady() || ctx.ambiguousOrders()
+                || !com.goofy.goofyaddons.features.transaction.ClaimEvidence.arrived(trade.inventoryBefore,trade.expectedClaim,count))return false;
+        int order=ctx.findOrder(false);if(order<0)return false;
+        int acquired=active.acquiredInventory(count);
+        var fill=OrderLore.fill(ctx.lore(order));
+        int units=OrderLore.claimable(ctx.lore(order),acquired);
+        if(units<=0 || fill==null || fill.filled()<=acquired || units>fill.filled()-acquired)return false;
+        if(!ctx.orderMatchesPosition(order))return true;
+        if(units>ctx.capacityFor(active.item.id()) || active.acquiredInventory(count)+units>active.quantity) {
+            ctx.fail("Cannot safely claim additional buy fills; order and inventory retained.");return true;
+        }
+        trade.inventoryBefore=count;trade.expectedClaim=units;trade.receipt=false;
+        trade.reopenedCancelOptions=false;trade.cancelOptionsAttempts=0;
+        if(!ctx.save())return true;
+        ctx.claim().arm(ctx,order);ctx.transition(Step.CANCEL_DETAIL);ctx.click(order);
+        ctx.services().event("INFO","order.additional_buy_claim",java.util.Map.of("trade",active.tradeId,"units",units,"inventoryBefore",count));
+        return true;
     }
 
     /** Sales may continue between claiming proceeds and opening the offer's options. */
