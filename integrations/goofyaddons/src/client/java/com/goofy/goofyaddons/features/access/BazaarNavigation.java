@@ -13,7 +13,7 @@ public final class BazaarNavigation {
         boolean walk();void stopWalking();void interact();void click(int slot);boolean writeSearch(String text);
     }
     private State state=State.IDLE;private String query="",failure;private boolean orders,walkRequested;
-    private long began,next,clickedAt;private int attempts,searchContainer,clickedSlot,clickAttempts;
+    private long unrelatedSince=-1;private long began,next,clickedAt;private int attempts,searchContainer,clickedSlot,clickAttempts;
     private String clickedName;
     public State state(){return state;}public String failure(){return failure;}
     public boolean busy(){return state!=State.IDLE && state!=State.DONE && state!=State.FAILED;}
@@ -30,7 +30,7 @@ public final class BazaarNavigation {
             if(orders!=manage || !query.equals(wanted))throw new IllegalStateException("Another Bazaar navigation already owns the menu");
             return true;
         }
-        query=wanted;orders=manage;state=State.OPEN;began=now;next=now;attempts=0;walkRequested=false;failure=null;return true;
+        query=wanted;orders=manage;state=State.OPEN;began=now;next=now;attempts=0;walkRequested=false;unrelatedSince=-1;failure=null;return true;
     }
     public void cancel(Port port){port.stopWalking();state=State.IDLE;failure=null;}
     private void fail(String message,Port port){failure=message;state=State.FAILED;port.stopWalking();}
@@ -44,7 +44,13 @@ public final class BazaarNavigation {
         if(state==State.OPEN) {
             if(orders && title!=null && TradingSafety.ordersTitle(title)){port.stopWalking();state=State.DONE;return;}
             if(title!=null && title.contains("Bazaar")) {port.stopWalking();state=orders?State.ORDERS:query.isBlank()?State.DONE:State.SEARCH;return;}
-            if(title!=null){port.stopWalking();if(now-began>=3000)fail("Close the unrelated menu before NPC Bazaar navigation",port);return;}
+            if(title!=null){
+                port.stopWalking();
+                if(unrelatedSince<0)unrelatedSince=now;
+                if(now-unrelatedSince>=3000)fail("Close the unrelated menu before NPC Bazaar navigation: "+title,port);
+                return;
+            }
+            unrelatedSince=-1;
             if(!port.nearNpc()) {
                 if(!walkRequested){walkRequested=true;if(!port.walk()){fail("Stand next to the Bazaar NPC; automatic walking needs the custom pathfinder",port);}}
                 else if(!port.walking())fail("Pathfinder stopped before reaching the Bazaar NPC",port);

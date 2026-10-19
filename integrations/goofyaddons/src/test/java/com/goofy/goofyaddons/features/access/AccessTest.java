@@ -162,6 +162,18 @@ class AccessTest {
             SlotView.named(45,"Search",List.of()),SlotView.named(46,"Search",List.of()));
         nav.tick(port,3000,90);nav.tick(port,3500,90);assertTrue(port.effects.isEmpty());
     }
+    @Test void lateTransientScreenGetsItsOwnGracePeriodAndClosingItResetsTheWait() {
+        var nav=new BazaarNavigation();var port=new Port();nav.request("bz Coal",1000);
+        nav.tick(port,1000,90);
+        port.view=menu(0,"Chat",true);nav.tick(port,5000,90);
+        assertEquals(BazaarNavigation.State.OPEN,nav.state());
+        port.view=null;nav.tick(port,5500,90);
+        port.view=menu(1,"Storage",true);nav.tick(port,6000,90);nav.tick(port,8999,90);
+        assertEquals(BazaarNavigation.State.OPEN,nav.state());
+        nav.tick(port,9000,90);assertEquals(BazaarNavigation.State.FAILED,nav.state());
+        assertTrue(nav.failure().contains("Storage"));
+        assertEquals(List.of("interact","interact"),port.effects);
+    }
     @Test void closingStorageMayDisappearBeforeNpcNavigationContinues(){
         var nav=new BazaarNavigation();var port=new Port();nav.request("managebazaarorders",1000);
         port.view=menu(1,"Ender Chest (2/3)",true);nav.tick(port,1000,90);nav.tick(port,1200,90);
