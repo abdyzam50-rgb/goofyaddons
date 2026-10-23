@@ -1,8 +1,8 @@
 # Trading inside A*
 
-Current combined release: **0.2.136-BETA**, Minecraft **26.3**, Java **25**,
+Current combined release: **0.2.137-BETA**, Minecraft **26.3**, Java **25**,
 Fabric Loader **0.19.5+** and Fabric API **0.161.0+26.3**.
-Download [the combined JAR](../dist/astar-client-0.2.136-BETA.jar).
+Download [the combined JAR](../dist/astar-client-0.2.137-BETA.jar).
 Install it with Fabric API; remove duplicate standalone A*/GoofyAddons JARs.
 
 The [command reference](COMMANDS.md) is the source for current user commands,
@@ -201,7 +201,7 @@ from the cloned repository, with the existing D1/Worker configuration.
 
 Build from the repository root with `./gradlew -p client test build` (Windows:
 `.\gradlew.bat -p client test build`). Output:
-`client/build/libs/astar-client-0.2.136-BETA.jar`. Automated checks cover simulated
+`client/build/libs/astar-client-0.2.137-BETA.jar`. Automated checks cover simulated
 transactions and regression cases; [in-game validation](guides/IN_GAME_VALIDATION.md)
 still needs the actual server's menus, latency and account state.
 
@@ -212,3 +212,5 @@ Further guides: [full calculator](ACCOUNT-CALCULATOR.md),
 for current command syntax if an older design note shows a different interface.
 
 General route limits are editable under **G → Macros → Spending limits** while trading is stopped. **Coins per item** caps each General route (default 25M); **Units per item** caps its order quantity (default 256, range 1–4096). Raising either limit allows larger eligible batches but does not force spending: inventory, market flow, profit filters, available funds and active item slots still apply. These limits also apply to General routes in combined modes.
+
+New General entries divide spendable funds by remaining General item slots, then apply the Coins per item ceiling. For example, 200M available with eight free slots allows at most 25M for the next route. The allowance is recalculated as slots and funds change; smaller market-limited batches leave funds for later entries. Existing positions are not resized. This applies to automatic and configured General routes, including combined modes; it does not reserve separate shares for books or production.

@@ -8,6 +8,15 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MarketAnalysisProtocolTest {
+    @Test void executionRequestSharesCapitalWithoutChangingSavedCap() {
+        var cfg=config();cfg.general.maxCoinsPerItem=1_000_000_000;
+        var request=MarketAnalysisProtocol.request("balanced",market(NOW),cfg,TradingMode.GENERAL,200_000_000,32,2,8,Set.of());
+        assertEquals(25_000_000,request.getAsJsonObject("constraints").getAsJsonObject("general").get("maxCoinsPerItem").getAsDouble());
+        assertEquals(1_000_000_000,cfg.general.maxCoinsPerItem);
+        var last=MarketAnalysisProtocol.request("last",market(NOW),cfg,TradingMode.GENERAL,40_000_000,32,2,1,Set.of());
+        assertEquals(40_000_000,last.getAsJsonObject("constraints").getAsJsonObject("general").get("maxCoinsPerItem").getAsDouble());
+    }
+
     @Test void blockedBookDoesNotSuppressEligibleGeneralSuggestions() {
         var c=config();c.minNetProfit=0;c.marketAnalysis.automaticSelection=true;
         var request=request(c,NOW);var products=request.getAsJsonObject("market").getAsJsonObject("products");

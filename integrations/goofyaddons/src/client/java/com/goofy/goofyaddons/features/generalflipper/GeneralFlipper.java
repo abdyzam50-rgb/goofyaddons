@@ -552,12 +552,13 @@ public class GeneralFlipper implements Feature {
 
     private List<GeneralCalculator.Candidate> candidates() {
         if (services.productionOnly() || !world.inWorld() || products == null) return List.of();
+        double entryBudget=GeneralCalculator.entryBudget(capital.available(snapshotPurse),Math.max(0,settings().maxActiveItems-positions.size()));
         if(services.automaticSelection())
             return com.goofy.goofyaddons.features.marketanalysis.AutomaticSelection.general(services.recommendations(),world.now(),
-                    products,settings(),services.taxPercentage(),capital.available(snapshotPurse),
+                    products,settings(),services.taxPercentage(),entryBudget,
                     TradingSafety.conservativeCapacity(view.emptyInventorySlots(),4),services.excludedProducts());
         return GeneralCalculator.rankByForecast(GeneralCalculator.calculate(products, settings(), services.taxPercentage(),
-                capital.available(snapshotPurse), TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4))
+                entryBudget, TradingSafety.conservativeCapacity(view.emptyInventorySlots(), 4))
                 .stream().filter(c->!services.excludedProducts().contains(c.item().id())).toList(),services.recommendations(),world.now());
     }
 

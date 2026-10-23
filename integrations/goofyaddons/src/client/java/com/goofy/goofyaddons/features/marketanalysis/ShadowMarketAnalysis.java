@@ -166,7 +166,7 @@ public final class ShadowMarketAnalysis {
         var cfg=env.config();
         var account=PipelineAccount.capture(env.now(),TradingMode.ALL,env.capital(),env.purse(),env.inventory(),cfg.maxActiveBooks,cfg.general.maxActiveItems,env.excludedProducts())
             .withProductionReservations(env.productionSpendable(),env.productionSlots());
-        var local=PresetMarketReport.build(cfg,env.quotes(),account.available(),account.inventoryCapacity(),env.skills(),env.now());
+        var local=PresetMarketReport.build(cfg,env.quotes(),account.available(),account.inventoryCapacity(),env.skills(),env.now(),account.generalSlots());
         if(local==null){env.refreshQuotes();return null;}
         var plan=PipelinePlanner.build(account,local,env.now());
         return local.withRows(plan.next().isEmpty()?List.of():List.of(plan.next().getFirst().route()));

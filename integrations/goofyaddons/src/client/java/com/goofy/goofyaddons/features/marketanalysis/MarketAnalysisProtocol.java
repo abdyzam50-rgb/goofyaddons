@@ -78,7 +78,10 @@ public final class MarketAnalysisProtocol {
         c.addProperty("clickDelayMs", (config.minActionDelay + config.maxActionDelay) / 2.0);
         c.addProperty("maxRecommendations", config.marketAnalysis.maxRecommendations);
         c.addProperty("maxHistoryAgeHours", config.marketAnalysis.maxHistoryAgeHours);
-        c.add("general", GSON.toJsonTree(config.general));
+        var general=GSON.toJsonTree(config.general).getAsJsonObject();
+        if(generalSlots>0 && available>0)general.addProperty("maxCoinsPerItem",Math.min(config.general.maxCoinsPerItem,
+            com.goofy.goofyaddons.features.generalflipper.GeneralCalculator.entryBudget(available,generalSlots)));
+        c.add("general", general);
         c.add("excludedProducts", GSON.toJsonTree(new TreeSet<>(excluded)));
         c.add("configuredGeneralItems", GSON.toJsonTree(config.general.items.stream().map(i -> i.id()).toList()));
         c.add("configuredBookRoutes", GSON.toJsonTree(config.books.stream()

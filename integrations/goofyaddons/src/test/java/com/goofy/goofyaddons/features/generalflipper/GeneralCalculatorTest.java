@@ -7,6 +7,21 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GeneralCalculatorTest {
+    @Test void allocationLeavesRoomForRemainingSlotsAndHonoursTheItemCap() {
+        var cfg=settings();cfg.maxCoinsPerItem=1_000_000_000;cfg.maxItemsPerOrder=4096;
+        var market=products(1_000_000,1_100_000,100_000_000);
+        double available=200_000_000;
+        for(int slots=8;slots>0;slots--) {
+            var candidate=GeneralCalculator.calculate(market,cfg,0,GeneralCalculator.entryBudget(available,slots),4096).getFirst();
+            assertTrue(candidate.cost()<=25_000_000);
+            assertEquals(25,candidate.quantity());available-=candidate.cost();
+        }
+        assertEquals(0,available);
+        cfg.maxCoinsPerItem=10_000_000;
+        assertEquals(10,GeneralCalculator.calculate(market,cfg,0,GeneralCalculator.entryBudget(200_000_000,8),4096).getFirst().quantity());
+        assertEquals(0,GeneralCalculator.entryBudget(100,0));
+        assertEquals(0,GeneralCalculator.entryBudget(Double.NaN,8));
+    }
     private GeneralSettings settings() {
         GeneralSettings settings = new GeneralSettings();
         settings.items = List.of(new GeneralItem("ENCHANTED_SUGAR", "Enchanted Sugar"));

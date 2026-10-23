@@ -13,6 +13,11 @@ public final class GeneralCalculator {
 
     private GeneralCalculator() {}
 
+    /** Leave an equal share of spendable capital for every remaining General slot. */
+    public static double entryBudget(double available,int remainingSlots) {
+        return Double.isFinite(available) && available>0 && remainingSlots>0 ? available/remainingSlots : 0;
+    }
+
     public static List<Candidate> calculate(JsonObject products, GeneralSettings settings,
                                             double taxPercentage, double available, int inventoryCapacity) {
         if (products == null || !Double.isFinite(available) || available <= 0 || inventoryCapacity <= 0

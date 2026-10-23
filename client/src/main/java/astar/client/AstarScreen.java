@@ -486,7 +486,7 @@ final class AstarScreen extends Screen implements com.goofy.goofyaddons.keybinds
         capital.row("Purse reserve",()->"Coins kept outside trading; zero uses all available funds.",tradingNumber("Purse reserve",()->draft.view().purseReserve,(cfg,v)->cfg.purseReserve=v));
         capital.row("Book slots",()->"Maximum active book routes.",tradingWhole("Book slots",()->draft.view().maxActiveBooks,1,10,(cfg,v)->cfg.maxActiveBooks=v));
         capital.row("Item slots",()->"Maximum active ordinary-item routes.",tradingWhole("Item slots",()->draft.view().general.maxActiveItems,1,10,(cfg,v)->cfg.general.maxActiveItems=v));
-        capital.row("Coins per item",()->"Maximum coins per General route (default 25M). Market flow and profit limits can make batches smaller.",tradingNumber("Coins per item",()->draft.view().general.maxCoinsPerItem,(cfg,v)->cfg.general.maxCoinsPerItem=v));
+        capital.row("Coins per item",()->"Ceiling per General route (default 25M). New entries also share spendable funds across remaining item slots.",tradingNumber("Coins per item",()->draft.view().general.maxCoinsPerItem,(cfg,v)->cfg.general.maxCoinsPerItem=v));
         capital.row("Units per item",()->"Maximum units per General order, from 1 to 4096. Inventory and market flow limits still apply.",tradingWhole("Units per item",()->draft.view().general.maxItemsPerOrder,1,4096,(cfg,v)->cfg.general.maxItemsPerOrder=v));
         capital.row("Production buys inputs",()->"Let a queued production run instant-buy missing ingredients within spendable capital. Off until you have tested it in game.",
             new Check(()->draft.view().productionBuysIngredients,v->editTrading("Production buys inputs",cfg->cfg.productionBuysIngredients=v)).toggle());

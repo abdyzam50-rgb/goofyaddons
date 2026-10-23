@@ -12,9 +12,12 @@ import java.util.*;
 public final class PresetMarketReport {
     private PresetMarketReport() {}
     public static MarketAnalysisProtocol.Report build(GoofyConfig cfg,JsonObject market,double available,int capacity,Map<String,Integer> skills,long now) {
+        return build(cfg,market,available,capacity,skills,now,cfg.general.maxActiveItems);
+    }
+    public static MarketAnalysisProtocol.Report build(GoofyConfig cfg,JsonObject market,double available,int capacity,Map<String,Integer> skills,long now,int generalSlots) {
         if(market==null || !market.has("lastUpdated") || !com.goofy.goofyaddons.features.TradingSafety.fresh(market.get("lastUpdated").getAsLong(),now))return null;
         var products=market.getAsJsonObject("products");var rows=new ArrayList<MarketAnalysisProtocol.Recommendation>();
-        for(var c:GeneralCalculator.calculate(products,cfg.general,cfg.bazaarTaxPercentage,available,capacity))
+        for(var c:GeneralCalculator.calculate(products,cfg.general,cfg.bazaarTaxPercentage,GeneralCalculator.entryBudget(available,generalSlots),capacity))
             add(rows,"GENERAL",c.item().id(),c.item().id(),c.quantity(),c.quantity(),c.cost(),c.profit(),c.strategy(),products,0);
         for(var f:FlipCalculator.calculate(products,cfg.books,cfg.bazaarTaxPercentage,cfg.minNetProfit)) {
             var b=f.book();int units=b.getQtyAmount(b.level());
